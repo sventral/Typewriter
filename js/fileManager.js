@@ -1,7 +1,7 @@
 import * as D from './dom.js';
 import { state } from './state.js';
 import { render, centerCaret } from './renderer.js';
-import { saveCurrentDoc, deserializeDoc } from './storage.js';
+import { saveCurrentDoc, deserializeDoc, serializeDoc } from './storage.js';
 import { createNewDoc, deleteCurrentDoc } from './document.js';
 
 function exportAsMarkdown(options) {
