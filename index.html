@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Typewriter</title>
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="ruler" id="rulerH_host">
+    <div id="rulerH_stops_container"></div>
+  </div>
+
+  <div class="ruler-v" id="rulerV_host">
+    <div id="rulerV_stops_container"></div>
+  </div>
+
+  <div id="stage" class="stage">
+    <div class="stage-inner">
+      <div class="page-wrap">
+        <canvas id="page" width="900" height="1200"></canvas>
+        <textarea id="shim" rows="1" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div id="guideV" class="guide"></div>
+  <div id="guideH" class="guide"></div>
+
+  <div class="toolbar">
+    <button class="btn" id="inkBlack" title="Black"><span class="sw black"></span></button>
+    <button class="btn" id="inkRed" title="Red"><span class="sw red"></span></button>
+    <button class="btn" id="inkWhite" title="White (Eraser)"><span class="sw white"></span></button>
+    <div style="flex:1"></div>
+    <div class="doc-controls-group">
+      <div class="dropdown">
+        <button class="btn" id="docsMenuBtn" title="Open Document">&#128193;</button>
+        <div class="dropdown-content" id="docsList"></div>
+      </div>
+      <input type="text" id="docTitle" class="doc-title-input" />
+    </div>
+    <button class="btn" id="deleteDocBtn" title="Delete Document">&#128465;</button>
+    <button class="btn" id="toggleStops" title="Show/Hide Margins">Margins</button>
+    <button class="btn" id="themeToggle" title="Toggle theme"></button>
+    <button class="btn" id="newDocBtn">New</button>
+    <button class="btn" id="importBtn">Import</button>
+    <button class="btn" id="saveBtn">Save</button>
+  </div>
+
+  <div id="saveDialog" class="modal-overlay">
+    <div class="modal-content">
+      <h3>Save Options</h3>
+      <label>
+        <input type="checkbox" id="saveRawCheckbox">
+        Save raw data (JSON)
+      </label>
+      <hr style="border:0; border-top:1px solid var(--ui-border); margin: 1rem 0;">
+      <div id="textOptions">
+        <label>
+          <input type="checkbox" id="preserveUnderline" checked>
+          Preserve underline
+        </label>
+        <label>
+          <input type="checkbox" id="preserveStrike" checked>
+          Preserve strikethrough
+        </label>
+        <label>
+          <input type="checkbox" id="deleteX">
+          When text is overtyped with X, delete it
+        </label>
+      </div>
+      <div class="modal-buttons">
+        <button class="btn" id="cancelSaveBtn">Cancel</button>
+        <button class="btn" id="confirmSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
