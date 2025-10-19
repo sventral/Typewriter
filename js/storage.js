@@ -1,7 +1,7 @@
 import * as D from './dom.js';
 import { state, effectiveDark } from './state.js';
 
-function serializeDoc() {
+export function serializeDoc() {
     return {
         v: 4,
         marginL: state.marginL,
