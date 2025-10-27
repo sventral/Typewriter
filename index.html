@@ -26,7 +26,7 @@
     <div id="zoomIndicator">100%</div>
   </div>
 
-  <div id="stage" class="stage">
+  <div id="stage" class="stage" tabindex="-1">
     <div class="zoom-wrap" id="zoomWrap">
       <div class="stage-inner" id="stageInner">
         <div class="page-wrap" data-page="0">
@@ -103,12 +103,12 @@
         </div>
         <div class="control-row">
           <label>Columns</label>
-          <span id="colsPreview">82.68</span>
+          <span id="colsPreview">Columns: 82.68</span>
         </div>
         <div class="control-row">
           <label for="sizeInput">Size</label>
           <div class="input-with-suffix">
-            <input id="sizeInput" type="number" step="0.01" value="84.00" />
+            <input id="sizeInput" type="number" step="1" min="1" max="150" inputmode="numeric" pattern="[0-9]*" value="84" />
             <span>%</span>
           </div>
         </div>

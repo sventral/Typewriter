@@ -11,7 +11,7 @@ export function createMainState(app, gridDiv = 8) {
     paperOffset: { x: 0, y: 0 },
     cpi: 10,
     colsAcross: 82.68,
-    inkWidthPct: 84.00,
+    inkWidthPct: 84,
     inkOpacity: { b: 100, r: 100, w: 100 },
     lineHeightFactor: 1.0,
     lineStepMu: gridDiv,
