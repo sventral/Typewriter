@@ -130,14 +130,7 @@
   }
   .slider-value { font-size: 11px; color: var(--ui-text); text-align: center; }
 
-  .stage{
-    height:calc(100vh - var(--toolbar-h));
-    overflow-y:auto;
-    overflow-x:hidden;
-    background:var(--stage-bg);
-    position:relative;
-    scrollbar-gutter: stable both-edges;
-  }
+  .stage{ height:calc(100vh - var(--toolbar-h)); overflow:auto; background:var(--stage-bg); position:relative; scrollbar-gutter: stable both-edges; }
   .stage:focus{ outline:none; }
   .zoom-wrap{ display:inline-block; min-width:100%; transform-origin: top center; will-change: transform; }
   .stage-inner{
