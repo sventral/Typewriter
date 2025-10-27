@@ -64,6 +64,13 @@ let suppressStageScrollSync = false;
 let pendingStageScrollSync = false;
 let pendingViewportRefresh = false;
 
+function applyPaperOffsetTransform(){
+  if (!app.stageInner) return;
+  const zoom = state?.zoom || 1;
+  const offsetX = (state.paperOffset?.x || 0) / zoom;
+  app.stageInner.style.setProperty('--paper-pan-x', `${offsetX}px`);
+}
+
 const PAD_MIN = 120;
 const PAD_MAX = 640;
 
@@ -137,14 +144,14 @@ function syncOffsetFromScroll(options = {}){
     updateStageMetrics();
   }
   const { baseLeft, baseTop, maxScrollLeft, maxScrollTop } = stageMetrics;
-  const left = clamp(app.stage.scrollLeft, 0, maxScrollLeft);
   const top = clamp(app.stage.scrollTop, 0, maxScrollTop);
   const minOffsetX = -(maxScrollLeft - baseLeft);
   const maxOffsetX = baseLeft;
   const minOffsetY = -(maxScrollTop - baseTop);
   const maxOffsetY = baseTop;
-  state.paperOffset.x = clamp(baseLeft - left, minOffsetX, maxOffsetX);
+  state.paperOffset.x = clamp(state.paperOffset.x, minOffsetX, maxOffsetX);
   state.paperOffset.y = clamp(baseTop - top, minOffsetY, maxOffsetY);
+  applyPaperOffsetTransform();
   if (!options.skipDraw){
     positionRulers();
     requestVirtualization();
@@ -158,6 +165,7 @@ function setPaperOffset(x = 0, y = 0){
   state.paperOffset.y = clamped.y;
   const targetLeft = stageMetrics.baseLeft - clamped.x;
   const targetTop = stageMetrics.baseTop - clamped.y;
+  applyPaperOffsetTransform();
   suppressStageScrollSync = true;
   app.stage.scrollLeft = Math.round(targetLeft);
   app.stage.scrollTop = Math.round(targetTop);
@@ -198,6 +206,18 @@ function queueStageViewportRefresh(){
 function adjustStageScrollBy(dx, dy){
   if (!dx && !dy) return;
   setPaperOffset(state.paperOffset.x + dx, state.paperOffset.y + dy);
+}
+
+function handleStageWheel(e){
+  if (!app.stage) return;
+  if (e.ctrlKey || e.metaKey) return;
+  let deltaX = e.deltaX || 0;
+  if (!deltaX && e.shiftKey && e.deltaY){
+    deltaX = e.deltaY;
+  }
+  if (deltaX){
+    setPaperOffset(state.paperOffset.x - deltaX, state.paperOffset.y);
+  }
 }
 
 function focusStage(){
@@ -2139,6 +2159,7 @@ function bindEventListeners(){
 
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('paste', handlePaste, { capture: true });
+  app.stage.addEventListener('wheel', handleStageWheel, { passive: true });
   app.stage.addEventListener('scroll', handleStageScroll, { passive: true });
   window.addEventListener('resize', () => { refreshStageViewport(); if (!zooming) nudgePaperToAnchor(); }, { passive: true });
   window.addEventListener('beforeunload', saveStateNow);
