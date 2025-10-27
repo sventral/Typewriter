@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Typewriter</title>
+  <title>Typewriter — Canvas Page + Local Save (CPI/Ink% + Line Height + Zoom)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -33,7 +33,6 @@
           <div id="page" class="page">
             <canvas></canvas>
             <div id="marginBox" class="margin-box"></div>
-            <div id="caret" class="caret"></div>
           </div>
         </div>
       </div>
@@ -44,181 +43,117 @@
   <div id="guideH" class="guide"></div>
 
   <div class="toolbar">
-    <div class="toolbar-left">
-      <button class="btn" id="settingsBtnNew">Settings</button>
-      <button class="btn" id="exportTxtBtn">Save</button>
-      <button class="btn" id="newDocBtn">New</button>
+    <button class="btn" id="inkBlackBtn" title="Black"><span class="sw black"></span></button>
+    <button class="btn" id="inkRedBtn"   title="Red"><span class="sw red"></span></button>
+    <button class="btn" id="inkWhiteBtn" title="White (Eraser)"><span class="sw white"></span></button>
+    <button class="btn" id="toggleMarginsBtn" title="Toggle rulers">Margins</button>
+    <button class="btn" id="settingsBtn">Settings</button>
+
+    <div class="ctl" title="Characters per inch">
+      <label for="cpiSelect">CPI</label>
+      <select id="cpiSelect">
+        <option value="10">10</option>
+        <option value="12">12</option>
+      </select>
     </div>
-    <div class="toolbar-right">
-      <button class="btn" id="toggleMarginsBtn" title="Toggle rulers">Margins</button>
-      <button class="btn" id="fontsBtn">Fonts</button>
-      <div class="ink-control-group">
-        <button class="btn" id="inkBlackBtn" title="Black Ink. Long-press for transparency."><span class="sw black"></span></button>
-        <div class="ink-slider-popup" id="inkBlackSliderPopup">
-          <div class="slider-container">
-            <input type="range" id="inkOpacityBSlider" min="0" max="100" step="1" value="100" class="ink-slider">
-          </div>
-          <span class="slider-value" id="inkOpacityBValue">100%</span>
-        </div>
-      </div>
-      <div class="ink-control-group">
-        <button class="btn" id="inkRedBtn" title="Red Ink. Long-press for transparency."><span class="sw red"></span></button>
-        <div class="ink-slider-popup" id="inkRedSliderPopup">
-          <div class="slider-container">
-            <input type="range" id="inkOpacityRSlider" min="0" max="100" step="1" value="100" class="ink-slider">
-          </div>
-          <span class="slider-value" id="inkOpacityRValue">100%</span>
-        </div>
-      </div>
-      <div class="ink-control-group">
-        <button class="btn" id="inkWhiteBtn" title="White Ink (Eraser). Long-press for transparency."><span class="sw white"></span></button>
-        <div class="ink-slider-popup" id="inkWhiteSliderPopup">
-          <div class="slider-container">
-            <input type="range" id="inkOpacityWSlider" min="0" max="100" step="1" value="100" class="ink-slider">
-          </div>
-          <span class="slider-value" id="inkOpacityWValue">100%</span>
-        </div>
-      </div>
+    <div class="ctl" title="Computed columns across the page">
+      <label>Cols ≈</label>
+      <span id="colsPreview" style="min-width:48px;display:inline-block;text-align:right">82.68</span>
     </div>
+
+    <div class="ctl" title="Inked glyph width as % of pitch">
+      <label for="sizeInput">Size</label>
+      <input id="sizeInput" type="number" step="0.01" value="84.00" />
+    </div>
+    <button class="btn" id="applyBtn" title="Apply CPI & size">Apply</button>
+
+    <div class="ctl">
+      <label for="lhInput">Line height</label>
+      <input id="lhInput" type="number" step="0.5" min="1" max="3" value="1" />
+    </div>
+    <button class="btn" id="applyLHBtn" title="Apply line height">Apply LH</button>
+
+    <div class="ctl" title="Show/hide margin rectangle">
+      <label for="showMarginBoxCb">Margin box</label>
+      <input id="showMarginBoxCb" type="checkbox" />
+    </div>
+
+    <div style="flex:1"></div>
+    <button class="btn" id="newDocBtn">New</button>
+    <button class="btn" id="exportTxtBtn">Export</button>
   </div>
 
-  <aside id="settingsPanel" class="side-panel from-left">
-    <div class="panel-content">
-      <h3>Ink Effects</h3>
-      <div class="settings-group-new">
-        <div class="control-row">
-          <label for="grainPct">Grain</label>
-          <input type="number" id="grainPct" min="0" max="100" step="1" value="0" title="Grain strength (0–100)">
-        </div>
+  <dialog id="settingsModal" class="settings-modal" aria-hidden="true">
+    <div class="settings-panel">
+      <div class="settings-header">
+        <div style="font-weight:600">Settings</div>
       </div>
-      <hr class="divider">
-      <h3>Typography</h3>
-      <div class="settings-group-new">
-        <div class="control-row">
-          <label for="cpiSelect">CPI</label>
-          <select id="cpiSelect">
-            <option value="10">10</option>
-            <option value="12">12</option>
-          </select>
-        </div>
-        <div class="control-row">
-          <label>Columns</label>
-          <span id="colsPreview">82.68</span>
-        </div>
-        <div class="control-row">
-          <label for="sizeInput">Size</label>
-          <div class="input-with-suffix">
-            <input id="sizeInput" type="number" step="0.01" value="84.00" />
-            <span>%</span>
-          </div>
-        </div>
-        <div class="control-row">
-          <div></div>
-          <button class="btn apply-btn" id="applyBtn" title="Apply CPI & size">Apply</button>
-        </div>
-        <div class="control-row">
-          <label for="lhInput">Line Height</label>
-          <input id="lhInput" type="number" step="0.5" min="1" max="3" value="1" />
-        </div>
-        <div class="control-row">
-          <div></div>
-          <button class="btn apply-btn" id="applyLHBtn" title="Apply line height">Apply</button>
-        </div>
-      </div>
-      <hr class="divider">
-      <h3>Margins</h3>
-      <div class="settings-group-new">
-        <div class="control-row">
-          <label for="mmLeft">Left (mm)</label>
-          <input id="mmLeft" type="number" step="1" min="0" value="20" />
-        </div>
-        <div class="control-row">
-          <label for="mmRight">Right (mm)</label>
-          <input id="mmRight" type="number" step="1" min="0" value="20" />
-        </div>
-        <div class="control-row">
-          <label for="mmTop">Top (mm)</label>
-          <input id="mmTop" type="number" step="1" min="0" value="20" />
-        </div>
-        <div class="control-row">
-          <label for="mmBottom">Bottom (mm)</label>
-          <input id="mmBottom" type="number" step="1" min="0" value="20" />
-        </div>
-        <div class="control-row">
-          <label for="showMarginBoxCb">Margin Box</label>
-          <input id="showMarginBoxCb" type="checkbox" />
-        </div>
-        <div class="control-row">
-          <label for="wordWrapCb">Word Wrap</label>
-          <input id="wordWrapCb" type="checkbox" checked />
-        </div>
-      </div>
-    </div>
-  </aside>
+      <div class="settings-body">
+        <div class="settings-group">
+          <div style="font-weight:600; margin-bottom:6px;">Fonts</div>
 
-  <aside id="fontsPanel" class="side-panel from-right">
-    <div class="panel-content">
-      <h3>Fonts</h3>
-      <div class="settings-group-new">
-        <label class="font-option">
-          <div class="font-option-header">
+          <label class="font-option">
             <input type="radio" name="fontChoice" value="TT2020Base" />
-            <span class="font-name">TT2020 Base</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020Base", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
+            <span class="font-sample" style='font-family:"TT2020Base", Courier, "Courier New", monospace;'>TT2020 Base — The quick brown fox 123456</span>
+          </label>
+          <label class="font-option">
             <input type="radio" name="fontChoice" value="TT2020StyleB" />
-            <span class="font-name">TT2020 Style B</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020StyleB", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
+            <span class="font-sample" style='font-family:"TT2020StyleB", Courier, "Courier New", monospace;'>TT2020 Style B — The quick brown fox 123456</span>
+          </label>
+          <label class="font-option">
             <input type="radio" name="fontChoice" value="TT2020StyleD" />
-            <span class="font-name">TT2020 Style D</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020StyleD", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
+            <span class="font-sample" style='font-family:"TT2020StyleD", Courier, "Courier New", monospace;'>TT2020 Style D — The quick brown fox 123456</span>
+          </label>
+          <label class="font-option">
             <input type="radio" name="fontChoice" value="TT2020StyleE" checked />
-            <span class="font-name">TT2020 Style E</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020StyleE", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
+            <span class="font-sample" style='font-family:"TT2020StyleE", Courier, "Courier New", monospace;'>TT2020 Style E — The quick brown fox 123456</span>
+          </label>
+          <label class="font-option">
             <input type="radio" name="fontChoice" value="TT2020StyleF" />
-            <span class="font-name">TT2020 Style F</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020StyleF", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
+            <span class="font-sample" style='font-family:"TT2020StyleF", Courier, "Courier New", monospace;'>TT2020 Style F — The quick brown fox 123456</span>
+          </label>
+          <label class="font-option">
             <input type="radio" name="fontChoice" value="TT2020StyleG" />
-            <span class="font-name">TT2020 Style G</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020StyleG", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
+            <span class="font-sample" style='font-family:"TT2020StyleG", Courier, "Courier New", monospace;'>TT2020 Style G — The quick brown fox 123456</span>
+          </label>
+
+          <label class="font-option">
             <input type="radio" name="fontChoice" value="Courier New" />
-            <span class="font-name">Courier New</span>
-          </div>
-          <span class="font-sample" style='font-family:"Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
+            <span class="font-sample" style='font-family:"Courier New", monospace;'>Courier New — The quick brown fox 123456</span>
+          </label>
+          <label class="font-option">
             <input type="radio" name="fontChoice" value="Courier" />
-            <span class="font-name">Courier</span>
+            <span class="font-sample" style='font-family:Courier, "Courier New", monospace;'>Courier — The quick brown fox 123456</span>
+          </label>
+        </div>
+
+        <div class="settings-group">
+          <div style="font-weight:600; margin-bottom:6px;">Margins (mm)</div>
+          <div class="mm-grid">
+            <div>
+              <label for="mmLeft">Left</label>
+              <input id="mmLeft" type="number" step="1" min="0" value="20" />
+            </div>
+            <div>
+              <label for="mmRight">Right</label>
+              <input id="mmRight" type="number" step="1" min="0" value="20" />
+            </div>
+            <div>
+              <label for="mmTop">Top</label>
+              <input id="mmTop" type="number" step="1" min="0" value="20" />
+            </div>
+            <div>
+              <label for="mmBottom">Bottom</label>
+              <input id="mmBottom" type="number" step="1" min="0" value="20" />
+            </div>
           </div>
-          <span class="font-sample" style='font-family:Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
+        </div>
+      </div>
+      <div class="settings-footer">
+        <button class="btn" id="settingsCloseBtn2">Done</button>
       </div>
     </div>
-  </aside>
+  </dialog>
 
   <script defer src="js/app.js"></script>
 </body>
