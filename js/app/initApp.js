@@ -45,181 +45,6 @@ const touchedPages = ephemeral.touchedPages;
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 
-const stageMetrics = {
-  padLeft: 0,
-  padRight: 0,
-  padTop: 0,
-  padBottom: 0,
-  contentWidth: app.PAGE_W,
-  contentHeight: app.PAGE_H,
-  baseLeft: 0,
-  baseTop: 0,
-  maxScrollLeft: 0,
-  maxScrollTop: 0,
-  scrollWidth: 0,
-  scrollHeight: 0,
-};
-
-let suppressStageScrollSync = false;
-let pendingStageScrollSync = false;
-let pendingViewportRefresh = false;
-
-function applyPaperOffsetTransform(){
-  if (!app.stageInner) return;
-  const zoom = state?.zoom || 1;
-  const offsetX = (state.paperOffset?.x || 0) / zoom;
-  app.stageInner.style.setProperty('--paper-pan-x', `${offsetX}px`);
-}
-
-const PAD_MIN = 120;
-const PAD_MAX = 640;
-
-function readToolbarHeightPx(){
-  const rootStyles = getComputedStyle(document.documentElement);
-  const raw = rootStyles.getPropertyValue('--toolbar-h') || '48px';
-  const parsed = parseFloat(raw);
-  return Number.isFinite(parsed) ? parsed : 48;
-}
-
-function updateStageMetrics(){
-  if (!app.stage || !app.stageInner) return;
-  const rect = app.stage.getBoundingClientRect();
-  const viewportW = Math.max(rect.width, 1);
-  const viewportH = Math.max(rect.height, 1);
-  const toolbarPx = readToolbarHeightPx();
-
-  const padX = clamp(Math.round(viewportW / 2), PAD_MIN, PAD_MAX);
-  const padY = clamp(Math.round(viewportH / 2), PAD_MIN, PAD_MAX);
-
-  stageMetrics.padLeft = padX;
-  stageMetrics.padRight = padX;
-  stageMetrics.padTop = padY;
-  stageMetrics.padBottom = padY + toolbarPx;
-
-  const scaledPageW = Math.max(app.PAGE_W, app.PAGE_W * state.zoom);
-  const scaledPageH = Math.max(app.PAGE_H, app.PAGE_H * state.zoom);
-
-  stageMetrics.contentWidth = scaledPageW;
-  stageMetrics.contentHeight = scaledPageH;
-
-  const el = app.stageInner;
-  el.style.setProperty('--stage-pad-left', `${stageMetrics.padLeft}px`);
-  el.style.setProperty('--stage-pad-right', `${stageMetrics.padRight}px`);
-  el.style.setProperty('--stage-pad-top', `${stageMetrics.padTop}px`);
-  el.style.setProperty('--stage-pad-bottom', `${stageMetrics.padBottom}px`);
-
-  const layoutWidth = stageMetrics.padLeft + stageMetrics.padRight + stageMetrics.contentWidth;
-  el.style.width = `${layoutWidth}px`;
-
-  const viewportWidth = Math.max(app.stage.clientWidth, 1);
-  const viewportHeight = Math.max(app.stage.clientHeight, 1);
-
-  stageMetrics.scrollWidth = app.stage.scrollWidth;
-  stageMetrics.scrollHeight = app.stage.scrollHeight;
-  stageMetrics.maxScrollLeft = Math.max(0, stageMetrics.scrollWidth - viewportWidth);
-  stageMetrics.maxScrollTop = Math.max(0, stageMetrics.scrollHeight - viewportHeight);
-
-  const pageCenterX = stageMetrics.padLeft + stageMetrics.contentWidth / 2;
-  const pageCenterY = stageMetrics.padTop + stageMetrics.contentHeight / 2;
-
-  stageMetrics.baseLeft = clamp(pageCenterX - viewportWidth / 2, 0, stageMetrics.maxScrollLeft);
-  stageMetrics.baseTop = clamp(pageCenterY - viewportHeight / 2, 0, stageMetrics.maxScrollTop);
-}
-
-function clampPaperOffset(x, y){
-  const { baseLeft, baseTop, maxScrollLeft, maxScrollTop } = stageMetrics;
-  const minOffsetX = -(maxScrollLeft - baseLeft);
-  const maxOffsetX = baseLeft;
-  const minOffsetY = -(maxScrollTop - baseTop);
-  const maxOffsetY = baseTop;
-  return {
-    x: clamp(Number.isFinite(x) ? x : 0, minOffsetX, maxOffsetX),
-    y: clamp(Number.isFinite(y) ? y : 0, minOffsetY, maxOffsetY),
-  };
-}
-
-function syncOffsetFromScroll(options = {}){
-  if (!app.stage) return;
-  if (app.stage.scrollWidth !== stageMetrics.scrollWidth || app.stage.scrollHeight !== stageMetrics.scrollHeight){
-    updateStageMetrics();
-  }
-  const { baseLeft, baseTop, maxScrollLeft, maxScrollTop } = stageMetrics;
-  const top = clamp(app.stage.scrollTop, 0, maxScrollTop);
-  const minOffsetX = -(maxScrollLeft - baseLeft);
-  const maxOffsetX = baseLeft;
-  const minOffsetY = -(maxScrollTop - baseTop);
-  const maxOffsetY = baseTop;
-  state.paperOffset.x = clamp(state.paperOffset.x, minOffsetX, maxOffsetX);
-  state.paperOffset.y = clamp(baseTop - top, minOffsetY, maxOffsetY);
-  applyPaperOffsetTransform();
-  if (!options.skipDraw){
-    positionRulers();
-    requestVirtualization();
-  }
-}
-
-function setPaperOffset(x = 0, y = 0){
-  if (!app.stage) return;
-  const clamped = clampPaperOffset(x, y);
-  state.paperOffset.x = clamped.x;
-  state.paperOffset.y = clamped.y;
-  const targetLeft = stageMetrics.baseLeft - clamped.x;
-  const targetTop = stageMetrics.baseTop - clamped.y;
-  applyPaperOffsetTransform();
-  suppressStageScrollSync = true;
-  app.stage.scrollLeft = Math.round(targetLeft);
-  app.stage.scrollTop = Math.round(targetTop);
-  suppressStageScrollSync = false;
-  syncOffsetFromScroll();
-}
-
-function scheduleStageScrollSync(){
-  if (pendingStageScrollSync) return;
-  pendingStageScrollSync = true;
-  requestAnimationFrame(() => {
-    pendingStageScrollSync = false;
-    syncOffsetFromScroll();
-  });
-}
-
-function handleStageScroll(){
-  if (suppressStageScrollSync) return;
-  scheduleStageScrollSync();
-}
-
-function refreshStageViewport(){
-  if (!app.stage || !app.stageInner) return;
-  updateStageMetrics();
-  syncOffsetFromScroll({ skipDraw: true });
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
-}
-
-function queueStageViewportRefresh(){
-  if (pendingViewportRefresh) return;
-  pendingViewportRefresh = true;
-  requestAnimationFrame(() => {
-    pendingViewportRefresh = false;
-    refreshStageViewport();
-  });
-}
-
-function adjustStageScrollBy(dx, dy){
-  if (!dx && !dy) return;
-  setPaperOffset(state.paperOffset.x + dx, state.paperOffset.y + dy);
-}
-
-function handleStageWheel(e){
-  if (!app.stage) return;
-  if (e.ctrlKey || e.metaKey) return;
-  let deltaX = e.deltaX || 0;
-  if (!deltaX && e.shiftKey && e.deltaY){
-    deltaX = e.deltaY;
-  }
-  if (deltaX){
-    setPaperOffset(state.paperOffset.x - deltaX, state.paperOffset.y);
-  }
-}
-
 function focusStage(){
   if (!app.stage) return;
   requestAnimationFrame(() => {
@@ -921,7 +746,6 @@ function addPage() {
   state.pages.push(page);
   renderMargins();
   requestVirtualization();
-  queueStageViewportRefresh();
   return page;
 }
 function bootstrapFirstPage() {
@@ -953,7 +777,6 @@ function resetPagesBlankPreserveSettings(){
   state.pages.push(page);
   renderMargins();
   requestVirtualization();
-  queueStageViewportRefresh();
 }
 // EOM
 
@@ -1156,6 +979,12 @@ function caretViewportPos(){
   const y = r.top  + (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * state.zoom;
   return { x, y };
 }
+function setPaperOffset(x,y){
+  state.paperOffset.x = x; state.paperOffset.y = y;
+  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
+  positionRulers();
+  requestVirtualization();
+}
 function anchorPx(){
   return { ax: Math.round(window.innerWidth * state.caretAnchor.x), ay: Math.round(window.innerHeight * state.caretAnchor.y) };
 }
@@ -1168,7 +997,7 @@ function nudgePaperToAnchor(){
   const { ax, ay } = anchorPx();
   const dx = ax - cv.x, dy = ay - cv.y;
   if (Math.abs(dx) < DEAD_X && Math.abs(dy) < DEAD_Y) return;
-  adjustStageScrollBy(dx, dy);
+  setPaperOffset(state.paperOffset.x + dx / state.zoom, state.paperOffset.y + dy / state.zoom);
 }
 // EOM
 
@@ -1463,7 +1292,8 @@ function applyLineHeight(){
 }
 function applyZoomCSS(){
   app.zoomWrap.style.transform = `scale(${state.zoom})`;
-  refreshStageViewport();
+  positionRulers();
+  requestVirtualization();
 }
 
 // MARKER-START: scheduleZoomCrispRedraw
@@ -1777,6 +1607,11 @@ function handlePaste(e){
 }
 // EOM
 
+function handleWheelPan(e){
+  e.preventDefault();
+  const dx = e.deltaX, dy = e.deltaY;
+  if (dx || dy) setPaperOffset(state.paperOffset.x - dx / state.zoom, state.paperOffset.y - dy / state.zoom);
+}
 function handlePageClick(e, pageIndex){
   e.preventDefault();
   e.stopPropagation();
@@ -1873,7 +1708,6 @@ function deserializeState(data){
   FONT_FAMILY = `${ACTIVE_FONT_NAME}`;
   for (const p of state.pages){ p.dirtyAll = true; }
   document.body.classList.toggle('rulers-off', !state.showRulers);
-  queueStageViewportRefresh();
   return true;
 }
 // EOM
@@ -1984,6 +1818,7 @@ function createNewDocument(){
   bsBurstCount = 0; bsBurstTs = 0;
   typedRun = { active:false, page:0, rowMu:0, startCol:0, length:0, lastTs:0 };
   state.paperOffset = { x:0, y:0 };
+  setPaperOffset(0,0);
   state.pages = [];
   state.caret = { page:0, rowMu:0, col:0 };
   state.ink   = 'b';
@@ -2009,7 +1844,6 @@ function createNewDocument(){
     p.dirtyAll = true; schedulePaint(p);
   }
   renderMargins();
-  refreshStageViewport();
   clampCaretToBounds();
   updateCaretPosition();
   document.body.classList.toggle('rulers-off', !state.showRulers);
@@ -2159,9 +1993,8 @@ function bindEventListeners(){
 
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('paste', handlePaste, { capture: true });
-  app.stage.addEventListener('wheel', handleStageWheel, { passive: true });
-  app.stage.addEventListener('scroll', handleStageScroll, { passive: true });
-  window.addEventListener('resize', () => { refreshStageViewport(); if (!zooming) nudgePaperToAnchor(); }, { passive: true });
+  app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
+  window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); }, { passive: true });
   window.addEventListener('beforeunload', saveStateNow);
   window.addEventListener('click', () => window.focus(), { passive: true });
 }
@@ -2209,6 +2042,7 @@ async function initialize() {
 
   setZoomPercent(Math.round(state.zoom*100) || 100);
   updateZoomUIFromState();
+  setPaperOffset(0,0);
   await loadFontAndApply(savedFont || ACTIVE_FONT_NAME);
   setLineHeightFactor(state.lineHeightFactor);
   renderMargins();
