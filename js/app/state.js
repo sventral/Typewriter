@@ -1,0 +1,47 @@
+export function createMainState(app, gridDiv = 8) {
+  return {
+    pages: [],
+    caret: { page:0, rowMu:0, col:0 },
+    marginL: 0, marginR: app.PAGE_W, marginTop: 0, marginBottom: 0,
+    ink: 'b',
+    showRulers: true,
+    showMarginBox: false,
+    hammerLock: true,
+    caretAnchor: { x: 0.5, y: 0.5, unit: 'fraction' },
+    paperOffset: { x: 0, y: 0 },
+    cpi: 10,
+    colsAcross: 82.68,
+    inkWidthPct: 84.00,
+    inkOpacity: { b: 100, r: 100, w: 100 },
+    lineHeightFactor: 1.0,
+    lineStepMu: gridDiv,
+    zoom: 1.0,
+    grainPct: 0,
+    grainSeed: 0xC0FFEE,
+    altSeed: 0x51F15EED,
+    wordWrap: true,
+  };
+}
+
+export function createEphemeralState() {
+  return {
+    lastDigitTs: 0,
+    lastDigitCaret: null,
+    bsBurstCount: 0,
+    bsBurstTs: 0,
+    lastPasteTs: 0,
+    typedRun: { active:false, page:0, rowMu:0, startCol:0, length:0, lastTs:0 },
+    drag: null,
+    saveTimer: null,
+    zoomDebounceTimer: null,
+    zooming: false,
+    freezeVirtual: false,
+    batchDepth: 0,
+    touchedPages: new Set(),
+    typingBatchRAF: 0,
+    metricsRAF: 0,
+    pendingFullRebuild: false,
+    virtRAF: 0,
+    fontLoadSeq: 0,
+  };
+}
