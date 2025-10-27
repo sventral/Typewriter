@@ -1,0 +1,28 @@
+{
+  "name": "typewriter",
+  "version": "1.0.0",
+  "description": "Browser-based typewriter simulator rendered entirely on the client via ES modules.",
+  "main": "js/app.js",
+  "type": "module",
+  "scripts": {
+    "start": "TODO",
+    "build": "TODO",
+    "dev": "TODO",
+    "test": "TODO"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "author": "TODO",
+  "license": "TODO",
+  "repository": {
+    "type": "TODO",
+    "url": "TODO"
+  },
+  "bugs": {
+    "url": "TODO"
+  },
+  "homepage": "TODO",
+  "engines": {
+    "node": "TODO"
+  }
+}
