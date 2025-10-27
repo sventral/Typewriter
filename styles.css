@@ -130,7 +130,15 @@
   }
   .slider-value { font-size: 11px; color: var(--ui-text); text-align: center; }
 
-  .stage{ height:100vh; overflow:hidden; background:var(--stage-bg); position:relative; }
+  .stage{
+    height:100vh;
+    overflow-y:auto;
+    overflow-x:auto;
+    background:var(--stage-bg);
+    position:relative;
+    scrollbar-gutter:stable;
+  }
+  .stage::-webkit-scrollbar-horizontal{ height:0; }
   .stage:focus{ outline:none; }
   .zoom-wrap{ width:100vw; transform-origin: top center; will-change: transform; }
   .stage-inner{ width:100vw; padding-top:12vh; padding-bottom:calc(12vh + var(--toolbar-h)); box-sizing:border-box; will-change: transform; transform: translate3d(0px,0px,0); }
