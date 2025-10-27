@@ -240,7 +240,52 @@
     opacity: 0.8;
   }
 
-  .zoom-controls{ position:fixed; right:0px; top:16px; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:52; }
+  .zoom-controls{ position:fixed; right:24px; top:16px; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:52; }
+  #stageScrollRail{
+    position:fixed;
+    top:0;
+    right:0;
+    bottom:var(--toolbar-h);
+    width:18px;
+    overflow-y:scroll;
+    overflow-x:hidden;
+    z-index:53;
+    background:transparent;
+    scrollbar-width: none;
+  }
+  #stageScrollRail::-webkit-scrollbar{ width:0; height:0; }
+  #stageScrollContent{ width:1px; height:100%; }
+  #stageScrollOverlay{
+    position:fixed;
+    top:0;
+    right:0;
+    bottom:var(--toolbar-h);
+    width:18px;
+    z-index:54;
+    pointer-events:none;
+  }
+  #stageScrollTrack{
+    position:absolute;
+    top:12px;
+    bottom:12px;
+    left:50%;
+    width:6px;
+    transform:translateX(-50%);
+    background:rgba(0,0,0,0.2);
+    border-radius:3px;
+    pointer-events:auto;
+  }
+  #stageScrollThumb{
+    position:absolute;
+    left:0;
+    width:100%;
+    border-radius:inherit;
+    background:rgba(0,0,0,0.65);
+    min-height:32px;
+    pointer-events:auto;
+    cursor:pointer;
+    box-shadow:0 1px 3px rgba(0,0,0,0.25);
+  }
   .slider{ position:relative; width:60px; height:calc(122px + 2px + 14px); pointer-events:none; }
   .track{ position:absolute; top:0; left:50%; transform:translateX(-50%); width:4.1px; height:122px; border:1px solid var(--tri-color); border-radius:35px; background:transparent; overflow:hidden; pointer-events:none; }
   .fill{ position:absolute; left:0; right:0; bottom:0; height:0; background:var(--tri-color); pointer-events:none; will-change:height; }

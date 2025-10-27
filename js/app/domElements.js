@@ -3,6 +3,10 @@ export function createDomRefs() {
   app.stage = document.getElementById('stage');
   app.zoomWrap = document.getElementById('zoomWrap');
   app.stageInner = document.getElementById('stageInner');
+  app.scrollRail = document.getElementById('stageScrollRail');
+  app.scrollRailContent = document.getElementById('stageScrollContent');
+  app.scrollTrack = document.getElementById('stageScrollTrack');
+  app.scrollThumb = document.getElementById('stageScrollThumb');
   app.firstPageWrap = document.querySelector('.page-wrap');
   app.firstPage = document.getElementById('page');
   app.marginBox = document.getElementById('marginBox');

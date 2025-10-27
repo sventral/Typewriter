@@ -43,7 +43,177 @@ let {
 const touchedPages = ephemeral.touchedPages;
 // EOM
 
+let paperBounds = { minX: -Infinity, maxX: Infinity, minY: -Infinity, maxY: Infinity };
+let ignoreRailScroll = false;
+let thumbDrag = null;
+
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+
+function clampOffset(x, y){
+  if (!paperBounds) return { x, y };
+  if (Number.isFinite(paperBounds.minX)) x = Math.max(paperBounds.minX, Math.min(paperBounds.maxX, x));
+  if (Number.isFinite(paperBounds.minY)) y = Math.max(paperBounds.minY, Math.min(paperBounds.maxY, y));
+  return { x, y };
+}
+
+function updateScrollRailMetrics(){
+  if (!app.scrollRail || !app.scrollRailContent || !app.stage) return;
+  const viewportH = app.stage.clientHeight || window.innerHeight;
+  const range = Math.max(0, (paperBounds.maxY - paperBounds.minY) * (state.zoom || 1));
+  const contentHeight = Math.max(viewportH + range, viewportH + 1);
+  app.scrollRailContent.style.height = `${Math.round(contentHeight)}px`;
+  if (app.scrollTrack && app.scrollThumb){
+    const trackHeight = app.scrollTrack.offsetHeight || 0;
+    if (trackHeight > 0){
+      const ratio = viewportH / (contentHeight || viewportH);
+      const thumbHeight = Math.max(32, Math.min(trackHeight, trackHeight * ratio));
+      app.scrollThumb.style.height = `${Math.round(thumbHeight)}px`;
+    }
+  }
+  updateScrollThumbPosition();
+}
+
+function updateScrollThumbPosition(){
+  if (!app.scrollRail || !app.scrollThumb || !app.scrollTrack) return;
+  const trackHeight = app.scrollTrack.offsetHeight || 0;
+  const thumbHeight = app.scrollThumb.offsetHeight || 0;
+  const maxScroll = Math.max(0, app.scrollRail.scrollHeight - app.scrollRail.clientHeight);
+  const travel = Math.max(0, trackHeight - thumbHeight);
+  let pos = 0;
+  if (travel > 0 && maxScroll > 0){
+    const target = offsetToScrollTop(state.paperOffset.y);
+    pos = (target / maxScroll) * travel;
+  }
+  app.scrollThumb.style.top = `${Math.round(Math.max(0, Math.min(travel, pos)))}px`;
+}
+
+function onScrollThumbPointerDown(e){
+  if (!app.scrollThumb) return;
+  e.preventDefault();
+  const trackRect = app.scrollTrack?.getBoundingClientRect();
+  const thumbRect = app.scrollThumb.getBoundingClientRect();
+  if (!trackRect || !thumbRect) return;
+  thumbDrag = {
+    id: e.pointerId,
+    offset: e.clientY - thumbRect.top,
+    trackTop: trackRect.top,
+    trackHeight: trackRect.height,
+    thumbHeight: thumbRect.height,
+  };
+  if (app.scrollThumb.setPointerCapture) {
+    try { app.scrollThumb.setPointerCapture(e.pointerId); } catch {}
+  }
+}
+
+function onScrollThumbPointerMove(e){
+  if (!thumbDrag || (e.pointerId !== undefined && e.pointerId !== thumbDrag.id)) return;
+  if (!app.scrollRail) return;
+  const { offset, trackTop, trackHeight, thumbHeight } = thumbDrag;
+  const maxTravel = Math.max(0, trackHeight - thumbHeight);
+  const raw = e.clientY - trackTop - offset;
+  const clampedTravel = clamp(raw, 0, maxTravel);
+  const maxScroll = Math.max(0, app.scrollRail.scrollHeight - app.scrollRail.clientHeight);
+  const ratio = maxTravel > 0 ? (clampedTravel / maxTravel) : 0;
+  ignoreRailScroll = true;
+  app.scrollRail.scrollTop = ratio * maxScroll;
+  ignoreRailScroll = false;
+  setPaperOffset(state.paperOffset.x, scrollTopToOffset(app.scrollRail.scrollTop), { skipRailSync: true });
+  updateScrollThumbPosition();
+}
+
+function onScrollThumbPointerUp(e){
+  if (!thumbDrag) return;
+  if (e.pointerId !== undefined && e.pointerId !== thumbDrag.id) return;
+  if (thumbDrag.id != null && app.scrollThumb && app.scrollThumb.releasePointerCapture){
+    try { app.scrollThumb.releasePointerCapture(thumbDrag.id); } catch {}
+  }
+  thumbDrag = null;
+}
+
+function onScrollTrackPointerDown(e){
+  if (!app.scrollRail || !app.scrollTrack || !app.scrollThumb) return;
+  if (e.target === app.scrollThumb) return;
+  e.preventDefault();
+  const trackRect = app.scrollTrack.getBoundingClientRect();
+  const thumbHeight = app.scrollThumb.offsetHeight || 0;
+  const maxTravel = Math.max(0, trackRect.height - thumbHeight);
+  if (!(maxTravel > 0)) return;
+  const offset = clamp(e.clientY - trackRect.top - thumbHeight / 2, 0, maxTravel);
+  const maxScroll = Math.max(0, app.scrollRail.scrollHeight - app.scrollRail.clientHeight);
+  if (!(maxScroll > 0)) return;
+  const ratio = offset / maxTravel;
+  ignoreRailScroll = true;
+  app.scrollRail.scrollTop = ratio * maxScroll;
+  ignoreRailScroll = false;
+  setPaperOffset(state.paperOffset.x, scrollTopToOffset(app.scrollRail.scrollTop), { skipRailSync: true });
+  updateScrollThumbPosition();
+}
+
+function offsetToScrollTop(offsetY){
+  if (!app.scrollRail) return 0;
+  const range = paperBounds.maxY - paperBounds.minY;
+  if (!(range > 0)) return 0;
+  const maxScroll = Math.max(0, app.scrollRail.scrollHeight - app.scrollRail.clientHeight);
+  if (!(maxScroll > 0)) return 0;
+  const ratio = (offsetY - paperBounds.minY) / range;
+  return ratio * maxScroll;
+}
+
+function scrollTopToOffset(scrollTop){
+  const range = paperBounds.maxY - paperBounds.minY;
+  if (!(range > 0)) return paperBounds.minY;
+  const maxScroll = Math.max(0, app.scrollRail.scrollHeight - app.scrollRail.clientHeight);
+  if (!(maxScroll > 0)) return paperBounds.minY;
+  const ratio = clamp(scrollTop / maxScroll, 0, 1);
+  return paperBounds.minY + ratio * range;
+}
+
+function updateScrollRailFromOffset(){
+  if (!app.scrollRail) return;
+  const maxScroll = Math.max(0, app.scrollRail.scrollHeight - app.scrollRail.clientHeight);
+  if (!(maxScroll > 0)){
+    if (app.scrollRail.scrollTop !== 0){
+      ignoreRailScroll = true;
+      app.scrollRail.scrollTop = 0;
+      ignoreRailScroll = false;
+    }
+    updateScrollThumbPosition();
+    return;
+  }
+  const target = offsetToScrollTop(state.paperOffset.y);
+  if (Math.abs(app.scrollRail.scrollTop - target) > 0.5){
+    ignoreRailScroll = true;
+    app.scrollRail.scrollTop = target;
+    ignoreRailScroll = false;
+  }
+  updateScrollThumbPosition();
+}
+
+function updatePaperBounds(){
+  const stageRect = app.stage?.getBoundingClientRect();
+  const viewportW = stageRect?.width || window.innerWidth;
+  const viewportH = stageRect?.height || window.innerHeight;
+  const toolbarPx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--toolbar-h')) || 48;
+  const innerHeight = (app.stageInner?.scrollHeight) || (app.PAGE_H + viewportH * 0.24 + toolbarPx);
+  const baseWidth = Math.max(app.PAGE_W, viewportW);
+  const safeZoom = state.zoom || 1;
+  const scaledHeight = innerHeight * safeZoom;
+  const scaledWidth = baseWidth * safeZoom;
+  const maxX = (scaledWidth + viewportW) / (2 * safeZoom);
+  const maxY = (scaledHeight + viewportH) / (2 * safeZoom);
+  paperBounds = {
+    minX: -maxX,
+    maxX:  maxX,
+    minY: -maxY,
+    maxY:  maxY
+  };
+  updateScrollRailMetrics();
+  const next = clampOffset(state.paperOffset.x, state.paperOffset.y);
+  if (next.x !== state.paperOffset.x || next.y !== state.paperOffset.y){
+    setPaperOffset(next.x, next.y, { skipRailSync: true });
+  }
+  updateScrollRailFromOffset();
+}
 
 function focusStage(){
   if (!app.stage) return;
@@ -746,6 +916,7 @@ function addPage() {
   state.pages.push(page);
   renderMargins();
   requestVirtualization();
+  updatePaperBounds();
   return page;
 }
 function bootstrapFirstPage() {
@@ -755,6 +926,7 @@ function bootstrapFirstPage() {
   page.canvas.style.visibility = 'hidden';
   page.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
   state.pages.push(page);
+  updatePaperBounds();
 }
 
 // MARKER-START: resetPagesBlankPreserveSettings
@@ -777,6 +949,7 @@ function resetPagesBlankPreserveSettings(){
   state.pages.push(page);
   renderMargins();
   requestVirtualization();
+  updatePaperBounds();
 }
 // EOM
 
@@ -979,11 +1152,21 @@ function caretViewportPos(){
   const y = r.top  + (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * state.zoom;
   return { x, y };
 }
-function setPaperOffset(x,y){
+function setPaperOffset(x,y, options = {}){
+  const { skipRailSync = false } = options;
+  const next = clampOffset(x, y);
+  x = next.x; y = next.y;
+  const dx = Math.abs(x - state.paperOffset.x);
+  const dy = Math.abs(y - state.paperOffset.y);
+  if (dx < 0.001 && dy < 0.001){
+    if (!skipRailSync) updateScrollRailFromOffset();
+    return;
+  }
   state.paperOffset.x = x; state.paperOffset.y = y;
   app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
   positionRulers();
   requestVirtualization();
+  if (!skipRailSync) updateScrollRailFromOffset();
 }
 function anchorPx(){
   return { ax: Math.round(window.innerWidth * state.caretAnchor.x), ay: Math.round(window.innerHeight * state.caretAnchor.y) };
@@ -1294,6 +1477,7 @@ function applyZoomCSS(){
   app.zoomWrap.style.transform = `scale(${state.zoom})`;
   positionRulers();
   requestVirtualization();
+  updatePaperBounds();
 }
 
 // MARKER-START: scheduleZoomCrispRedraw
@@ -1313,6 +1497,7 @@ function scheduleZoomCrispRedraw(){
     }
     rebuildAllAtlases();
     for (const p of state.pages){ if (p.active) schedulePaint(p); }
+    updatePaperBounds();
     nudgePaperToAnchor();
   }, 160);
 }
@@ -1849,6 +2034,7 @@ function createNewDocument(){
   document.body.classList.toggle('rulers-off', !state.showRulers);
   positionRulers();
   requestVirtualization();
+  updatePaperBounds();
   saveStateNow();
   endBatch();
 }
@@ -1994,7 +2180,23 @@ function bindEventListeners(){
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('paste', handlePaste, { capture: true });
   app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
-  window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); }, { passive: true });
+  if (app.scrollRail){
+    app.scrollRail.addEventListener('scroll', ()=>{
+      if (ignoreRailScroll) return;
+      const range = paperBounds.maxY - paperBounds.minY;
+      if (range > 0){
+        const offsetY = scrollTopToOffset(app.scrollRail.scrollTop);
+        setPaperOffset(state.paperOffset.x, offsetY, { skipRailSync: true });
+      }
+      updateScrollThumbPosition();
+    }, { passive: true });
+  }
+  if (app.scrollThumb) app.scrollThumb.addEventListener('pointerdown', onScrollThumbPointerDown, { passive:false });
+  if (app.scrollTrack) app.scrollTrack.addEventListener('pointerdown', onScrollTrackPointerDown, { passive:false });
+  window.addEventListener('pointermove', onScrollThumbPointerMove, { passive:true });
+  window.addEventListener('pointerup', onScrollThumbPointerUp, { passive:true });
+  window.addEventListener('pointercancel', onScrollThumbPointerUp, { passive:true });
+  window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); updatePaperBounds(); }, { passive: true });
   window.addEventListener('beforeunload', saveStateNow);
   window.addEventListener('click', () => window.focus(), { passive: true });
 }
