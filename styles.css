@@ -131,6 +131,7 @@
   .slider-value { font-size: 11px; color: var(--ui-text); text-align: center; }
 
   .stage{ height:100vh; overflow:hidden; background:var(--stage-bg); position:relative; }
+  .stage:focus{ outline:none; }
   .zoom-wrap{ width:100vw; transform-origin: top center; will-change: transform; }
   .stage-inner{ width:100vw; padding-top:12vh; padding-bottom:calc(12vh + var(--toolbar-h)); box-sizing:border-box; will-change: transform; transform: translate3d(0px,0px,0); }
   .page-wrap{ width:calc(var(--page-w) * 1px); margin:0 auto 16px; position:relative; }

@@ -45,6 +45,46 @@ const touchedPages = ephemeral.touchedPages;
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 
+function focusStage(){
+  if (!app.stage) return;
+  requestAnimationFrame(() => {
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== app.stage) {
+      try { active.blur(); } catch {}
+    }
+    try { app.stage.focus({ preventScroll: true }); }
+    catch { try { app.stage.focus(); } catch {} }
+  });
+}
+
+function sanitizeIntegerField(el, options = {}){
+  if (!el) return null;
+  const {
+    min = Number.NEGATIVE_INFINITY,
+    max = Number.POSITIVE_INFINITY,
+    allowEmpty = true,
+    fallbackValue = null,
+  } = options;
+  const raw = el.value ?? '';
+  const digits = raw.replace(/\D+/g, '');
+  if (!digits){
+    if (!allowEmpty){
+      let fallback = Number.isFinite(fallbackValue) ? fallbackValue : (Number.isFinite(min) ? min : 0);
+      if (Number.isFinite(min)) fallback = Math.max(min, fallback);
+      if (Number.isFinite(max)) fallback = Math.min(max, fallback);
+      el.value = String(fallback);
+      return fallback;
+    }
+    el.value = '';
+    return null;
+  }
+  let n = parseInt(digits, 10);
+  if (Number.isFinite(min)) n = Math.max(min, n);
+  if (Number.isFinite(max)) n = Math.min(max, n);
+  el.value = String(n);
+  return n;
+}
+
 // MARKER-START: isToolbarInput
 function isToolbarInput(el){
   if (!el) return false;
@@ -52,6 +92,7 @@ function isToolbarInput(el){
   return (
     id === 'sizeInput' || id === 'lhInput' || id === 'cpiSelect' ||
     id === 'showMarginBoxCb' || id === 'wordWrapCb' ||
+    id === 'mmLeft' || id === 'mmRight' || id === 'mmTop' || id === 'mmBottom' ||
     id === 'grainPct' || id.includes('Slider')
   );
 }
@@ -1177,12 +1218,13 @@ function computeColsFromCpi(cpi){
 function updateColsPreviewUI(){
   const cpi = parseFloat(app.cpiSelect.value) || 10;
   const { cols2 } = computeColsFromCpi(cpi);
-  app.colsPreviewSpan.textContent = cols2.toFixed(2);
+  app.colsPreviewSpan.textContent = `Columns: ${cols2.toFixed(2)}`;
 }
 function readStagedCpi(){ return parseFloat(app.cpiSelect?.value) || 10; }
 function readStagedSize(){
-  const v = parseFloat(app.sizeInput?.value);
-  return isFinite(v) ? v : state.inkWidthPct || 84;
+  const fallback = Number.isFinite(state.inkWidthPct) ? clamp(Math.round(state.inkWidthPct), 1, 150) : 84;
+  const val = sanitizeIntegerField(app.sizeInput, { min:1, max:150, allowEmpty:false, fallbackValue: fallback });
+  return (typeof val === 'number' && Number.isFinite(val)) ? val : fallback;
 }
 
 // MARKER-START: applySubmittedChanges
@@ -1191,10 +1233,11 @@ function applySubmittedChanges(){
   const { cols2 } = computeColsFromCpi(newCpi);
   const newCols = cols2;
   const cpiChanged  = (typeof state.cpi === 'number' ? newCpi !== state.cpi : true);
-  const inkChanged  = (typeof state.inkWidthPct === 'number' ? readStagedSize() !== state.inkWidthPct : true);
-  if (!cpiChanged && !inkChanged) return;
+  const stagedSize = readStagedSize();
+  const inkChanged  = (typeof state.inkWidthPct === 'number' ? stagedSize !== state.inkWidthPct : true);
+  if (!cpiChanged && !inkChanged){ focusStage(); return; }
   beginBatch();
-  if (inkChanged) state.inkWidthPct = readStagedSize();
+  if (inkChanged) state.inkWidthPct = stagedSize;
   if (cpiChanged) state.cpi = newCpi;
   const colsChanged = (newCols !== state.colsAcross);
   if (colsChanged) state.colsAcross = newCols;
@@ -1206,15 +1249,18 @@ function applySubmittedChanges(){
       if (Math.abs(CHAR_W - target) < 0.01 || tries++ > 12){
         rewrapDocumentToCurrentBounds();
         endBatch();
+        focusStage();
         return;
       }
       requestAnimationFrame(waitForMetrics);
     };
+    focusStage();
     requestAnimationFrame(waitForMetrics);
   } else {
     for (const p of state.pages){ p.dirtyAll = true; schedulePaint(p); }
     renderMargins(); clampCaretToBounds(); updateCaretPosition(); positionRulers(); requestVirtualization(); saveStateDebounced();
     endBatch();
+    focusStage();
   }
 }
 // EOM
@@ -1242,6 +1288,7 @@ function readStagedLH(){
 }
 function applyLineHeight(){
   setLineHeightFactor(readStagedLH());
+  focusStage();
 }
 function applyZoomCSS(){
   app.zoomWrap.style.transform = `scale(${state.zoom})`;
@@ -1460,7 +1507,7 @@ function consumeBackspaceBurstIfAny(){
   return false;
 }
 
-const NUM_INPUT_KEYS = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown','Backspace','Delete','Tab','.','-']);
+const NUM_INPUT_KEYS = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown','Backspace','Delete','Tab']);
 function isDigitKey(k){ return k.length === 1 && /[0-9]/.test(k); }
 
 // MARKER-START: handleKeyDown
@@ -1468,14 +1515,17 @@ function handleKeyDown(e){
   if (isEditableTarget(e.target)) return;
   if (e.target && isToolbarInput(e.target)){
     const k = e.key;
+    const allowDecimal = e.target.id === 'lhInput';
     if (k === 'Enter'){
       e.preventDefault();
       if (e.target.id === 'lhInput') applyLineHeight();
       else applySubmittedChanges();
+      focusStage();
       return;
     }
-    if (NUM_INPUT_KEYS.has(k) || isDigitKey(k) || k === ',') return;
+    if (NUM_INPUT_KEYS.has(k) || isDigitKey(k) || (k === ',' && allowDecimal) || (k === '.' && allowDecimal)) return;
     try { e.target.blur(); } catch {}
+    focusStage();
   }
   const k = e.key;
   const b = getCurrentBounds();
@@ -1634,6 +1684,10 @@ function deserializeState(data){
   const inkOpacity = (data.inkOpacity && typeof data.inkOpacity === 'object')
     ? { b: clamp(Number(data.inkOpacity.b ?? 100),0,100), r: clamp(Number(data.inkOpacity.r ?? 100),0,100), w: clamp(Number(data.inkOpacity.w ?? 100),0,100) }
     : { b:100, r:100, w:100 };
+  const storedInkWidth = Number(data.inkWidthPct);
+  const sanitizedInkWidth = Number.isFinite(storedInkWidth)
+    ? clamp(Math.round(storedInkWidth), 1, 150)
+    : 84;
   Object.assign(state, {
     marginL: data.margins?.L ?? state.marginL, marginR: data.margins?.R ?? state.marginR,
     marginTop: data.margins?.T ?? state.marginTop, marginBottom: data.margins?.B ?? state.marginBottom,
@@ -1641,7 +1695,7 @@ function deserializeState(data){
     ink: ['b','r','w'].includes(data.ink) ? data.ink : 'b',
     showRulers: data.showRulers !== false, showMarginBox: !!data.showMarginBox,
     cpi: cpiVal || 10, colsAcross: inferredCols ?? state.colsAcross,
-    inkWidthPct: data.inkWidthPct ?? 84.00, inkOpacity,
+    inkWidthPct: sanitizedInkWidth, inkOpacity,
     lineHeightFactor: ([1,1.5,2,2.5,3].includes(data.lineHeightFactor)) ? data.lineHeightFactor : 1,
     zoom: (typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4) ? data.zoom : 1.0,
     grainPct: clamp(Number(data.grainPct ?? 0), 0, 100),
@@ -1724,7 +1778,6 @@ function toggleRulers(){
   state.showRulers = !state.showRulers;
   document.body.classList.toggle('rulers-off', !state.showRulers);
   positionRulers();
-  if (!zooming) nudgePaperToAnchor();
   saveStateDebounced();
 }
 
@@ -1865,7 +1918,7 @@ function bindEventListeners(){
     app.fontsPanel.classList.remove('is-open');
     app.settingsPanel.classList.remove('is-open');
   }});
-  app.fontRadios().forEach(radio=>{ radio.addEventListener('change', async ()=>{ if (radio.checked) await loadFontAndApply(radio.value); }); });
+  app.fontRadios().forEach(radio=>{ radio.addEventListener('change', async ()=>{ if (radio.checked){ await loadFontAndApply(radio.value); focusStage(); } }); });
 
   const applyMm = ()=>{
     state.marginL = pxX(Math.max(0, Number(app.mmLeft?.value)  || 0));
@@ -1874,21 +1927,41 @@ function bindEventListeners(){
     state.marginBottom = pxY(Math.max(0, Number(app.mmBottom?.value)|| 0));
     renderMargins(); clampCaretToBounds(); updateCaretPosition(); positionRulers(); saveStateDebounced();
   };
-  [app.mmLeft, app.mmRight, app.mmTop, app.mmBottom].forEach(inp=>{ if(inp){ inp.addEventListener('input', applyMm); inp.addEventListener('change', applyMm); }});
+  [app.mmLeft, app.mmRight, app.mmTop, app.mmBottom].forEach(inp=>{
+    if (!inp) return;
+    inp.addEventListener('input', ()=>{
+      sanitizeIntegerField(inp, { min:0, allowEmpty:true });
+      applyMm();
+    });
+    inp.addEventListener('change', ()=>{
+      sanitizeIntegerField(inp, { min:0, allowEmpty:false, fallbackValue:0 });
+      applyMm();
+      focusStage();
+    });
+  });
+
+  if (app.sizeInput){
+    app.sizeInput.addEventListener('input', ()=>{ sanitizeIntegerField(app.sizeInput, { min:1, max:150, allowEmpty:true }); });
+    app.sizeInput.addEventListener('change', ()=>{
+      sanitizeIntegerField(app.sizeInput, { min:1, max:150, allowEmpty:false, fallbackValue: state.inkWidthPct || 84 });
+      focusStage();
+    });
+    const applyOnEnter = (e)=>{ if (e.key === 'Enter') { e.preventDefault(); applySubmittedChanges(); } };
+    app.sizeInput.addEventListener('keydown', applyOnEnter);
+  }
 
   if (app.applyBtn) app.applyBtn.addEventListener('click', applySubmittedChanges);
-  const applyOnEnter = (e)=>{ if (e.key === 'Enter') { e.preventDefault(); applySubmittedChanges(); } };
-  if (app.sizeInput) app.sizeInput.addEventListener('keydown', applyOnEnter);
   if (app.applyLHBtn) app.applyLHBtn.addEventListener('click', applyLineHeight);
   if (app.lhInput) app.lhInput.addEventListener('input', ()=>{ app.lhInput.value = String(readStagedLH()); });
-  if (app.showMarginBoxCb) app.showMarginBoxCb.addEventListener('change', ()=>{ state.showMarginBox = !!app.showMarginBoxCb.checked; renderMargins(); saveStateDebounced(); });
+  if (app.showMarginBoxCb) app.showMarginBoxCb.addEventListener('change', ()=>{ state.showMarginBox = !!app.showMarginBoxCb.checked; renderMargins(); saveStateDebounced(); focusStage(); });
 
-  if (app.cpiSelect) app.cpiSelect.addEventListener('change', updateColsPreviewUI);
+  if (app.cpiSelect) app.cpiSelect.addEventListener('change', ()=>{ updateColsPreviewUI(); focusStage(); });
 
   if (app.wordWrapCb){
     app.wordWrapCb.addEventListener('change', ()=>{
       state.wordWrap = !!app.wordWrapCb.checked;
       saveStateDebounced();
+      focusStage();
     });
   }
 
@@ -1946,7 +2019,7 @@ async function initialize() {
   app.grainInput.value  = String(state.grainPct);
   app.cpiSelect.value = String(state.cpi || 10);
   updateColsPreviewUI();
-  app.sizeInput.value = (state.inkWidthPct).toFixed(2);
+  app.sizeInput.value = String(clamp(Math.round(state.inkWidthPct ?? 84), 1, 150));
   app.lhInput.value = String(state.lineHeightFactor);
   app.showMarginBoxCb.checked = !!state.showMarginBox;
   if (app.wordWrapCb) app.wordWrapCb.checked = !!state.wordWrap;
@@ -1958,7 +2031,7 @@ async function initialize() {
   if (!loaded){
     state.cpi = 10;
     state.colsAcross = computeColsFromCpi(10).cols2;
-    state.inkWidthPct = 84.00;
+    state.inkWidthPct = 84;
     state.inkOpacity = { b:100, r:100, w:100 };
     state.grainPct = 0;
     state.grainSeed = ((Math.random()*0xFFFFFFFF)>>>0);
