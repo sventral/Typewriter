@@ -130,26 +130,10 @@
   }
   .slider-value { font-size: 11px; color: var(--ui-text); text-align: center; }
 
-  .stage{ height:calc(100vh - var(--toolbar-h)); overflow-y:auto; overflow-x:hidden; background:var(--stage-bg); position:relative; scrollbar-gutter: stable both-edges; }
+  .stage{ height:100vh; overflow:hidden; background:var(--stage-bg); position:relative; }
   .stage:focus{ outline:none; }
-  .zoom-wrap{ display:inline-block; min-width:100%; transform-origin: top center; will-change: transform; }
-  .stage-inner{
-    --stage-pad-top: 12vh;
-    --stage-pad-bottom: calc(12vh + var(--toolbar-h));
-    --stage-pad-left: 12vw;
-    --stage-pad-right: 12vw;
-    width: calc(var(--stage-pad-left) + var(--stage-pad-right) + var(--page-w) * 1px);
-    min-width: 100%;
-    padding-top: var(--stage-pad-top);
-    padding-bottom: var(--stage-pad-bottom);
-    padding-left: var(--stage-pad-left);
-    padding-right: var(--stage-pad-right);
-    box-sizing:border-box;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    transform: translateX(var(--paper-pan-x, 0px));
-  }
+  .zoom-wrap{ width:100vw; transform-origin: top center; will-change: transform; }
+  .stage-inner{ width:100vw; padding-top:12vh; padding-bottom:calc(12vh + var(--toolbar-h)); box-sizing:border-box; will-change: transform; transform: translate3d(0px,0px,0); }
   .page-wrap{ width:calc(var(--page-w) * 1px); margin:0 auto 16px; position:relative; }
   .page{ width:100%; background:var(--page-bg); box-shadow:0 8px 24px rgba(0,0,0,0.10); position:relative; overflow:hidden; }
   .margin-box{ position:absolute; border:1px dashed rgba(0,0,0,0.25); pointer-events:none; visibility:hidden; }
