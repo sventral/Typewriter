@@ -1,0 +1,58 @@
+export function createDomRefs() {
+  const app = {};
+  app.stage = document.getElementById('stage');
+  app.zoomWrap = document.getElementById('zoomWrap');
+  app.stageInner = document.getElementById('stageInner');
+  app.firstPageWrap = document.querySelector('.page-wrap');
+  app.firstPage = document.getElementById('page');
+  app.marginBox = document.getElementById('marginBox');
+  app.caretEl = document.getElementById('caret');
+  app.rulerH_host = document.getElementById('rulerH_host');
+  app.rulerH_stops_container = document.getElementById('rulerH_stops_container');
+  app.rulerV_host = document.getElementById('rulerV_host');
+  app.rulerV_stops_container = document.getElementById('rulerV_stops_container');
+  app.guideV = document.getElementById('guideV');
+  app.guideH = document.getElementById('guideH');
+  app.newDocBtn = document.getElementById('newDocBtn');
+  app.exportBtn = document.getElementById('exportTxtBtn');
+  app.inkBlackBtn = document.getElementById('inkBlackBtn');
+  app.inkRedBtn = document.getElementById('inkRedBtn');
+  app.inkWhiteBtn = document.getElementById('inkWhiteBtn');
+  app.toggleMarginsBtn = document.getElementById('toggleMarginsBtn');
+  app.cpiSelect = document.getElementById('cpiSelect');
+  app.colsPreviewSpan = document.getElementById('colsPreview');
+  app.sizeInput = document.getElementById('sizeInput');
+  app.applyBtn  = document.getElementById('applyBtn');
+  app.lhInput = document.getElementById('lhInput');
+  app.applyLHBtn = document.getElementById('applyLHBtn');
+  app.showMarginBoxCb = document.getElementById('showMarginBoxCb');
+  app.wordWrapCb = document.getElementById('wordWrapCb');
+  app.grainInput = document.getElementById('grainPct');
+  app.zoomControls = document.getElementById('zoomControls');
+  app.zoomSlider = document.getElementById('zoomSlider');
+  app.zoomTrack  = document.getElementById('zoomTrack');
+  app.zoomFill   = document.getElementById('zoomFill');
+  app.zoomThumb  = document.getElementById('zoomThumb');
+  app.zoomIndicator = document.getElementById('zoomIndicator');
+
+  app.fontsBtn = document.getElementById('fontsBtn');
+  app.fontsPanel = document.getElementById('fontsPanel');
+  app.settingsBtnNew = document.getElementById('settingsBtnNew');
+  app.settingsPanel = document.getElementById('settingsPanel');
+  app.fontRadios = () => Array.from(document.querySelectorAll('input[name="fontChoice"]'));
+  app.mmLeft   = document.getElementById('mmLeft');
+  app.mmRight  = document.getElementById('mmRight');
+  app.mmTop    = document.getElementById('mmTop');
+  app.mmBottom = document.getElementById('mmBottom');
+  app.inkBlackSliderPopup = document.getElementById('inkBlackSliderPopup');
+  app.inkRedSliderPopup = document.getElementById('inkRedSliderPopup');
+  app.inkWhiteSliderPopup = document.getElementById('inkWhiteSliderPopup');
+  app.inkOpacityBSlider = document.getElementById('inkOpacityBSlider');
+  app.inkOpacityRSlider = document.getElementById('inkOpacityRSlider');
+  app.inkOpacityWSlider = document.getElementById('inkOpacityWSlider');
+  app.inkOpacityBValue = document.getElementById('inkOpacityBValue');
+  app.inkOpacityRValue = document.getElementById('inkOpacityRValue');
+  app.inkOpacityWValue = document.getElementById('inkOpacityWValue');
+
+  return app;
+}
