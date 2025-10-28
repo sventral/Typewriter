@@ -979,31 +979,9 @@ function caretViewportPos(){
   const y = r.top  + (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * state.zoom;
   return { x, y };
 }
-function clampPaperOffset(x, y){
-  if (!app.stage || !app.firstPage) return { x, y };
-  const stageW = app.stage.clientWidth;
-  const stageH = app.stage.clientHeight;
-  if (!Number.isFinite(stageW) || !Number.isFinite(stageH) || stageW <= 0 || stageH <= 0) return { x, y };
-  const zoom = state.zoom || 1;
-  const wrapRect = app.firstPageWrap?.getBoundingClientRect();
-  const pageRect = app.firstPage.getBoundingClientRect();
-  const contentW = wrapRect?.width || pageRect?.width || stageW;
-  const innerRect = app.stageInner?.getBoundingClientRect();
-  const contentH = innerRect?.height || wrapRect?.height || pageRect?.height || stageH;
-  const maxShiftX = Math.max(0, (contentW - stageW) / 2);
-  const maxShiftY = Math.max(0, (contentH - stageH) / 2);
-  const maxOffsetX = maxShiftX / zoom;
-  const maxOffsetY = maxShiftY / zoom;
-  return {
-    x: clamp(x, -maxOffsetX, maxOffsetX),
-    y: clamp(y, -maxOffsetY, maxOffsetY),
-  };
-}
-
 function setPaperOffset(x,y){
-  const bounded = clampPaperOffset(x, y);
-  state.paperOffset.x = bounded.x; state.paperOffset.y = bounded.y;
-  app.stageInner.style.transform = `translate3d(${bounded.x.toFixed(3)}px,${bounded.y.toFixed(3)}px,0)`;
+  state.paperOffset.x = x; state.paperOffset.y = y;
+  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
   positionRulers();
   requestVirtualization();
 }
