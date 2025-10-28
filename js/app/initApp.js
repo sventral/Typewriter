@@ -10,6 +10,10 @@ export function initApp(){
 const app = createDomRefs();
 // EOM
 
+if (IS_SAFARI){
+  document.documentElement.classList.add('is-safari');
+}
+
 // MARKER-START: CONSTANTS_AND_METRICS
 const metrics = computeBaseMetrics(app);
 const { DPR, GRID_DIV, COLORS, STORAGE_KEY, A4_WIDTH_IN, PPI, LPI, LINE_H_RAW } = metrics;
@@ -45,6 +49,8 @@ const touchedPages = ephemeral.touchedPages;
 // EOM
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const UA = navigator.userAgent || '';
+const IS_SAFARI = /safari/i.test(UA) && !/chrome|crios|android/i.test(UA);
 const STAGE_WIDTH_MIN = 1.0;
 const STAGE_WIDTH_MAX = 5.0;
 const STAGE_HEIGHT_MIN = 1.0;
@@ -1404,10 +1410,12 @@ function updateStageEnvironment(){
 
 function setPaperOffset(x,y){
   const clamped = clampPaperOffset(x, y);
-  state.paperOffset.x = clamped.x;
-  state.paperOffset.y = clamped.y;
+  const snappedX = snapToDeviceGrid(clamped.x);
+  const snappedY = snapToDeviceGrid(clamped.y);
+  state.paperOffset.x = snappedX;
+  state.paperOffset.y = snappedY;
   if (app.stageInner){
-    app.stageInner.style.transform = `translate3d(${clamped.x.toFixed(3)}px,${clamped.y.toFixed(3)}px,0)`;
+    app.stageInner.style.transform = `translate3d(${snappedX.toFixed(3)}px,${snappedY.toFixed(3)}px,0)`;
   }
   positionRulers();
   requestVirtualization();
@@ -1719,9 +1727,35 @@ function applyLineHeight(){
   setLineHeightFactor(readStagedLH());
   focusStage();
 }
+function cssScaleFactor(){
+  if (!IS_SAFARI) return state.zoom;
+  return zooming ? state.zoom : 1;
+}
+
+function snapToDeviceGrid(v){
+  const pixel = 1 / (DPR * Math.max(0.5, state.zoom));
+  return Math.round(v / pixel) * pixel;
+}
+
 function applyZoomCSS(){
+  const scale = cssScaleFactor();
   if (app.zoomWrap){
-    app.zoomWrap.style.transform = `scale(${state.zoom})`;
+    if (scale !== 1){
+      app.zoomWrap.style.transform = `scale(${scale})`;
+    } else {
+      app.zoomWrap.style.transform = '';
+    }
+  }
+  if (app.stageInner){
+    if (IS_SAFARI){
+      if (!zooming){
+        app.stageInner.style.zoom = state.zoom.toFixed(4);
+      } else {
+        app.stageInner.style.zoom = '1';
+      }
+    } else if (app.stageInner.style.zoom){
+      app.stageInner.style.zoom = '';
+    }
   }
   const dims = stageDimensions();
   updateRulerHostDimensions(dims.width, dims.height);
@@ -1737,6 +1771,9 @@ function scheduleZoomCrispRedraw(){
     zooming = false;
     freezeVirtual = false;
     setRenderScaleForZoom();
+    if (IS_SAFARI && app.stageInner){
+      app.stageInner.style.zoom = state.zoom.toFixed(4);
+    }
     for (const p of state.pages){
       prepareCanvas(p.canvas);
       prepareCanvas(p.backCanvas);
@@ -1747,6 +1784,7 @@ function scheduleZoomCrispRedraw(){
     rebuildAllAtlases();
     for (const p of state.pages){ if (p.active) schedulePaint(p); }
     nudgePaperToAnchor();
+    applyZoomCSS();
   }, 160);
 }
 // EOM
