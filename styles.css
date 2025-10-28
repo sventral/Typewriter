@@ -39,7 +39,7 @@
 @font-face{ font-family: "TT2020StyleF"; src: url("./fonts/TT2020StyleF-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face{ font-family: "TT2020StyleG"; src: url("./fonts/TT2020StyleG-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 
-  html,body{margin:0;height:100%;background:var(--ui);font:16px system-ui, -apple-system, sans-serif;color:var(--ui-text)}
+  html,body{margin:0;height:100%;background:var(--stage-bg);font:16px system-ui, -apple-system, sans-serif;color:var(--ui-text)}
 
   .toolbar{
     box-sizing:border-box; position:fixed; left:0; right:0; bottom:0; height:var(--toolbar-h);
@@ -134,14 +134,14 @@
     height:100vh;
     overflow-y:auto;
     overflow-x:auto;
-    background:transparent;
+    background:var(--stage-bg);
     position:relative;
     scrollbar-gutter:stable;
   }
   .stage::-webkit-scrollbar-horizontal{ height:0; }
   .stage:focus{ outline:none; }
   .zoom-wrap{ width:100vw; transform-origin: top center; will-change: transform; }
-  .stage-inner{ width:100vw; padding-top:12vh; padding-bottom:calc(12vh + var(--toolbar-h)); box-sizing:border-box; will-change: transform; transform: translate3d(0px,0px,0); margin:0 auto; background:var(--stage-bg); }
+  .stage-inner{ width:100vw; padding-top:12vh; padding-bottom:calc(12vh + var(--toolbar-h)); box-sizing:border-box; will-change: transform; transform: translate3d(0px,0px,0); }
   .page-wrap{ width:calc(var(--page-w) * 1px); margin:0 auto 16px; position:relative; }
   .page{ width:100%; background:var(--page-bg); box-shadow:0 8px 24px rgba(0,0,0,0.10); position:relative; overflow:hidden; }
   .margin-box{ position:absolute; border:1px dashed rgba(0,0,0,0.25); pointer-events:none; visibility:hidden; }
@@ -164,8 +164,6 @@
   .tri-v{ position:absolute; left:0; width:0; height:0; cursor:ns-resize; border-top:8px solid transparent; border-bottom:8px solid transparent; border-left:var(--tri-h) solid var(--tri-color); transform:translateY(-50%); filter:drop-shadow(0 0 1px #0004); z-index:2; user-select:none; outline:none; }
   .tri-v.bottom{border-left-color:var(--tri-red)}
   .rulers-off .ruler, .rulers-off .ruler-v{ display:none !important; }
-
-  .app-version{ position:fixed; top:8px; left:12px; font-size:12px; font-family:system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ui-text); opacity:0.65; letter-spacing:0.05em; z-index:200; pointer-events:none; user-select:none; }
 
   .guide{ position:fixed; display:none; pointer-events:none; z-index:100; }
   #guideH{ left:0; right:0; height:0; border-top:1px dashed var(--tri-color); }
