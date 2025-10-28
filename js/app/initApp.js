@@ -44,6 +44,19 @@ const touchedPages = ephemeral.touchedPages;
 // EOM
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const WORKSPACE_W_FACTOR = 2;
+const WORKSPACE_H_FACTOR = 1.2;
+
+function workspaceBounds(){
+  const extraX = Math.max(0, app.PAGE_W * (WORKSPACE_W_FACTOR - 1));
+  const extraY = Math.max(0, app.PAGE_H * (WORKSPACE_H_FACTOR - 1));
+  return {
+    minX: -extraX / 2,
+    maxX: extraX / 2,
+    minY: -extraY / 2,
+    maxY: extraY / 2,
+  };
+}
 
 function focusStage(){
   if (!app.stage) return;
@@ -980,8 +993,12 @@ function caretViewportPos(){
   return { x, y };
 }
 function setPaperOffset(x,y){
-  state.paperOffset.x = x; state.paperOffset.y = y;
-  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
+  const bounds = workspaceBounds();
+  const clampedX = clamp(x, bounds.minX, bounds.maxX);
+  const clampedY = clamp(y, bounds.minY, bounds.maxY);
+  state.paperOffset.x = clampedX;
+  state.paperOffset.y = clampedY;
+  app.stageInner.style.transform = `translate3d(${clampedX.toFixed(3)}px,${clampedY.toFixed(3)}px,0)`;
   positionRulers();
   requestVirtualization();
 }
@@ -1128,6 +1145,15 @@ function positionRulers(){
   app.rulerH_stops_container.innerHTML = '';
   app.rulerV_stops_container.innerHTML = '';
   const pageRect = getActivePageRect();
+  const rootStyle = document.documentElement.style;
+  const workspaceWidthPx = pageRect.width * WORKSPACE_W_FACTOR;
+  const workspaceHeightPx = pageRect.height * WORKSPACE_H_FACTOR;
+  const workspaceCenterX = pageRect.left + pageRect.width / 2;
+  const workspaceCenterY = pageRect.top + pageRect.height / 2;
+  rootStyle.setProperty('--workspace-width-zoomed', `${workspaceWidthPx}px`);
+  rootStyle.setProperty('--workspace-height-zoomed', `${workspaceHeightPx}px`);
+  rootStyle.setProperty('--workspace-center-x', `${workspaceCenterX}px`);
+  rootStyle.setProperty('--workspace-center-y', `${workspaceCenterY}px`);
   const snap = computeSnappedVisualMargins();
   const mLeft = document.createElement('div');
   mLeft.className = 'tri left';
