@@ -218,6 +218,29 @@
     font-size: 13px;
     color: var(--ui-text);
   }
+
+  html.safari-no-blur .side-panel,
+  html.safari-no-blur .ink-slider-popup {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  html.safari-no-blur .side-panel {
+    background-color: rgba(247, 247, 247, 0.95);
+  }
+
+  html.safari-no-blur .ink-slider-popup {
+    background-color: rgba(247, 247, 247, 0.95);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    html.safari-no-blur .side-panel {
+      background-color: rgba(44, 44, 46, 0.95);
+    }
+    html.safari-no-blur .ink-slider-popup {
+      background-color: rgba(60, 60, 62, 0.9);
+    }
+  }
   .side-panel.from-left {
     left: 0;
     border-right: 1px solid var(--panel-border);
