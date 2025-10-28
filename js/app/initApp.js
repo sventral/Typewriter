@@ -47,7 +47,7 @@ const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 const STAGE_WIDTH_MIN = 1.0;
 const STAGE_WIDTH_MAX = 5.0;
 const STAGE_HEIGHT_MIN = 1.0;
-const STAGE_HEIGHT_MAX = 5.0;
+const STAGE_HEIGHT_MAX = 10.0;
 let cachedToolbarHeight = null;
 
 function focusStage(){
