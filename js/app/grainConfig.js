@@ -6,6 +6,14 @@ export const GRAIN_CFG = {
   post_gamma: 0.9,
   alpha: { max: 0.7, mix_pow: 0.7, low_pow: 0.4, min: 0.00 },
   seeds: { octave: [0xA5A5A5A5, 0x5EEDFACE, 0x13579BDF], hash: 0x5F356495 },
-  composite_op: 'destination-out'
+  composite_op: 'destination-out',
+  edge_powder: {
+    alpha: 0.0,
+    blur_px: 0.85,
+    noise_mix: 0.55,
+    inner_erode_px: 0.3,
+    color: '#000000',
+    composite_op: 'source-over'
+  }
 };
 

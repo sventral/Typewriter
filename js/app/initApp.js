@@ -450,6 +450,101 @@ function ensureGrain(page){
 }
 // EOM
 
+function ensureEdgeScratch(page, slot, width_css, height_css){
+  const key = slot === 'B' ? '_edgeScratchB' : '_edgeScratchA';
+  const targetW = Math.max(1, Math.ceil(width_css));
+  const targetH = Math.max(1, Math.ceil(height_css));
+  let scratch = page[key];
+  if (!scratch){
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    scratch = { canvas, ctx, w: canvas.width, h: canvas.height };
+    page[key] = scratch;
+  } else if (scratch.w < targetW || scratch.h < targetH){
+    scratch.canvas.width = Math.max(targetW, scratch.w);
+    scratch.canvas.height = Math.max(targetH, scratch.h);
+    scratch.w = scratch.canvas.width;
+    scratch.h = scratch.canvas.height;
+    scratch.ctx = scratch.canvas.getContext('2d');
+    scratch.ctx.imageSmoothingEnabled = false;
+  }
+  return scratch;
+}
+
+function applyEdgePowderOnRegion(page, sy_css, sh_css, grainAlphaScale){
+  const cfg = GRAIN_CFG.edge_powder || {};
+  const baseAlpha = Math.max(0, cfg.alpha ?? 0);
+  if (baseAlpha <= 0) return;
+  const blurPx = Math.max(0, cfg.blur_px ?? 0.85);
+  const noiseMix = clamp(cfg.noise_mix ?? 1, 0, 1);
+  if (noiseMix <= 0) return;
+
+  const sy = Math.max(0, Math.floor(sy_css));
+  const sh = Math.max(0, Math.min(app.PAGE_H - sy, Math.ceil(sh_css)));
+  if (sh <= 0) return;
+
+  const sy_dp = Math.max(0, Math.floor(sy * RENDER_SCALE));
+  const sh_dp = Math.max(0, Math.ceil(sh * RENDER_SCALE));
+  if (sh_dp <= 0) return;
+
+  ensureGrain(page);
+
+  const scratchA = ensureEdgeScratch(page, 'A', app.PAGE_W, sh);
+  const scratchB = ensureEdgeScratch(page, 'B', app.PAGE_W, sh);
+  const ctxA = scratchA.ctx;
+  const ctxB = scratchB.ctx;
+
+  ctxA.save();
+  ctxA.setTransform(1, 0, 0, 1, 0, 0);
+  ctxA.globalCompositeOperation = 'copy';
+  ctxA.clearRect(0, 0, app.PAGE_W, sh);
+  ctxA.drawImage(page.backCanvas, 0, sy_dp, page.backCanvas.width, sh_dp, 0, 0, app.PAGE_W, sh);
+  ctxA.globalCompositeOperation = 'source-in';
+  ctxA.fillStyle = '#000000';
+  ctxA.fillRect(0, 0, app.PAGE_W, sh);
+  ctxA.restore();
+
+  ctxB.save();
+  ctxB.setTransform(1, 0, 0, 1, 0, 0);
+  ctxB.globalCompositeOperation = 'copy';
+  ctxB.clearRect(0, 0, app.PAGE_W, sh);
+  ctxB.filter = `blur(${blurPx}px)`;
+  ctxB.drawImage(scratchA.canvas, 0, 0, app.PAGE_W, sh, 0, 0, app.PAGE_W, sh);
+  ctxB.filter = 'none';
+  const innerErode = Math.max(0, cfg.inner_erode_px ?? 0);
+  ctxB.globalCompositeOperation = 'destination-out';
+  if (innerErode > 0){
+    ctxB.filter = `blur(${innerErode}px)`;
+    ctxB.drawImage(scratchA.canvas, 0, 0, app.PAGE_W, sh, 0, 0, app.PAGE_W, sh);
+    ctxB.filter = 'none';
+  } else {
+    ctxB.drawImage(scratchA.canvas, 0, 0, app.PAGE_W, sh, 0, 0, app.PAGE_W, sh);
+  }
+  ctxB.globalCompositeOperation = 'destination-in';
+  ctxB.globalAlpha = noiseMix;
+  ctxB.drawImage(page.grainCanvas, 0, sy, app.PAGE_W, sh, 0, 0, app.PAGE_W, sh);
+  ctxB.globalAlpha = 1;
+  ctxB.globalCompositeOperation = 'source-atop';
+  ctxB.fillStyle = cfg.color || '#000000';
+  ctxB.fillRect(0, 0, app.PAGE_W, sh);
+  ctxB.restore();
+
+  const finalAlpha = clamp(baseAlpha * grainAlphaScale, 0, 1);
+  if (finalAlpha <= 0) return;
+
+  const compOp = cfg.composite_op || 'source-over';
+  const ctx = page.ctx;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.globalCompositeOperation = compOp;
+  ctx.globalAlpha = finalAlpha;
+  ctx.drawImage(scratchB.canvas, 0, 0, app.PAGE_W, sh, 0, sy, app.PAGE_W, sh);
+  ctx.restore();
+}
+
 function grainAlpha(){
   const s = clamp((state.grainPct || 0) / 100, 0, 1);
   if (s <= 0) return 0;
@@ -480,6 +575,10 @@ function applyGrainOverlayOnRegion(page, y_css, h_css){
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, sy, app.PAGE_W, sh);
   ctx.restore();
+
+  if ((GRAIN_CFG.edge_powder?.alpha ?? 0) > 0) {
+    applyEdgePowderOnRegion(page, sy, sh, a);
+  }
 }
 // EOM
 
@@ -620,6 +719,8 @@ function applyMetricsNow(full=false){
   for (const p of state.pages){
     p.grainCanvas = null;
     p.grainForSize = { w:0, h:0 };
+    p._edgeScratchA = null;
+    p._edgeScratchB = null;
     configureCanvasContext(p.ctx);
     configureCanvasContext(p.backCtx);
     p.dirtyAll = true;
@@ -781,7 +882,8 @@ function makePageRecord(idx, wrapEl, pageEl, canvas, marginBoxEl) {
     index: idx, wrapEl, pageEl, canvas, ctx, backCanvas, backCtx,
     grid: new Map(), raf: 0, dirtyAll: true, active: false,
     _dirtyRowMinMu: undefined, _dirtyRowMaxMu: undefined,
-    marginBoxEl, grainCanvas: null, grainForSize: { w:0, h:0 }
+    marginBoxEl, grainCanvas: null, grainForSize: { w:0, h:0 },
+    _edgeScratchA: null, _edgeScratchB: null
   };
   pageEl.addEventListener('mousedown', (e) => handlePageClick(e, idx), { capture:false });
   canvas.addEventListener('mousedown', (e) => handlePageClick(e, idx), { capture:false });
