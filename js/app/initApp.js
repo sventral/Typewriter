@@ -746,7 +746,6 @@ function addPage() {
   state.pages.push(page);
   renderMargins();
   requestVirtualization();
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   return page;
 }
 function bootstrapFirstPage() {
@@ -777,7 +776,6 @@ function resetPagesBlankPreserveSettings(){
   page.canvas.style.visibility = 'hidden';
   state.pages.push(page);
   renderMargins();
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   requestVirtualization();
 }
 // EOM
@@ -968,7 +966,6 @@ function rewrapDocumentToCurrentBounds(){
   positionRulers();
   requestVirtualization();
   saveStateDebounced();
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   endBatch();
 }
 // EOM
@@ -982,45 +979,14 @@ function caretViewportPos(){
   const y = r.top  + (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * state.zoom;
   return { x, y };
 }
-function anchorPx(){
-  return { ax: Math.round(window.innerWidth * state.caretAnchor.x), ay: Math.round(window.innerHeight * state.caretAnchor.y) };
-}
-
-const TOP_PAD_FACTOR = 0.8;
-const BOTTOM_PAD_FACTOR = 0.9;
-const BOTTOM_GUTTER_PX = 12;
-
-function clampOffsetY(yWanted){
-  if (!state.pages.length) return yWanted;
-  const first = state.pages[0];
-  const last  = state.pages[state.pages.length - 1];
-  if (!first || !last) return yWanted;
-
-  const firstTop    = first.wrapEl.getBoundingClientRect().top;
-  const lastBottom  = last.wrapEl.getBoundingClientRect().bottom;
-  const viewTop     = 0;
-  const viewBottom  = window.innerHeight;
-
-  const topPad     = TOP_PAD_FACTOR * app.PAGE_H;
-  const bottomPad  = BOTTOM_PAD_FACTOR * app.PAGE_H + BOTTOM_GUTTER_PX;
-
-  const y0    = state.paperOffset.y;
-  const delta = yWanted - y0;
-
-  const ub =  topPad    - (firstTop   - viewTop)    / state.zoom;
-  const lb = -bottomPad + (viewBottom - lastBottom) / state.zoom;
-
-  const dClamped = Math.max(lb, Math.min(ub, delta));
-  return y0 + dClamped;
-}
-
 function setPaperOffset(x,y){
-  const yc = clampOffsetY(y);
-  state.paperOffset.x = x;
-  state.paperOffset.y = yc;
-  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${yc.toFixed(3)}px,0)`;
+  state.paperOffset.x = x; state.paperOffset.y = y;
+  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
   positionRulers();
   requestVirtualization();
+}
+function anchorPx(){
+  return { ax: Math.round(window.innerWidth * state.caretAnchor.x), ay: Math.round(window.innerHeight * state.caretAnchor.y) };
 }
 
 // MARKER-START: nudgePaperToAnchor
@@ -1348,7 +1314,6 @@ function scheduleZoomCrispRedraw(){
     rebuildAllAtlases();
     for (const p of state.pages){ if (p.active) schedulePaint(p); }
     nudgePaperToAnchor();
-    setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   }, 160);
 }
 // EOM
@@ -2029,7 +1994,7 @@ function bindEventListeners(){
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('paste', handlePaste, { capture: true });
   app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
-  window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); setPaperOffset(state.paperOffset.x, state.paperOffset.y); }, { passive: true });
+  window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); }, { passive: true });
   window.addEventListener('beforeunload', saveStateNow);
   window.addEventListener('click', () => window.focus(), { passive: true });
 }
@@ -2087,7 +2052,6 @@ async function initialize() {
   if (state.showRulers) positionRulers();
   setInk(state.ink || 'b');
   requestVirtualization();
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
 }
 // EOM
 

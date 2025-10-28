@@ -256,14 +256,3 @@
   .thumb:active{ filter:brightness(0.97); }
   #zoomIndicator{ background:var(--btn-bg); color:var(--btn-fg); padding:2px 6px; border-radius:4px; font-size:12px; font-family:sans-serif; border:1px solid var(--btn-border); opacity:0; transition:opacity 0.4s ease-out; pointer-events:none; }
   #zoomIndicator.show{ opacity:1; transition-duration:0.1s; }
-
-.version-badge{
-  position:fixed;
-  top:6px;
-  left:8px;
-  font:11px system-ui,-apple-system,sans-serif;
-  color:var(--ui-text);
-  opacity:.65;
-  z-index:110;
-  pointer-events:none;
-}
