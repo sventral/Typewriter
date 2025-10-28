@@ -42,6 +42,7 @@ let {
   fontLoadSeq,
 } = ephemeral;
 const touchedPages = ephemeral.touchedPages;
+let hammerNudgeRAF = 0;
 // EOM
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
@@ -1410,12 +1411,9 @@ function rewrapDocumentToCurrentBounds(){
 
 const DEAD_X = 1.25, DEAD_Y = 3.0;
 function caretViewportPos(){
-  const p = state.pages[state.caret.page] || state.pages[0];
-  if (!p) return null;
-  const r = p.pageEl.getBoundingClientRect();
-  const x = r.left + (state.caret.col * CHAR_W) * state.zoom;
-  const y = r.top  + (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * state.zoom;
-  return { x, y };
+  if (!app || !app.caretEl) return null;
+  const rect = app.caretEl.getBoundingClientRect();
+  return { x: rect.left, y: rect.top };
 }
 function updateRulerHostDimensions(stageW, stageH){
   if (!app.rulerH_host || !app.rulerV_host) return;
@@ -1513,15 +1511,82 @@ function anchorPx(){
 }
 
 // MARKER-START: nudgePaperToAnchor
+function maybeApplyNativeScroll(dx, dy, threshold){
+  if (!IS_SAFARI || safariZoomMode !== 'steady') return false;
+  const stage = app.stage;
+  if (!stage) return false;
+  let used = false;
+  const maxX = stage.scrollWidth - stage.clientWidth;
+  const maxY = stage.scrollHeight - stage.clientHeight;
+  if (Math.abs(dx) > threshold && maxX > 1){
+    const target = clamp(stage.scrollLeft - dx, 0, Math.max(0, maxX));
+    if (Math.abs(target - stage.scrollLeft) > threshold){
+      stage.scrollLeft = target;
+      used = true;
+    }
+  }
+  if (Math.abs(dy) > threshold && maxY > 1){
+    const target = clamp(stage.scrollTop - dy, 0, Math.max(0, maxY));
+    if (Math.abs(target - stage.scrollTop) > threshold){
+      stage.scrollTop = target;
+      used = true;
+    }
+  }
+  return used;
+}
+
 function nudgePaperToAnchor(){
-  if (!state.hammerLock) return;
+  if (!state.hammerLock || zooming) return;
   const cv = caretViewportPos();
   if (!cv) return;
   const { ax, ay } = anchorPx();
-  const dx = ax - cv.x, dy = ay - cv.y;
+  let dx = ax - cv.x, dy = ay - cv.y;
+  const pxThreshold = 1 / DPR;
+  if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
+  const usedNative = maybeApplyNativeScroll(dx, dy, pxThreshold);
+  if (usedNative){
+    const updated = caretViewportPos();
+    if (updated){
+      dx = ax - updated.x;
+      dy = ay - updated.y;
+      if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
+    }
+  }
   if (Math.abs(dx) < DEAD_X && Math.abs(dy) < DEAD_Y) return;
-  setPaperOffset(state.paperOffset.x + dx / state.zoom, state.paperOffset.y + dy / state.zoom);
+  const scale = cssScaleFactor() || 1;
+  const prevX = state.paperOffset.x;
+  const prevY = state.paperOffset.y;
+  setPaperOffset(prevX + dx / scale, prevY + dy / scale);
+  const movedX = Math.abs(state.paperOffset.x - prevX) > 1e-6;
+  const movedY = Math.abs(state.paperOffset.y - prevY) > 1e-6;
+  if (!movedX && !movedY) return;
+  const after = caretViewportPos();
+  if (!after) return;
+  const errX = ax - after.x;
+  const errY = ay - after.y;
+  if (Math.abs(errX) >= pxThreshold || Math.abs(errY) >= pxThreshold){
+    requestHammerNudge();
+  }
 }
+function requestHammerNudge(){
+  if (zooming || !state.hammerLock) return;
+  if (hammerNudgeRAF) return;
+  const schedule = () => {
+    hammerNudgeRAF = requestAnimationFrame(() => {
+      hammerNudgeRAF = 0;
+      nudgePaperToAnchor();
+    });
+  };
+  if (IS_SAFARI){
+    hammerNudgeRAF = requestAnimationFrame(() => {
+      hammerNudgeRAF = 0;
+      schedule();
+    });
+  } else {
+    schedule();
+  }
+}
+
 // EOM
 
 // MARKER-START: updateCaretPosition
@@ -1541,7 +1606,7 @@ function updateCaretPosition(){
     app.caretEl.remove();
     p.pageEl.appendChild(app.caretEl);
   }
-  if (!zooming) nudgePaperToAnchor();
+  if (!zooming) requestHammerNudge();
   requestVirtualization();
 }
 // EOM
@@ -1852,7 +1917,7 @@ function scheduleZoomCrispRedraw(){
     }
     rebuildAllAtlases();
     for (const p of state.pages){ if (p.active) schedulePaint(p); }
-    nudgePaperToAnchor();
+    requestHammerNudge();
   }, 160);
 }
 // EOM
@@ -2576,7 +2641,7 @@ function bindEventListeners(){
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('paste', handlePaste, { capture: true });
   app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
-  window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); }, { passive: true });
+  window.addEventListener('resize', () => { positionRulers(); if (!zooming) requestHammerNudge(); requestVirtualization(); }, { passive: true });
   window.addEventListener('beforeunload', saveStateNow);
   window.addEventListener('click', () => window.focus(), { passive: true });
 }
