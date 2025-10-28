@@ -250,12 +250,20 @@ function prepareCanvas(canvas) {
   canvas.style.width  = app.PAGE_W + 'px';
   canvas.style.height = app.PAGE_H + 'px';
 }
+function ensureCrispRendering(ctx) {
+  if (!ctx) return;
+  ctx.imageSmoothingEnabled = false;
+  if (typeof ctx.imageSmoothingQuality === 'string') {
+    ctx.imageSmoothingQuality = 'high';
+  }
+}
+
 function configureCanvasContext(ctx) {
   ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
   ctx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.imageSmoothingEnabled = false;
+  ensureCrispRendering(ctx);
   try { ctx.filter = 'none'; } catch {}
   ctx.globalCompositeOperation = 'source-over';
 }
@@ -328,7 +336,7 @@ function ensureAtlas(ink, variantIdx = 0){
   canvas.width = width_dp; canvas.height = height_dp;
   const ctx = canvas.getContext('2d');
   ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
-  ctx.imageSmoothingEnabled = false;
+  ensureCrispRendering(ctx);
   ctx.clearRect(0, 0, width_dp / RENDER_SCALE, height_dp / RENDER_SCALE);
   ctx.fillStyle = COLORS[ink] || '#000';
   ctx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
@@ -352,7 +360,7 @@ function ensureAtlas(ink, variantIdx = 0){
     glyphCanvas.width = Math.max(1, cellW_draw_dp * sampleScale);
     glyphCanvas.height = Math.max(1, cellH_draw_dp * sampleScale);
     glyphCtx = glyphCanvas.getContext('2d', { willReadFrequently: true });
-    glyphCtx.imageSmoothingEnabled = false;
+    ensureCrispRendering(glyphCtx);
   }
 
   const atlasSeed = ((state.altSeed >>> 0) ^ Math.imul((variantIdx|0) + 1, 0x9E3779B1) ^ Math.imul((ink.charCodeAt(0) || 0) + 0x51, 0x85EBCA77)) >>> 0;
@@ -381,7 +389,7 @@ function ensureAtlas(ink, variantIdx = 0){
         glyphCtx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
         glyphCtx.textAlign = 'left';
         glyphCtx.textBaseline = 'alphabetic';
-        glyphCtx.imageSmoothingEnabled = false;
+        ensureCrispRendering(glyphCtx);
         glyphCtx.beginPath();
         glyphCtx.rect(0, 0, CELL_W_CSS, CELL_H_CSS);
         glyphCtx.clip();
@@ -430,7 +438,7 @@ function ensureAtlas(ink, variantIdx = 0){
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.putImageData(finalImageData, destX_dp, destY_dp);
         ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
-        ctx.imageSmoothingEnabled = false;
+        ensureCrispRendering(ctx);
         ctx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
@@ -475,6 +483,7 @@ function drawGlyph(ctx, ch, ink, x_css, baselineY_css, layerIndex, totalLayers, 
 
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = finalAlpha;
+  ensureCrispRendering(ctx);
   ctx.drawImage(atlas.canvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, atlas.cellW_css, atlas.cellH_css);
   window.atlasStats.draws++;
   window.atlasStats.perInk[ink] = (window.atlasStats.perInk[ink] || 0) + 1;
@@ -747,7 +756,7 @@ function applyGrainOverlayOnRegion(page, y_css, h_css){
   const sh = Math.max(0, Math.min(app.PAGE_H - sy, Math.ceil(h_css)));
   if (sh <= 0) return;
   ctx.save();
-  ctx.imageSmoothingEnabled = false;
+  ensureCrispRendering(ctx);
   ctx.globalCompositeOperation = 'destination-out';
   ctx.globalAlpha = a;
   ctx.drawImage(page.grainCanvas, 0, sy, app.PAGE_W, sh, 0, sy, app.PAGE_W, sh);
@@ -816,6 +825,7 @@ function paintWholePageToBackBuffer(page) {
       }
     }
   }
+  ensureCrispRendering(page.ctx);
   page.ctx.drawImage(page.backCanvas, 0, 0, page.backCanvas.width, page.backCanvas.height, 0, 0, app.PAGE_W, app.PAGE_H);
   if (state.grainPct > 0) {
     applyGrainOverlayOnRegion(page, 0, app.PAGE_H);
@@ -867,6 +877,7 @@ function paintDirtyRowsBand(page, dirtyRowMinMu, dirtyRowMaxMu) {
   const sx = 0, sy = Math.round(bandTop_css * RENDER_SCALE);
   const sw = page.backCanvas.width, sh = Math.round(bandH_css * RENDER_SCALE);
   const dx = 0, dy = bandTop_css, dw = app.PAGE_W, dh = bandH_css;
+  ensureCrispRendering(ctx);
   ctx.drawImage(page.backCanvas, sx, sy, sw, sh, dx, dy, dw, dh);
 
   if (state.grainPct > 0) applyGrainOverlayOnRegion(page, bandTop_css, bandH_css);
