@@ -69,57 +69,19 @@ const SAFARI_SUPERSAMPLE_THRESHOLD = 1.75;
 let safariZoomMode = IS_SAFARI ? 'steady' : 'transient';
 let lastSafariLayoutZoom = IS_SAFARI ? state.zoom : 1;
 
-let stageFocusEl = app.stage;
-
 if (IS_SAFARI) {
   document.documentElement.classList.add('safari-no-blur');
-  stageFocusEl = createSafariFocusProxy() || app.stage;
-}
-
-function createSafariFocusProxy(){
-  if (typeof document === 'undefined' || !document.body) return null;
-  const proxy = document.createElement('input');
-  proxy.type = 'text';
-  proxy.setAttribute('aria-hidden', 'true');
-  proxy.setAttribute('tabindex', '-1');
-  proxy.setAttribute('autocomplete', 'off');
-  proxy.setAttribute('autocorrect', 'off');
-  proxy.setAttribute('spellcheck', 'false');
-  proxy.style.position = 'fixed';
-  proxy.style.top = '-10000px';
-  proxy.style.left = '-10000px';
-  proxy.style.opacity = '0';
-  proxy.style.pointerEvents = 'none';
-  proxy.style.width = '1px';
-  proxy.style.height = '1px';
-  proxy.style.border = '0';
-  proxy.style.padding = '0';
-  proxy.style.background = 'transparent';
-  try { document.body.appendChild(proxy); }
-  catch { return null; }
-  proxy.addEventListener('input', () => { proxy.value = ''; });
-  return proxy;
 }
 
 function focusStage(){
-  const target = stageFocusEl || app.stage;
-  if (!target) return;
+  if (!app.stage) return;
   requestAnimationFrame(() => {
     const active = document.activeElement;
-    if (active && active !== document.body && active !== target) {
+    if (active && active !== document.body && active !== app.stage) {
       try { active.blur(); } catch {}
     }
-    try {
-      target.focus({ preventScroll: true });
-    } catch {
-      try { target.focus(); } catch {}
-    }
-    if (target === stageFocusEl && typeof target.value === 'string') {
-      target.value = '';
-      if (typeof target.setSelectionRange === 'function') {
-        try { target.setSelectionRange(0, 0); } catch {}
-      }
-    }
+    try { app.stage.focus({ preventScroll: true }); }
+    catch { try { app.stage.focus(); } catch {} }
   });
 }
 
@@ -2129,7 +2091,6 @@ function insertString(s){
 const TYPED_RUN_MAXLEN = 20, TYPED_RUN_TIMEOUT = 500, EXPAND_PASTE_WINDOW = 350, BS_WINDOW = 250, STRAY_V_WINDOW = 30;
 function isEditableTarget(t){
   if (!t) return false;
-  if (stageFocusEl && t === stageFocusEl) return false;
   if (isToolbarInput(t)) return false;
   const tag = (t.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
