@@ -43,6 +43,9 @@ let {
 } = ephemeral;
 const touchedPages = ephemeral.touchedPages;
 let hammerNudgeRAF = 0;
+let hammerNudgePending = false;
+let cachedZoomWrapScale = 1;
+let cachedZoomWrapTransform = 'none';
 // EOM
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
@@ -139,13 +142,73 @@ function cssScaleFactor(){
   return safariZoomMode === 'steady' ? 1 : state.zoom;
 }
 
+function extractScaleFromTransform(transform){
+  const t = (typeof transform === 'string') ? transform.trim() : '';
+  if (!t || t === 'none') return 1;
+  const scaleMatch = t.match(/scale(?:3d)?\(([^)]+)\)/i);
+  if (scaleMatch){
+    const parts = scaleMatch[1].split(',').map(p => parseFloat(p.trim())).filter(Number.isFinite);
+    if (parts.length){
+      return Math.abs(parts[0]) || 1;
+    }
+  }
+  const scaleXMatch = t.match(/scaleX\(([^)]+)\)/i);
+  if (scaleXMatch){
+    const v = parseFloat(scaleXMatch[1]);
+    if (Number.isFinite(v) && v !== 0) return Math.abs(v);
+  }
+  const scaleYMatch = t.match(/scaleY\(([^)]+)\)/i);
+  if (scaleYMatch){
+    const v = parseFloat(scaleYMatch[1]);
+    if (Number.isFinite(v) && v !== 0) return Math.abs(v);
+  }
+  if (t.startsWith('matrix3d(')){
+    const parts = t.slice(9, -1).split(',');
+    if (parts.length >= 16){
+      const a = parseFloat(parts[0]);
+      const b = parseFloat(parts[1]);
+      const c = parseFloat(parts[2]);
+      if ([a, b, c].every(Number.isFinite)){
+        const mag = Math.sqrt(a * a + b * b + c * c);
+        if (mag > 0) return mag;
+      }
+    }
+  }
+  if (t.startsWith('matrix(')){
+    const parts = t.slice(7, -1).split(',');
+    if (parts.length >= 6){
+      const a = parseFloat(parts[0]);
+      const b = parseFloat(parts[1]);
+      if (Number.isFinite(a) && Number.isFinite(b)){
+        const mag = Math.sqrt(a * a + b * b);
+        if (mag > 0) return mag;
+      }
+    }
+  }
+  return 1;
+}
+
+function currentCssScale(){
+  if (!app?.zoomWrap) return cachedZoomWrapScale;
+  let transform = app.zoomWrap.style.transform;
+  if (!transform || !transform.length) transform = 'none';
+  if (transform === cachedZoomWrapTransform) return cachedZoomWrapScale;
+  cachedZoomWrapTransform = transform;
+  cachedZoomWrapScale = extractScaleFromTransform(transform);
+  return cachedZoomWrapScale;
+}
+
 function updateZoomWrapTransform(){
   if (!app.zoomWrap) return;
   const scale = cssScaleFactor();
   if (Math.abs(scale - 1) < 1e-6) {
     app.zoomWrap.style.transform = 'none';
+    cachedZoomWrapTransform = 'none';
+    cachedZoomWrapScale = 1;
   } else {
     app.zoomWrap.style.transform = `scale(${scale})`;
+    cachedZoomWrapTransform = app.zoomWrap.style.transform;
+    cachedZoomWrapScale = extractScaleFromTransform(cachedZoomWrapTransform);
   }
 }
 
@@ -1412,6 +1475,7 @@ function rewrapDocumentToCurrentBounds(){
 const DEAD_X = 1.25, DEAD_Y = 3.0;
 function caretViewportPos(){
   if (!app || !app.caretEl) return null;
+  currentCssScale();
   const rect = app.caretEl.getBoundingClientRect();
   return { x: rect.left, y: rect.top };
 }
@@ -1492,10 +1556,10 @@ function updateStageEnvironment(){
 
 function setPaperOffset(x,y){
   const clamped = clampPaperOffset(x, y);
-  const scale = cssScaleFactor();
-  const snap = (v)=> Math.round(v * DPR) / DPR;
-  const snappedX = scale ? snap(clamped.x * scale) / scale : clamped.x;
-  const snappedY = scale ? snap(clamped.y * scale) / scale : clamped.y;
+  const scale = Math.max(currentCssScale(), 1e-6);
+  const snapFactor = DPR * scale;
+  const snappedX = snapFactor ? Math.round(clamped.x * snapFactor) / snapFactor : clamped.x;
+  const snappedY = snapFactor ? Math.round(clamped.y * snapFactor) / snapFactor : clamped.y;
   state.paperOffset.x = snappedX;
   state.paperOffset.y = snappedY;
   if (app.stageInner){
@@ -1540,8 +1604,9 @@ function nudgePaperToAnchor(){
   const cv = caretViewportPos();
   if (!cv) return;
   const { ax, ay } = anchorPx();
+  const scale = Math.max(currentCssScale(), 1e-6);
   let dx = ax - cv.x, dy = ay - cv.y;
-  const pxThreshold = 1 / DPR;
+  const pxThreshold = 1 / (DPR * scale);
   if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
   const usedNative = maybeApplyNativeScroll(dx, dy, pxThreshold);
   if (usedNative){
@@ -1553,7 +1618,6 @@ function nudgePaperToAnchor(){
     }
   }
   if (Math.abs(dx) < DEAD_X && Math.abs(dy) < DEAD_Y) return;
-  const scale = cssScaleFactor() || 1;
   const prevX = state.paperOffset.x;
   const prevY = state.paperOffset.y;
   setPaperOffset(prevX + dx / scale, prevY + dy / scale);
@@ -1570,10 +1634,12 @@ function nudgePaperToAnchor(){
 }
 function requestHammerNudge(){
   if (zooming || !state.hammerLock) return;
-  if (hammerNudgeRAF) return;
+  if (hammerNudgePending) return;
+  hammerNudgePending = true;
   const schedule = () => {
     hammerNudgeRAF = requestAnimationFrame(() => {
       hammerNudgeRAF = 0;
+      hammerNudgePending = false;
       nudgePaperToAnchor();
     });
   };
