@@ -45,105 +45,6 @@ const touchedPages = ephemeral.touchedPages;
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 
-const STAGE_WIDTH_MULT = 2;
-const STAGE_GUTTER_FACTOR = 1.2;
-const PAGE_GAP_FALLBACK = 16;
-
-const stageLayout = {
-  width: app.PAGE_W * STAGE_WIDTH_MULT,
-  height: 0,
-  topGutter: 0,
-  bottomGutter: 0,
-  minX: 0,
-  maxX: 0,
-  minY: 0,
-  maxY: 0,
-};
-
-function stageViewportSize(){
-  if (app.stage){
-    const r = app.stage.getBoundingClientRect();
-    return { width: Math.max(0, r.width), height: Math.max(0, r.height) };
-  }
-  return { width: Math.max(0, window.innerWidth), height: Math.max(0, window.innerHeight) };
-}
-
-function measurePageGapPx(){
-  const firstWrap = app.stageInner?.querySelector('.page-wrap');
-  if (!firstWrap) return PAGE_GAP_FALLBACK;
-  const gap = parseFloat(window.getComputedStyle(firstWrap).marginBottom || `${PAGE_GAP_FALLBACK}`);
-  return Number.isFinite(gap) ? gap : PAGE_GAP_FALLBACK;
-}
-
-function contentHeightPx(){
-  const count = state.pages.length;
-  if (count <= 0) return 0;
-  const gap = measurePageGapPx();
-  const between = Math.max(0, count - 1) * gap;
-  return count * app.PAGE_H + between;
-}
-
-function clampPaperOffsetWithinStage(x, y){
-  let cx = x;
-  let cy = y;
-  if (Number.isFinite(stageLayout.minX) && Number.isFinite(stageLayout.maxX)){
-    cx = Math.min(stageLayout.maxX, Math.max(stageLayout.minX, cx));
-  }
-  if (Number.isFinite(stageLayout.minY) && Number.isFinite(stageLayout.maxY)){
-    cy = Math.min(stageLayout.maxY, Math.max(stageLayout.minY, cy));
-  }
-  return { x: cx, y: cy };
-}
-
-function updatePaperTransform(){
-  if (!app.stageInner) return;
-  app.stageInner.style.transform = `translate3d(${state.paperOffset.x.toFixed(3)}px,${state.paperOffset.y.toFixed(3)}px,0)`;
-  positionRulers();
-  requestVirtualization();
-}
-
-function updateStageLayout(){
-  if (!app.stage || !app.stageInner) return;
-  const { width: viewW, height: viewH } = stageViewportSize();
-  const width = app.PAGE_W * STAGE_WIDTH_MULT;
-  const contentH = contentHeightPx();
-  const topGutter = app.PAGE_H * STAGE_GUTTER_FACTOR;
-  const baseBottom = app.PAGE_H * STAGE_GUTTER_FACTOR;
-  const bottomGutter = Math.max(baseBottom, viewH / state.zoom);
-  const height = topGutter + contentH + bottomGutter;
-  app.stageInner.style.width = `${width}px`;
-  app.stageInner.style.paddingTop = `${topGutter}px`;
-  app.stageInner.style.paddingBottom = `${bottomGutter}px`;
-  app.stageInner.style.paddingLeft = '0px';
-  app.stageInner.style.paddingRight = '0px';
-  stageLayout.width = width;
-  stageLayout.height = height;
-  stageLayout.topGutter = topGutter;
-  stageLayout.bottomGutter = bottomGutter;
-  const viewWidthStage = viewW / state.zoom;
-  const viewHeightStage = viewH / state.zoom;
-  if (width <= viewWidthStage){
-    const centered = (viewWidthStage - width) / 2;
-    stageLayout.minX = centered;
-    stageLayout.maxX = centered;
-  } else {
-    stageLayout.minX = viewWidthStage - width;
-    stageLayout.maxX = 0;
-  }
-  if (height <= viewHeightStage){
-    const centeredY = (viewHeightStage - height) / 2;
-    stageLayout.minY = centeredY;
-    stageLayout.maxY = centeredY;
-  } else {
-    stageLayout.minY = viewHeightStage - height;
-    stageLayout.maxY = 0;
-  }
-  const clamped = clampPaperOffsetWithinStage(state.paperOffset.x, state.paperOffset.y);
-  state.paperOffset.x = clamped.x;
-  state.paperOffset.y = clamped.y;
-  updatePaperTransform();
-}
-
 function focusStage(){
   if (!app.stage) return;
   requestAnimationFrame(() => {
@@ -671,7 +572,6 @@ function applyMetricsNow(full=false){
     if (p.active) schedulePaint(p);
   }
   renderMargins();
-  updateStageLayout();
   clampCaretToBounds();
   updateCaretPosition();
   positionRulers();
@@ -845,7 +745,7 @@ function addPage() {
   page.canvas.style.visibility = 'hidden';
   state.pages.push(page);
   renderMargins();
-  updateStageLayout();
+  requestVirtualization();
   return page;
 }
 function bootstrapFirstPage() {
@@ -855,7 +755,6 @@ function bootstrapFirstPage() {
   page.canvas.style.visibility = 'hidden';
   page.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
   state.pages.push(page);
-  updateStageLayout();
 }
 
 // MARKER-START: resetPagesBlankPreserveSettings
@@ -877,7 +776,7 @@ function resetPagesBlankPreserveSettings(){
   page.canvas.style.visibility = 'hidden';
   state.pages.push(page);
   renderMargins();
-  updateStageLayout();
+  requestVirtualization();
 }
 // EOM
 
@@ -1081,10 +980,10 @@ function caretViewportPos(){
   return { x, y };
 }
 function setPaperOffset(x,y){
-  const target = clampPaperOffsetWithinStage(x, y);
-  state.paperOffset.x = target.x;
-  state.paperOffset.y = target.y;
-  updatePaperTransform();
+  state.paperOffset.x = x; state.paperOffset.y = y;
+  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
+  positionRulers();
+  requestVirtualization();
 }
 function anchorPx(){
   return { ax: Math.round(window.innerWidth * state.caretAnchor.x), ay: Math.round(window.innerHeight * state.caretAnchor.y) };
@@ -1180,20 +1079,17 @@ function getActivePageRect(){
 }
 
 // MARKER-START: updateRulerTicks
-function updateRulerTicks(activePageRect, stageRect){
+function updateRulerTicks(activePageRect){
   const ticksH = app.rulerH_host.querySelector('.ruler-ticks');
   const ticksV = app.rulerV_host.querySelector('.ruler-v-ticks');
   ticksH.innerHTML = ''; ticksV.innerHTML = '';
   const ppiH = (activePageRect.width / 210) * 25.4;
   const originX = activePageRect.left;
-  const limitLeft = stageRect ? stageRect.left : 0;
-  const limitRight = stageRect ? (stageRect.left + stageRect.width) : window.innerWidth;
-  const startInchH = Math.floor((limitLeft - originX) / ppiH);
-  const endInchH = Math.ceil((limitRight - originX) / ppiH);
+  const startInchH = Math.floor(-originX / ppiH), endInchH = Math.ceil((window.innerWidth - originX) / ppiH);
   for (let i=startInchH;i<=endInchH;i++){
     for (let j=0;j<10;j++){
       const x = originX + (i + j/10) * ppiH;
-      if (x < limitLeft || x > limitRight) continue;
+      if (x < 0 || x > window.innerWidth) continue;
       const tick = document.createElement('div');
       tick.className = j===0 ? 'tick major' : j===5 ? 'tick medium' : 'tick minor';
       tick.style.left = x + 'px';
@@ -1207,14 +1103,11 @@ function updateRulerTicks(activePageRect, stageRect){
   }
   const ppiV = (activePageRect.height / 297) * 25.4;
   const originY = activePageRect.top;
-  const limitTop = stageRect ? stageRect.top : 0;
-  const limitBottom = stageRect ? (stageRect.top + stageRect.height) : window.innerHeight;
-  const startInchV = Math.floor((limitTop - originY) / ppiV);
-  const endInchV = Math.ceil((limitBottom - originY) / ppiV);
+  const startInchV = Math.floor(-originY / ppiV), endInchV = Math.ceil((window.innerHeight - originY) / ppiV);
   for (let i=startInchV;i<=endInchV;i++){
     for (let j=0;j<10;j++){
       const y = originY + (i + j/10) * ppiV;
-      if (y < limitTop || y > limitBottom) continue;
+      if (y < 0 || y > window.innerHeight) continue;
       const tick = document.createElement('div');
       tick.className = j===0 ? 'tick-v major' : j===5 ? 'tick-v medium' : 'tick-v minor';
       tick.style.top = y + 'px';
@@ -1232,19 +1125,6 @@ function updateRulerTicks(activePageRect, stageRect){
 // MARKER-START: positionRulers
 function positionRulers(){
   if (!state.showRulers) return;
-  const stageRect = app.stageInner?.getBoundingClientRect();
-  if (!stageRect) return;
-  if (app.rulerH_host){
-    app.rulerH_host.style.width = `${stageRect.width}px`;
-    app.rulerH_host.style.left = `${stageRect.left}px`;
-    app.rulerH_host.style.right = 'auto';
-  }
-  if (app.rulerV_host){
-    app.rulerV_host.style.height = `${stageRect.height}px`;
-    app.rulerV_host.style.top = `${stageRect.top}px`;
-    app.rulerV_host.style.left = `${stageRect.left}px`;
-    app.rulerV_host.style.bottom = 'auto';
-  }
   app.rulerH_stops_container.innerHTML = '';
   app.rulerV_stops_container.innerHTML = '';
   const pageRect = getActivePageRect();
@@ -1265,7 +1145,7 @@ function positionRulers(){
   mBottom.className = 'tri-v bottom';
   mBottom.style.top = (pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom) + 'px';
   app.rulerV_stops_container.appendChild(mBottom);
-  updateRulerTicks(pageRect, stageRect);
+  updateRulerTicks(pageRect);
 }
 // EOM
 
@@ -1455,7 +1335,6 @@ function detent(p){ return (Math.abs(p - 100) <= 6) ? 100 : p; }
 function setZoomPercent(p){
   const z = detent(Math.round(Math.max(Z_MIN, Math.min(Z_MAX, p))));
   state.zoom = z / 100;
-  updateStageLayout();
   applyZoomCSS();
   scheduleZoomCrispRedraw();
   updateZoomUIFromState();
@@ -1829,7 +1708,6 @@ function deserializeState(data){
   FONT_FAMILY = `${ACTIVE_FONT_NAME}`;
   for (const p of state.pages){ p.dirtyAll = true; }
   document.body.classList.toggle('rulers-off', !state.showRulers);
-  updateStageLayout();
   return true;
 }
 // EOM
@@ -1940,6 +1818,7 @@ function createNewDocument(){
   bsBurstCount = 0; bsBurstTs = 0;
   typedRun = { active:false, page:0, rowMu:0, startCol:0, length:0, lastTs:0 };
   state.paperOffset = { x:0, y:0 };
+  setPaperOffset(0,0);
   state.pages = [];
   state.caret = { page:0, rowMu:0, col:0 };
   state.ink   = 'b';
@@ -1965,7 +1844,6 @@ function createNewDocument(){
     p.dirtyAll = true; schedulePaint(p);
   }
   renderMargins();
-  updateStageLayout();
   clampCaretToBounds();
   updateCaretPosition();
   document.body.classList.toggle('rulers-off', !state.showRulers);
@@ -2116,7 +1994,7 @@ function bindEventListeners(){
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('paste', handlePaste, { capture: true });
   app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
-  window.addEventListener('resize', () => { updateStageLayout(); if (!zooming) nudgePaperToAnchor(); }, { passive: true });
+  window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); }, { passive: true });
   window.addEventListener('beforeunload', saveStateNow);
   window.addEventListener('click', () => window.focus(), { passive: true });
 }
