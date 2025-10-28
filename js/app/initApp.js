@@ -44,14 +44,6 @@ let {
 const touchedPages = ephemeral.touchedPages;
 // EOM
 
-const ua = navigator.userAgent || navigator.vendor || '';
-const IS_SAFARI = /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|Android/i.test(ua);
-if (IS_SAFARI) {
-  document.documentElement.classList.add('safari-zoom-redraw');
-}
-
-const CARET_BASE_WIDTH = 2;
-
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 const STAGE_WIDTH_MIN = 1.0;
 const STAGE_WIDTH_MAX = 5.0;
@@ -136,22 +128,6 @@ function toolbarHeightPx(){
     cachedToolbarHeight = 48;
   }
   return cachedToolbarHeight;
-}
-
-function isSafariSteadyZoom(){
-  return IS_SAFARI && !zooming;
-}
-
-function currentLayoutScale(){
-  return isSafariSteadyZoom() ? state.zoom : 1;
-}
-
-function currentCssScale(){
-  return isSafariSteadyZoom() ? 1 : state.zoom;
-}
-
-function snapToDevicePixel(v){
-  return Math.round(v * DPR) / DPR;
 }
 
 function sanitizeStageInput(input, fallbackFactor, allowEmpty, isWidth){
@@ -269,14 +245,10 @@ function setRenderScaleForZoom(){
   RENDER_SCALE = Math.min(desired, computeMaxRenderScale());
 }
 function prepareCanvas(canvas) {
-  const layoutScale = currentLayoutScale();
   canvas.width  = Math.floor(app.PAGE_W * RENDER_SCALE);
   canvas.height = Math.floor(app.PAGE_H * RENDER_SCALE);
-  canvas.style.width  = (app.PAGE_W * layoutScale) + 'px';
-  canvas.style.height = (app.PAGE_H * layoutScale) + 'px';
-  if (IS_SAFARI) {
-    canvas.style.imageRendering = '-webkit-optimize-contrast';
-  }
+  canvas.style.width  = app.PAGE_W + 'px';
+  canvas.style.height = app.PAGE_H + 'px';
 }
 function configureCanvasContext(ctx) {
   ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
@@ -923,9 +895,7 @@ function recalcMetrics(face){
   CHAR_W = roundToDPR(targetPitch);
   GRID_H = LINE_H_RAW / GRID_DIV;
   BASELINE_OFFSET_CELL = ASC;
-  const scale = currentLayoutScale();
-  app.caretEl.style.height = (baseCaretHeightPx() * scale) + 'px';
-  app.caretEl.style.width = Math.max(1, CARET_BASE_WIDTH * scale) + 'px';
+  app.caretEl.style.height = baseCaretHeightPx() + 'px';
 }
 function scheduleMetricsUpdate(full=false){
   pendingFullRebuild = pendingFullRebuild || full;
@@ -1356,9 +1326,8 @@ function caretViewportPos(){
   const p = state.pages[state.caret.page] || state.pages[0];
   if (!p) return null;
   const r = p.pageEl.getBoundingClientRect();
-  const scale = currentLayoutScale();
-  const x = r.left + (state.caret.col * CHAR_W) * scale;
-  const y = r.top  + (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * scale;
+  const x = r.left + (state.caret.col * CHAR_W) * state.zoom;
+  const y = r.top  + (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * state.zoom;
   return { x, y };
 }
 function updateRulerHostDimensions(stageW, stageH){
@@ -1374,22 +1343,18 @@ function documentHorizontalSpanPx(){
   const first = state.pages[0];
   if (!first || !first.wrapEl) return app.PAGE_W;
   const width = first.wrapEl.offsetWidth;
-  const scale = currentLayoutScale() || 1;
-  const normalized = width / scale;
-  return Number.isFinite(normalized) && normalized > 0 ? normalized : app.PAGE_W;
+  return Number.isFinite(width) && width > 0 ? width : app.PAGE_W;
 }
 
 function documentVerticalSpanPx(){
   if (!state.pages || !state.pages.length) return app.PAGE_H;
   const first = state.pages[0];
   const last = state.pages[state.pages.length - 1];
-  if (!first || !first.wrapEl || !last || !last.wrapEl) return app.PAGE_H;
+  if (!first?.wrapEl || !last?.wrapEl) return app.PAGE_H;
   const top = first.wrapEl.offsetTop;
   const bottom = last.wrapEl.offsetTop + last.wrapEl.offsetHeight;
   const span = bottom - top;
-  const scale = currentLayoutScale() || 1;
-  const normalized = span / scale;
-  return Number.isFinite(normalized) && normalized > 0 ? normalized : app.PAGE_H;
+  return Number.isFinite(span) && span > 0 ? span : app.PAGE_H;
 }
 
 function hammerAllowanceX(){
@@ -1413,44 +1378,26 @@ function clampPaperOffset(x, y){
   return { x: clamp(x, minX, maxX), y: clamp(y, minY, maxY) };
 }
 
-function updatePageScale(layoutScale){
-  const widthCss = app.PAGE_W * layoutScale;
-  const heightCss = app.PAGE_H * layoutScale;
-  for (const p of state.pages){
-    if (p && p.wrapEl) p.wrapEl.style.width = `${widthCss}px`;
-    if (p && p.pageEl){
-      p.pageEl.style.width = `${widthCss}px`;
-      p.pageEl.style.height = `${heightCss}px`;
-    }
-  }
-}
-
-function updateStageEnvironment(dimsOverride, layoutScaleOverride){
-  const dims = dimsOverride || stageDimensions();
-  const layoutScale = layoutScaleOverride ?? currentLayoutScale();
-  const widthCss = dims.width * layoutScale;
-  const heightCss = dims.height * layoutScale;
-  const extraXCss = dims.extraX * layoutScale;
-  const extraYCss = dims.extraY * layoutScale;
+function updateStageEnvironment(){
+  const dims = stageDimensions();
   const rootStyle = document.documentElement.style;
   rootStyle.setProperty('--stage-width-mult', dims.widthFactor.toString());
   rootStyle.setProperty('--stage-height-mult', dims.heightFactor.toString());
   if (app.zoomWrap){
-    app.zoomWrap.style.width = `${widthCss}px`;
-    app.zoomWrap.style.minHeight = `${heightCss}px`;
+    app.zoomWrap.style.width = `${dims.width}px`;
+    app.zoomWrap.style.minHeight = `${dims.height}px`;
     app.zoomWrap.style.height = '';
   }
   if (app.stageInner){
-    app.stageInner.style.minWidth = `${widthCss}px`;
-    app.stageInner.style.minHeight = `${heightCss}px`;
-    app.stageInner.style.paddingLeft = `${extraXCss}px`;
-    app.stageInner.style.paddingRight = `${extraXCss}px`;
-    const padTop = extraYCss;
-    const padBottom = extraYCss + toolbarHeightPx();
+    app.stageInner.style.minWidth = `${dims.width}px`;
+    app.stageInner.style.minHeight = `${dims.height}px`;
+    app.stageInner.style.paddingLeft = `${dims.extraX}px`;
+    app.stageInner.style.paddingRight = `${dims.extraX}px`;
+    const padTop = dims.extraY;
+    const padBottom = dims.extraY + toolbarHeightPx();
     app.stageInner.style.paddingTop = `${padTop}px`;
     app.stageInner.style.paddingBottom = `${padBottom}px`;
   }
-  updatePageScale(layoutScale);
   updateRulerHostDimensions(dims.width, dims.height);
   setPaperOffset(state.paperOffset.x, state.paperOffset.y);
 }
@@ -1460,10 +1407,7 @@ function setPaperOffset(x,y){
   state.paperOffset.x = clamped.x;
   state.paperOffset.y = clamped.y;
   if (app.stageInner){
-    const layoutScale = currentLayoutScale();
-    const cssX = snapToDevicePixel(clamped.x * layoutScale);
-    const cssY = snapToDevicePixel(clamped.y * layoutScale);
-    app.stageInner.style.transform = `translate3d(${cssX.toFixed(3)}px,${cssY.toFixed(3)}px,0)`;
+    app.stageInner.style.transform = `translate3d(${clamped.x.toFixed(3)}px,${clamped.y.toFixed(3)}px,0)`;
   }
   positionRulers();
   requestVirtualization();
@@ -1488,14 +1432,9 @@ function nudgePaperToAnchor(){
 function updateCaretPosition(){
   const p = state.pages[state.caret.page];
   if (!p) return;
-  const scale = currentLayoutScale();
-  const leftPx = (state.caret.col * CHAR_W) * scale;
-  const topPx = (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * scale;
-  app.caretEl.style.left = leftPx.toFixed(3) + 'px';
-  app.caretEl.style.top  = topPx.toFixed(3) + 'px';
-  app.caretEl.style.height = (baseCaretHeightPx() * scale) + 'px';
-  const caretWidth = Math.max(1, CARET_BASE_WIDTH * scale);
-  app.caretEl.style.width = caretWidth + 'px';
+  app.caretEl.style.left = (state.caret.col * CHAR_W) + 'px';
+  app.caretEl.style.top  = (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) + 'px';
+  app.caretEl.style.height = baseCaretHeightPx() + 'px';
   if (app.caretEl.parentNode !== p.pageEl){
     app.caretEl.remove();
     p.pageEl.appendChild(app.caretEl);
@@ -1522,14 +1461,12 @@ function computeSnappedVisualMargins(){
 // MARKER-START: renderMargins
 function renderMargins(){
   const snap = computeSnappedVisualMargins();
-  const scale = currentLayoutScale();
   for (const p of state.pages){
-    p.pageEl.style.height = (app.PAGE_H * scale) + 'px';
-    p.pageEl.style.width = (app.PAGE_W * scale) + 'px';
-    p.marginBoxEl.style.left   = Math.round(snap.leftPx * scale) + 'px';
-    p.marginBoxEl.style.right  = Math.round((app.PAGE_W - snap.rightPx) * scale) + 'px';
-    p.marginBoxEl.style.top    = Math.round(snap.topPx * scale) + 'px';
-    p.marginBoxEl.style.bottom = Math.round(snap.bottomPx * scale) + 'px';
+    p.pageEl.style.height = app.PAGE_H + 'px';
+    p.marginBoxEl.style.left   = Math.round(snap.leftPx) + 'px';
+    p.marginBoxEl.style.right  = Math.round(app.PAGE_W - snap.rightPx) + 'px';
+    p.marginBoxEl.style.top    = Math.round(snap.topPx) + 'px';
+    p.marginBoxEl.style.bottom = Math.round(snap.bottomPx) + 'px';
     p.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
   }
 }
@@ -1784,15 +1721,12 @@ function applyLineHeight(){
 }
 function applyZoomCSS(){
   if (app.zoomWrap){
-    const cssScale = currentCssScale();
-    if (Math.abs(cssScale - 1) < 1e-3) {
-      app.zoomWrap.style.transform = 'none';
-    } else {
-      app.zoomWrap.style.transform = `scale(${cssScale})`;
-    }
+    app.zoomWrap.style.transform = `scale(${state.zoom})`;
   }
   const dims = stageDimensions();
-  updateStageEnvironment(dims, currentLayoutScale());
+  updateRulerHostDimensions(dims.width, dims.height);
+  positionRulers();
+  requestVirtualization();
 }
 
 // MARKER-START: scheduleZoomCrispRedraw
@@ -1803,7 +1737,6 @@ function scheduleZoomCrispRedraw(){
     zooming = false;
     freezeVirtual = false;
     setRenderScaleForZoom();
-    applyZoomCSS();
     for (const p of state.pages){
       prepareCanvas(p.canvas);
       prepareCanvas(p.backCanvas);
