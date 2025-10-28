@@ -979,14 +979,30 @@ function caretViewportPos(){
   const y = r.top  + (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * state.zoom;
   return { x, y };
 }
-function setPaperOffset(x,y){
-  state.paperOffset.x = x; state.paperOffset.y = y;
-  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
-  positionRulers();
-  requestVirtualization();
-}
 function anchorPx(){
   return { ax: Math.round(window.innerWidth * state.caretAnchor.x), ay: Math.round(window.innerHeight * state.caretAnchor.y) };
+}
+
+function clampPaperOffsetX(x){
+  const z = state.zoom || 1;
+  const viewportW = (app.stage && app.stage.clientWidth) ? app.stage.clientWidth : window.innerWidth;
+  const pageWz = app.PAGE_W * z;
+  if (pageWz <= viewportW) return 0;
+  const baseLeft = (viewportW - pageWz) / 2;
+  const minLeft = viewportW - pageWz;
+  const maxLeft = 0;
+  const minX = (minLeft - baseLeft) / z;
+  const maxX = (maxLeft - baseLeft) / z;
+  return clamp(x, minX, maxX);
+}
+
+function setPaperOffset(x, y){
+  const clampedX = clampPaperOffsetX(x);
+  state.paperOffset.x = clampedX;
+  state.paperOffset.y = 0;
+  app.stageInner.style.transform = `translate3d(${clampedX.toFixed(3)}px,0,0)`;
+  positionRulers();
+  requestVirtualization();
 }
 
 // MARKER-START: nudgePaperToAnchor
@@ -995,9 +1011,18 @@ function nudgePaperToAnchor(){
   const cv = caretViewportPos();
   if (!cv) return;
   const { ax, ay } = anchorPx();
-  const dx = ax - cv.x, dy = ay - cv.y;
-  if (Math.abs(dx) < DEAD_X && Math.abs(dy) < DEAD_Y) return;
-  setPaperOffset(state.paperOffset.x + dx / state.zoom, state.paperOffset.y + dy / state.zoom);
+  const dx = ax - cv.x;
+  const dy = ay - cv.y;
+
+  if (Math.abs(dx) >= DEAD_X){
+    setPaperOffset(state.paperOffset.x + dx / state.zoom, 0);
+  }
+
+  if (Math.abs(dy) >= DEAD_Y && app.stage){
+    const target = app.stage.scrollTop - (dy / state.zoom);
+    const maxScroll = Math.max(0, app.stage.scrollHeight - app.stage.clientHeight);
+    app.stage.scrollTop = clamp(target, 0, maxScroll);
+  }
 }
 // EOM
 
@@ -1294,6 +1319,7 @@ function applyZoomCSS(){
   app.zoomWrap.style.transform = `scale(${state.zoom})`;
   positionRulers();
   requestVirtualization();
+  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
 }
 
 // MARKER-START: scheduleZoomCrispRedraw
@@ -1608,9 +1634,8 @@ function handlePaste(e){
 // EOM
 
 function handleWheelPan(e){
-  e.preventDefault();
-  const dx = e.deltaX, dy = e.deltaY;
-  if (dx || dy) setPaperOffset(state.paperOffset.x - dx / state.zoom, state.paperOffset.y - dy / state.zoom);
+  const dx = e.deltaX || 0;
+  if (dx) setPaperOffset(state.paperOffset.x - dx / state.zoom, 0);
 }
 function handlePageClick(e, pageIndex){
   e.preventDefault();
@@ -1993,7 +2018,11 @@ function bindEventListeners(){
 
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('paste', handlePaste, { capture: true });
-  app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
+  app.stage.addEventListener('scroll', () => {
+    positionRulers();
+    requestVirtualization();
+  }, { passive: true });
+  app.stage.addEventListener('wheel', handleWheelPan, { passive: true });
   window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); }, { passive: true });
   window.addEventListener('beforeunload', saveStateNow);
   window.addEventListener('click', () => window.focus(), { passive: true });
