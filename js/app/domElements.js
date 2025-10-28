@@ -18,6 +18,8 @@ export function createDomRefs() {
   app.inkBlackBtn = document.getElementById('inkBlackBtn');
   app.inkRedBtn = document.getElementById('inkRedBtn');
   app.inkWhiteBtn = document.getElementById('inkWhiteBtn');
+  app.inkSettingsBtn = document.getElementById('inkSettingsBtn');
+  app.inkSettingsPanel = document.getElementById('inkSettingsPanel');
   app.toggleMarginsBtn = document.getElementById('toggleMarginsBtn');
   app.cpiSelect = document.getElementById('cpiSelect');
   app.colsPreviewSpan = document.getElementById('colsPreview');

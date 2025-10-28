@@ -2,6 +2,7 @@ import { createDomRefs } from './domElements.js';
 import { computeBaseMetrics } from './metrics.js';
 import { createMainState, createEphemeralState } from './state.js';
 import { EDGE_BLEED, GRAIN_CFG, INK_TEXTURE } from './inkConfig.js';
+import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from './inkSettingsPanel.js';
 
 export function initApp(){
 
@@ -510,6 +511,8 @@ function normalizeDirection(dir){
 function applyInkTexture(imageData, options){
   const { config, renderScale, sampleScale, charWidth, seed } = options || {};
   if (!config || !config.enabled) return;
+  const overall = clamp(getInkEffectFactor(), 0, 1);
+  if (overall <= 0) return;
   const data = imageData.data;
   const width = imageData.width;
   const height = imageData.height;
@@ -524,18 +527,21 @@ function applyInkTexture(imageData, options){
   const octaves = Array.isArray(config.noiseOctaves) ? config.noiseOctaves : [];
   let weightSum = 0;
   for (let i = 0; i < octaves.length; i++) weightSum += Math.max(0, octaves[i].weight || 0);
-  const noiseStrength = Number.isFinite(config.noiseStrength) ? config.noiseStrength : 0;
-  const noiseFloor = Number.isFinite(config.noiseFloor) ? config.noiseFloor : 0;
+  const baseNoiseStrength = Number.isFinite(config.noiseStrength) ? config.noiseStrength : 0;
+  const noiseStrength = baseNoiseStrength * overall;
+  const baseNoiseFloor = clamp(Number.isFinite(config.noiseFloor) ? config.noiseFloor : 0, 0, 1);
+  const noiseFloor = 1 - (1 - baseNoiseFloor) * overall;
 
   const chipCfg = config.chip || {};
-  const chipDensity = Math.max(0, chipCfg.density || 0);
-  const chipStrength = Math.max(0, chipCfg.strength || 0);
+  const chipDensity = Math.max(0, chipCfg.density || 0) * overall;
+  const chipStrength = Math.max(0, chipCfg.strength || 0) * overall;
   const chipFeather = Math.max(0.01, chipCfg.feather || 0.45);
   const chipSeed = (seed ^ (chipCfg.seed || 0)) >>> 0;
 
   const scratchCfg = config.scratch || {};
-  const scratchStrength = Math.max(0, scratchCfg.strength || 0);
-  const scratchThreshold = clamp(Number.isFinite(scratchCfg.threshold) ? scratchCfg.threshold : 0.7, 0, 1 - 1e-3);
+  const scratchStrength = Math.max(0, scratchCfg.strength || 0) * overall;
+  const baseScratchThreshold = clamp(Number.isFinite(scratchCfg.threshold) ? scratchCfg.threshold : 0.7, 0, 1 - 1e-3);
+  const scratchThreshold = clamp(baseScratchThreshold + (1 - baseScratchThreshold) * (1 - overall), 0, 1 - 1e-3);
   const scratchScale = Math.max(1e-3, scratchCfg.scale || 1);
   const scratchAspect = Math.max(1e-3, scratchCfg.aspect || 0.25);
   const scratchSeed = (seed ^ (scratchCfg.seed || 0)) >>> 0;
@@ -644,6 +650,8 @@ function lightenHexColor(hex, factor){
 function applyEdgeBleed(ctx, options){
   const { config, text, x, y, color, baseSeed } = options || {};
   if (!config || !config.enabled || !text) return;
+  const overall = clamp(getInkEffectFactor(), 0, 1);
+  if (overall <= 0 || !isInkSectionEnabled('bleed')) return;
   const passes = Array.isArray(config.passes) ? config.passes : [];
   if (!passes.length) return;
   ctx.save();
@@ -653,11 +661,13 @@ function applyEdgeBleed(ctx, options){
   for (let i = 0; i < passes.length; i++){
     const pass = passes[i];
     const strokes = Math.max(1, pass.strokes | 0);
-    const jitter = Number.isFinite(pass.jitter) ? pass.jitter : 0;
-    const jitterY = Number.isFinite(pass.jitterY) ? pass.jitterY : jitter;
+    const jitterBase = Number.isFinite(pass.jitter) ? pass.jitter : 0;
+    const jitter = jitterBase * overall;
+    const jitterYBase = Number.isFinite(pass.jitterY) ? pass.jitterY : jitterBase;
+    const jitterY = jitterYBase * overall;
     const width = Math.max(0.01, pass.width || 0.5);
-    const alpha = clamp(pass.alpha ?? 0.12, 0, 1);
-    const lighten = clamp(pass.lighten ?? 0.4, 0, 1);
+    const alpha = clamp((pass.alpha ?? 0.12) * overall, 0, 1);
+    const lighten = clamp((pass.lighten ?? 0.4) * overall, 0, 1);
     const strokeColor = lightenHexColor(color, lighten);
     ctx.lineWidth = width;
     ctx.strokeStyle = strokeColor;
@@ -713,6 +723,9 @@ function ensureGrain(page){
 // EOM
 
 function grainAlpha(){
+  if (!isInkSectionEnabled('grain')) return 0;
+  const overall = clamp(getInkEffectFactor(), 0, 1);
+  if (overall <= 0) return 0;
   const s = clamp((state.grainPct || 0) / 100, 0, 1);
   if (s <= 0) return 0;
   const mixPow = clamp(GRAIN_CFG.alpha?.mix_pow ?? 0.45, 0, 1);
@@ -720,7 +733,8 @@ function grainAlpha(){
   const eased = mixPow * Math.pow(s, lowPow) + (1 - mixPow) * s;
   const aMin = clamp(GRAIN_CFG.alpha?.min ?? 0, 0, 1);
   const aMax = clamp(GRAIN_CFG.alpha?.max ?? 0.4, 0, 1);
-  return clamp(aMin + eased * (aMax - aMin), 0, 1);
+  const alpha = clamp(aMin + eased * (aMax - aMin), 0, 1);
+  return clamp(alpha * overall, 0, 1);
 }
 
 // MARKER-START: applyGrainOverlayOnRegion
@@ -744,6 +758,25 @@ function applyGrainOverlayOnRegion(page, y_css, h_css){
   ctx.restore();
 }
 // EOM
+
+function refreshGlyphEffects(){
+  rebuildAllAtlases();
+  for (const page of state.pages){
+    if (!page) continue;
+    page.dirtyAll = true;
+    if (page.active) schedulePaint(page);
+  }
+}
+
+function refreshGrainEffects(){
+  for (const page of state.pages){
+    if (!page) continue;
+    page.grainCanvas = null;
+    page.grainForSize = { w:0, h:0 };
+    page.dirtyAll = true;
+    if (page.active) schedulePaint(page);
+  }
+}
 
 function markRowAsDirty(page, rowMu) {
   if (page._dirtyRowMinMu === undefined) {
@@ -1797,12 +1830,23 @@ function toggleFontsPanel() {
   if (isOpen) {
     for (const r of app.fontRadios()){ r.checked = (r.value === ACTIVE_FONT_NAME); }
     app.settingsPanel.classList.remove('is-open');
+    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
   }
 }
 function toggleSettingsPanel() {
   const isOpen = app.settingsPanel.classList.toggle('is-open');
   if (isOpen) {
     app.fontsPanel.classList.remove('is-open');
+    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
+  }
+}
+
+function toggleInkSettingsPanel() {
+  if (!app.inkSettingsPanel) return;
+  const isOpen = app.inkSettingsPanel.classList.toggle('is-open');
+  if (isOpen) {
+    app.fontsPanel.classList.remove('is-open');
+    app.settingsPanel.classList.remove('is-open');
   }
 }
 
@@ -2326,9 +2370,11 @@ function bindEventListeners(){
 
   app.fontsBtn.onclick = toggleFontsPanel;
   app.settingsBtnNew.onclick = toggleSettingsPanel;
+  if (app.inkSettingsBtn) app.inkSettingsBtn.onclick = toggleInkSettingsPanel;
   window.addEventListener('keydown', e=>{ if (e.key === 'Escape') {
     app.fontsPanel.classList.remove('is-open');
     app.settingsPanel.classList.remove('is-open');
+    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
   }});
   app.fontRadios().forEach(radio=>{ radio.addEventListener('change', async ()=>{ if (radio.checked){ await loadFontAndApply(radio.value); focusStage(); } }); });
 
@@ -2431,6 +2477,10 @@ function bindEventListeners(){
 // MARKER-START: initialize
 async function initialize() {
   bindEventListeners();
+  setupInkSettingsPanel({
+    refreshGlyphs: refreshGlyphEffects,
+    refreshGrain: refreshGrainEffects
+  });
   bootstrapFirstPage();
   let raw = null, loaded = false, savedFont = null;
   try { raw = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch {}
