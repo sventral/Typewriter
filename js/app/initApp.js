@@ -11,18 +11,6 @@ const app = createDomRefs();
 
 // MARKER-START: CONSTANTS_AND_METRICS
 const metrics = computeBaseMetrics(app);
-const stageMaxWidthPx = Math.round(app.PAGE_W * 2);
-const stageMaxHeightPx = Math.round(app.PAGE_H * 1.2);
-if (app.stage){
-  app.stage.style.maxWidth = `${stageMaxWidthPx}px`;
-  app.stage.style.maxHeight = `${stageMaxHeightPx}px`;
-}
-if (app.zoomWrap){
-  app.zoomWrap.style.maxWidth = `${stageMaxWidthPx}px`;
-}
-if (app.stageInner){
-  app.stageInner.style.maxWidth = `${stageMaxWidthPx}px`;
-}
 const { DPR, GRID_DIV, COLORS, STORAGE_KEY, A4_WIDTH_IN, PPI, LPI, LINE_H_RAW } = metrics;
 let { GRID_H, ACTIVE_FONT_NAME, RENDER_SCALE, FONT_FAMILY, FONT_SIZE, ASC, DESC, CHAR_W, BASELINE_OFFSET_CELL } = metrics;
 // EOM
