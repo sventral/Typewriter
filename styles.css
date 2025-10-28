@@ -148,7 +148,7 @@
   }
   .stage::-webkit-scrollbar-horizontal{ height:0; }
   .stage:focus{ outline:none; }
-  .zoom-wrap{ width:var(--stage-width-px); min-height:var(--stage-height-px); transform-origin: top center; will-change: transform; display:flex; justify-content:center; backface-visibility:hidden; transform-style:preserve-3d; }
+  .zoom-wrap{ width:var(--stage-width-px); min-height:var(--stage-height-px); transform-origin: top center; will-change: transform; display:flex; justify-content:center; }
   .stage-inner{
     min-width:var(--stage-width-px);
     min-height:var(--stage-height-px);
