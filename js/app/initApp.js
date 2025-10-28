@@ -44,9 +44,6 @@ let {
 const touchedPages = ephemeral.touchedPages;
 // EOM
 
-const ua = navigator.userAgent || '';
-const IS_SAFARI = /Safari/i.test(ua) && !/Chrome|CriOS|FxiOS|Edg/i.test(ua);
-
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 const STAGE_WIDTH_MIN = 1.0;
 const STAGE_WIDTH_MAX = 5.0;
@@ -1724,12 +1721,7 @@ function applyLineHeight(){
 }
 function applyZoomCSS(){
   if (app.zoomWrap){
-    const zoom = state.zoom;
-    if (IS_SAFARI){
-      app.zoomWrap.style.transform = `translateZ(0) scale3d(${zoom}, ${zoom}, 1)`;
-    } else {
-      app.zoomWrap.style.transform = `scale(${zoom})`;
-    }
+    app.zoomWrap.style.transform = `scale(${state.zoom})`;
   }
   const dims = stageDimensions();
   updateRulerHostDimensions(dims.width, dims.height);
