@@ -47,7 +47,7 @@ const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 const STAGE_WIDTH_MIN = 1.0;
 const STAGE_WIDTH_MAX = 5.0;
 const STAGE_HEIGHT_MIN = 1.0;
-const STAGE_HEIGHT_MAX = 100.0;
+const STAGE_HEIGHT_MAX = 5.0;
 let cachedToolbarHeight = null;
 
 function focusStage(){
@@ -1043,12 +1043,43 @@ function updateRulerHostDimensions(stageW, stageH){
   app.rulerV_host.style.height = `${scaledH}px`;
 }
 
+function documentHorizontalSpanPx(){
+  if (!state.pages || !state.pages.length) return app.PAGE_W;
+  const first = state.pages[0];
+  if (!first || !first.wrapEl) return app.PAGE_W;
+  const width = first.wrapEl.offsetWidth;
+  return Number.isFinite(width) && width > 0 ? width : app.PAGE_W;
+}
+
+function documentVerticalSpanPx(){
+  if (!state.pages || !state.pages.length) return app.PAGE_H;
+  const first = state.pages[0];
+  const last = state.pages[state.pages.length - 1];
+  if (!first?.wrapEl || !last?.wrapEl) return app.PAGE_H;
+  const top = first.wrapEl.offsetTop;
+  const bottom = last.wrapEl.offsetTop + last.wrapEl.offsetHeight;
+  const span = bottom - top;
+  return Number.isFinite(span) && span > 0 ? span : app.PAGE_H;
+}
+
+function hammerAllowanceX(){
+  const span = documentHorizontalSpanPx();
+  return Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_W / 2;
+}
+
+function hammerAllowanceY(){
+  const span = documentVerticalSpanPx();
+  return Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_H / 2;
+}
+
 function clampPaperOffset(x, y){
   const { extraX, extraY } = stageDimensions();
-  const minX = -extraX;
-  const maxX = extraX;
-  const minY = -extraY;
-  const maxY = extraY;
+  const hammerX = hammerAllowanceX();
+  const hammerY = hammerAllowanceY();
+  const minX = -(extraX + hammerX);
+  const maxX = extraX + hammerX;
+  const minY = -(extraY + hammerY);
+  const maxY = extraY + hammerY;
   return { x: clamp(x, minX, maxX), y: clamp(y, minY, maxY) };
 }
 
