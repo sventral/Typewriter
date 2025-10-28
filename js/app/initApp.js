@@ -52,6 +52,26 @@ const STAGE_HEIGHT_MAX = 5.0;
 
 let cachedToolbarHeight = null;
 
+const IS_SAFARI = (() => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const vendor = navigator.vendor || '';
+  const platform = navigator.platform || '';
+  const maxTouch = Number.isFinite(navigator.maxTouchPoints) ? navigator.maxTouchPoints : 0;
+  const isIos = /iP(ad|hone|od)/i.test(ua) || (platform === 'MacIntel' && maxTouch > 1);
+  const isSafariDesktop = /Safari/i.test(ua) && /Apple/i.test(vendor) && !/Chrome|CriOS|FxiOS|Edg|Android/i.test(ua);
+  if (isIos) return /Safari/i.test(ua) || /Version\//i.test(ua);
+  return isSafariDesktop;
+})();
+
+const SAFARI_SUPERSAMPLE_THRESHOLD = 1.75;
+let safariZoomMode = IS_SAFARI ? 'steady' : 'transient';
+let lastSafariLayoutZoom = IS_SAFARI ? state.zoom : 1;
+
+if (IS_SAFARI) {
+  document.documentElement.classList.add('safari-no-blur');
+}
+
 function focusStage(){
   if (!app.stage) return;
   requestAnimationFrame(() => {
@@ -108,14 +128,75 @@ function sanitizedStageHeightFactor(){
   return sanitized;
 }
 
+function layoutZoomFactor(){
+  if (!IS_SAFARI) return 1;
+  return safariZoomMode === 'steady' ? state.zoom : 1;
+}
+
+function cssScaleFactor(){
+  if (!IS_SAFARI) return state.zoom;
+  return safariZoomMode === 'steady' ? 1 : state.zoom;
+}
+
+function updateZoomWrapTransform(){
+  if (!app.zoomWrap) return;
+  const scale = cssScaleFactor();
+  if (Math.abs(scale - 1) < 1e-6) {
+    app.zoomWrap.style.transform = 'none';
+  } else {
+    app.zoomWrap.style.transform = `scale(${scale})`;
+  }
+}
+
+function syncSafariZoomLayout(force = false){
+  if (!IS_SAFARI) return;
+  const layoutZoom = layoutZoomFactor();
+  if (!force && lastSafariLayoutZoom === layoutZoom) {
+    updateZoomWrapTransform();
+    return;
+  }
+  lastSafariLayoutZoom = layoutZoom;
+  updateStageEnvironment();
+  const cssW = app.PAGE_W * layoutZoom;
+  const cssH = app.PAGE_H * layoutZoom;
+  for (const page of state.pages){
+    if (!page) continue;
+    if (page.pageEl) page.pageEl.style.height = `${cssH}px`;
+    if (page.canvas){
+      page.canvas.style.width = `${cssW}px`;
+      page.canvas.style.height = `${cssH}px`;
+    }
+    if (page.backCanvas){
+      page.backCanvas.style.width = `${cssW}px`;
+      page.backCanvas.style.height = `${cssH}px`;
+    }
+  }
+  renderMargins();
+  updateCaretPosition();
+  updateZoomWrapTransform();
+}
+
+function setSafariZoomMode(mode, { force = false } = {}){
+  if (!IS_SAFARI) return;
+  const target = (mode === 'transient') ? 'transient' : 'steady';
+  const prevMode = safariZoomMode;
+  safariZoomMode = target;
+  const layoutZoom = layoutZoomFactor();
+  const requireUpdate = force || prevMode !== target || lastSafariLayoutZoom !== layoutZoom;
+  syncSafariZoomLayout(requireUpdate);
+}
+
 function stageDimensions(){
   const widthFactor = sanitizedStageWidthFactor();
   const heightFactor = sanitizedStageHeightFactor();
-  const width = app.PAGE_W * widthFactor;
-  const height = app.PAGE_H * heightFactor;
-  const extraX = Math.max(0, (width - app.PAGE_W) / 2);
-  const extraY = Math.max(0, (height - app.PAGE_H) / 2);
-  return { widthFactor, heightFactor, width, height, extraX, extraY };
+  const layoutZoom = layoutZoomFactor();
+  const pageW = app.PAGE_W * layoutZoom;
+  const pageH = app.PAGE_H * layoutZoom;
+  const width = pageW * widthFactor;
+  const height = pageH * heightFactor;
+  const extraX = Math.max(0, (width - pageW) / 2);
+  const extraY = Math.max(0, (height - pageH) / 2);
+  return { widthFactor, heightFactor, width, height, extraX, extraY, pageW, pageH };
 }
 
 function toolbarHeightPx(){
@@ -247,8 +328,9 @@ function setRenderScaleForZoom(){
 function prepareCanvas(canvas) {
   canvas.width  = Math.floor(app.PAGE_W * RENDER_SCALE);
   canvas.height = Math.floor(app.PAGE_H * RENDER_SCALE);
-  canvas.style.width  = app.PAGE_W + 'px';
-  canvas.style.height = app.PAGE_H + 'px';
+  const displayZoom = layoutZoomFactor();
+  canvas.style.width  = (app.PAGE_W * displayZoom) + 'px';
+  canvas.style.height = (app.PAGE_H * displayZoom) + 'px';
 }
 function configureCanvasContext(ctx) {
   ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
@@ -341,7 +423,9 @@ function ensureAtlas(ink, variantIdx = 0){
   const SHIFT_EPS = 0.5;
 
   const useTexture = (ink !== 'w') && INK_TEXTURE.enabled;
-  const sampleScale = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
+  const safariSupersample = (IS_SAFARI && state.zoom >= SAFARI_SUPERSAMPLE_THRESHOLD) ? 2 : 1;
+  const textureSupersample = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
+  const sampleScale = Math.max(safariSupersample, textureSupersample);
   const bleedEnabled = (ink !== 'w') && EDGE_BLEED.enabled && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
   const needsPipeline = useTexture || bleedEnabled || sampleScale > 1;
 
@@ -369,6 +453,11 @@ function ensureAtlas(ink, variantIdx = 0){
       const text = variantIdx ? ch.repeat(n) : ch;
       const destX_dp = col * cellW_pack_dp + GUTTER_DP;
       const destY_dp = row * cellH_pack_dp + GUTTER_DP;
+      const snapFactor = RENDER_SCALE * (needsPipeline ? sampleScale : 1);
+      const baseLocalX = X_PAD - (n - 1) * adv - SHIFT_EPS;
+      const baseLocalY = ORIGIN_Y_CSS;
+      const localXSnapped = Math.round(baseLocalX * snapFactor) / snapFactor;
+      const localYSnapped = Math.round(baseLocalY * snapFactor) / snapFactor;
       if (needsPipeline){
         const glyphSeed = (atlasSeed ^ Math.imul((code + 1) | 0, 0xC2B2AE3D)) >>> 0;
         glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -385,9 +474,7 @@ function ensureAtlas(ink, variantIdx = 0){
         glyphCtx.beginPath();
         glyphCtx.rect(0, 0, CELL_W_CSS, CELL_H_CSS);
         glyphCtx.clip();
-        const localX = X_PAD - (n - 1) * adv - SHIFT_EPS;
-        const localY = ORIGIN_Y_CSS;
-        glyphCtx.fillText(text, localX, localY);
+        glyphCtx.fillText(text, localXSnapped, localYSnapped);
         glyphCtx.restore();
 
         if (useTexture){
@@ -411,8 +498,8 @@ function ensureAtlas(ink, variantIdx = 0){
           applyEdgeBleed(glyphCtx, {
             config: EDGE_BLEED,
             text,
-            x: localX,
-            y: localY,
+            x: localXSnapped,
+            y: localYSnapped,
             color: COLORS[ink] || '#000',
             baseSeed: glyphSeed
           });
@@ -439,8 +526,8 @@ function ensureAtlas(ink, variantIdx = 0){
         ctx.beginPath();
         ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, CELL_W_CSS, CELL_H_CSS);
         ctx.clip();
-        const x0 = packX_css + GUTTER_CSS + X_PAD - (n - 1) * adv - SHIFT_EPS;
-        const y0 = packY_css + GUTTER_CSS + ORIGIN_Y_CSS;
+        const x0 = packX_css + GUTTER_CSS + localXSnapped;
+        const y0 = packY_css + GUTTER_CSS + localYSnapped;
         ctx.fillText(text, x0, y0);
         ctx.restore();
       }
@@ -1332,8 +1419,9 @@ function caretViewportPos(){
 }
 function updateRulerHostDimensions(stageW, stageH){
   if (!app.rulerH_host || !app.rulerV_host) return;
-  const scaledW = stageW * state.zoom;
-  const scaledH = stageH * state.zoom;
+  const scale = cssScaleFactor();
+  const scaledW = stageW * scale;
+  const scaledH = stageH * scale;
   app.rulerH_host.style.width = `${scaledW}px`;
   app.rulerV_host.style.height = `${scaledH}px`;
 }
@@ -1381,6 +1469,8 @@ function clampPaperOffset(x, y){
 function updateStageEnvironment(){
   const dims = stageDimensions();
   const rootStyle = document.documentElement.style;
+  const layoutZoom = layoutZoomFactor();
+  rootStyle.setProperty('--page-w', (app.PAGE_W * layoutZoom).toString());
   rootStyle.setProperty('--stage-width-mult', dims.widthFactor.toString());
   rootStyle.setProperty('--stage-height-mult', dims.heightFactor.toString());
   if (app.zoomWrap){
@@ -1404,10 +1494,16 @@ function updateStageEnvironment(){
 
 function setPaperOffset(x,y){
   const clamped = clampPaperOffset(x, y);
-  state.paperOffset.x = clamped.x;
-  state.paperOffset.y = clamped.y;
+  const scale = cssScaleFactor();
+  const snap = (v)=> Math.round(v * DPR) / DPR;
+  const snappedX = scale ? snap(clamped.x * scale) / scale : clamped.x;
+  const snappedY = scale ? snap(clamped.y * scale) / scale : clamped.y;
+  state.paperOffset.x = snappedX;
+  state.paperOffset.y = snappedY;
   if (app.stageInner){
-    app.stageInner.style.transform = `translate3d(${clamped.x.toFixed(3)}px,${clamped.y.toFixed(3)}px,0)`;
+    const tx = Math.round(snappedX * 1000) / 1000;
+    const ty = Math.round(snappedY * 1000) / 1000;
+    app.stageInner.style.transform = `translate3d(${tx}px,${ty}px,0)`;
   }
   positionRulers();
   requestVirtualization();
@@ -1432,9 +1528,15 @@ function nudgePaperToAnchor(){
 function updateCaretPosition(){
   const p = state.pages[state.caret.page];
   if (!p) return;
-  app.caretEl.style.left = (state.caret.col * CHAR_W) + 'px';
-  app.caretEl.style.top  = (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) + 'px';
-  app.caretEl.style.height = baseCaretHeightPx() + 'px';
+  const layoutScale = layoutZoomFactor();
+  const caretLeft = (state.caret.col * CHAR_W) * layoutScale;
+  const caretTop = (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * layoutScale;
+  const caretHeight = baseCaretHeightPx() * layoutScale;
+  app.caretEl.style.left = caretLeft + 'px';
+  app.caretEl.style.top  = caretTop + 'px';
+  app.caretEl.style.height = caretHeight + 'px';
+  const caretWidth = Math.max(1, Math.round(2 * layoutScale));
+  app.caretEl.style.width = caretWidth + 'px';
   if (app.caretEl.parentNode !== p.pageEl){
     app.caretEl.remove();
     p.pageEl.appendChild(app.caretEl);
@@ -1461,12 +1563,17 @@ function computeSnappedVisualMargins(){
 // MARKER-START: renderMargins
 function renderMargins(){
   const snap = computeSnappedVisualMargins();
+  const layoutScale = layoutZoomFactor();
   for (const p of state.pages){
-    p.pageEl.style.height = app.PAGE_H + 'px';
-    p.marginBoxEl.style.left   = Math.round(snap.leftPx) + 'px';
-    p.marginBoxEl.style.right  = Math.round(app.PAGE_W - snap.rightPx) + 'px';
-    p.marginBoxEl.style.top    = Math.round(snap.topPx) + 'px';
-    p.marginBoxEl.style.bottom = Math.round(snap.bottomPx) + 'px';
+    if (p?.pageEl) p.pageEl.style.height = (app.PAGE_H * layoutScale) + 'px';
+    const leftPx = Math.round(snap.leftPx * layoutScale);
+    const rightPx = Math.round((app.PAGE_W - snap.rightPx) * layoutScale);
+    const topPx = Math.round(snap.topPx * layoutScale);
+    const bottomPx = Math.round(snap.bottomPx * layoutScale);
+    p.marginBoxEl.style.left   = leftPx + 'px';
+    p.marginBoxEl.style.right  = rightPx + 'px';
+    p.marginBoxEl.style.top    = topPx + 'px';
+    p.marginBoxEl.style.bottom = bottomPx + 'px';
     p.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
   }
 }
@@ -1720,9 +1827,7 @@ function applyLineHeight(){
   focusStage();
 }
 function applyZoomCSS(){
-  if (app.zoomWrap){
-    app.zoomWrap.style.transform = `scale(${state.zoom})`;
-  }
+  updateZoomWrapTransform();
   const dims = stageDimensions();
   updateRulerHostDimensions(dims.width, dims.height);
   positionRulers();
@@ -1737,6 +1842,7 @@ function scheduleZoomCrispRedraw(){
     zooming = false;
     freezeVirtual = false;
     setRenderScaleForZoom();
+    if (IS_SAFARI) setSafariZoomMode('steady', { force: true });
     for (const p of state.pages){
       prepareCanvas(p.canvas);
       prepareCanvas(p.backCanvas);
@@ -1768,6 +1874,7 @@ function detent(p){ return (Math.abs(p - 100) <= 6) ? 100 : p; }
 function setZoomPercent(p){
   const z = detent(Math.round(Math.max(Z_MIN, Math.min(Z_MAX, p))));
   state.zoom = z / 100;
+  if (IS_SAFARI && !zooming) setSafariZoomMode('steady', { force: true });
   applyZoomCSS();
   scheduleZoomCrispRedraw();
   updateZoomUIFromState();
@@ -1802,6 +1909,7 @@ let zoomDrag = null;
 function onZoomPointerDown(e){
   e.preventDefault();
   zooming = true; freezeVirtual = true;
+  if (IS_SAFARI) setSafariZoomMode('transient', { force: true });
   if (e.target === app.zoomThumb){
     zoomDrag = { from:'thumb', id:e.pointerId };
     app.zoomThumb.setPointerCapture && app.zoomThumb.setPointerCapture(e.pointerId);
