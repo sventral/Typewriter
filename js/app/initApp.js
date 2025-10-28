@@ -45,37 +45,6 @@ const touchedPages = ephemeral.touchedPages;
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 
-const STAGE_TOP_RATIO = 0.8;
-const STAGE_BOTTOM_RATIO = 0.9;
-const STAGE_BOTTOM_GUTTER = 24;
-const PAGE_STACK_GAP = 16;
-
-let stageLayoutDirty = true;
-let stageLayout = { minY: 0, maxY: 0, topPad: 0, bottomPad: 0, totalHeight: 0, totalPagesHeight: 0 };
-let rulerVFrame = { top: 0, height: 0 };
-
-function markStageLayoutDirty(){ stageLayoutDirty = true; }
-
-function ensureStageLayout(){
-  if (!stageLayoutDirty) return stageLayout;
-  const pagesCount = Math.max(1, state.pages.length || 0);
-  const topPad = Math.round(app.PAGE_H * STAGE_TOP_RATIO);
-  const bottomPad = Math.round(app.PAGE_H * STAGE_BOTTOM_RATIO) + STAGE_BOTTOM_GUTTER;
-  if (app.stageInner){
-    app.stageInner.style.setProperty('--stage-pad-top', `${topPad}px`);
-    app.stageInner.style.setProperty('--stage-pad-bottom', `${bottomPad}px`);
-  }
-  const totalPagesHeight = pagesCount * app.PAGE_H + Math.max(0, (pagesCount - 1) * PAGE_STACK_GAP);
-  const totalHeight = topPad + totalPagesHeight + bottomPad;
-  const stageRect = app.stage?.getBoundingClientRect();
-  const viewportHeight = stageRect?.height || window.innerHeight || 0;
-  const maxY = 0;
-  const minY = Math.min(0, (viewportHeight / state.zoom) - totalHeight);
-  stageLayout = { minY, maxY, topPad, bottomPad, totalHeight, totalPagesHeight };
-  stageLayoutDirty = false;
-  return stageLayout;
-}
-
 function focusStage(){
   if (!app.stage) return;
   requestAnimationFrame(() => {
@@ -775,8 +744,6 @@ function addPage() {
   const page = makePageRecord(idx, wrap, pageEl, canvas, mb);
   page.canvas.style.visibility = 'hidden';
   state.pages.push(page);
-  markStageLayoutDirty();
-  ensureStageLayout();
   renderMargins();
   requestVirtualization();
   return page;
@@ -788,8 +755,6 @@ function bootstrapFirstPage() {
   page.canvas.style.visibility = 'hidden';
   page.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
   state.pages.push(page);
-  markStageLayoutDirty();
-  ensureStageLayout();
 }
 
 // MARKER-START: resetPagesBlankPreserveSettings
@@ -810,8 +775,6 @@ function resetPagesBlankPreserveSettings(){
   const page = makePageRecord(0, wrap, pageEl, cv, mb);
   page.canvas.style.visibility = 'hidden';
   state.pages.push(page);
-  markStageLayoutDirty();
-  ensureStageLayout();
   renderMargins();
   requestVirtualization();
 }
@@ -1017,11 +980,8 @@ function caretViewportPos(){
   return { x, y };
 }
 function setPaperOffset(x,y){
-  const layout = ensureStageLayout();
-  const clampedY = clamp(y, layout.minY, layout.maxY);
-  state.paperOffset.x = x;
-  state.paperOffset.y = clampedY;
-  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${clampedY.toFixed(3)}px,0)`;
+  state.paperOffset.x = x; state.paperOffset.y = y;
+  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
   positionRulers();
   requestVirtualization();
 }
@@ -1143,26 +1103,19 @@ function updateRulerTicks(activePageRect){
   }
   const ppiV = (activePageRect.height / 297) * 25.4;
   const originY = activePageRect.top;
-  const hostTop = rulerVFrame.top;
-  const hostBottom = hostTop + rulerVFrame.height;
-  if (rulerVFrame.height > 0 && ppiV > 0){
-    const startInchV = Math.floor((hostTop - originY) / ppiV);
-    const endInchV = Math.ceil((hostBottom - originY) / ppiV);
-    for (let i=startInchV;i<=endInchV;i++){
-      for (let j=0;j<10;j++){
-        const y = originY + (i + j/10) * ppiV;
-        if (y < hostTop || y > hostBottom) continue;
-        const localY = y - hostTop;
-        const tick = document.createElement('div');
-        tick.className = j===0 ? 'tick-v major' : j===5 ? 'tick-v medium' : 'tick-v minor';
-        tick.style.top = localY + 'px';
-        ticksV.appendChild(tick);
-        if (j===0){
-          const lbl = document.createElement('div'); lbl.className='tick-v-num';
-          lbl.textContent = i;
-          lbl.style.top = (localY + 4) + 'px';
-          ticksV.appendChild(lbl);
-        }
+  const startInchV = Math.floor(-originY / ppiV), endInchV = Math.ceil((window.innerHeight - originY) / ppiV);
+  for (let i=startInchV;i<=endInchV;i++){
+    for (let j=0;j<10;j++){
+      const y = originY + (i + j/10) * ppiV;
+      if (y < 0 || y > window.innerHeight) continue;
+      const tick = document.createElement('div');
+      tick.className = j===0 ? 'tick-v major' : j===5 ? 'tick-v medium' : 'tick-v minor';
+      tick.style.top = y + 'px';
+      ticksV.appendChild(tick);
+      if (j===0){
+        const lbl = document.createElement('div'); lbl.className='tick-v-num';
+        lbl.textContent = i; lbl.style.top = (y + 4) + 'px';
+        ticksV.appendChild(lbl);
       }
     }
   }
@@ -1172,32 +1125,9 @@ function updateRulerTicks(activePageRect){
 // MARKER-START: positionRulers
 function positionRulers(){
   if (!state.showRulers) return;
-  const layout = ensureStageLayout();
   app.rulerH_stops_container.innerHTML = '';
   app.rulerV_stops_container.innerHTML = '';
-  let hostTop = 0;
-  let hostHeight = Math.round(window.innerHeight || 0);
-  const firstPage = state.pages[0];
-  if (firstPage?.pageEl){
-    const firstRect = firstPage.pageEl.getBoundingClientRect();
-    const topExtent = firstRect.top - (layout.topPad * state.zoom);
-    hostTop = Math.round(topExtent);
-    hostHeight = Math.round(Math.max(0, layout.totalHeight * state.zoom));
-    if (app.rulerV_host){
-      app.rulerV_host.style.top = `${hostTop}px`;
-      app.rulerV_host.style.height = `${hostHeight}px`;
-      app.rulerV_host.style.bottom = 'auto';
-    }
-  } else if (app.rulerV_host){
-    hostTop = 0;
-    hostHeight = Math.round(window.innerHeight || 0);
-    app.rulerV_host.style.top = '0px';
-    app.rulerV_host.style.height = `${hostHeight}px`;
-    app.rulerV_host.style.bottom = '';
-  }
-  rulerVFrame = { top: hostTop, height: hostHeight };
   const pageRect = getActivePageRect();
-  if (!pageRect) return;
   const snap = computeSnappedVisualMargins();
   const mLeft = document.createElement('div');
   mLeft.className = 'tri left';
@@ -1209,11 +1139,11 @@ function positionRulers(){
   app.rulerH_stops_container.appendChild(mRight);
   const mTop = document.createElement('div');
   mTop.className = 'tri-v top';
-  mTop.style.top = (pageRect.top + snap.topPx * state.zoom - hostTop) + 'px';
+  mTop.style.top = (pageRect.top + snap.topPx * state.zoom) + 'px';
   app.rulerV_stops_container.appendChild(mTop);
   const mBottom = document.createElement('div');
   mBottom.className = 'tri-v bottom';
-  mBottom.style.top = (pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom - hostTop) + 'px';
+  mBottom.style.top = (pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom) + 'px';
   app.rulerV_stops_container.appendChild(mBottom);
   updateRulerTicks(pageRect);
 }
@@ -1362,8 +1292,6 @@ function applyLineHeight(){
 }
 function applyZoomCSS(){
   app.zoomWrap.style.transform = `scale(${state.zoom})`;
-  markStageLayoutDirty();
-  ensureStageLayout();
   positionRulers();
   requestVirtualization();
 }
@@ -1780,8 +1708,6 @@ function deserializeState(data){
   FONT_FAMILY = `${ACTIVE_FONT_NAME}`;
   for (const p of state.pages){ p.dirtyAll = true; }
   document.body.classList.toggle('rulers-off', !state.showRulers);
-  markStageLayoutDirty();
-  ensureStageLayout();
   return true;
 }
 // EOM
@@ -1909,8 +1835,6 @@ function createNewDocument(){
   const page = makePageRecord(0, wrap, pageEl, cv, mb);
   page.canvas.style.visibility = 'hidden';
   state.pages.push(page);
-  markStageLayoutDirty();
-  ensureStageLayout();
   applyDefaultMargins();
   recalcMetrics(ACTIVE_FONT_NAME);
   rebuildAllAtlases();
@@ -2070,13 +1994,7 @@ function bindEventListeners(){
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('paste', handlePaste, { capture: true });
   app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
-  window.addEventListener('resize', () => {
-    markStageLayoutDirty();
-    ensureStageLayout();
-    positionRulers();
-    if (!zooming) nudgePaperToAnchor();
-    requestVirtualization();
-  }, { passive: true });
+  window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); }, { passive: true });
   window.addEventListener('beforeunload', saveStateNow);
   window.addEventListener('click', () => window.focus(), { passive: true });
 }
