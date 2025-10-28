@@ -399,7 +399,6 @@ function hash2(ix, iy, seed){
   h = (h ^ (h >>> 16)) >>> 0;
   return (h / 4294967296);
 }
-const clamp01 = (v) => v < 0 ? 0 : (v > 1 ? 1 : v);
 function smoothstep(t){ return t*t*(3-2*t); }
 function valueNoise2D(x, y, scale, seed){
   const gx = x / scale, gy = y / scale;
@@ -413,293 +412,73 @@ function valueNoise2D(x, y, scale, seed){
 }
 
 // MARKER-START: ensureGrain
-function ensureGrain(page, options = {}){
+function ensureGrain(page){
   const W = app.PAGE_W|0, H = app.PAGE_H|0;
-  const needEdge = !!options.needEdge;
-  const edgeCfg = GRAIN_CFG.edge || {};
-  const edgeEnabled = needEdge && edgeCfg.enable !== false;
-  if (page.grainCanvas && page.grainForSize.w === W && page.grainForSize.h === H && (!edgeEnabled || page.grainEdgeCanvas)) return;
-  const seedBase = (state.grainSeed ^ ((page.index + 1) * 0x9E3779B1)) >>> 0;
+  if (page.grainCanvas && page.grainForSize.w === W && page.grainForSize.h === H) return;
+  const seed = (state.grainSeed ^ ((page.index + 1) * 0x9E3779B1)) >>> 0;
   const cnv = document.createElement('canvas');
   cnv.width = W; cnv.height = H;
   const ctx = cnv.getContext('2d');
   const img = ctx.createImageData(W, H);
   const data = img.data;
-
-  let edgeCanvas = null, edgeCtx = null, edgeImg = null, edgeData = null;
-  if (edgeEnabled){
-    edgeCanvas = document.createElement('canvas');
-    edgeCanvas.width = W; edgeCanvas.height = H;
-    edgeCtx = edgeCanvas.getContext('2d');
-    edgeImg = edgeCtx.createImageData(W, H);
-    edgeData = edgeImg.data;
-  }
-
   const sBase = Math.max(1, CHAR_W * (GRAIN_CFG.base_scale_from_char_w || 0.05));
   const rels = GRAIN_CFG.octave_rel_scales || [0.8, 1.2, 0.5];
-  const wgtsRaw = GRAIN_CFG.octave_weights || [0.42, 0.33, 0.15];
-  const seeds = GRAIN_CFG.seeds || {};
-  const octSeeds = seeds.octave || [0xA5A5A5A5, 0x5EEDFACE, 0x13579BDF];
+  const wgts = GRAIN_CFG.octave_weights || [0.42, 0.33, 0.15];
+  const octSeeds = (GRAIN_CFG.seeds && GRAIN_CFG.seeds.octave) || [0xA5A5A5A5, 0x5EEDFACE, 0x13579BDF];
   const sArr = rels.map(r => Math.max(1, sBase * r));
-  const wArr = wgtsRaw.slice(0, sArr.length).map(w => w || 0);
-  const weightSum = wArr.reduce((sum, w) => sum + Math.max(0, w), 0) || 1;
-  const invWeightSum = 1 / weightSum;
-
-  const baseHashWeight = GRAIN_CFG.pixel_hash_weight ?? 0.05;
-  const fineHashWeight = GRAIN_CFG.fine_hash_weight ?? 0;
+  const wArr = wgts.slice(0, sArr.length);
+  const wHash = GRAIN_CFG.pixel_hash_weight ?? 0.10;
   const postGamma = GRAIN_CFG.post_gamma || 1.0;
-
-  const hashSeed = (seeds.hash ?? 0x5F356495) >>> 0;
-  const detailSeed = (seeds.detail ?? 0xC0DEC0DE) >>> 0;
-  const speckSeed = (seeds.speckle ?? 0x9E3779B1) >>> 0;
-  const dropoutSeed = (seeds.dropout ?? 0xDEADBEEF) >>> 0;
-  const holeSeed = (seeds.holes ?? 0x7F4A7C15) >>> 0;
-  const edgeSeed = (seeds.edge ?? 0x1F2E3D4C) >>> 0;
-
-  const detailCfg = GRAIN_CFG.detail || {};
-  const fineScale = Math.max(1, sBase * (detailCfg.fine_scale ?? 0.45));
-  const fineWeight = clamp(detailCfg.fine_weight ?? 0.3, 0, 1);
-  const scratchScale = Math.max(1, sBase * (detailCfg.scratch_scale ?? 2.4));
-  const scratchWeight = Math.max(0, detailCfg.scratch_weight ?? 0.18);
-  const detailHashScale = Math.max(0.1, detailCfg.hash_scale ?? 3.05);
-  const detailHashWeight = detailCfg.hash_weight ?? 0.1;
-  const speckDensity = clamp(detailCfg.speckle_density ?? 0.028, 0, 1);
-  const speckStrength = clamp(detailCfg.speckle_strength ?? 0.78, 0, 1);
-  const speckGamma = Math.max(0.1, detailCfg.speckle_gamma ?? 1.22);
-  const dropoutDensity = clamp(detailCfg.dropout_density ?? 0.0013, 0, 1);
-  const dropoutStrength = clamp(detailCfg.dropout_strength ?? 0.62, 0, 1);
-  const dropoutScale = Math.max(0.1, detailCfg.dropout_scale ?? 4.3);
-  const holeDensity = clamp(detailCfg.hole_density ?? 0.0005, 0, 1);
-  const holeStrength = clamp(detailCfg.hole_strength ?? 0.9, 0, 1);
-
-  const edgeMaskCfg = edgeCfg.mask || {};
-  const edgeScale = Math.max(1, sBase * (edgeMaskCfg.scale ?? 0.68));
-  const edgeFineScale = Math.max(1, sBase * (edgeMaskCfg.fine_scale ?? 0.42));
-  const edgeFineWeight = clamp(edgeMaskCfg.fine_weight ?? 0.38, 0, 1);
-  const edgeHashScale = Math.max(0.1, edgeMaskCfg.hash_scale ?? 2.55);
-  const edgeHashWeight = edgeMaskCfg.hash_weight ?? 0.22;
-  const edgePower = Math.max(0.1, edgeMaskCfg.power ?? 1.18);
-  const edgeDropoutDensity = clamp(edgeMaskCfg.dropout_density ?? 0.018, 0, 1);
-  const edgeDropoutStrength = clamp(edgeMaskCfg.dropout_strength ?? 0.6, 0, 1);
-
-  const scratchSeed = seedBase ^ (detailSeed >>> 1);
-  const fineSeed = seedBase ^ detailSeed;
-  const speckMix = seedBase ^ speckSeed;
-  const dropoutMix = seedBase ^ dropoutSeed;
-  const holeMix = seedBase ^ holeSeed;
-  const edgeMix = seedBase ^ edgeSeed;
-  const fineHashSeed = seedBase ^ hashSeed;
-  const detailHashSeed = seedBase ^ (detailSeed << 1);
-
+  const hashSeed = (GRAIN_CFG.seeds && GRAIN_CFG.seeds.hash) || 0x5F356495;
   let p = 0;
   for (let y = 0; y < H; y++){
-    const yDrop = (y * dropoutScale) | 0;
-    const yDetailHash = (y * detailHashScale) | 0;
-    const yEdgeHash = (y * edgeHashScale) | 0;
     for (let x = 0; x < W; x++){
       let v = 0;
       for (let i = 0; i < sArr.length; i++){
-        const w = wArr[i];
-        if (!w) continue;
-        const scale = sArr[i];
-        v += w * valueNoise2D(x + i * 13.17, y + i * 7.91, scale, seedBase ^ (octSeeds[i] || 0));
+        v += (wArr[i] || 0) * valueNoise2D(x, y, sArr[i], seed ^ (octSeeds[i] || 0));
       }
-      v *= invWeightSum;
-
-      if (scratchWeight > 0){
-        const scratch = valueNoise2D(x * 0.77 + 3.13, y * 1.07 - 5.91, scratchScale, scratchSeed);
-        v = v * (1 - scratchWeight) + scratch * scratchWeight;
-      }
-
-      if (fineWeight > 0){
-        const fine = valueNoise2D(x + 0.37, y + 0.63, fineScale, fineSeed);
-        v = v * (1 - fineWeight) + fine * fineWeight;
-      }
-
-      if (detailHashWeight){
-        const h = hash2((x * detailHashScale) | 0, yDetailHash, detailHashSeed);
-        v += (h - 0.5) * detailHashWeight;
-      }
-
-      if (fineHashWeight){
-        const h = hash2(x, y, fineHashSeed);
-        v += (h - 0.5) * fineHashWeight;
-      }
-
-      if (baseHashWeight){
-        const h = hash2((x + 17) | 0, (y + 23) | 0, seedBase ^ hashSeed);
-        v += (h - 0.5) * baseHashWeight;
-      }
-
-      v = clamp01(v);
-
-      if (speckDensity > 0){
-        const r = hash2((x + 0x9E) | 0, (y + 0x37) | 0, speckMix);
-        if (r > 1 - speckDensity){
-          const t = Math.pow((r - (1 - speckDensity)) / speckDensity, speckGamma);
-          v *= clamp01(1 - t * speckStrength);
-        }
-      }
-
-      if (dropoutDensity > 0){
-        const r = hash2((x * dropoutScale) | 0, yDrop, dropoutMix);
-        if (r > 1 - dropoutDensity){
-          const t = (r - (1 - dropoutDensity)) / dropoutDensity;
-          v *= clamp01(1 - Math.pow(t, 1.1) * dropoutStrength);
-        }
-      }
-
-      if (holeDensity > 0){
-        const r = hash2((x + 0x4000) | 0, (y + 0x2000) | 0, holeMix);
-        if (r > 1 - holeDensity){
-          v *= clamp01(1 - holeStrength);
-        }
-      }
-
-      v = clamp01(v);
+      v += wHash * hash2(x, y, seed ^ hashSeed);
+      v = Math.min(1, Math.max(0, v));
       if (postGamma !== 1) v = Math.pow(v, postGamma);
-
-      data[p] = data[p+1] = data[p+2] = 0;
       data[p+3] = (v * 255) | 0;
-
-      if (edgeData){
-        let m = valueNoise2D(x + 11.17, y * 0.83 + 2.91, edgeScale, edgeMix);
-        if (edgeFineWeight > 0){
-          const fine = valueNoise2D(x * 0.71 + 5.37, y + 0.27, edgeFineScale, edgeMix ^ 0xA5A5A5A5);
-          m = m * (1 - edgeFineWeight) + fine * edgeFineWeight;
-        }
-        if (edgeHashWeight){
-          const h = hash2((x * edgeHashScale) | 0, yEdgeHash, edgeMix ^ 0x12345678);
-          m += (h - 0.5) * edgeHashWeight;
-        }
-        if (edgeDropoutDensity > 0){
-          const r = hash2((x + 0x1111) | 0, (y + 0x2222) | 0, edgeMix ^ 0x87654321);
-          if (r > 1 - edgeDropoutDensity){
-            const t = (r - (1 - edgeDropoutDensity)) / edgeDropoutDensity;
-            m *= clamp01(1 - Math.pow(t, 1.2) * edgeDropoutStrength);
-          }
-        }
-        m = Math.pow(clamp01(m), edgePower);
-        edgeData[p] = edgeData[p+1] = edgeData[p+2] = 0;
-        edgeData[p+3] = (m * 255) | 0;
-      }
-
       p += 4;
     }
   }
-
   ctx.putImageData(img, 0, 0);
-  if (edgeCtx && edgeImg) edgeCtx.putImageData(edgeImg, 0, 0);
-
   page.grainCanvas = cnv;
-  page.grainEdgeCanvas = edgeEnabled ? edgeCanvas : null;
   page.grainForSize = { w: W, h: H };
 }
 // EOM
 
-function resolveAlphaFromConfig(strength, cfg, fallbackMax){
-  if (strength <= 0) return 0;
-  const mixPow = clamp(cfg?.mix_pow ?? 0.5, 0, 1);
-  const lowPow = Math.max(0.01, cfg?.low_pow ?? 0.5);
-  const eased = mixPow * Math.pow(strength, lowPow) + (1 - mixPow) * strength;
-  const minVal = clamp(cfg?.min ?? 0, 0, 1);
-  const maxVal = clamp((cfg?.max ?? fallbackMax), minVal, 1);
-  return clamp(minVal + eased * (maxVal - minVal), 0, 1);
-}
-
 function grainAlpha(){
   const s = clamp((state.grainPct || 0) / 100, 0, 1);
-  if (s <= 0) return { base: 0, edge: 0 };
-  const base = resolveAlphaFromConfig(s, GRAIN_CFG.alpha, GRAIN_CFG.alpha?.max ?? 0.4);
-  let edge = 0;
-  const edgeCfg = GRAIN_CFG.edge || {};
-  if (edgeCfg.enable !== false){
-    const alphaCfg = edgeCfg.alpha || {};
-    const fallbackMax = alphaCfg.max ?? edgeCfg.max ?? 0.25;
-    const strengthScale = clamp(edgeCfg.strength_scale ?? 1, 0, 4);
-    const opacityScale = clamp(edgeCfg.opacity_scale ?? 1, 0, 4);
-    edge = resolveAlphaFromConfig(s * strengthScale, alphaCfg, fallbackMax) * opacityScale;
-    edge = clamp(edge, 0, 1);
-  }
-  return { base, edge };
+  if (s <= 0) return 0;
+  const mixPow = clamp(GRAIN_CFG.alpha?.mix_pow ?? 0.45, 0, 1);
+  const lowPow = Math.max(0.01, GRAIN_CFG.alpha?.low_pow ?? 0.55);
+  const eased = mixPow * Math.pow(s, lowPow) + (1 - mixPow) * s;
+  const aMin = clamp(GRAIN_CFG.alpha?.min ?? 0, 0, 1);
+  const aMax = clamp(GRAIN_CFG.alpha?.max ?? 0.4, 0, 1);
+  return clamp(aMin + eased * (aMax - aMin), 0, 1);
 }
 
 // MARKER-START: applyGrainOverlayOnRegion
 function applyGrainOverlayOnRegion(page, y_css, h_css){
-  const { base: baseAlpha, edge: edgeAlpha } = grainAlpha();
-  if ((baseAlpha <= 0 && edgeAlpha <= 0) || h_css <= 0) return;
-  const needEdge = edgeAlpha > 0;
-  ensureGrain(page, { needEdge });
+  const a = grainAlpha();
+  if (a <= 0 || h_css <= 0) return;
+  ensureGrain(page);
   const { ctx } = page;
   const sy = Math.max(0, Math.floor(y_css));
   const sh = Math.max(0, Math.min(app.PAGE_H - sy, Math.ceil(h_css)));
   if (sh <= 0) return;
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  ctx.filter = 'none';
-
-  let fillStart = sy;
-  let fillEnd = sy + sh;
-
-  if (baseAlpha > 0){
-    ctx.globalCompositeOperation = GRAIN_CFG.composite_op || 'destination-out';
-    ctx.globalAlpha = baseAlpha;
-    ctx.drawImage(page.grainCanvas, 0, sy, app.PAGE_W, sh, 0, sy, app.PAGE_W, sh);
-  }
-
-  if (needEdge && page.grainEdgeCanvas){
-    const edgeCfg = GRAIN_CFG.edge || {};
-    const composite = edgeCfg.composite_op || GRAIN_CFG.composite_op || 'destination-out';
-    const blurPx = Math.max(0, edgeCfg.blur_px || 0);
-    const featherPx = Math.max(0, edgeCfg.feather_px || 0);
-    const jitterPx = edgeCfg.jitter_px || 0;
-
-    let destY = sy;
-    let destH = sh;
-    if (featherPx > 0){
-      destY = Math.max(0, Math.floor(destY - featherPx));
-      destH = Math.min(app.PAGE_H - destY, Math.ceil(destH + featherPx * 2));
-    }
-
-    let destX = 0;
-    let destYJ = destY;
-    if (jitterPx > 0){
-      const jitterSeedBase = (state.grainSeed ^ ((page.index + 1) * 0x45D9F3B) ^ ((sy + 1) * 131)) >>> 0;
-      const jx = (hash2((jitterSeedBase & 0xFFFF) | 0, (jitterSeedBase >>> 16) | 0, jitterSeedBase ^ 0xA5A5A5A5) * 2 - 1) * jitterPx;
-      const jy = (hash2(((jitterSeedBase + 97) & 0xFFFF) | 0, ((jitterSeedBase >>> 13) & 0xFFFF) | 0, jitterSeedBase ^ 0x13579BDF) * 2 - 1) * jitterPx;
-      destX += jx;
-      destYJ += jy;
-    }
-
-    let drawY = destYJ;
-    let drawH = destH;
-    if (drawY < 0){
-      drawH = Math.max(0, drawH + drawY);
-      drawY = 0;
-    }
-    if (drawY + drawH > app.PAGE_H){
-      drawH = Math.max(0, app.PAGE_H - drawY);
-    }
-
-    if (drawH > 0){
-      ctx.globalCompositeOperation = composite;
-      ctx.globalAlpha = edgeAlpha;
-      ctx.filter = blurPx > 0 ? `blur(${blurPx}px)` : 'none';
-      ctx.drawImage(page.grainEdgeCanvas, 0, sy, app.PAGE_W, sh, destX, drawY, app.PAGE_W, drawH);
-      fillStart = Math.min(fillStart, drawY);
-      fillEnd = Math.max(fillEnd, drawY + drawH);
-    }
-  }
-
-  ctx.filter = 'none';
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.globalAlpha = a;
+  ctx.drawImage(page.grainCanvas, 0, sy, app.PAGE_W, sh, 0, sy, app.PAGE_W, sh);
   ctx.globalCompositeOperation = 'destination-over';
   ctx.globalAlpha = 1;
   ctx.fillStyle = '#ffffff';
-  fillStart = Math.max(0, Math.floor(fillStart));
-  fillEnd = Math.min(app.PAGE_H, Math.ceil(fillEnd));
-  if (fillEnd > fillStart){
-    ctx.fillRect(0, fillStart, app.PAGE_W, fillEnd - fillStart);
-  }
+  ctx.fillRect(0, sy, app.PAGE_W, sh);
   ctx.restore();
 }
 // EOM
@@ -840,7 +619,6 @@ function applyMetricsNow(full=false){
   rebuildAllAtlases();
   for (const p of state.pages){
     p.grainCanvas = null;
-    p.grainEdgeCanvas = null;
     p.grainForSize = { w:0, h:0 };
     configureCanvasContext(p.ctx);
     configureCanvasContext(p.backCtx);
@@ -1003,7 +781,7 @@ function makePageRecord(idx, wrapEl, pageEl, canvas, marginBoxEl) {
     index: idx, wrapEl, pageEl, canvas, ctx, backCanvas, backCtx,
     grid: new Map(), raf: 0, dirtyAll: true, active: false,
     _dirtyRowMinMu: undefined, _dirtyRowMaxMu: undefined,
-    marginBoxEl, grainCanvas: null, grainEdgeCanvas: null, grainForSize: { w:0, h:0 }
+    marginBoxEl, grainCanvas: null, grainForSize: { w:0, h:0 }
   };
   pageEl.addEventListener('mousedown', (e) => handlePageClick(e, idx), { capture:false });
   canvas.addEventListener('mousedown', (e) => handlePageClick(e, idx), { capture:false });
