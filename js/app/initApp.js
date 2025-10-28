@@ -45,6 +45,44 @@ const touchedPages = ephemeral.touchedPages;
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 
+let stageRect = null;
+
+function pageWrapGapPx(){
+  const ref = state.pages[0]?.wrapEl || app.firstPageWrap;
+  if (!ref) return 0;
+  const styles = window.getComputedStyle(ref);
+  const mb = parseFloat(styles.marginBottom || '0');
+  return Number.isFinite(mb) ? mb : 0;
+}
+
+function recomputeStageRect(){
+  const pageCount = state.pages.length;
+  const stageWidth = app.PAGE_W * 2;
+  const topGutter = app.PAGE_H * 1.2;
+  const gap = pageCount > 0 ? pageWrapGapPx() : 0;
+  const contentHeight = pageCount > 0 ? (pageCount * app.PAGE_H) + (pageCount * gap) : 0;
+  const bottomGutter = Math.ceil(window.innerHeight / state.zoom);
+  const stageHeight = topGutter + contentHeight + bottomGutter;
+  const viewportW = window.innerWidth / state.zoom;
+  const viewportH = window.innerHeight / state.zoom;
+  const minX = Math.min(0, viewportW - stageWidth);
+  const maxX = 0;
+  const minY = Math.min(0, viewportH - stageHeight);
+  const maxY = 0;
+  stageRect = { width: stageWidth, height: stageHeight, topGutter, bottomGutter, minX, maxX, minY, maxY };
+  if (app.stageInner){
+    app.stageInner.style.width = `${stageWidth}px`;
+    app.stageInner.style.paddingTop = `${topGutter}px`;
+    app.stageInner.style.paddingBottom = `${bottomGutter}px`;
+    app.stageInner.style.minHeight = `${stageHeight}px`;
+  }
+  const clampedX = clamp(state.paperOffset.x, minX, maxX);
+  const clampedY = clamp(state.paperOffset.y, minY, maxY);
+  if (clampedX !== state.paperOffset.x || clampedY !== state.paperOffset.y){
+    setPaperOffset(clampedX, clampedY);
+  }
+}
+
 function focusStage(){
   if (!app.stage) return;
   requestAnimationFrame(() => {
@@ -744,6 +782,7 @@ function addPage() {
   const page = makePageRecord(idx, wrap, pageEl, canvas, mb);
   page.canvas.style.visibility = 'hidden';
   state.pages.push(page);
+  recomputeStageRect();
   renderMargins();
   requestVirtualization();
   return page;
@@ -755,6 +794,7 @@ function bootstrapFirstPage() {
   page.canvas.style.visibility = 'hidden';
   page.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
   state.pages.push(page);
+  recomputeStageRect();
 }
 
 // MARKER-START: resetPagesBlankPreserveSettings
@@ -775,6 +815,7 @@ function resetPagesBlankPreserveSettings(){
   const page = makePageRecord(0, wrap, pageEl, cv, mb);
   page.canvas.style.visibility = 'hidden';
   state.pages.push(page);
+  recomputeStageRect();
   renderMargins();
   requestVirtualization();
 }
@@ -980,6 +1021,10 @@ function caretViewportPos(){
   return { x, y };
 }
 function setPaperOffset(x,y){
+  if (stageRect){
+    x = clamp(x, stageRect.minX, stageRect.maxX);
+    y = clamp(y, stageRect.minY, stageRect.maxY);
+  }
   state.paperOffset.x = x; state.paperOffset.y = y;
   app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
   positionRulers();
@@ -1085,36 +1130,45 @@ function updateRulerTicks(activePageRect){
   ticksH.innerHTML = ''; ticksV.innerHTML = '';
   const ppiH = (activePageRect.width / 210) * 25.4;
   const originX = activePageRect.left;
-  const startInchH = Math.floor(-originX / ppiH), endInchH = Math.ceil((window.innerWidth - originX) / ppiH);
+  const stageBounds = app.stageInner.getBoundingClientRect();
+  const stageLeft = stageBounds.left;
+  const stageRight = stageBounds.right;
+  ticksH.style.width = `${Math.round(stageBounds.width)}px`;
+  ticksH.style.left = '0px';
+  const startInchH = Math.floor((stageLeft - originX) / ppiH), endInchH = Math.ceil((stageRight - originX) / ppiH);
   for (let i=startInchH;i<=endInchH;i++){
     for (let j=0;j<10;j++){
       const x = originX + (i + j/10) * ppiH;
-      if (x < 0 || x > window.innerWidth) continue;
+      if (x < stageLeft || x > stageRight) continue;
       const tick = document.createElement('div');
       tick.className = j===0 ? 'tick major' : j===5 ? 'tick medium' : 'tick minor';
-      tick.style.left = x + 'px';
+      tick.style.left = (x - stageLeft) + 'px';
       ticksH.appendChild(tick);
       if (j===0){
         const lbl = document.createElement('div'); lbl.className='tick-num';
-        lbl.textContent = i; lbl.style.left = (x + 4) + 'px';
+        lbl.textContent = i; lbl.style.left = (x - stageLeft + 4) + 'px';
         ticksH.appendChild(lbl);
       }
     }
   }
   const ppiV = (activePageRect.height / 297) * 25.4;
   const originY = activePageRect.top;
-  const startInchV = Math.floor(-originY / ppiV), endInchV = Math.ceil((window.innerHeight - originY) / ppiV);
+  const stageTop = stageBounds.top;
+  const stageBottom = stageBounds.bottom;
+  ticksV.style.height = `${Math.round(stageBounds.height)}px`;
+  ticksV.style.top = '0px';
+  const startInchV = Math.floor((stageTop - originY) / ppiV), endInchV = Math.ceil((stageBottom - originY) / ppiV);
   for (let i=startInchV;i<=endInchV;i++){
     for (let j=0;j<10;j++){
       const y = originY + (i + j/10) * ppiV;
-      if (y < 0 || y > window.innerHeight) continue;
+      if (y < stageTop || y > stageBottom) continue;
       const tick = document.createElement('div');
       tick.className = j===0 ? 'tick-v major' : j===5 ? 'tick-v medium' : 'tick-v minor';
-      tick.style.top = y + 'px';
+      tick.style.top = (y - stageTop) + 'px';
       ticksV.appendChild(tick);
       if (j===0){
         const lbl = document.createElement('div'); lbl.className='tick-v-num';
-        lbl.textContent = i; lbl.style.top = (y + 4) + 'px';
+        lbl.textContent = i; lbl.style.top = (y - stageTop + 4) + 'px';
         ticksV.appendChild(lbl);
       }
     }
@@ -1127,23 +1181,41 @@ function positionRulers(){
   if (!state.showRulers) return;
   app.rulerH_stops_container.innerHTML = '';
   app.rulerV_stops_container.innerHTML = '';
+  const stageBounds = app.stageInner.getBoundingClientRect();
+  const stageLeft = Math.round(stageBounds.left);
+  const stageTop = Math.round(stageBounds.top);
+  const stageWidth = Math.round(stageBounds.width);
+  const stageHeight = Math.round(stageBounds.height);
+  app.rulerH_host.style.left = stageLeft + 'px';
+  app.rulerH_host.style.right = 'auto';
+  app.rulerH_host.style.width = stageWidth + 'px';
+  app.rulerH_stops_container.style.width = stageWidth + 'px';
+  app.rulerH_stops_container.style.left = '0px';
+  app.rulerH_stops_container.style.top = '0px';
+  app.rulerV_host.style.left = stageLeft + 'px';
+  app.rulerV_host.style.top = stageTop + 'px';
+  app.rulerV_host.style.bottom = 'auto';
+  app.rulerV_host.style.height = stageHeight + 'px';
+  app.rulerV_stops_container.style.height = stageHeight + 'px';
+  app.rulerV_stops_container.style.top = '0px';
+  app.rulerV_stops_container.style.left = '0px';
   const pageRect = getActivePageRect();
   const snap = computeSnappedVisualMargins();
   const mLeft = document.createElement('div');
   mLeft.className = 'tri left';
-  mLeft.style.left = (pageRect.left + snap.leftPx * state.zoom) + 'px';
+  mLeft.style.left = (pageRect.left - stageBounds.left + snap.leftPx * state.zoom) + 'px';
   app.rulerH_stops_container.appendChild(mLeft);
   const mRight = document.createElement('div');
   mRight.className = 'tri right';
-  mRight.style.left = (pageRect.left + snap.rightPx * state.zoom) + 'px';
+  mRight.style.left = (pageRect.left - stageBounds.left + snap.rightPx * state.zoom) + 'px';
   app.rulerH_stops_container.appendChild(mRight);
   const mTop = document.createElement('div');
   mTop.className = 'tri-v top';
-  mTop.style.top = (pageRect.top + snap.topPx * state.zoom) + 'px';
+  mTop.style.top = (pageRect.top - stageBounds.top + snap.topPx * state.zoom) + 'px';
   app.rulerV_stops_container.appendChild(mTop);
   const mBottom = document.createElement('div');
   mBottom.className = 'tri-v bottom';
-  mBottom.style.top = (pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom) + 'px';
+  mBottom.style.top = (pageRect.top - stageBounds.top + (app.PAGE_H - snap.bottomPx) * state.zoom) + 'px';
   app.rulerV_stops_container.appendChild(mBottom);
   updateRulerTicks(pageRect);
 }
@@ -1336,6 +1408,7 @@ function setZoomPercent(p){
   const z = detent(Math.round(Math.max(Z_MIN, Math.min(Z_MAX, p))));
   state.zoom = z / 100;
   applyZoomCSS();
+  recomputeStageRect();
   scheduleZoomCrispRedraw();
   updateZoomUIFromState();
   saveStateDebounced();
@@ -1708,6 +1781,7 @@ function deserializeState(data){
   FONT_FAMILY = `${ACTIVE_FONT_NAME}`;
   for (const p of state.pages){ p.dirtyAll = true; }
   document.body.classList.toggle('rulers-off', !state.showRulers);
+  recomputeStageRect();
   return true;
 }
 // EOM
@@ -1835,6 +1909,7 @@ function createNewDocument(){
   const page = makePageRecord(0, wrap, pageEl, cv, mb);
   page.canvas.style.visibility = 'hidden';
   state.pages.push(page);
+  recomputeStageRect();
   applyDefaultMargins();
   recalcMetrics(ACTIVE_FONT_NAME);
   rebuildAllAtlases();
@@ -1994,7 +2069,7 @@ function bindEventListeners(){
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('paste', handlePaste, { capture: true });
   app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
-  window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); }, { passive: true });
+  window.addEventListener('resize', () => { recomputeStageRect(); positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); }, { passive: true });
   window.addEventListener('beforeunload', saveStateNow);
   window.addEventListener('click', () => window.focus(), { passive: true });
 }
