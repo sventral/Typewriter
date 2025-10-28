@@ -48,6 +48,37 @@ const STAGE_WIDTH_MIN = 1.0;
 const STAGE_WIDTH_MAX = 5.0;
 const STAGE_HEIGHT_MIN = 1.0;
 const STAGE_HEIGHT_MAX = 5.0;
+
+const INK_TEXTURE = {
+  enabled: true,
+  supersample: 2,
+  noiseOctaves: [
+    { scale: 0.68, weight: 0.54, seed: 0x9E3779B1 },
+    { scale: 0.31, weight: 0.28, seed: 0x7F4A7C15 },
+    { scale: 0.14, weight: 0.18, seed: 0x51A7C4D1 }
+  ],
+  noiseStrength: 0.86,
+  noiseFloor: 0.34,
+  chip: { density: 0.017, strength: 0.88, feather: 0.45, seed: 0xC13579BD },
+  scratch: {
+    direction: { x: 0.72, y: -0.46 },
+    scale: 1.05,
+    aspect: 0.28,
+    threshold: 0.66,
+    strength: 0.24,
+    seed: 0xDEADC0DE
+  },
+  jitterSeed: 0x8BADF00D
+};
+
+const EDGE_BLEED = {
+  enabled: false,
+  inks: ['b', 'r'],
+  passes: [
+    { width: 0.65, alpha: 0.18, jitter: 0.42, jitterY: 0.26, lighten: 0.38, strokes: 2, seed: 0x13579BDF },
+    { width: 1.1, alpha: 0.12, jitter: 0.75, jitterY: 0.45, lighten: 0.52, strokes: 1, seed: 0x2468ACE1 }
+  ]
+};
 let cachedToolbarHeight = null;
 
 function focusStage(){
@@ -338,6 +369,23 @@ function ensureAtlas(ink, variantIdx = 0){
   const advCache = new Float32Array(ASCII_END + 1);
   const SHIFT_EPS = 0.5;
 
+  const useTexture = (ink !== 'w') && INK_TEXTURE.enabled;
+  const sampleScale = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
+  const bleedEnabled = (ink !== 'w') && EDGE_BLEED.enabled && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
+  const needsPipeline = useTexture || bleedEnabled || sampleScale > 1;
+
+  let glyphCanvas = null;
+  let glyphCtx = null;
+  if (needsPipeline){
+    glyphCanvas = document.createElement('canvas');
+    glyphCanvas.width = Math.max(1, cellW_draw_dp * sampleScale);
+    glyphCanvas.height = Math.max(1, cellH_draw_dp * sampleScale);
+    glyphCtx = glyphCanvas.getContext('2d', { willReadFrequently: true });
+    glyphCtx.imageSmoothingEnabled = false;
+  }
+
+  const atlasSeed = ((state.altSeed >>> 0) ^ Math.imul((variantIdx|0) + 1, 0x9E3779B1) ^ Math.imul((ink.charCodeAt(0) || 0) + 0x51, 0x85EBCA77)) >>> 0;
+
   let code = ASCII_START;
   for (let row = 0; row < ATLAS_ROWS; row++){
     for (let col = 0; col < ATLAS_COLS; col++){
@@ -347,14 +395,84 @@ function ensureAtlas(ink, variantIdx = 0){
       const ch = String.fromCharCode(code);
       const n  = (variantIdx|0) + 1;
       const adv = advCache[code] || (advCache[code] = Math.max(0.01, ctx.measureText(ch).width));
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, CELL_W_CSS, CELL_H_CSS);
-      ctx.clip();
-      const x0 = packX_css + GUTTER_CSS + X_PAD - (n - 1) * adv - SHIFT_EPS;
-      const y0 = packY_css + GUTTER_CSS + ORIGIN_Y_CSS;
-      ctx.fillText(variantIdx ? ch.repeat(n) : ch, x0, y0);
-      ctx.restore();
+      const text = variantIdx ? ch.repeat(n) : ch;
+      const destX_dp = col * cellW_pack_dp + GUTTER_DP;
+      const destY_dp = row * cellH_pack_dp + GUTTER_DP;
+      if (needsPipeline){
+        const glyphSeed = (atlasSeed ^ Math.imul((code + 1) | 0, 0xC2B2AE3D)) >>> 0;
+        glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
+        glyphCtx.globalCompositeOperation = 'source-over';
+        glyphCtx.globalAlpha = 1;
+        glyphCtx.clearRect(0, 0, glyphCanvas.width, glyphCanvas.height);
+        glyphCtx.save();
+        glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
+        glyphCtx.fillStyle = COLORS[ink] || '#000';
+        glyphCtx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
+        glyphCtx.textAlign = 'left';
+        glyphCtx.textBaseline = 'alphabetic';
+        glyphCtx.imageSmoothingEnabled = false;
+        glyphCtx.beginPath();
+        glyphCtx.rect(0, 0, CELL_W_CSS, CELL_H_CSS);
+        glyphCtx.clip();
+        const localX = X_PAD - (n - 1) * adv - SHIFT_EPS;
+        const localY = ORIGIN_Y_CSS;
+        glyphCtx.fillText(text, localX, localY);
+        glyphCtx.restore();
+
+        if (useTexture){
+          const glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
+          applyInkTexture(glyphData, {
+            config: INK_TEXTURE,
+            renderScale: RENDER_SCALE,
+            sampleScale,
+            charWidth: CHAR_W,
+            seed: glyphSeed
+          });
+          glyphCtx.putImageData(glyphData, 0, 0);
+        }
+
+        if (bleedEnabled){
+          glyphCtx.save();
+          glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
+          glyphCtx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
+          glyphCtx.textAlign = 'left';
+          glyphCtx.textBaseline = 'alphabetic';
+          applyEdgeBleed(glyphCtx, {
+            config: EDGE_BLEED,
+            text,
+            x: localX,
+            y: localY,
+            color: COLORS[ink] || '#000',
+            baseSeed: glyphSeed
+          });
+          glyphCtx.restore();
+        }
+
+        glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
+        let finalImageData;
+        if (sampleScale === 1){
+          finalImageData = glyphCtx.getImageData(0, 0, cellW_draw_dp, cellH_draw_dp);
+        } else {
+          const hiData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
+          finalImageData = downsampleImageData(hiData, sampleScale, cellW_draw_dp, cellH_draw_dp);
+        }
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.putImageData(finalImageData, destX_dp, destY_dp);
+        ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+      } else {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, CELL_W_CSS, CELL_H_CSS);
+        ctx.clip();
+        const x0 = packX_css + GUTTER_CSS + X_PAD - (n - 1) * adv - SHIFT_EPS;
+        const y0 = packY_css + GUTTER_CSS + ORIGIN_Y_CSS;
+        ctx.fillText(text, x0, y0);
+        ctx.restore();
+      }
       rectDpByCode[code] = {
         sx_dp: col * cellW_pack_dp + GUTTER_DP, sy_dp: row * cellH_pack_dp + GUTTER_DP,
         sw_dp: cellW_draw_dp, sh_dp: cellH_draw_dp
@@ -409,6 +527,180 @@ function valueNoise2D(x, y, scale, seed){
   const nx0 = n00 + (n10 - n00) * sx;
   const nx1 = n01 + (n11 - n01) * sx;
   return nx0 + (nx1 - n00) * sy;
+}
+
+function normalizeDirection(dir){
+  if (!dir) return { x: 1, y: 0 };
+  const x = Number.isFinite(dir.x) ? dir.x : 1;
+  const y = Number.isFinite(dir.y) ? dir.y : 0;
+  const len = Math.hypot(x, y) || 1;
+  return { x: x / len, y: y / len };
+}
+
+function applyInkTexture(imageData, options){
+  const { config, renderScale, sampleScale, charWidth, seed } = options || {};
+  if (!config || !config.enabled) return;
+  const data = imageData.data;
+  const width = imageData.width;
+  const height = imageData.height;
+  if (!data || !width || !height) return;
+
+  const dpPerCss = Math.max(1e-6, renderScale * sampleScale);
+  const jitterSeed = (seed ^ (config.jitterSeed || 0)) >>> 0;
+  const jitterAmt = charWidth * 0.35;
+  const jitterX = (hash2(1, 0, jitterSeed) - 0.5) * jitterAmt;
+  const jitterY = (hash2(2, 0, jitterSeed) - 0.5) * jitterAmt;
+
+  const octaves = Array.isArray(config.noiseOctaves) ? config.noiseOctaves : [];
+  let weightSum = 0;
+  for (let i = 0; i < octaves.length; i++) weightSum += Math.max(0, octaves[i].weight || 0);
+  const noiseStrength = Number.isFinite(config.noiseStrength) ? config.noiseStrength : 0;
+  const noiseFloor = Number.isFinite(config.noiseFloor) ? config.noiseFloor : 0;
+
+  const chipCfg = config.chip || {};
+  const chipDensity = Math.max(0, chipCfg.density || 0);
+  const chipStrength = Math.max(0, chipCfg.strength || 0);
+  const chipFeather = Math.max(0.01, chipCfg.feather || 0.45);
+  const chipSeed = (seed ^ (chipCfg.seed || 0)) >>> 0;
+
+  const scratchCfg = config.scratch || {};
+  const scratchStrength = Math.max(0, scratchCfg.strength || 0);
+  const scratchThreshold = clamp(Number.isFinite(scratchCfg.threshold) ? scratchCfg.threshold : 0.7, 0, 1 - 1e-3);
+  const scratchScale = Math.max(1e-3, scratchCfg.scale || 1);
+  const scratchAspect = Math.max(1e-3, scratchCfg.aspect || 0.25);
+  const scratchSeed = (seed ^ (scratchCfg.seed || 0)) >>> 0;
+  const scratchDir = normalizeDirection(scratchCfg.direction);
+
+  for (let y = 0; y < height; y++){
+    for (let x = 0; x < width; x++){
+      const idx = (y * width + x) * 4;
+      const alpha = data[idx + 3];
+      if (alpha <= 0) continue;
+      let a = alpha / 255;
+      const xCss = (x / dpPerCss) + jitterX;
+      const yCss = (y / dpPerCss) + jitterY;
+
+      let noiseVal = 0.5;
+      if (octaves.length && weightSum > 0){
+        let accum = 0;
+        for (let i = 0; i < octaves.length; i++){
+          const oct = octaves[i];
+          const scaleCss = Math.max(1e-3, charWidth * Math.max(0.01, oct.scale || 1));
+          const w = Math.max(0, oct.weight || 0);
+          if (w <= 0) continue;
+          const oSeed = (seed ^ (oct.seed || 0)) >>> 0;
+          accum += w * valueNoise2D(xCss, yCss, scaleCss, oSeed);
+        }
+        noiseVal = accum / weightSum;
+      }
+
+      const mod = clamp(1 - (0.5 - noiseVal) * noiseStrength, noiseFloor, 1);
+      a *= mod;
+
+      if (chipDensity > 0 && chipStrength > 0){
+        const chipNoise = hash2(x, y, chipSeed);
+        if (chipNoise < chipDensity){
+          const t = chipNoise / Math.max(chipDensity, 1e-6);
+          const falloff = Math.pow(1 - t, chipFeather);
+          a *= Math.max(0, 1 - chipStrength * falloff);
+          if (chipNoise < chipDensity * 0.12) a *= 0.05;
+        }
+      }
+
+      if (scratchStrength > 0){
+        const proj = xCss * scratchDir.x + yCss * scratchDir.y;
+        const ortho = xCss * (-scratchDir.y) + yCss * scratchDir.x;
+        const scratchVal = valueNoise2D(proj * scratchScale, ortho * scratchAspect, scratchSeed);
+        if (scratchVal > scratchThreshold){
+          const t = (scratchVal - scratchThreshold) / Math.max(1e-6, 1 - scratchThreshold);
+          a *= Math.max(0, 1 - t * scratchStrength);
+        }
+      }
+
+      data[idx + 3] = Math.round(clamp(a, 0, 1) * 255);
+    }
+  }
+}
+
+function downsampleImageData(imageData, scale, outW, outH){
+  const width = imageData.width;
+  const height = imageData.height;
+  const src = imageData.data;
+  if (scale <= 1) return new ImageData(new Uint8ClampedArray(src), width, height);
+  const out = new Uint8ClampedArray(outW * outH * 4);
+  const inv = 1 / (scale * scale);
+  let dst = 0;
+  for (let y = 0; y < outH; y++){
+    for (let x = 0; x < outW; x++){
+      let r = 0, g = 0, b = 0, a = 0;
+      const srcY = y * scale;
+      const srcX = x * scale;
+      for (let sy = 0; sy < scale; sy++){
+        let idx = ((srcY + sy) * width + srcX) * 4;
+        for (let sx = 0; sx < scale; sx++){
+          r += src[idx];
+          g += src[idx + 1];
+          b += src[idx + 2];
+          a += src[idx + 3];
+          idx += 4;
+        }
+      }
+      out[dst++] = Math.round(r * inv);
+      out[dst++] = Math.round(g * inv);
+      out[dst++] = Math.round(b * inv);
+      out[dst++] = Math.round(a * inv);
+    }
+  }
+  return new ImageData(out, outW, outH);
+}
+
+function lightenHexColor(hex, factor){
+  if (typeof hex !== 'string' || !hex.startsWith('#')) return hex;
+  const norm = hex.length === 4
+    ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
+    : hex;
+  const num = Number.parseInt(norm.slice(1), 16);
+  if (!Number.isFinite(num)) return hex;
+  const r = (num >> 16) & 0xFF;
+  const g = (num >> 8) & 0xFF;
+  const b = num & 0xFF;
+  const f = clamp(factor, 0, 1);
+  const rn = Math.round(r + (255 - r) * f);
+  const gn = Math.round(g + (255 - g) * f);
+  const bn = Math.round(b + (255 - b) * f);
+  return `rgb(${rn},${gn},${bn})`;
+}
+
+function applyEdgeBleed(ctx, options){
+  const { config, text, x, y, color, baseSeed } = options || {};
+  if (!config || !config.enabled || !text) return;
+  const passes = Array.isArray(config.passes) ? config.passes : [];
+  if (!passes.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-over';
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (let i = 0; i < passes.length; i++){
+    const pass = passes[i];
+    const strokes = Math.max(1, pass.strokes | 0);
+    const jitter = Number.isFinite(pass.jitter) ? pass.jitter : 0;
+    const jitterY = Number.isFinite(pass.jitterY) ? pass.jitterY : jitter;
+    const width = Math.max(0.01, pass.width || 0.5);
+    const alpha = clamp(pass.alpha ?? 0.12, 0, 1);
+    const lighten = clamp(pass.lighten ?? 0.4, 0, 1);
+    const strokeColor = lightenHexColor(color, lighten);
+    ctx.lineWidth = width;
+    ctx.strokeStyle = strokeColor;
+    for (let s = 0; s < strokes; s++){
+      const localSeed = (baseSeed ^ Math.imul((i + 1) * 0x45D9F3B, (s + 1))) ^ (pass.seed || 0);
+      const ox = (hash2((s + 1) * 17, (i + 3) * 131, localSeed) - 0.5) * jitter;
+      const oy = (hash2((s + 4) * 23, (i + 5) * 151, localSeed ^ 0x9E3779B1) - 0.5) * jitterY;
+      const alphaJitter = alpha * (0.75 + 0.25 * hash2((s + 7) * 29, (i + 11) * 37, localSeed ^ 0xA5A5A5A5));
+      ctx.globalAlpha = clamp(alphaJitter, 0, 1);
+      ctx.strokeText(text, x + ox, y + oy);
+    }
+  }
+  ctx.restore();
 }
 
 // MARKER-START: ensureGrain
