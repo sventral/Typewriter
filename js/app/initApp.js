@@ -979,7 +979,54 @@ function caretViewportPos(){
   const y = r.top  + (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * state.zoom;
   return { x, y };
 }
+function computePaperOffsetBounds(){
+  if (!app.stage || !state.pages.length) return null;
+  const stageRect = app.stage.getBoundingClientRect();
+  if (!(stageRect && stageRect.width > 0 && stageRect.height > 0)) return null;
+
+  let firstPage = null;
+  let lastPage = null;
+  for (let i = 0; i < state.pages.length; i++) {
+    const page = state.pages[i];
+    if (!page?.wrapEl) continue;
+    if (!firstPage) firstPage = page;
+    lastPage = page;
+  }
+  if (!firstPage || !lastPage) return null;
+
+  const firstRect = firstPage.wrapEl.getBoundingClientRect();
+  const lastRect = lastPage.wrapEl.getBoundingClientRect();
+  const docWidth = firstRect?.width ?? 0;
+  const docHeight = (lastRect?.bottom ?? 0) - (firstRect?.top ?? 0);
+  if (!(docWidth > 0) || !(docHeight > 0)) return null;
+
+  const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+  const baseLeft = firstRect.left - state.paperOffset.x * zoom;
+  const baseTop = firstRect.top - state.paperOffset.y * zoom;
+
+  const minLeft = Math.min(baseLeft, stageRect.right - docWidth);
+  const maxLeft = Math.max(baseLeft, stageRect.left);
+  const minTop = Math.min(baseTop, stageRect.bottom - docHeight);
+  const maxTop = Math.max(baseTop, stageRect.top);
+
+  return {
+    minX: (minLeft - baseLeft) / zoom,
+    maxX: (maxLeft - baseLeft) / zoom,
+    minY: (minTop - baseTop) / zoom,
+    maxY: (maxTop - baseTop) / zoom,
+  };
+}
+
 function setPaperOffset(x,y){
+  const bounds = computePaperOffsetBounds();
+  if (bounds){
+    if (Number.isFinite(bounds.minX) && Number.isFinite(bounds.maxX)){
+      x = clamp(x, bounds.minX, bounds.maxX);
+    }
+    if (Number.isFinite(bounds.minY) && Number.isFinite(bounds.maxY)){
+      y = clamp(y, bounds.minY, bounds.maxY);
+    }
+  }
   state.paperOffset.x = x; state.paperOffset.y = y;
   app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
   positionRulers();
