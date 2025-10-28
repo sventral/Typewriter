@@ -28,6 +28,8 @@ export function createDomRefs() {
   app.showMarginBoxCb = document.getElementById('showMarginBoxCb');
   app.wordWrapCb = document.getElementById('wordWrapCb');
   app.grainInput = document.getElementById('grainPct');
+  app.stageWidthPct = document.getElementById('stageWidthPct');
+  app.stageHeightPct = document.getElementById('stageHeightPct');
   app.zoomControls = document.getElementById('zoomControls');
   app.zoomSlider = document.getElementById('zoomSlider');
   app.zoomTrack  = document.getElementById('zoomTrack');
