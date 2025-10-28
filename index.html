@@ -51,6 +51,7 @@
       <button class="btn" id="newDocBtn">New</button>
     </div>
     <div class="toolbar-right">
+      <button class="btn" id="inkSettingsBtn">Ink settings</button>
       <button class="btn" id="toggleMarginsBtn" title="Toggle rulers">Margins</button>
       <button class="btn" id="fontsBtn">Fonts</button>
       <div class="ink-control-group">
@@ -82,6 +83,26 @@
       </div>
     </div>
   </div>
+
+  <aside id="inkSettingsPanel" class="side-panel from-right">
+    <div class="panel-content ink-settings-content">
+      <h3>Ink Settings</h3>
+      <div class="settings-group-new">
+        <div class="control-row ink-overall-row">
+          <label for="inkOverallStrength">Overall Strength (%)</label>
+          <div class="ink-inline-controls">
+            <input type="number" id="inkOverallStrength" min="0" max="100" step="1" value="100" />
+            <button class="btn apply-btn" id="inkOverallApplyBtn">Apply</button>
+          </div>
+        </div>
+      </div>
+      <div id="inkSettingsSections"></div>
+      <div class="control-row ink-copy-row">
+        <div></div>
+        <button class="btn apply-btn" id="inkSettingsCopyBtn">Copy</button>
+      </div>
+    </div>
+  </aside>
 
   <aside id="settingsPanel" class="side-panel from-left">
     <div class="panel-content">

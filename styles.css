@@ -249,6 +249,22 @@
     font-size: 13px;
   }
   .side-panel input[type="checkbox"] { margin-left: auto; display: block; }
+  .ink-settings-content h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.75; }
+  .ink-section { padding: 12px 0; border-top: 1px solid rgba(0,0,0,0.08); }
+  .ink-section:first-of-type { border-top: none; padding-top: 4px; }
+  .ink-section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .ink-section-toggle { display: flex; align-items: center; gap: 4px; font-size: 11px; letter-spacing: 0; text-transform: none; opacity: 0.8; }
+  .ink-inline-controls { display: flex; align-items: center; gap: 8px; }
+  .ink-inline-controls input[type="number"], .ink-inline-controls input[type="text"] { width: 90px; }
+  .ink-section-body .control-row { margin-bottom: 6px; }
+  .ink-subgroup { border-left: 2px solid rgba(0,0,0,0.06); padding-left: 10px; margin: 6px 0 10px; }
+  .ink-subheading { font-size: 11px; font-weight: 600; opacity: 0.65; margin: 8px 0 6px; text-transform: uppercase; }
+  .ink-array-item { border: 1px solid rgba(0,0,0,0.08); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
+  .ink-array-title { font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 6px; text-transform: uppercase; }
+  .ink-section.is-disabled { opacity: 0.55; }
+  .ink-section-apply-row .btn { margin-left: 12px; }
+  .ink-seed-input { font-family: 'SFMono-Regular', 'SFMono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; }
+  .ink-copy-row { margin-top: 16px; }
   .input-with-suffix { position: relative; display: flex; }
   .input-with-suffix input { width: 100%; }
   .input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }

@@ -6,7 +6,7 @@ export const INK_TEXTURE = {
     { scale: 0.31, weight: 0.28, seed: 0x7F4A7C15 },
     { scale: 0.14, weight: 0.18, seed: 0x51A7C4D1 }
   ],
-  noiseStrength: 0.86,
+  noiseStrength: 1.86,
   noiseFloor: 0.34,
   chip: { density: 0.017, strength: 0.88, feather: 0.45, seed: 0xC13579BD },
   scratch: {
@@ -21,7 +21,7 @@ export const INK_TEXTURE = {
 };
 
 export const EDGE_BLEED = {
-  enabled: false,
+  enabled: true,
   inks: ['b', 'r'],
   passes: [
     { width: 0.65, alpha: 0.18, jitter: 0.42, jitterY: 0.26, lighten: 0.38, strokes: 2, seed: 0x13579BDF },
