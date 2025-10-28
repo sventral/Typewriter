@@ -44,6 +44,16 @@ const touchedPages = ephemeral.touchedPages;
 // EOM
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const STAGE_WIDTH_FACTOR = 2.0;
+const STAGE_HEIGHT_FACTOR = 1.2;
+
+function getStageBounds(){
+  const width = app.PAGE_W * STAGE_WIDTH_FACTOR;
+  const height = app.PAGE_H * STAGE_HEIGHT_FACTOR;
+  const marginX = Math.max(0, (width - app.PAGE_W) / 2);
+  const marginY = Math.max(0, (height - app.PAGE_H) / 2);
+  return { width, height, marginX, marginY };
+}
 
 function focusStage(){
   if (!app.stage) return;
@@ -980,8 +990,11 @@ function caretViewportPos(){
   return { x, y };
 }
 function setPaperOffset(x,y){
-  state.paperOffset.x = x; state.paperOffset.y = y;
-  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
+  const { marginX, marginY } = getStageBounds();
+  const clampedX = clamp(x, -marginX, marginX);
+  const clampedY = clamp(y, -marginY, marginY);
+  state.paperOffset.x = clampedX; state.paperOffset.y = clampedY;
+  app.stageInner.style.transform = `translate3d(${clampedX.toFixed(3)}px,${clampedY.toFixed(3)}px,0)`;
   positionRulers();
   requestVirtualization();
 }
@@ -1079,42 +1092,48 @@ function getActivePageRect(){
 }
 
 // MARKER-START: updateRulerTicks
-function updateRulerTicks(activePageRect){
+function updateRulerTicks(activePageRect, stageRect){
   const ticksH = app.rulerH_host.querySelector('.ruler-ticks');
   const ticksV = app.rulerV_host.querySelector('.ruler-v-ticks');
   ticksH.innerHTML = ''; ticksV.innerHTML = '';
   const ppiH = (activePageRect.width / 210) * 25.4;
   const originX = activePageRect.left;
-  const startInchH = Math.floor(-originX / ppiH), endInchH = Math.ceil((window.innerWidth - originX) / ppiH);
+  const stageLeft = stageRect?.left ?? 0;
+  const stageRight = stageRect?.right ?? window.innerWidth;
+  const stageTop = stageRect?.top ?? 0;
+  const stageBottom = stageRect?.bottom ?? window.innerHeight;
+  const startInchH = Math.floor((stageLeft - originX) / ppiH), endInchH = Math.ceil((stageRight - originX) / ppiH);
   for (let i=startInchH;i<=endInchH;i++){
     for (let j=0;j<10;j++){
       const x = originX + (i + j/10) * ppiH;
-      if (x < 0 || x > window.innerWidth) continue;
+      if (x < stageLeft || x > stageRight) continue;
+      const localX = x - stageLeft;
       const tick = document.createElement('div');
       tick.className = j===0 ? 'tick major' : j===5 ? 'tick medium' : 'tick minor';
-      tick.style.left = x + 'px';
+      tick.style.left = localX + 'px';
       ticksH.appendChild(tick);
       if (j===0){
         const lbl = document.createElement('div'); lbl.className='tick-num';
-        lbl.textContent = i; lbl.style.left = (x + 4) + 'px';
+        lbl.textContent = i; lbl.style.left = (localX + 4) + 'px';
         ticksH.appendChild(lbl);
       }
     }
   }
   const ppiV = (activePageRect.height / 297) * 25.4;
   const originY = activePageRect.top;
-  const startInchV = Math.floor(-originY / ppiV), endInchV = Math.ceil((window.innerHeight - originY) / ppiV);
+  const startInchV = Math.floor((stageTop - originY) / ppiV), endInchV = Math.ceil((stageBottom - originY) / ppiV);
   for (let i=startInchV;i<=endInchV;i++){
     for (let j=0;j<10;j++){
       const y = originY + (i + j/10) * ppiV;
-      if (y < 0 || y > window.innerHeight) continue;
+      if (y < stageTop || y > stageBottom) continue;
+      const localY = y - stageTop;
       const tick = document.createElement('div');
       tick.className = j===0 ? 'tick-v major' : j===5 ? 'tick-v medium' : 'tick-v minor';
-      tick.style.top = y + 'px';
+      tick.style.top = localY + 'px';
       ticksV.appendChild(tick);
       if (j===0){
         const lbl = document.createElement('div'); lbl.className='tick-v-num';
-        lbl.textContent = i; lbl.style.top = (y + 4) + 'px';
+        lbl.textContent = i; lbl.style.top = (localY + 4) + 'px';
         ticksV.appendChild(lbl);
       }
     }
@@ -1128,24 +1147,47 @@ function positionRulers(){
   app.rulerH_stops_container.innerHTML = '';
   app.rulerV_stops_container.innerHTML = '';
   const pageRect = getActivePageRect();
+  const stageBounds = getStageBounds();
+  const stageWidthPx = stageBounds.width * state.zoom;
+  const stageHeightPx = stageBounds.height * state.zoom;
+  const stageLeft = pageRect.left - stageBounds.marginX * state.zoom;
+  const stageTop = pageRect.top - stageBounds.marginY * state.zoom;
+  const stageRect = {
+    left: stageLeft,
+    top: stageTop,
+    width: stageWidthPx,
+    height: stageHeightPx,
+  };
+  stageRect.right = stageRect.left + stageRect.width;
+  stageRect.bottom = stageRect.top + stageRect.height;
+  const px = (v) => `${v.toFixed(3)}px`;
+  app.rulerH_host.style.width = px(stageRect.width);
+  app.rulerH_host.style.left = px(stageRect.left);
+  app.rulerH_host.style.right = 'auto';
+  app.rulerH_host.style.transform = 'translateX(0)';
+  app.rulerV_host.style.height = px(stageRect.height);
+  app.rulerV_host.style.top = px(stageRect.top);
+  app.rulerV_host.style.left = px(stageRect.left);
+  app.rulerV_host.style.bottom = 'auto';
+  app.rulerV_host.style.transform = 'translateY(0)';
   const snap = computeSnappedVisualMargins();
   const mLeft = document.createElement('div');
   mLeft.className = 'tri left';
-  mLeft.style.left = (pageRect.left + snap.leftPx * state.zoom) + 'px';
+  mLeft.style.left = px(pageRect.left + snap.leftPx * state.zoom - stageRect.left);
   app.rulerH_stops_container.appendChild(mLeft);
   const mRight = document.createElement('div');
   mRight.className = 'tri right';
-  mRight.style.left = (pageRect.left + snap.rightPx * state.zoom) + 'px';
+  mRight.style.left = px(pageRect.left + snap.rightPx * state.zoom - stageRect.left);
   app.rulerH_stops_container.appendChild(mRight);
   const mTop = document.createElement('div');
   mTop.className = 'tri-v top';
-  mTop.style.top = (pageRect.top + snap.topPx * state.zoom) + 'px';
+  mTop.style.top = px(pageRect.top + snap.topPx * state.zoom - stageRect.top);
   app.rulerV_stops_container.appendChild(mTop);
   const mBottom = document.createElement('div');
   mBottom.className = 'tri-v bottom';
-  mBottom.style.top = (pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom) + 'px';
+  mBottom.style.top = px(pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom - stageRect.top);
   app.rulerV_stops_container.appendChild(mBottom);
-  updateRulerTicks(pageRect);
+  updateRulerTicks(pageRect, stageRect);
 }
 // EOM
 
