@@ -141,7 +141,27 @@
   .stage::-webkit-scrollbar-horizontal{ height:0; }
   .stage:focus{ outline:none; }
   .zoom-wrap{ width:100vw; transform-origin: top center; will-change: transform; }
-  .stage-inner{ width:100vw; padding-top:12vh; padding-bottom:calc(12vh + var(--toolbar-h)); box-sizing:border-box; will-change: transform; transform: translate3d(0px,0px,0); }
+  .stage-inner{
+    width:100vw;
+    padding-top:var(--stage-pad-top, 12vh);
+    padding-bottom:calc(var(--stage-pad-bottom, 12vh) + var(--toolbar-h));
+    box-sizing:border-box;
+    will-change: transform;
+    transform: translate3d(0px,0px,0);
+  }
+  .version-badge{
+    position:fixed;
+    top:12px;
+    left:20px;
+    font-size:11px;
+    font-family:sans-serif;
+    color:var(--ui-text);
+    letter-spacing:0.2px;
+    opacity:0.75;
+    z-index:120;
+    pointer-events:none;
+    user-select:none;
+  }
   .page-wrap{ width:calc(var(--page-w) * 1px); margin:0 auto 16px; position:relative; }
   .page{ width:100%; background:var(--page-bg); box-shadow:0 8px 24px rgba(0,0,0,0.10); position:relative; overflow:hidden; }
   .margin-box{ position:absolute; border:1px dashed rgba(0,0,0,0.25); pointer-events:none; visibility:hidden; }
@@ -155,7 +175,7 @@
   .tick-num{ position:absolute; top:0; font-size:9px; line-height:9px; color:var(--ruler-tick); font-family:sans-serif; opacity:0.8 }
   .tri{ position:absolute; bottom:0; width:0; height:0; cursor:ew-resize; border-left:8px solid transparent; border-right:8px solid transparent; border-bottom:var(--tri-h) solid var(--tri-color); transform:translateX(-50%); filter:drop-shadow(0 0 1px #0004); z-index:2; user-select:none; outline:none; }
   .tri.right{border-bottom-color:var(--tri-red)}
-  .ruler-v{ position:fixed; left:0; top:0; bottom:0; width:16px; z-index:50; display:block; overflow:hidden; pointer-events:none; }
+  .ruler-v{ position:fixed; left:0; top:0; width:16px; height:100%; z-index:50; display:block; overflow:hidden; pointer-events:none; }
   #rulerV_stops_container { position:absolute; inset:0; pointer-events:auto; }
   .ruler-v-ticks{ position:absolute; inset:0; background:var(--ruler-bg); border-right:1px solid var(--ruler-tick); box-sizing:border-box; }
   .tick-v{ position:absolute; right:0; height:1px; background:var(--ruler-tick); transform:translateZ(0) }
