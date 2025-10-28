@@ -9,6 +9,8 @@ export function createMainState(app, gridDiv = 8) {
     hammerLock: true,
     caretAnchor: { x: 0.5, y: 0.5, unit: 'fraction' },
     paperOffset: { x: 0, y: 0 },
+    stageWidthFactor: 2.0,
+    stageHeightFactor: 1.2,
     cpi: 10,
     colsAcross: 82.68,
     inkWidthPct: 84,
