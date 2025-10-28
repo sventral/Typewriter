@@ -133,7 +133,7 @@
   .stage{
     height:100vh;
     overflow-y:auto;
-    overflow-x:auto;
+    overflow-x:hidden;
     background:var(--stage-bg);
     position:relative;
     scrollbar-gutter:stable;
