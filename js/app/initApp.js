@@ -45,24 +45,6 @@ const touchedPages = ephemeral.touchedPages;
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 
-function computePanLimits(){
-  const zoom = state.zoom || 1;
-  const visW = window.innerWidth / zoom;
-  const visH = window.innerHeight / zoom;
-  const contentW = app.PAGE_W;
-  const pageCount = state.pages.length;
-  const spacing = pageCount > 0 ? (pageCount - 1) * 16 : 0;
-  let contentH = pageCount * app.PAGE_H + spacing;
-  const padTop = 0.12 * window.innerHeight / zoom;
-  const padBottom = (0.12 * window.innerHeight + 48) / zoom;
-  contentH += padTop + padBottom;
-  const gutterX = 32 / zoom;
-  const gutterY = 32 / zoom;
-  const rangeX = Math.max(0, (contentW - visW) / 2) + gutterX;
-  const rangeY = Math.max(0, (contentH - visH) / 2) + gutterY;
-  return { minX: -rangeX, maxX: rangeX, minY: -rangeY, maxY: rangeY };
-}
-
 function focusStage(){
   if (!app.stage) return;
   requestAnimationFrame(() => {
@@ -594,7 +576,6 @@ function applyMetricsNow(full=false){
   updateCaretPosition();
   positionRulers();
   requestVirtualization();
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   saveStateDebounced();
   endBatch();
 }
@@ -765,7 +746,6 @@ function addPage() {
   state.pages.push(page);
   renderMargins();
   requestVirtualization();
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   return page;
 }
 function bootstrapFirstPage() {
@@ -797,7 +777,6 @@ function resetPagesBlankPreserveSettings(){
   state.pages.push(page);
   renderMargins();
   requestVirtualization();
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
 }
 // EOM
 
@@ -986,7 +965,6 @@ function rewrapDocumentToCurrentBounds(){
   updateCaretPosition();
   positionRulers();
   requestVirtualization();
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   saveStateDebounced();
   endBatch();
 }
@@ -1002,9 +980,6 @@ function caretViewportPos(){
   return { x, y };
 }
 function setPaperOffset(x,y){
-  const lim = computePanLimits();
-  x = clamp(x, lim.minX, lim.maxX);
-  y = clamp(y, lim.minY, lim.maxY);
   state.paperOffset.x = x; state.paperOffset.y = y;
   app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
   positionRulers();
@@ -1067,7 +1042,6 @@ function renderMargins(){
     p.marginBoxEl.style.bottom = Math.round(snap.bottomPx) + 'px';
     p.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
   }
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
 }
 // EOM
 
@@ -1320,7 +1294,6 @@ function applyZoomCSS(){
   app.zoomWrap.style.transform = `scale(${state.zoom})`;
   positionRulers();
   requestVirtualization();
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
 }
 
 // MARKER-START: scheduleZoomCrispRedraw
@@ -1340,7 +1313,6 @@ function scheduleZoomCrispRedraw(){
     }
     rebuildAllAtlases();
     for (const p of state.pages){ if (p.active) schedulePaint(p); }
-    setPaperOffset(state.paperOffset.x, state.paperOffset.y);
     nudgePaperToAnchor();
   }, 160);
 }
@@ -1788,12 +1760,7 @@ function updateVirtualization() {
 }
 function requestVirtualization() {
   if (virtRAF) return;
-  virtRAF = requestAnimationFrame(() => {
-    virtRAF = -1;
-    updateVirtualization();
-    setPaperOffset(state.paperOffset.x, state.paperOffset.y);
-    virtRAF = 0;
-  });
+  virtRAF = requestAnimationFrame(() => { virtRAF = 0; updateVirtualization(); });
 }
 function applyDefaultMargins() {
   const mmw = app.PAGE_W / 210, mmh = app.PAGE_H / 297, mW = 20 * mmw, mH = 20 * mmh;
@@ -1882,7 +1849,6 @@ function createNewDocument(){
   document.body.classList.toggle('rulers-off', !state.showRulers);
   positionRulers();
   requestVirtualization();
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   saveStateNow();
   endBatch();
 }
@@ -2028,12 +1994,7 @@ function bindEventListeners(){
   window.addEventListener('keydown', handleKeyDown, { capture: true });
   window.addEventListener('paste', handlePaste, { capture: true });
   app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
-  window.addEventListener('resize', () => {
-    positionRulers();
-    if (!zooming) nudgePaperToAnchor();
-    requestVirtualization();
-    setPaperOffset(state.paperOffset.x, state.paperOffset.y);
-  }, { passive: true });
+  window.addEventListener('resize', () => { positionRulers(); if (!zooming) nudgePaperToAnchor(); requestVirtualization(); }, { passive: true });
   window.addEventListener('beforeunload', saveStateNow);
   window.addEventListener('click', () => window.focus(), { passive: true });
 }
