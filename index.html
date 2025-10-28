@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div class="app-version">v.1.4</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -123,6 +124,18 @@
         <div class="control-row">
           <div></div>
           <button class="btn apply-btn" id="applyLHBtn" title="Apply line height">Apply</button>
+        </div>
+      </div>
+      <hr class="divider">
+      <h3>Stage Bounds</h3>
+      <div class="settings-group-new">
+        <div class="control-row">
+          <label for="stageWidthPct">Horizontal (%)</label>
+          <input id="stageWidthPct" type="number" min="100" max="500" step="10" value="200" title="Stage width as % of page width" />
+        </div>
+        <div class="control-row">
+          <label for="stageHeightPct">Vertical (%)</label>
+          <input id="stageHeightPct" type="number" min="100" max="500" step="10" value="120" title="Stage height as % of page height" />
         </div>
       </div>
       <hr class="divider">

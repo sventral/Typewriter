@@ -44,6 +44,11 @@ const touchedPages = ephemeral.touchedPages;
 // EOM
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const STAGE_WIDTH_MIN = 1.0;
+const STAGE_WIDTH_MAX = 5.0;
+const STAGE_HEIGHT_MIN = 1.0;
+const STAGE_HEIGHT_MAX = 5.0;
+let cachedToolbarHeight = null;
 
 function focusStage(){
   if (!app.stage) return;
@@ -85,6 +90,55 @@ function sanitizeIntegerField(el, options = {}){
   return n;
 }
 
+function sanitizedStageWidthFactor(){
+  const raw = Number(state.stageWidthFactor);
+  const fallback = 2.0;
+  const sanitized = clamp(Number.isFinite(raw) ? raw : fallback, STAGE_WIDTH_MIN, STAGE_WIDTH_MAX);
+  if (sanitized !== state.stageWidthFactor) state.stageWidthFactor = sanitized;
+  return sanitized;
+}
+
+function sanitizedStageHeightFactor(){
+  const raw = Number(state.stageHeightFactor);
+  const fallback = 1.2;
+  const sanitized = clamp(Number.isFinite(raw) ? raw : fallback, STAGE_HEIGHT_MIN, STAGE_HEIGHT_MAX);
+  if (sanitized !== state.stageHeightFactor) state.stageHeightFactor = sanitized;
+  return sanitized;
+}
+
+function stageDimensions(){
+  const widthFactor = sanitizedStageWidthFactor();
+  const heightFactor = sanitizedStageHeightFactor();
+  const width = app.PAGE_W * widthFactor;
+  const height = app.PAGE_H * heightFactor;
+  const extraX = Math.max(0, (width - app.PAGE_W) / 2);
+  const extraY = Math.max(0, (height - app.PAGE_H) / 2);
+  return { widthFactor, heightFactor, width, height, extraX, extraY };
+}
+
+function toolbarHeightPx(){
+  if (cachedToolbarHeight !== null) return cachedToolbarHeight;
+  try {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--toolbar-h');
+    const parsed = parseFloat(raw);
+    cachedToolbarHeight = Number.isFinite(parsed) ? parsed : 48;
+  } catch {
+    cachedToolbarHeight = 48;
+  }
+  return cachedToolbarHeight;
+}
+
+function sanitizeStageInput(input, fallbackFactor, allowEmpty, isWidth){
+  if (!input) return null;
+  const minPct = Math.round((isWidth ? STAGE_WIDTH_MIN : STAGE_HEIGHT_MIN) * 100);
+  const maxPct = Math.round((isWidth ? STAGE_WIDTH_MAX : STAGE_HEIGHT_MAX) * 100);
+  const fallbackPct = clamp(Math.round(fallbackFactor * 100), minPct, maxPct);
+  const value = sanitizeIntegerField(input, { min: minPct, max: maxPct, allowEmpty, fallbackValue: fallbackPct });
+  if (value === null || !Number.isFinite(value)) return allowEmpty ? null : clamp(fallbackFactor, isWidth ? STAGE_WIDTH_MIN : STAGE_HEIGHT_MIN, isWidth ? STAGE_WIDTH_MAX : STAGE_HEIGHT_MAX);
+  const factor = value / 100;
+  return clamp(factor, isWidth ? STAGE_WIDTH_MIN : STAGE_HEIGHT_MIN, isWidth ? STAGE_WIDTH_MAX : STAGE_HEIGHT_MAX);
+}
+
 // MARKER-START: isToolbarInput
 function isToolbarInput(el){
   if (!el) return false;
@@ -93,7 +147,8 @@ function isToolbarInput(el){
     id === 'sizeInput' || id === 'lhInput' || id === 'cpiSelect' ||
     id === 'showMarginBoxCb' || id === 'wordWrapCb' ||
     id === 'mmLeft' || id === 'mmRight' || id === 'mmTop' || id === 'mmBottom' ||
-    id === 'grainPct' || id.includes('Slider')
+    id === 'grainPct' || id === 'stageWidthPct' || id === 'stageHeightPct' ||
+    id.includes('Slider')
   );
 }
 // EOM
@@ -572,6 +627,7 @@ function applyMetricsNow(full=false){
     if (p.active) schedulePaint(p);
   }
   renderMargins();
+  updateStageEnvironment();
   clampCaretToBounds();
   updateCaretPosition();
   positionRulers();
@@ -979,9 +1035,54 @@ function caretViewportPos(){
   const y = r.top  + (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * state.zoom;
   return { x, y };
 }
+function updateRulerHostDimensions(stageW, stageH){
+  if (!app.rulerH_host || !app.rulerV_host) return;
+  const scaledW = stageW * state.zoom;
+  const scaledH = stageH * state.zoom;
+  app.rulerH_host.style.width = `${scaledW}px`;
+  app.rulerV_host.style.height = `${scaledH}px`;
+}
+
+function clampPaperOffset(x, y){
+  const { extraX, extraY } = stageDimensions();
+  const minX = -extraX;
+  const maxX = extraX;
+  const minY = -extraY;
+  const maxY = extraY;
+  return { x: clamp(x, minX, maxX), y: clamp(y, minY, maxY) };
+}
+
+function updateStageEnvironment(){
+  const dims = stageDimensions();
+  const rootStyle = document.documentElement.style;
+  rootStyle.setProperty('--stage-width-mult', dims.widthFactor.toString());
+  rootStyle.setProperty('--stage-height-mult', dims.heightFactor.toString());
+  if (app.zoomWrap){
+    app.zoomWrap.style.width = `${dims.width}px`;
+    app.zoomWrap.style.minHeight = `${dims.height}px`;
+    app.zoomWrap.style.height = '';
+  }
+  if (app.stageInner){
+    app.stageInner.style.minWidth = `${dims.width}px`;
+    app.stageInner.style.minHeight = `${dims.height}px`;
+    app.stageInner.style.paddingLeft = `${dims.extraX}px`;
+    app.stageInner.style.paddingRight = `${dims.extraX}px`;
+    const padTop = dims.extraY;
+    const padBottom = dims.extraY + toolbarHeightPx();
+    app.stageInner.style.paddingTop = `${padTop}px`;
+    app.stageInner.style.paddingBottom = `${padBottom}px`;
+  }
+  updateRulerHostDimensions(dims.width, dims.height);
+  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
+}
+
 function setPaperOffset(x,y){
-  state.paperOffset.x = x; state.paperOffset.y = y;
-  app.stageInner.style.transform = `translate3d(${x.toFixed(3)}px,${y.toFixed(3)}px,0)`;
+  const clamped = clampPaperOffset(x, y);
+  state.paperOffset.x = clamped.x;
+  state.paperOffset.y = clamped.y;
+  if (app.stageInner){
+    app.stageInner.style.transform = `translate3d(${clamped.x.toFixed(3)}px,${clamped.y.toFixed(3)}px,0)`;
+  }
   positionRulers();
   requestVirtualization();
 }
@@ -1085,11 +1186,12 @@ function updateRulerTicks(activePageRect){
   ticksH.innerHTML = ''; ticksV.innerHTML = '';
   const ppiH = (activePageRect.width / 210) * 25.4;
   const originX = activePageRect.left;
-  const startInchH = Math.floor(-originX / ppiH), endInchH = Math.ceil((window.innerWidth - originX) / ppiH);
+  const hostWidth = app.rulerH_host.getBoundingClientRect().width || window.innerWidth;
+  const startInchH = Math.floor(-originX / ppiH), endInchH = Math.ceil((hostWidth - originX) / ppiH);
   for (let i=startInchH;i<=endInchH;i++){
     for (let j=0;j<10;j++){
       const x = originX + (i + j/10) * ppiH;
-      if (x < 0 || x > window.innerWidth) continue;
+      if (x < 0 || x > hostWidth) continue;
       const tick = document.createElement('div');
       tick.className = j===0 ? 'tick major' : j===5 ? 'tick medium' : 'tick minor';
       tick.style.left = x + 'px';
@@ -1103,11 +1205,12 @@ function updateRulerTicks(activePageRect){
   }
   const ppiV = (activePageRect.height / 297) * 25.4;
   const originY = activePageRect.top;
-  const startInchV = Math.floor(-originY / ppiV), endInchV = Math.ceil((window.innerHeight - originY) / ppiV);
+  const hostHeight = app.rulerV_host.getBoundingClientRect().height || window.innerHeight;
+  const startInchV = Math.floor(-originY / ppiV), endInchV = Math.ceil((hostHeight - originY) / ppiV);
   for (let i=startInchV;i<=endInchV;i++){
     for (let j=0;j<10;j++){
       const y = originY + (i + j/10) * ppiV;
-      if (y < 0 || y > window.innerHeight) continue;
+      if (y < 0 || y > hostHeight) continue;
       const tick = document.createElement('div');
       tick.className = j===0 ? 'tick-v major' : j===5 ? 'tick-v medium' : 'tick-v minor';
       tick.style.top = y + 'px';
@@ -1291,7 +1394,11 @@ function applyLineHeight(){
   focusStage();
 }
 function applyZoomCSS(){
-  app.zoomWrap.style.transform = `scale(${state.zoom})`;
+  if (app.zoomWrap){
+    app.zoomWrap.style.transform = `scale(${state.zoom})`;
+  }
+  const dims = stageDimensions();
+  updateRulerHostDimensions(dims.width, dims.height);
   positionRulers();
   requestVirtualization();
 }
@@ -1650,6 +1757,8 @@ function serializeState(){
     inkOpacity: state.inkOpacity, lineHeightFactor: state.lineHeightFactor, zoom: state.zoom,
     grainPct: state.grainPct, grainSeed: state.grainSeed >>> 0, altSeed: state.altSeed >>> 0,
     wordWrap: state.wordWrap,
+    stageWidthFactor: state.stageWidthFactor,
+    stageHeightFactor: state.stageHeightFactor,
     pages
   };
 }
@@ -1688,6 +1797,14 @@ function deserializeState(data){
   const sanitizedInkWidth = Number.isFinite(storedInkWidth)
     ? clamp(Math.round(storedInkWidth), 1, 150)
     : 84;
+  const storedStageWidth = Number(data.stageWidthFactor);
+  const storedStageHeight = Number(data.stageHeightFactor);
+  const sanitizedStageWidth = Number.isFinite(storedStageWidth)
+    ? clamp(storedStageWidth, 1, 5)
+    : state.stageWidthFactor;
+  const sanitizedStageHeight = Number.isFinite(storedStageHeight)
+    ? clamp(storedStageHeight, 1, 5)
+    : state.stageHeightFactor;
   Object.assign(state, {
     marginL: data.margins?.L ?? state.marginL, marginR: data.margins?.R ?? state.marginR,
     marginTop: data.margins?.T ?? state.marginTop, marginBottom: data.margins?.B ?? state.marginBottom,
@@ -1701,7 +1818,9 @@ function deserializeState(data){
     grainPct: clamp(Number(data.grainPct ?? 0), 0, 100),
     grainSeed: (data.grainSeed >>> 0) || ((Math.random()*0xFFFFFFFF)>>>0),
     altSeed: (data.altSeed >>> 0) || (((data.grainSeed>>>0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random()*0xFFFFFFFF)>>>0),
-    wordWrap: (data.wordWrap !== false)
+    wordWrap: (data.wordWrap !== false),
+    stageWidthFactor: sanitizedStageWidth,
+    stageHeightFactor: sanitizedStageHeight
   });
   state.lineStepMu = Math.round(GRID_DIV * state.lineHeightFactor);
   if (data.fontName) ACTIVE_FONT_NAME = data.fontName;
@@ -1940,6 +2059,22 @@ function bindEventListeners(){
     });
   });
 
+  const updateStageBounds = (allowEmpty)=>{
+    const widthFactor = sanitizeStageInput(app.stageWidthPct, state.stageWidthFactor, allowEmpty, true);
+    const heightFactor = sanitizeStageInput(app.stageHeightPct, state.stageHeightFactor, allowEmpty, false);
+    if (widthFactor == null || heightFactor == null) return;
+    const changed = (widthFactor !== state.stageWidthFactor) || (heightFactor !== state.stageHeightFactor);
+    state.stageWidthFactor = widthFactor;
+    state.stageHeightFactor = heightFactor;
+    updateStageEnvironment();
+    if (changed) saveStateDebounced();
+  };
+  [app.stageWidthPct, app.stageHeightPct].forEach(inp=>{
+    if (!inp) return;
+    inp.addEventListener('input', ()=> updateStageBounds(true));
+    inp.addEventListener('change', ()=>{ updateStageBounds(false); focusStage(); });
+  });
+
   if (app.sizeInput){
     app.sizeInput.addEventListener('input', ()=>{ sanitizeIntegerField(app.sizeInput, { min:1, max:150, allowEmpty:true }); });
     app.sizeInput.addEventListener('change', ()=>{
@@ -2027,6 +2162,8 @@ async function initialize() {
   app.mmRight.value  = Math.round(mmX(app.PAGE_W - state.marginR));
   app.mmTop.value    = Math.round(mmY(state.marginTop));
   app.mmBottom.value = Math.round(mmY(state.marginBottom));
+  if (app.stageWidthPct) app.stageWidthPct.value = String(Math.round(sanitizedStageWidthFactor() * 100));
+  if (app.stageHeightPct) app.stageHeightPct.value = String(Math.round(sanitizedStageHeightFactor() * 100));
 
   if (!loaded){
     state.cpi = 10;
@@ -2040,6 +2177,7 @@ async function initialize() {
     applyDefaultMargins();
   }
 
+  updateStageEnvironment();
   setZoomPercent(Math.round(state.zoom*100) || 100);
   updateZoomUIFromState();
   setPaperOffset(0,0);
