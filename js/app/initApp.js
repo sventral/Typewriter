@@ -430,6 +430,12 @@ function ensureGrain(page){
   const wHash = GRAIN_CFG.pixel_hash_weight ?? 0.10;
   const postGamma = GRAIN_CFG.post_gamma || 1.0;
   const hashSeed = (GRAIN_CFG.seeds && GRAIN_CFG.seeds.hash) || 0x5F356495;
+  const fineCfg = GRAIN_CFG.fine_grit || {};
+  const fineWeight = Math.max(0, fineCfg.weight || 0);
+  const fineScale = fineWeight > 0 ? Math.max(0.5, sBase * (fineCfg.scale_mul || 0.22)) : 0;
+  const fineMaskPow = Math.max(0.1, fineCfg.mask_pow || 1.0);
+  const fineContrast = Math.max(0, fineCfg.contrast || 1.0);
+  const fineSeed = (fineCfg.seed >>> 0) || 0xC0DEC0DE;
   let p = 0;
   for (let y = 0; y < H; y++){
     for (let x = 0; x < W; x++){
@@ -439,6 +445,17 @@ function ensureGrain(page){
       }
       v += wHash * hash2(x, y, seed ^ hashSeed);
       v = Math.min(1, Math.max(0, v));
+      if (fineWeight > 0 && fineScale > 0) {
+        const maskBase = Math.min(1, Math.max(0, v * (1 - v) * 4));
+        if (maskBase > 0) {
+          const mask = Math.pow(maskBase, fineMaskPow);
+          if (mask > 0) {
+            const fineNoise = valueNoise2D(x + 0.5, y + 0.5, fineScale, seed ^ fineSeed);
+            const fineDelta = ((fineNoise - 0.5) * 2) * fineContrast;
+            v = Math.min(1, Math.max(0, v + fineWeight * fineDelta * mask));
+          }
+        }
+      }
       if (postGamma !== 1) v = Math.pow(v, postGamma);
       data[p+3] = (v * 255) | 0;
       p += 4;
