@@ -1,7 +1,7 @@
 import { createDomRefs } from './domElements.js';
 import { computeBaseMetrics } from './metrics.js';
 import { createMainState, createEphemeralState } from './state.js';
-import { GRAIN_CFG } from './grainConfig.js';
+import { INK_EFFECT_CONFIG, cloneInkConfig } from './inkConfig.js';
 
 export function initApp(){
 
@@ -48,7 +48,537 @@ const STAGE_WIDTH_MIN = 1.0;
 const STAGE_WIDTH_MAX = 5.0;
 const STAGE_HEIGHT_MIN = 1.0;
 const STAGE_HEIGHT_MAX = 5.0;
+
+const baseInkConfig = cloneInkConfig(INK_EFFECT_CONFIG);
+let inkConfig = cloneInkConfig(INK_EFFECT_CONFIG);
 let cachedToolbarHeight = null;
+
+const inkControlRegistry = new Map();
+let inkConfigRAF = 0;
+
+function deepCloneValue(value){
+  if (typeof structuredClone === 'function'){
+    try { return structuredClone(value); }
+    catch {}
+  }
+  return JSON.parse(JSON.stringify(value));
+}
+
+function getGrainConfig(){
+  return inkConfig.grain || baseInkConfig.grain;
+}
+
+function masterScale(){
+  return clamp(((inkConfig.master ?? 100) / 100), 0, 1);
+}
+
+function computeEffectiveTextureConfig(){
+  const cfg = inkConfig.texture || baseInkConfig.texture || {};
+  const result = deepCloneValue(cfg);
+  const scale = clamp(masterScale() * ((cfg.master ?? 100) / 100), 0, 1);
+  result.supersample = Math.max(1, Math.round(result.supersample || 1));
+  if (!cfg.enabled || scale <= 0){
+    result.enabled = false;
+    return result;
+  }
+  result.enabled = true;
+  result.noiseStrength = (cfg.noiseStrength ?? 0) * scale;
+  const floor = clamp(cfg.noiseFloor ?? 1, 0, 1);
+  result.noiseFloor = 1 - (1 - floor) * scale;
+  result.noiseOctaves = Array.isArray(cfg.noiseOctaves)
+    ? cfg.noiseOctaves.map(o => ({ ...o }))
+    : [];
+  const chip = cfg.chip || {};
+  result.chip = {
+    density: (chip.density ?? 0) * scale,
+    strength: (chip.strength ?? 0) * scale,
+    feather: chip.feather ?? 0.45,
+    seed: chip.seed ?? 0
+  };
+  const scratch = cfg.scratch || {};
+  const threshold = clamp(scratch.threshold ?? 0.7, 0, 1);
+  result.scratch = {
+    direction: { x: scratch.direction?.x ?? 1, y: scratch.direction?.y ?? 0 },
+    scale: scratch.scale ?? 1,
+    aspect: scratch.aspect ?? 0.25,
+    threshold: 1 - (1 - threshold) * scale,
+    strength: (scratch.strength ?? 0) * scale,
+    seed: scratch.seed ?? 0
+  };
+  result.jitterSeed = cfg.jitterSeed ?? 0;
+  return result;
+}
+
+function computeEffectiveEdgeConfig(){
+  const cfg = inkConfig.edgeBleed || baseInkConfig.edgeBleed || {};
+  const result = deepCloneValue(cfg);
+  const scale = clamp(masterScale() * ((cfg.master ?? 100) / 100), 0, 1);
+  const enabled = !!cfg.enabled && scale > 0;
+  result.enabled = enabled;
+  result.inks = Array.isArray(cfg.inks) ? [...cfg.inks] : [];
+  result.passes = enabled && Array.isArray(cfg.passes)
+    ? cfg.passes.map(pass => ({
+        width: Math.max(0, pass.width ?? 0),
+        alpha: clamp((pass.alpha ?? 0) * scale, 0, 1),
+        jitter: (pass.jitter ?? 0) * scale,
+        jitterY: (pass.jitterY ?? pass.jitter ?? 0) * scale,
+        lighten: clamp((pass.lighten ?? 0) * scale, 0, 1),
+        strokes: Math.max(1, Math.round(pass.strokes ?? 1)),
+        seed: pass.seed ?? 0
+      }))
+    : [];
+  return result;
+}
+
+function setInkConfigValue(path, value){
+  if (!Array.isArray(path) || !path.length) return;
+  let target = inkConfig;
+  for (let i = 0; i < path.length - 1; i++){
+    const key = path[i];
+    if (target[key] == null){
+      target[key] = typeof path[i + 1] === 'number' ? [] : {};
+    }
+    target = target[key];
+  }
+  target[path[path.length - 1]] = value;
+}
+
+function getInkConfigValue(path){
+  let target = inkConfig;
+  for (let i = 0; i < path.length; i++){
+    if (target == null) return undefined;
+    target = target[path[i]];
+  }
+  return target;
+}
+
+function applyInkConfigChange(){
+  rebuildAllAtlases();
+  for (const page of state.pages){
+    page.dirtyAll = true;
+    if (page.active) schedulePaint(page);
+  }
+}
+
+function scheduleInkConfigChange(){
+  if (inkConfigRAF) return;
+  inkConfigRAF = requestAnimationFrame(() => {
+    inkConfigRAF = 0;
+    applyInkConfigChange();
+  });
+}
+
+function pathKey(path){
+  return path.map(seg => (typeof seg === 'number') ? `#${seg}` : seg).join('.');
+}
+
+function getStepDecimals(step){
+  if (!Number.isFinite(step) || step <= 0) return 0;
+  const str = String(step);
+  if (str.includes('e') || str.includes('E')){
+    const match = /e[-+]?([0-9]+)/i.exec(str);
+    const pow = match ? Number(match[1]) : 0;
+    return Math.min(6, pow + 2);
+  }
+  const idx = str.indexOf('.');
+  return idx === -1 ? 0 : (str.length - idx - 1);
+}
+
+function clampNumericValue(value, entry){
+  let v = Number(value);
+  if (!Number.isFinite(v)) v = Number(entry.min ?? 0) || 0;
+  if (Number.isFinite(entry.min)) v = Math.max(entry.min, v);
+  if (Number.isFinite(entry.max)) v = Math.min(entry.max, v);
+  if (entry.integer) v = Math.round(v);
+  const decimals = Number.isInteger(entry.decimals)
+    ? entry.decimals
+    : Math.max(getStepDecimals(entry.step ?? 0), 0);
+  if (!entry.integer && decimals > 0){
+    v = Number(v.toFixed(decimals));
+  }
+  return v;
+}
+
+function formatNumber(value, decimals = 2){
+  if (!Number.isFinite(value)) return '0';
+  const fixed = Number(value).toFixed(Math.max(0, decimals));
+  return fixed.replace(/\.0+$|0+$/,'').replace(/\.$/, '');
+}
+
+function formatSeed(value){
+  const num = (Number(value) >>> 0) >>> 0;
+  return `0x${num.toString(16).toUpperCase().padStart(8, '0')}`;
+}
+
+function parseSeedInput(value){
+  const raw = (value ?? '').toString().trim();
+  if (!raw) return 0;
+  let num = 0;
+  if (/^0x/i.test(raw)) num = Number.parseInt(raw, 16);
+  else num = Number.parseInt(raw, 10);
+  if (!Number.isFinite(num)) return 0;
+  return (num >>> 0);
+}
+
+function registerInkControl(entry){
+  inkControlRegistry.set(pathKey(entry.path), entry);
+}
+
+function refreshInkControls(){
+  for (const entry of inkControlRegistry.values()){
+    if (typeof entry.refresh === 'function') entry.refresh();
+  }
+}
+
+function createControlRow(container, labelText){
+  const row = document.createElement('div');
+  row.className = 'ink-control-row';
+  const label = document.createElement('label');
+  label.textContent = labelText;
+  row.appendChild(label);
+  container.appendChild(row);
+  return { row, label };
+}
+
+function createRangeControl(def, container){
+  const { row } = createControlRow(container, def.label);
+  const wrap = document.createElement('div');
+  wrap.className = 'ink-control-input';
+  const input = document.createElement('input');
+  input.type = 'range';
+  if (Number.isFinite(def.min)) input.min = String(def.min);
+  if (Number.isFinite(def.max)) input.max = String(def.max);
+  if (Number.isFinite(def.step)) input.step = String(def.step);
+  const valueEl = document.createElement('span');
+  valueEl.className = 'ink-control-value';
+  wrap.appendChild(input);
+  wrap.appendChild(valueEl);
+  row.appendChild(wrap);
+
+  const decimals = Number.isInteger(def.decimals) ? def.decimals : Math.max(getStepDecimals(def.step ?? 0), 0);
+  const entry = {
+    path: def.path,
+    type: 'range',
+    input,
+    valueEl,
+    min: def.min,
+    max: def.max,
+    step: def.step,
+    integer: !!def.integer,
+    decimals,
+    format: def.format || (v => formatNumber(v, decimals)),
+    refresh(){
+      const value = clampNumericValue(getInkConfigValue(def.path), entry);
+      input.value = String(value);
+      valueEl.textContent = entry.format(value);
+    }
+  };
+
+  input.addEventListener('input', () => {
+    const value = clampNumericValue(Number(input.value), entry);
+    setInkConfigValue(def.path, value);
+    valueEl.textContent = entry.format(value);
+    scheduleInkConfigChange();
+  });
+  input.addEventListener('change', () => {
+    const value = clampNumericValue(Number(input.value), entry);
+    input.value = String(value);
+    valueEl.textContent = entry.format(value);
+  });
+
+  registerInkControl(entry);
+  return entry;
+}
+
+function createToggleControl(def, container){
+  const { row } = createControlRow(container, def.label);
+  const wrap = document.createElement('div');
+  wrap.className = 'ink-control-input toggle-input';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  const valueEl = document.createElement('span');
+  valueEl.className = 'ink-control-value';
+  wrap.appendChild(input);
+  wrap.appendChild(valueEl);
+  row.appendChild(wrap);
+
+  const entry = {
+    path: def.path,
+    type: 'toggle',
+    input,
+    valueEl,
+    format: def.format || (v => v ? 'On' : 'Off'),
+    refresh(){
+      const value = !!getInkConfigValue(def.path);
+      input.checked = value;
+      valueEl.textContent = entry.format(value);
+    }
+  };
+
+  input.addEventListener('change', () => {
+    const value = !!input.checked;
+    setInkConfigValue(def.path, value);
+    valueEl.textContent = entry.format(value);
+    scheduleInkConfigChange();
+  });
+
+  registerInkControl(entry);
+  return entry;
+}
+
+function createSeedInput(def, container){
+  const { row } = createControlRow(container, def.label);
+  const wrap = document.createElement('div');
+  wrap.className = 'ink-control-input seed-input';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.spellcheck = false;
+  input.autocomplete = 'off';
+  input.inputMode = 'text';
+  input.pattern = '0x[0-9a-fA-F]+|[0-9]+';
+  const valueEl = document.createElement('span');
+  valueEl.className = 'ink-control-value';
+  wrap.appendChild(input);
+  wrap.appendChild(valueEl);
+  row.appendChild(wrap);
+
+  const entry = {
+    path: def.path,
+    type: 'hex',
+    input,
+    valueEl,
+    format: def.format || (v => formatSeed(v)),
+    refresh(){
+      const value = getInkConfigValue(def.path);
+      const formatted = entry.format(value);
+      input.value = formatted;
+      valueEl.textContent = formatted;
+    }
+  };
+
+  input.addEventListener('change', () => {
+    const parsed = parseSeedInput(input.value);
+    setInkConfigValue(def.path, parsed);
+    entry.refresh();
+    scheduleInkConfigChange();
+  });
+
+  registerInkControl(entry);
+  return entry;
+}
+
+function createInkSelector(def, container){
+  const { row } = createControlRow(container, def.label);
+  const wrap = document.createElement('div');
+  wrap.className = 'ink-control-input inkset-input';
+  const optionsWrap = document.createElement('div');
+  optionsWrap.className = 'inkset-options';
+  const valueEl = document.createElement('span');
+  valueEl.className = 'ink-control-value';
+  const colors = def.colors || [
+    { key: 'b', label: 'Black' },
+    { key: 'r', label: 'Red' }
+  ];
+  const inputs = colors.map(color => {
+    const opt = document.createElement('label');
+    opt.className = 'inkset-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = color.key;
+    const span = document.createElement('span');
+    span.textContent = color.label;
+    opt.appendChild(checkbox);
+    opt.appendChild(span);
+    optionsWrap.appendChild(opt);
+    return { value: color.key, label: color.label, input: checkbox };
+  });
+  wrap.appendChild(optionsWrap);
+  wrap.appendChild(valueEl);
+  row.appendChild(wrap);
+
+  const entry = {
+    path: def.path,
+    type: 'inkset',
+    inputs,
+    valueEl,
+    refresh(){
+      const arr = Array.isArray(getInkConfigValue(def.path)) ? getInkConfigValue(def.path) : [];
+      inputs.forEach(info => { info.input.checked = arr.includes(info.value); });
+      const labels = inputs.filter(info => info.input.checked).map(info => info.label);
+      valueEl.textContent = labels.length ? labels.join(', ') : 'None';
+    }
+  };
+
+  inputs.forEach(info => {
+    info.input.addEventListener('change', () => {
+      const selected = inputs.filter(i => i.input.checked).map(i => i.value);
+      setInkConfigValue(def.path, selected);
+      entry.refresh();
+      scheduleInkConfigChange();
+    });
+  });
+
+  registerInkControl(entry);
+  return entry;
+}
+
+function buildInkSettingsPanel(){
+  inkControlRegistry.clear();
+  if (app.inkSettingsMaster) app.inkSettingsMaster.innerHTML = '';
+  if (app.inkTextureControls) app.inkTextureControls.innerHTML = '';
+  if (app.edgeBleedControls) app.edgeBleedControls.innerHTML = '';
+
+  if (app.inkSettingsMaster){
+    createRangeControl({
+      label: 'Overall Effect',
+      path: ['master'],
+      min: 0,
+      max: 100,
+      step: 1,
+      format: v => `${Math.round(clamp(v ?? 0, 0, 100))}%`
+    }, app.inkSettingsMaster);
+  }
+
+  if (app.inkTextureControls){
+    createToggleControl({ label: 'Enable Texture', path: ['texture', 'enabled'] }, app.inkTextureControls);
+    createRangeControl({
+      label: 'Texture Mix',
+      path: ['texture', 'master'],
+      min: 0,
+      max: 100,
+      step: 1,
+      format: v => `${Math.round(clamp(v ?? 0, 0, 100))}%`
+    }, app.inkTextureControls);
+    createRangeControl({
+      label: 'Supersample',
+      path: ['texture', 'supersample'],
+      min: 1,
+      max: 4,
+      step: 1,
+      integer: true,
+      format: v => `${Math.max(1, Math.round(v || 1))}×`
+    }, app.inkTextureControls);
+    createRangeControl({ label: 'Noise Strength', path: ['texture', 'noiseStrength'], min: 0, max: 2, step: 0.01 }, app.inkTextureControls);
+    createRangeControl({ label: 'Noise Floor', path: ['texture', 'noiseFloor'], min: 0, max: 1, step: 0.01 }, app.inkTextureControls);
+
+    const textureCfg = inkConfig.texture || baseInkConfig.texture || {};
+    if (Array.isArray(textureCfg.noiseOctaves)){
+      textureCfg.noiseOctaves.forEach((_, idx) => {
+        createRangeControl({ label: `Octave ${idx + 1} Scale`, path: ['texture', 'noiseOctaves', idx, 'scale'], min: 0.05, max: 3, step: 0.01 }, app.inkTextureControls);
+        createRangeControl({ label: `Octave ${idx + 1} Weight`, path: ['texture', 'noiseOctaves', idx, 'weight'], min: 0, max: 1, step: 0.01 }, app.inkTextureControls);
+        createSeedInput({ label: `Octave ${idx + 1} Seed`, path: ['texture', 'noiseOctaves', idx, 'seed'] }, app.inkTextureControls);
+      });
+    }
+
+    createRangeControl({ label: 'Chip Density', path: ['texture', 'chip', 'density'], min: 0, max: 0.08, step: 0.001 }, app.inkTextureControls);
+    createRangeControl({ label: 'Chip Strength', path: ['texture', 'chip', 'strength'], min: 0, max: 1, step: 0.01 }, app.inkTextureControls);
+    createRangeControl({ label: 'Chip Feather', path: ['texture', 'chip', 'feather'], min: 0.1, max: 1.5, step: 0.01 }, app.inkTextureControls);
+    createSeedInput({ label: 'Chip Seed', path: ['texture', 'chip', 'seed'] }, app.inkTextureControls);
+
+    createRangeControl({ label: 'Scratch Strength', path: ['texture', 'scratch', 'strength'], min: 0, max: 1, step: 0.01 }, app.inkTextureControls);
+    createRangeControl({ label: 'Scratch Threshold', path: ['texture', 'scratch', 'threshold'], min: 0, max: 1, step: 0.01 }, app.inkTextureControls);
+    createRangeControl({ label: 'Scratch Scale', path: ['texture', 'scratch', 'scale'], min: 0.1, max: 4, step: 0.01 }, app.inkTextureControls);
+    createRangeControl({ label: 'Scratch Aspect', path: ['texture', 'scratch', 'aspect'], min: 0.05, max: 2, step: 0.01 }, app.inkTextureControls);
+    createRangeControl({ label: 'Scratch Direction X', path: ['texture', 'scratch', 'direction', 'x'], min: -1, max: 1, step: 0.01 }, app.inkTextureControls);
+    createRangeControl({ label: 'Scratch Direction Y', path: ['texture', 'scratch', 'direction', 'y'], min: -1, max: 1, step: 0.01 }, app.inkTextureControls);
+    createSeedInput({ label: 'Scratch Seed', path: ['texture', 'scratch', 'seed'] }, app.inkTextureControls);
+    createSeedInput({ label: 'Jitter Seed', path: ['texture', 'jitterSeed'] }, app.inkTextureControls);
+  }
+
+  if (app.edgeBleedControls){
+    createToggleControl({ label: 'Enable Edge Bleed', path: ['edgeBleed', 'enabled'] }, app.edgeBleedControls);
+    createRangeControl({
+      label: 'Bleed Mix',
+      path: ['edgeBleed', 'master'],
+      min: 0,
+      max: 100,
+      step: 1,
+      format: v => `${Math.round(clamp(v ?? 0, 0, 100))}%`
+    }, app.edgeBleedControls);
+    createInkSelector({ label: 'Active Inks', path: ['edgeBleed', 'inks'] }, app.edgeBleedControls);
+
+    const passes = inkConfig.edgeBleed?.passes || [];
+    passes.forEach((_, idx) => {
+      const group = document.createElement('div');
+      group.className = 'ink-pass-group';
+      const heading = document.createElement('h4');
+      heading.textContent = `Pass ${idx + 1}`;
+      group.appendChild(heading);
+      app.edgeBleedControls.appendChild(group);
+      createRangeControl({ label: 'Width', path: ['edgeBleed', 'passes', idx, 'width'], min: 0, max: 3, step: 0.01 }, group);
+      createRangeControl({ label: 'Alpha', path: ['edgeBleed', 'passes', idx, 'alpha'], min: 0, max: 1, step: 0.01 }, group);
+      createRangeControl({ label: 'Jitter X', path: ['edgeBleed', 'passes', idx, 'jitter'], min: 0, max: 3, step: 0.01 }, group);
+      createRangeControl({ label: 'Jitter Y', path: ['edgeBleed', 'passes', idx, 'jitterY'], min: 0, max: 3, step: 0.01 }, group);
+      createRangeControl({ label: 'Lighten', path: ['edgeBleed', 'passes', idx, 'lighten'], min: 0, max: 1, step: 0.01 }, group);
+      createRangeControl({ label: 'Strokes', path: ['edgeBleed', 'passes', idx, 'strokes'], min: 1, max: 6, step: 1, integer: true }, group);
+      createSeedInput({ label: 'Seed', path: ['edgeBleed', 'passes', idx, 'seed'] }, group);
+    });
+  }
+
+  refreshInkControls();
+}
+
+function formatInkConfigForClipboard(config){
+  return `export const INK_EFFECT_CONFIG = ${formatInkNode(config, 0, [])};\n`;
+}
+
+function formatInkNode(value, depth, path){
+  const indent = '  '.repeat(depth);
+  if (Array.isArray(value)){
+    if (!value.length) return '[]';
+    const innerIndent = '  '.repeat(depth + 1);
+    const lines = value.map((item, idx) => `${innerIndent}${formatInkNode(item, depth + 1, path.concat(idx))}`);
+    return `[\n${lines.join(',\n')}\n${indent}]`;
+  }
+  if (value && typeof value === 'object'){
+    const keys = Object.keys(value);
+    if (!keys.length) return '{}';
+    const innerIndent = '  '.repeat(depth + 1);
+    const lines = keys.map(key => `${innerIndent}${key}: ${formatInkNode(value[key], depth + 1, path.concat(key))}`);
+    return `{\n${lines.join(',\n')}\n${indent}}`;
+  }
+  if (typeof value === 'number'){
+    const lastKey = path[path.length - 1];
+    if (typeof lastKey === 'string' && lastKey.toLowerCase().includes('seed')){
+      return formatSeed(value);
+    }
+    if (Number.isInteger(value)) return String(value);
+    return formatNumber(value, 4);
+  }
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'string') return `'${value.replace(/'/g, "\\'")}'`;
+  return 'null';
+}
+
+function flashCopyFeedback(){
+  if (!app.copyInkSettingsBtn) return;
+  app.copyInkSettingsBtn.classList.add('copied');
+  setTimeout(() => app.copyInkSettingsBtn.classList.remove('copied'), 900);
+}
+
+function copyInkSettingsToClipboard(){
+  const text = formatInkConfigForClipboard(inkConfig);
+  const doFallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand && document.execCommand('copy'); flashCopyFeedback(); }
+    catch {}
+    ta.remove();
+  };
+  try {
+    if (navigator?.clipboard?.writeText){
+      navigator.clipboard.writeText(text).then(flashCopyFeedback).catch(doFallback);
+    } else {
+      doFallback();
+    }
+  } catch {
+    doFallback();
+  }
+}
 
 function focusStage(){
   if (!app.stage) return;
@@ -338,6 +868,25 @@ function ensureAtlas(ink, variantIdx = 0){
   const advCache = new Float32Array(ASCII_END + 1);
   const SHIFT_EPS = 0.5;
 
+  const textureCfg = computeEffectiveTextureConfig();
+  const edgeCfg = computeEffectiveEdgeConfig();
+  const sampleScale = Math.max(1, textureCfg.supersample | 0);
+  const useTexture = (ink !== 'w') && !!textureCfg.enabled;
+  const bleedEnabled = (ink !== 'w') && edgeCfg.enabled && (!Array.isArray(edgeCfg.inks) || edgeCfg.inks.includes(ink));
+  const needsPipeline = useTexture || bleedEnabled || sampleScale > 1;
+
+  let glyphCanvas = null;
+  let glyphCtx = null;
+  if (needsPipeline){
+    glyphCanvas = document.createElement('canvas');
+    glyphCanvas.width = Math.max(1, cellW_draw_dp * sampleScale);
+    glyphCanvas.height = Math.max(1, cellH_draw_dp * sampleScale);
+    glyphCtx = glyphCanvas.getContext('2d', { willReadFrequently: true });
+    glyphCtx.imageSmoothingEnabled = false;
+  }
+
+  const atlasSeed = ((state.altSeed >>> 0) ^ Math.imul((variantIdx|0) + 1, 0x9E3779B1) ^ Math.imul((ink.charCodeAt(0) || 0) + 0x51, 0x85EBCA77)) >>> 0;
+
   let code = ASCII_START;
   for (let row = 0; row < ATLAS_ROWS; row++){
     for (let col = 0; col < ATLAS_COLS; col++){
@@ -347,14 +896,84 @@ function ensureAtlas(ink, variantIdx = 0){
       const ch = String.fromCharCode(code);
       const n  = (variantIdx|0) + 1;
       const adv = advCache[code] || (advCache[code] = Math.max(0.01, ctx.measureText(ch).width));
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, CELL_W_CSS, CELL_H_CSS);
-      ctx.clip();
-      const x0 = packX_css + GUTTER_CSS + X_PAD - (n - 1) * adv - SHIFT_EPS;
-      const y0 = packY_css + GUTTER_CSS + ORIGIN_Y_CSS;
-      ctx.fillText(variantIdx ? ch.repeat(n) : ch, x0, y0);
-      ctx.restore();
+      const text = variantIdx ? ch.repeat(n) : ch;
+      const destX_dp = col * cellW_pack_dp + GUTTER_DP;
+      const destY_dp = row * cellH_pack_dp + GUTTER_DP;
+      if (needsPipeline){
+        const glyphSeed = (atlasSeed ^ Math.imul((code + 1) | 0, 0xC2B2AE3D)) >>> 0;
+        glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
+        glyphCtx.globalCompositeOperation = 'source-over';
+        glyphCtx.globalAlpha = 1;
+        glyphCtx.clearRect(0, 0, glyphCanvas.width, glyphCanvas.height);
+        glyphCtx.save();
+        glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
+        glyphCtx.fillStyle = COLORS[ink] || '#000';
+        glyphCtx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
+        glyphCtx.textAlign = 'left';
+        glyphCtx.textBaseline = 'alphabetic';
+        glyphCtx.imageSmoothingEnabled = false;
+        glyphCtx.beginPath();
+        glyphCtx.rect(0, 0, CELL_W_CSS, CELL_H_CSS);
+        glyphCtx.clip();
+        const localX = X_PAD - (n - 1) * adv - SHIFT_EPS;
+        const localY = ORIGIN_Y_CSS;
+        glyphCtx.fillText(text, localX, localY);
+        glyphCtx.restore();
+
+        if (useTexture){
+          const glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
+          applyInkTexture(glyphData, {
+            config: textureCfg,
+            renderScale: RENDER_SCALE,
+            sampleScale,
+            charWidth: CHAR_W,
+            seed: glyphSeed
+          });
+          glyphCtx.putImageData(glyphData, 0, 0);
+        }
+
+        if (bleedEnabled){
+          glyphCtx.save();
+          glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
+          glyphCtx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
+          glyphCtx.textAlign = 'left';
+          glyphCtx.textBaseline = 'alphabetic';
+          applyEdgeBleed(glyphCtx, {
+            config: edgeCfg,
+            text,
+            x: localX,
+            y: localY,
+            color: COLORS[ink] || '#000',
+            baseSeed: glyphSeed
+          });
+          glyphCtx.restore();
+        }
+
+        glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
+        let finalImageData;
+        if (sampleScale === 1){
+          finalImageData = glyphCtx.getImageData(0, 0, cellW_draw_dp, cellH_draw_dp);
+        } else {
+          const hiData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
+          finalImageData = downsampleImageData(hiData, sampleScale, cellW_draw_dp, cellH_draw_dp);
+        }
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.putImageData(finalImageData, destX_dp, destY_dp);
+        ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+      } else {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, CELL_W_CSS, CELL_H_CSS);
+        ctx.clip();
+        const x0 = packX_css + GUTTER_CSS + X_PAD - (n - 1) * adv - SHIFT_EPS;
+        const y0 = packY_css + GUTTER_CSS + ORIGIN_Y_CSS;
+        ctx.fillText(text, x0, y0);
+        ctx.restore();
+      }
       rectDpByCode[code] = {
         sx_dp: col * cellW_pack_dp + GUTTER_DP, sy_dp: row * cellH_pack_dp + GUTTER_DP,
         sw_dp: cellW_draw_dp, sh_dp: cellH_draw_dp
@@ -411,6 +1030,180 @@ function valueNoise2D(x, y, scale, seed){
   return nx0 + (nx1 - n00) * sy;
 }
 
+function normalizeDirection(dir){
+  if (!dir) return { x: 1, y: 0 };
+  const x = Number.isFinite(dir.x) ? dir.x : 1;
+  const y = Number.isFinite(dir.y) ? dir.y : 0;
+  const len = Math.hypot(x, y) || 1;
+  return { x: x / len, y: y / len };
+}
+
+function applyInkTexture(imageData, options){
+  const { config, renderScale, sampleScale, charWidth, seed } = options || {};
+  if (!config || !config.enabled) return;
+  const data = imageData.data;
+  const width = imageData.width;
+  const height = imageData.height;
+  if (!data || !width || !height) return;
+
+  const dpPerCss = Math.max(1e-6, renderScale * sampleScale);
+  const jitterSeed = (seed ^ (config.jitterSeed || 0)) >>> 0;
+  const jitterAmt = charWidth * 0.35;
+  const jitterX = (hash2(1, 0, jitterSeed) - 0.5) * jitterAmt;
+  const jitterY = (hash2(2, 0, jitterSeed) - 0.5) * jitterAmt;
+
+  const octaves = Array.isArray(config.noiseOctaves) ? config.noiseOctaves : [];
+  let weightSum = 0;
+  for (let i = 0; i < octaves.length; i++) weightSum += Math.max(0, octaves[i].weight || 0);
+  const noiseStrength = Number.isFinite(config.noiseStrength) ? config.noiseStrength : 0;
+  const noiseFloor = Number.isFinite(config.noiseFloor) ? config.noiseFloor : 0;
+
+  const chipCfg = config.chip || {};
+  const chipDensity = Math.max(0, chipCfg.density || 0);
+  const chipStrength = Math.max(0, chipCfg.strength || 0);
+  const chipFeather = Math.max(0.01, chipCfg.feather || 0.45);
+  const chipSeed = (seed ^ (chipCfg.seed || 0)) >>> 0;
+
+  const scratchCfg = config.scratch || {};
+  const scratchStrength = Math.max(0, scratchCfg.strength || 0);
+  const scratchThreshold = clamp(Number.isFinite(scratchCfg.threshold) ? scratchCfg.threshold : 0.7, 0, 1 - 1e-3);
+  const scratchScale = Math.max(1e-3, scratchCfg.scale || 1);
+  const scratchAspect = Math.max(1e-3, scratchCfg.aspect || 0.25);
+  const scratchSeed = (seed ^ (scratchCfg.seed || 0)) >>> 0;
+  const scratchDir = normalizeDirection(scratchCfg.direction);
+
+  for (let y = 0; y < height; y++){
+    for (let x = 0; x < width; x++){
+      const idx = (y * width + x) * 4;
+      const alpha = data[idx + 3];
+      if (alpha <= 0) continue;
+      let a = alpha / 255;
+      const xCss = (x / dpPerCss) + jitterX;
+      const yCss = (y / dpPerCss) + jitterY;
+
+      let noiseVal = 0.5;
+      if (octaves.length && weightSum > 0){
+        let accum = 0;
+        for (let i = 0; i < octaves.length; i++){
+          const oct = octaves[i];
+          const scaleCss = Math.max(1e-3, charWidth * Math.max(0.01, oct.scale || 1));
+          const w = Math.max(0, oct.weight || 0);
+          if (w <= 0) continue;
+          const oSeed = (seed ^ (oct.seed || 0)) >>> 0;
+          accum += w * valueNoise2D(xCss, yCss, scaleCss, oSeed);
+        }
+        noiseVal = accum / weightSum;
+      }
+
+      const mod = clamp(1 - (0.5 - noiseVal) * noiseStrength, noiseFloor, 1);
+      a *= mod;
+
+      if (chipDensity > 0 && chipStrength > 0){
+        const chipNoise = hash2(x, y, chipSeed);
+        if (chipNoise < chipDensity){
+          const t = chipNoise / Math.max(chipDensity, 1e-6);
+          const falloff = Math.pow(1 - t, chipFeather);
+          a *= Math.max(0, 1 - chipStrength * falloff);
+          if (chipNoise < chipDensity * 0.12) a *= 0.05;
+        }
+      }
+
+      if (scratchStrength > 0){
+        const proj = xCss * scratchDir.x + yCss * scratchDir.y;
+        const ortho = xCss * (-scratchDir.y) + yCss * scratchDir.x;
+        const scratchVal = valueNoise2D(proj * scratchScale, ortho * scratchAspect, scratchSeed);
+        if (scratchVal > scratchThreshold){
+          const t = (scratchVal - scratchThreshold) / Math.max(1e-6, 1 - scratchThreshold);
+          a *= Math.max(0, 1 - t * scratchStrength);
+        }
+      }
+
+      data[idx + 3] = Math.round(clamp(a, 0, 1) * 255);
+    }
+  }
+}
+
+function downsampleImageData(imageData, scale, outW, outH){
+  const width = imageData.width;
+  const height = imageData.height;
+  const src = imageData.data;
+  if (scale <= 1) return new ImageData(new Uint8ClampedArray(src), width, height);
+  const out = new Uint8ClampedArray(outW * outH * 4);
+  const inv = 1 / (scale * scale);
+  let dst = 0;
+  for (let y = 0; y < outH; y++){
+    for (let x = 0; x < outW; x++){
+      let r = 0, g = 0, b = 0, a = 0;
+      const srcY = y * scale;
+      const srcX = x * scale;
+      for (let sy = 0; sy < scale; sy++){
+        let idx = ((srcY + sy) * width + srcX) * 4;
+        for (let sx = 0; sx < scale; sx++){
+          r += src[idx];
+          g += src[idx + 1];
+          b += src[idx + 2];
+          a += src[idx + 3];
+          idx += 4;
+        }
+      }
+      out[dst++] = Math.round(r * inv);
+      out[dst++] = Math.round(g * inv);
+      out[dst++] = Math.round(b * inv);
+      out[dst++] = Math.round(a * inv);
+    }
+  }
+  return new ImageData(out, outW, outH);
+}
+
+function lightenHexColor(hex, factor){
+  if (typeof hex !== 'string' || !hex.startsWith('#')) return hex;
+  const norm = hex.length === 4
+    ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
+    : hex;
+  const num = Number.parseInt(norm.slice(1), 16);
+  if (!Number.isFinite(num)) return hex;
+  const r = (num >> 16) & 0xFF;
+  const g = (num >> 8) & 0xFF;
+  const b = num & 0xFF;
+  const f = clamp(factor, 0, 1);
+  const rn = Math.round(r + (255 - r) * f);
+  const gn = Math.round(g + (255 - g) * f);
+  const bn = Math.round(b + (255 - b) * f);
+  return `rgb(${rn},${gn},${bn})`;
+}
+
+function applyEdgeBleed(ctx, options){
+  const { config, text, x, y, color, baseSeed } = options || {};
+  if (!config || !config.enabled || !text) return;
+  const passes = Array.isArray(config.passes) ? config.passes : [];
+  if (!passes.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-over';
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (let i = 0; i < passes.length; i++){
+    const pass = passes[i];
+    const strokes = Math.max(1, pass.strokes | 0);
+    const jitter = Number.isFinite(pass.jitter) ? pass.jitter : 0;
+    const jitterY = Number.isFinite(pass.jitterY) ? pass.jitterY : jitter;
+    const width = Math.max(0.01, pass.width || 0.5);
+    const alpha = clamp(pass.alpha ?? 0.12, 0, 1);
+    const lighten = clamp(pass.lighten ?? 0.4, 0, 1);
+    const strokeColor = lightenHexColor(color, lighten);
+    ctx.lineWidth = width;
+    ctx.strokeStyle = strokeColor;
+    for (let s = 0; s < strokes; s++){
+      const localSeed = (baseSeed ^ Math.imul((i + 1) * 0x45D9F3B, (s + 1))) ^ (pass.seed || 0);
+      const ox = (hash2((s + 1) * 17, (i + 3) * 131, localSeed) - 0.5) * jitter;
+      const oy = (hash2((s + 4) * 23, (i + 5) * 151, localSeed ^ 0x9E3779B1) - 0.5) * jitterY;
+      const alphaJitter = alpha * (0.75 + 0.25 * hash2((s + 7) * 29, (i + 11) * 37, localSeed ^ 0xA5A5A5A5));
+      ctx.globalAlpha = clamp(alphaJitter, 0, 1);
+      ctx.strokeText(text, x + ox, y + oy);
+    }
+  }
+  ctx.restore();
+}
+
 // MARKER-START: ensureGrain
 function ensureGrain(page){
   const W = app.PAGE_W|0, H = app.PAGE_H|0;
@@ -421,15 +1214,16 @@ function ensureGrain(page){
   const ctx = cnv.getContext('2d');
   const img = ctx.createImageData(W, H);
   const data = img.data;
-  const sBase = Math.max(1, CHAR_W * (GRAIN_CFG.base_scale_from_char_w || 0.05));
-  const rels = GRAIN_CFG.octave_rel_scales || [0.8, 1.2, 0.5];
-  const wgts = GRAIN_CFG.octave_weights || [0.42, 0.33, 0.15];
-  const octSeeds = (GRAIN_CFG.seeds && GRAIN_CFG.seeds.octave) || [0xA5A5A5A5, 0x5EEDFACE, 0x13579BDF];
+  const grainCfg = getGrainConfig();
+  const sBase = Math.max(1, CHAR_W * (grainCfg.base_scale_from_char_w || 0.05));
+  const rels = grainCfg.octave_rel_scales || [0.8, 1.2, 0.5];
+  const wgts = grainCfg.octave_weights || [0.42, 0.33, 0.15];
+  const octSeeds = (grainCfg.seeds && grainCfg.seeds.octave) || [0xA5A5A5A5, 0x5EEDFACE, 0x13579BDF];
   const sArr = rels.map(r => Math.max(1, sBase * r));
   const wArr = wgts.slice(0, sArr.length);
-  const wHash = GRAIN_CFG.pixel_hash_weight ?? 0.10;
-  const postGamma = GRAIN_CFG.post_gamma || 1.0;
-  const hashSeed = (GRAIN_CFG.seeds && GRAIN_CFG.seeds.hash) || 0x5F356495;
+  const wHash = grainCfg.pixel_hash_weight ?? 0.10;
+  const postGamma = grainCfg.post_gamma || 1.0;
+  const hashSeed = (grainCfg.seeds && grainCfg.seeds.hash) || 0x5F356495;
   let p = 0;
   for (let y = 0; y < H; y++){
     for (let x = 0; x < W; x++){
@@ -453,11 +1247,12 @@ function ensureGrain(page){
 function grainAlpha(){
   const s = clamp((state.grainPct || 0) / 100, 0, 1);
   if (s <= 0) return 0;
-  const mixPow = clamp(GRAIN_CFG.alpha?.mix_pow ?? 0.45, 0, 1);
-  const lowPow = Math.max(0.01, GRAIN_CFG.alpha?.low_pow ?? 0.55);
+  const grainCfg = getGrainConfig();
+  const mixPow = clamp(grainCfg.alpha?.mix_pow ?? 0.45, 0, 1);
+  const lowPow = Math.max(0.01, grainCfg.alpha?.low_pow ?? 0.55);
   const eased = mixPow * Math.pow(s, lowPow) + (1 - mixPow) * s;
-  const aMin = clamp(GRAIN_CFG.alpha?.min ?? 0, 0, 1);
-  const aMax = clamp(GRAIN_CFG.alpha?.max ?? 0.4, 0, 1);
+  const aMin = clamp(grainCfg.alpha?.min ?? 0, 0, 1);
+  const aMax = clamp(grainCfg.alpha?.max ?? 0.4, 0, 1);
   return clamp(aMin + eased * (aMax - aMin), 0, 1);
 }
 
@@ -1535,12 +2330,29 @@ function toggleFontsPanel() {
   if (isOpen) {
     for (const r of app.fontRadios()){ r.checked = (r.value === ACTIVE_FONT_NAME); }
     app.settingsPanel.classList.remove('is-open');
+    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
+    if (app.inkSettingsBtn) app.inkSettingsBtn.dataset.active = 'false';
   }
 }
 function toggleSettingsPanel() {
   const isOpen = app.settingsPanel.classList.toggle('is-open');
   if (isOpen) {
     app.fontsPanel.classList.remove('is-open');
+    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
+    if (app.inkSettingsBtn) app.inkSettingsBtn.dataset.active = 'false';
+  }
+}
+
+function toggleInkSettingsPanel(){
+  if (!app.inkSettingsPanel) return;
+  const isOpen = app.inkSettingsPanel.classList.toggle('is-open');
+  if (app.inkSettingsBtn) app.inkSettingsBtn.dataset.active = String(isOpen);
+  if (isOpen){
+    app.fontsPanel.classList.remove('is-open');
+    app.settingsPanel.classList.remove('is-open');
+    if (app.settingsBtnNew && app.settingsBtnNew.dataset) app.settingsBtnNew.dataset.active = 'false';
+    if (app.fontsBtn && app.fontsBtn.dataset) app.fontsBtn.dataset.active = 'false';
+    refreshInkControls();
   }
 }
 
@@ -2062,11 +2874,22 @@ function bindEventListeners(){
     for (const p of state.pages){ if (p.active){ p.dirtyAll = true; schedulePaint(p); } }
   });
 
+  buildInkSettingsPanel();
+  if (app.copyInkSettingsBtn){
+    app.copyInkSettingsBtn.addEventListener('click', copyInkSettingsToClipboard);
+  }
+
   app.fontsBtn.onclick = toggleFontsPanel;
   app.settingsBtnNew.onclick = toggleSettingsPanel;
+  if (app.inkSettingsBtn){
+    app.inkSettingsBtn.onclick = toggleInkSettingsPanel;
+    app.inkSettingsBtn.dataset.active = 'false';
+  }
   window.addEventListener('keydown', e=>{ if (e.key === 'Escape') {
     app.fontsPanel.classList.remove('is-open');
     app.settingsPanel.classList.remove('is-open');
+    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
+    if (app.inkSettingsBtn) app.inkSettingsBtn.dataset.active = 'false';
   }});
   app.fontRadios().forEach(radio=>{ radio.addEventListener('change', async ()=>{ if (radio.checked){ await loadFontAndApply(radio.value); focusStage(); } }); });
 

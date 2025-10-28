@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.1.4</div>
+  <div class="app-version">v.1.5</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -53,6 +53,7 @@
     <div class="toolbar-right">
       <button class="btn" id="toggleMarginsBtn" title="Toggle rulers">Margins</button>
       <button class="btn" id="fontsBtn">Fonts</button>
+      <button class="btn" id="inkSettingsBtn">Ink Settings</button>
       <div class="ink-control-group">
         <button class="btn" id="inkBlackBtn" title="Black Ink. Long-press for transparency."><span class="sw black"></span></button>
         <div class="ink-slider-popup" id="inkBlackSliderPopup">
@@ -229,6 +230,24 @@
           </div>
           <span class="font-sample" style='font-family:Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
         </label>
+      </div>
+    </div>
+  </aside>
+
+  <aside id="inkSettingsPanel" class="side-panel from-right ink-settings-panel">
+    <div class="panel-content">
+      <h3>Ink Settings</h3>
+      <div class="ink-settings-master" id="inkSettingsMaster"></div>
+      <section class="ink-settings-section">
+        <header>Interior Texture</header>
+        <div class="ink-settings-group" id="inkTextureControls"></div>
+      </section>
+      <section class="ink-settings-section">
+        <header>Edge Bleed</header>
+        <div class="ink-settings-group" id="edgeBleedControls"></div>
+      </section>
+      <div class="ink-settings-footer">
+        <button class="btn full" id="copyInkSettingsBtn">Copy Settings</button>
       </div>
     </div>
   </aside>

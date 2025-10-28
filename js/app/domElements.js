@@ -41,6 +41,12 @@ export function createDomRefs() {
   app.fontsPanel = document.getElementById('fontsPanel');
   app.settingsBtnNew = document.getElementById('settingsBtnNew');
   app.settingsPanel = document.getElementById('settingsPanel');
+  app.inkSettingsBtn = document.getElementById('inkSettingsBtn');
+  app.inkSettingsPanel = document.getElementById('inkSettingsPanel');
+  app.inkSettingsMaster = document.getElementById('inkSettingsMaster');
+  app.inkTextureControls = document.getElementById('inkTextureControls');
+  app.edgeBleedControls = document.getElementById('edgeBleedControls');
+  app.copyInkSettingsBtn = document.getElementById('copyInkSettingsBtn');
   app.fontRadios = () => Array.from(document.querySelectorAll('input[name="fontChoice"]'));
   app.mmLeft   = document.getElementById('mmLeft');
   app.mmRight  = document.getElementById('mmRight');

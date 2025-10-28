@@ -9,7 +9,7 @@ Typewriter exists to provide a tactile, margin-aware writing experience directly
 - 📝 **Realistic typing canvas** with caret positioning, paper margins, and ruler overlays that mimic a typewriter platen. 【F:index.html†L10-L118】【F:styles.css†L67-L138】
 - 🎚️ **Adjustable typography controls** including CPI (characters per inch), font scaling, and line height calibrated against the loaded monospace fonts. 【F:index.html†L72-L109】【F:js/app/initApp.js†L108-L168】
 - 🎯 **Margin management** with draggable ruler stops, configurable page margins, and optional margin boxes. 【F:index.html†L10-L118】【F:js/app/state.js†L3-L22】
-- 🖋️ **Multi-ink support** for black, red, and white (eraser) inks with opacity sliders and custom grain effects to simulate ribbon texture. 【F:index.html†L40-L70】【F:js/app/grainConfig.js†L1-L10】
+- 🖋️ **Multi-ink support** for black, red, and white (eraser) inks with opacity sliders and custom grain effects to simulate ribbon texture. 【F:index.html†L40-L70】【F:js/app/inkConfig.js†L1-L51】
 - 🔍 **Zoom controls** that rescale the rendering canvas for detailed inspection while keeping the UI responsive to high-DPI displays. 【F:index.html†L18-L33】【F:js/app/initApp.js†L200-L247】
 - 🌙 **Light and dark themes** automatically adapting via `prefers-color-scheme`. 【F:styles.css†L1-L66】
 - 💾 **Local persistence** leveraging browser storage (key `typewriter.minimal.v16`) to remember documents and settings between sessions. 【F:js/app/metrics.js†L3-L38】【F:js/app/state.js†L3-L22】
@@ -61,7 +61,7 @@ Typewriter/
 │   ├── app.js        # Entry point that bootstraps the application on DOM load
 │   └── app/
 │       ├── domElements.js  # Creates DOM references used throughout the app
-│       ├── grainConfig.js  # Noise/grain parameters for ink rendering
+│       ├── inkConfig.js    # Consolidated ink, edge bleed, and grain parameters
 │       ├── initApp.js      # Core initialization logic, event wiring, rendering helpers
 │       ├── metrics.js      # Base metric calculations (page size, DPI, storage key)
 │       └── state.js        # Main and ephemeral state factories
