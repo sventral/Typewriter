@@ -46,6 +46,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let zoomDrag = null;
   let zoomIndicatorTimer = null;
   let pendingZoomRedrawRAF = 0;
+  let pendingZoomRedrawIsTimeout = false;
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
@@ -86,6 +87,35 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     });
     zoomMeasurementsObserver.observe(app.zoomTrack);
     if (app.zoomThumb) zoomMeasurementsObserver.observe(app.zoomThumb);
+  }
+
+  function clearPendingZoomRedrawFrame() {
+    if (!pendingZoomRedrawRAF) return;
+    if (pendingZoomRedrawIsTimeout) {
+      clearTimeout(pendingZoomRedrawRAF);
+    } else if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(pendingZoomRedrawRAF);
+    }
+    pendingZoomRedrawRAF = 0;
+    pendingZoomRedrawIsTimeout = false;
+  }
+
+  function scheduleZoomRedrawFrame(callback) {
+    if (typeof requestAnimationFrame === 'function') {
+      pendingZoomRedrawIsTimeout = false;
+      pendingZoomRedrawRAF = requestAnimationFrame((timestamp) => {
+        pendingZoomRedrawRAF = 0;
+        pendingZoomRedrawIsTimeout = false;
+        callback(timestamp);
+      });
+    } else {
+      pendingZoomRedrawIsTimeout = true;
+      pendingZoomRedrawRAF = setTimeout(() => {
+        pendingZoomRedrawRAF = 0;
+        pendingZoomRedrawIsTimeout = false;
+        callback(Date.now());
+      }, 16);
+    }
   }
 
   function updateRulerHostDimensions(stageW, stageH) {
@@ -507,13 +537,63 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     showZoomIndicator();
   }
 
+  function runBatchedZoomRedraw() {
+    const pages = state.pages.slice();
+    const now =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? () => performance.now()
+        : () => Date.now();
+    const finalize = () => {
+      setFreezeVirtual(false);
+      requestHammerNudge();
+      if (isSafari) syncSafariZoomLayout(true);
+    };
+
+    if (!pages.length) {
+      finalize();
+      return;
+    }
+
+    let index = 0;
+
+    function runAtlasAndFinalize() {
+      rebuildAllAtlases();
+      for (const page of state.pages) {
+        if (page?.active) schedulePaint(page);
+      }
+      finalize();
+    }
+
+    function processBatch() {
+      const start = now();
+      const budgetMs = 7;
+      while (index < pages.length) {
+        const page = pages[index++];
+        if (!page) continue;
+        if (page.canvas) prepareCanvas(page.canvas);
+        if (page.backCanvas) prepareCanvas(page.backCanvas);
+        if (page.ctx) configureCanvasContext(page.ctx);
+        if (page.backCtx) configureCanvasContext(page.backCtx);
+        page.dirtyAll = true;
+        if (page.active) schedulePaint(page);
+        if (now() - start >= budgetMs) break;
+      }
+
+      if (index < pages.length) {
+        scheduleZoomRedrawFrame(processBatch);
+        return;
+      }
+
+      scheduleZoomRedrawFrame(runAtlasAndFinalize);
+    }
+
+    scheduleZoomRedrawFrame(processBatch);
+  }
+
   function scheduleZoomCrispRedraw() {
     const existing = getZoomDebounceTimer();
     if (existing) clearTimeout(existing);
-    if (pendingZoomRedrawRAF && typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(pendingZoomRedrawRAF);
-      pendingZoomRedrawRAF = 0;
-    }
+    clearPendingZoomRedrawFrame();
     const timer = setTimeout(() => {
       setZoomDebounceTimer(null);
       if (getZooming()) {
@@ -522,31 +602,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       }
       setZooming(false);
       requestHammerNudge();
-      const runCrispRedraw = () => {
-        pendingZoomRedrawRAF = 0;
-        setRenderScaleForZoom();
-        if (isSafari) stageLayoutSetSafariZoomMode('steady', { force: true });
-        for (const p of state.pages) {
-          if (!p) continue;
-          prepareCanvas(p.canvas);
-          prepareCanvas(p.backCanvas);
-          configureCanvasContext(p.ctx);
-          configureCanvasContext(p.backCtx);
-          p.dirtyAll = true;
-        }
-        rebuildAllAtlases();
-        for (const p of state.pages) {
-          if (p?.active) schedulePaint(p);
-        }
-        setFreezeVirtual(false);
-        requestHammerNudge();
-        if (isSafari) syncSafariZoomLayout(true);
-      };
-      if (typeof requestAnimationFrame === 'function') {
-        pendingZoomRedrawRAF = requestAnimationFrame(runCrispRedraw);
-      } else {
-        setTimeout(runCrispRedraw, 0);
-      }
+      setRenderScaleForZoom();
+      if (isSafari) stageLayoutSetSafariZoomMode('steady', { force: true });
+      runBatchedZoomRedraw();
     }, 160);
     setZoomDebounceTimer(timer);
   }
