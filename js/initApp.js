@@ -243,6 +243,10 @@ async function resolveAvailableFace(preferredFace){
   return 'monospace';
 }
 
+function baseCaretHeightPx(){
+  return GRID_DIV * GRID_H;
+}
+
 function calibrateMonospaceFont(targetPitchPx, face, inkWidthPct){
   const pct = (typeof inkWidthPct === 'number' && isFinite(inkWidthPct)) ? inkWidthPct : 84;
   const targetInkPx = Math.max(0.25, targetPitchPx * (pct / 100));
