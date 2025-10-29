@@ -10,10 +10,12 @@ export function createPageRenderer({
   rebuildAllAtlases,
   drawGlyph,
   applyGrainOverlayOnRegion,
-  touchPage,
+  lifecycle,
   getCurrentBounds,
   getBatchDepth,
 }) {
+  const { touchPage } = lifecycle;
+
   function refreshGlyphEffects() {
     rebuildAllAtlases();
     for (const page of state.pages) {
