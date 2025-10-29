@@ -12,6 +12,7 @@ import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from '
 import { createDocumentEditingController } from './document/documentEditing.js';
 import { createPageLifecycleController } from './document/pageLifecycle.js';
 import { setupUIBindings } from './init/uiBindings.js';
+import { createAppContext } from './init/appContext.js';
 
 export function initApp(){
 
@@ -19,11 +20,13 @@ const app = createDomRefs();
 
 const metrics = computeBaseMetrics(app);
 const { DPR, GRID_DIV, COLORS, STORAGE_KEY, A4_WIDTH_IN, PPI, LPI, LINE_H_RAW } = metrics;
-let { GRID_H, ACTIVE_FONT_NAME, RENDER_SCALE, FONT_FAMILY, FONT_SIZE, ASC, DESC, CHAR_W, BASELINE_OFFSET_CELL } = metrics;
 
 const state = createMainState(app, GRID_DIV);
 
 const ephemeral = createEphemeralState();
+const context = createAppContext({ app, state, metrics, ephemeral });
+const metricsStore = context.scalars;
+const { callbacks: contextCallbacks } = context;
 let {
   lastDigitTs,
   lastDigitCaret,
@@ -43,7 +46,7 @@ let {
   virtRAF,
   fontLoadSeq,
 } = ephemeral;
-const touchedPages = ephemeral.touchedPages;
+const touchedPages = context.touchedPages;
 let layoutZoomFactorRef = () => 1;
 
 const saveHooks = {
@@ -59,7 +62,11 @@ function saveStateDebounced(...args) {
   return saveHooks.saveStateDebounced(...args);
 }
 
-let layoutAndZoomApi = createNoopLayoutAndZoomApi();
+context.controllers.layoutAndZoom = createNoopLayoutAndZoomApi();
+
+function getLayoutAndZoomApi() {
+  return context.controllers.layoutAndZoom || createNoopLayoutAndZoomApi();
+}
 
 function createNoopLayoutAndZoomApi() {
   return {
@@ -83,64 +90,80 @@ function createNoopLayoutAndZoomApi() {
 }
 
 function updateStageEnvironment(...args) {
-  return layoutAndZoomApi.updateStageEnvironment(...args);
+  return getLayoutAndZoomApi().updateStageEnvironment(...args);
 }
 
 function renderMargins(...args) {
-  return layoutAndZoomApi.renderMargins(...args);
+  return getLayoutAndZoomApi().renderMargins(...args);
 }
 
 function positionRulers(...args) {
-  return layoutAndZoomApi.positionRulers(...args);
+  return getLayoutAndZoomApi().positionRulers(...args);
 }
 
 function setPaperOffset(...args) {
-  return layoutAndZoomApi.setPaperOffset(...args);
+  return getLayoutAndZoomApi().setPaperOffset(...args);
 }
 
 function requestHammerNudge(...args) {
-  return layoutAndZoomApi.requestHammerNudge(...args);
+  return getLayoutAndZoomApi().requestHammerNudge(...args);
 }
 
 function handleWheelPan(...args) {
-  return layoutAndZoomApi.handleWheelPan(...args);
+  return getLayoutAndZoomApi().handleWheelPan(...args);
 }
 
 function handleHorizontalMarginDrag(...args) {
-  return layoutAndZoomApi.handleHorizontalMarginDrag(...args);
+  return getLayoutAndZoomApi().handleHorizontalMarginDrag(...args);
 }
 
 function handleVerticalMarginDrag(...args) {
-  return layoutAndZoomApi.handleVerticalMarginDrag(...args);
+  return getLayoutAndZoomApi().handleVerticalMarginDrag(...args);
 }
 
 function endMarginDrag(...args) {
-  return layoutAndZoomApi.endMarginDrag(...args);
+  return getLayoutAndZoomApi().endMarginDrag(...args);
 }
 
 function setMarginBoxesVisible(...args) {
-  return layoutAndZoomApi.setMarginBoxesVisible(...args);
+  return getLayoutAndZoomApi().setMarginBoxesVisible(...args);
 }
 
 function setZoomPercent(...args) {
-  return layoutAndZoomApi.setZoomPercent(...args);
+  return getLayoutAndZoomApi().setZoomPercent(...args);
 }
 
 function updateZoomUIFromState(...args) {
-  return layoutAndZoomApi.updateZoomUIFromState(...args);
+  return getLayoutAndZoomApi().updateZoomUIFromState(...args);
 }
 
 function onZoomPointerDown(...args) {
-  return layoutAndZoomApi.onZoomPointerDown(...args);
+  return getLayoutAndZoomApi().onZoomPointerDown(...args);
 }
 
 function onZoomPointerMove(...args) {
-  return layoutAndZoomApi.onZoomPointerMove(...args);
+  return getLayoutAndZoomApi().onZoomPointerMove(...args);
 }
 
 function onZoomPointerUp(...args) {
-  return layoutAndZoomApi.onZoomPointerUp(...args);
+  return getLayoutAndZoomApi().onZoomPointerUp(...args);
 }
+
+context.setCallback('updateStageEnvironment', updateStageEnvironment);
+context.setCallback('renderMargins', renderMargins);
+context.setCallback('positionRulers', positionRulers);
+context.setCallback('setPaperOffset', setPaperOffset);
+context.setCallback('requestHammerNudge', requestHammerNudge);
+context.setCallback('handleWheelPan', handleWheelPan);
+context.setCallback('handleHorizontalMarginDrag', handleHorizontalMarginDrag);
+context.setCallback('handleVerticalMarginDrag', handleVerticalMarginDrag);
+context.setCallback('endMarginDrag', endMarginDrag);
+context.setCallback('setMarginBoxesVisible', setMarginBoxesVisible);
+context.setCallback('setZoomPercent', setZoomPercent);
+context.setCallback('updateZoomUIFromState', updateZoomUIFromState);
+context.setCallback('onZoomPointerDown', onZoomPointerDown);
+context.setCallback('onZoomPointerMove', onZoomPointerMove);
+context.setCallback('onZoomPointerUp', onZoomPointerUp);
 
 function setDragValue(value) {
   drag = value;
@@ -154,38 +177,44 @@ function setSaveTimerValue(value) {
   saveTimer = value;
 }
 
-let lifecycleController = null;
 let pendingVirtualization = false;
 
-const touchPage = (...args) => lifecycleController?.touchPage(...args);
-const prepareCanvas = (...args) => lifecycleController?.prepareCanvas(...args);
-const configureCanvasContext = (...args) => lifecycleController?.configureCanvasContext(...args);
-const makePageRecord = (...args) => lifecycleController?.makePageRecord(...args);
-const addPage = (...args) => lifecycleController?.addPage(...args);
-const bootstrapFirstPage = (...args) => lifecycleController?.bootstrapFirstPage(...args);
-const resetPagesBlankPreserveSettings = (...args) => lifecycleController?.resetPagesBlankPreserveSettings(...args);
+function getLifecycleController() {
+  return context.controllers.lifecycle;
+}
+
+const touchPage = (...args) => getLifecycleController()?.touchPage(...args);
+const prepareCanvas = (...args) => getLifecycleController()?.prepareCanvas(...args);
+const configureCanvasContext = (...args) => getLifecycleController()?.configureCanvasContext(...args);
+const makePageRecord = (...args) => getLifecycleController()?.makePageRecord(...args);
+const addPage = (...args) => getLifecycleController()?.addPage(...args);
+const bootstrapFirstPage = (...args) => getLifecycleController()?.bootstrapFirstPage(...args);
+const resetPagesBlankPreserveSettings = (...args) => getLifecycleController()?.resetPagesBlankPreserveSettings(...args);
 const requestVirtualization = (...args) => {
-  if (!lifecycleController) {
+  const controller = getLifecycleController();
+  if (!controller) {
     pendingVirtualization = true;
     return;
   }
-  return lifecycleController.requestVirtualization(...args);
+  return controller.requestVirtualization(...args);
 };
 
 const rendererHooks = {};
-let rebuildAllAtlasesFn = () => {};
 
 const editingController = createDocumentEditingController({
   app,
   state,
   getGridDiv: () => GRID_DIV,
-  getGridHeight: () => GRID_H,
-  getCharWidth: () => CHAR_W,
-  getAsc: () => ASC,
-  getDesc: () => DESC,
-  getBaselineOffsetCell: () => BASELINE_OFFSET_CELL,
-  getActiveFontName: () => ACTIVE_FONT_NAME,
-  setActiveFontName: (name) => { ACTIVE_FONT_NAME = name; FONT_FAMILY = `${name}`; },
+  getGridHeight: () => metricsStore.GRID_H,
+  getCharWidth: () => metricsStore.CHAR_W,
+  getAsc: () => metricsStore.ASC,
+  getDesc: () => metricsStore.DESC,
+  getBaselineOffsetCell: () => metricsStore.BASELINE_OFFSET_CELL,
+  getActiveFontName: () => metricsStore.ACTIVE_FONT_NAME,
+  setActiveFontName: (name) => {
+    metricsStore.ACTIVE_FONT_NAME = name;
+    metricsStore.FONT_FAMILY = `${name}`;
+  },
   touchedPages,
   getFreezeVirtual: () => freezeVirtual,
   setFreezeVirtual: (value) => { freezeVirtual = value; },
@@ -201,7 +230,7 @@ const editingController = createDocumentEditingController({
   prepareCanvas,
   configureCanvasContext,
   recalcMetrics,
-  rebuildAllAtlases: (...args) => rebuildAllAtlasesFn(...args),
+  rebuildAllAtlases: (...args) => contextCallbacks.rebuildAllAtlases(...args),
   setPaperOffset,
   applyDefaultMargins,
   computeColsFromCpi,
@@ -216,12 +245,12 @@ const lifecycleContext = {
   app,
   state,
   layoutZoomFactor: () => layoutZoomFactorRef(),
-  getRenderScale: () => RENDER_SCALE,
-  getFontSize: () => FONT_SIZE,
-  getActiveFontName: () => ACTIVE_FONT_NAME,
+  getRenderScale: () => metricsStore.RENDER_SCALE,
+  getFontSize: () => metricsStore.FONT_SIZE,
+  getActiveFontName: () => metricsStore.ACTIVE_FONT_NAME,
   exactFontString,
-  getGridHeight: () => GRID_H,
-  getCharWidth: () => CHAR_W,
+  getGridHeight: () => metricsStore.GRID_H,
+  getCharWidth: () => metricsStore.CHAR_W,
   getFreezeVirtual: () => freezeVirtual,
   getVirtRAF: () => virtRAF,
   setVirtRAF: (value) => { virtRAF = value; },
@@ -230,11 +259,11 @@ const lifecycleContext = {
   resetTypedRun,
 };
 
-lifecycleController = createPageLifecycleController(lifecycleContext, editingController);
+context.controllers.lifecycle = createPageLifecycleController(lifecycleContext, editingController);
 
 if (pendingVirtualization) {
   pendingVirtualization = false;
-  lifecycleController.requestVirtualization();
+  context.controllers.lifecycle.requestVirtualization();
 }
 
 const {
@@ -258,15 +287,16 @@ const {
 const { isSafari: IS_SAFARI, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD } = detectSafariEnvironment();
 
 const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphAtlas({
+  context,
   app,
   state,
   colors: COLORS,
-  getFontSize: () => FONT_SIZE,
-  getActiveFontName: () => ACTIVE_FONT_NAME,
-  getAsc: () => ASC,
-  getDesc: () => DESC,
-  getCharWidth: () => CHAR_W,
-  getRenderScale: () => RENDER_SCALE,
+  getFontSize: () => metricsStore.FONT_SIZE,
+  getActiveFontName: () => metricsStore.ACTIVE_FONT_NAME,
+  getAsc: () => metricsStore.ASC,
+  getDesc: () => metricsStore.DESC,
+  getCharWidth: () => metricsStore.CHAR_W,
+  getRenderScale: () => metricsStore.RENDER_SCALE,
   getStateZoom: () => state.zoom,
   isSafari: IS_SAFARI,
   safariSupersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD,
@@ -277,7 +307,17 @@ const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphA
   grainConfig: () => GRAIN_CFG,
 });
 
-rebuildAllAtlasesFn = rebuildAllAtlases;
+context.setCallback('rebuildAllAtlases', rebuildAllAtlases);
+
+const stageLayoutApi = createStageLayoutController({
+  context,
+  app,
+  state,
+  isSafari: IS_SAFARI,
+  renderMargins,
+  updateStageEnvironment,
+  updateCaretPosition,
+});
 
 const {
   layoutZoomFactor,
@@ -291,14 +331,7 @@ const {
   syncSafariZoomLayout,
   setSafariZoomMode,
   isSafariSteadyZoom,
-} = createStageLayoutController({
-  app,
-  state,
-  isSafari: IS_SAFARI,
-  renderMargins,
-  updateStageEnvironment,
-  updateCaretPosition,
-});
+} = stageLayoutApi;
 
 const {
   refreshGlyphEffects,
@@ -306,35 +339,38 @@ const {
   markRowAsDirty,
   schedulePaint,
 } = createPageRenderer({
+  context,
   app,
   state,
-  getAsc: () => ASC,
-  getDesc: () => DESC,
-  getCharWidth: () => CHAR_W,
-  getGridHeight: () => GRID_H,
+  getAsc: () => metricsStore.ASC,
+  getDesc: () => metricsStore.DESC,
+  getCharWidth: () => metricsStore.CHAR_W,
+  getGridHeight: () => metricsStore.GRID_H,
   gridDiv: GRID_DIV,
-  getRenderScale: () => RENDER_SCALE,
+  getRenderScale: () => metricsStore.RENDER_SCALE,
   rebuildAllAtlases,
   drawGlyph,
   applyGrainOverlayOnRegion,
-  lifecycle: lifecycleController,
+  lifecycle: context.controllers.lifecycle,
   getCurrentBounds,
   getBatchDepth: () => batchDepth,
 });
 
+context.setCallback('schedulePaint', schedulePaint);
+
 Object.assign(rendererHooks, { markRowAsDirty, schedulePaint });
 
-lifecycleController.registerRendererHooks({ schedulePaint });
+context.controllers.lifecycle.registerRendererHooks({ schedulePaint });
 
-layoutAndZoomApi = createLayoutAndZoomController(
+context.controllers.layoutAndZoom = createLayoutAndZoomController(
   {
     app,
     state,
     DPR,
-    getCharWidth: () => CHAR_W,
-    getGridHeight: () => GRID_H,
-    getAsc: () => ASC,
-    getDesc: () => DESC,
+    getCharWidth: () => metricsStore.CHAR_W,
+    getGridHeight: () => metricsStore.GRID_H,
+    getAsc: () => metricsStore.ASC,
+    getDesc: () => metricsStore.DESC,
     getLineStepMu: () => state.lineStepMu,
     layoutController: {
       layoutZoomFactor,
@@ -364,7 +400,7 @@ layoutAndZoomApi = createLayoutAndZoomController(
     setSafariZoomMode,
     syncSafariZoomLayout,
   },
-  lifecycleController,
+  context.controllers.lifecycle,
   editingController,
 );
 
@@ -471,7 +507,7 @@ function applySubmittedChanges(){
     let tries = 0;
     const target = Math.round((app.PAGE_W / state.colsAcross) * DPR) / DPR;
     const waitForMetrics = () => {
-      if (Math.abs(CHAR_W - target) < 0.01 || tries++ > 12){
+      if (Math.abs(metricsStore.CHAR_W - target) < 0.01 || tries++ > 12){
         rewrapDocumentToCurrentBounds();
         endBatch();
         focusStage();
@@ -526,7 +562,7 @@ function toggleFontsPanel() {
   const isOpen = app.fontsPanel.classList.toggle('is-open');
   if (isOpen) {
     for (const radio of app.fontRadios()) {
-      radio.checked = radio.value === ACTIVE_FONT_NAME;
+      radio.checked = radio.value === metricsStore.ACTIVE_FONT_NAME;
     }
     app.settingsPanel.classList.remove('is-open');
     if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
@@ -830,7 +866,7 @@ function targetPitchForCpi(cpi){
 function exactFontString(sizePx, face){ return `400 ${sizePx}px "${face}"`; }
 
 const FONT_CANDIDATES = [
-  () => ACTIVE_FONT_NAME, () => 'TT2020Base', () => 'TT2020StyleB',
+  () => metricsStore.ACTIVE_FONT_NAME, () => 'TT2020Base', () => 'TT2020StyleB',
   () => 'TT2020StyleD', () => 'TT2020StyleE', () => 'TT2020StyleF',
   () => 'TT2020StyleG', () => 'Courier New', () => 'Courier',
   () => 'ui-monospace', () => 'Menlo', () => 'Monaco', () => 'Consolas',
@@ -857,7 +893,7 @@ async function resolveAvailableFace(preferredFace){
 }
 
 function baseCaretHeightPx(){
-  return GRID_DIV * GRID_H;
+  return GRID_DIV * metricsStore.GRID_H;
 }
 
 function calibrateMonospaceFont(targetPitchPx, face, inkWidthPct){
@@ -892,7 +928,7 @@ function setRenderScaleForZoom(){
   const buckets = [1, 1.5, 2, 3, 4];
   const zb = buckets.reduce((best, z)=> Math.abs(z - state.zoom) < Math.abs(best - state.zoom) ? z : best, buckets[0]);
   const desired = DPR * zb;
-  RENDER_SCALE = Math.min(desired, computeMaxRenderScale());
+  metricsStore.RENDER_SCALE = Math.min(desired, computeMaxRenderScale());
 }
 function prewarmFontFace(face){
   const px = Math.max(12, Math.ceil(getTargetPitchPx()));
@@ -905,7 +941,7 @@ function prewarmFontFace(face){
 
 async function loadFontAndApply(requestedFace){
   const seq = ++fontLoadSeq;
-  const tryFace = requestedFace || ACTIVE_FONT_NAME;
+  const tryFace = requestedFace || metricsStore.ACTIVE_FONT_NAME;
   const ghost = prewarmFontFace(tryFace);
   try {
     const px = Math.max(12, Math.ceil(getTargetPitchPx()));
@@ -922,8 +958,8 @@ async function loadFontAndApply(requestedFace){
   const resolvedFace = await resolveAvailableFace(tryFace);
   if (seq !== fontLoadSeq) return;
 
-  ACTIVE_FONT_NAME = resolvedFace;
-  FONT_FAMILY = `${ACTIVE_FONT_NAME}`;
+  metricsStore.ACTIVE_FONT_NAME = resolvedFace;
+  metricsStore.FONT_FAMILY = `${resolvedFace}`;
   applyMetricsNow(true);
 }
 
@@ -931,11 +967,12 @@ async function loadFontAndApply(requestedFace){
 function recalcMetrics(face){
   const targetPitch = getTargetPitchPx();
   const m = calibrateMonospaceFont(targetPitch, face, state.inkWidthPct);
-  FONT_SIZE = m.size;
-  ASC = m.asc; DESC = m.desc;
-  CHAR_W = roundToDPR(targetPitch);
-  GRID_H = LINE_H_RAW / GRID_DIV;
-  BASELINE_OFFSET_CELL = ASC;
+  metricsStore.FONT_SIZE = m.size;
+  metricsStore.ASC = m.asc;
+  metricsStore.DESC = m.desc;
+  metricsStore.CHAR_W = roundToDPR(targetPitch);
+  metricsStore.GRID_H = LINE_H_RAW / GRID_DIV;
+  metricsStore.BASELINE_OFFSET_CELL = metricsStore.ASC;
   app.caretEl.style.height = baseCaretHeightPx() + 'px';
 }
 function scheduleMetricsUpdate(full=false){
@@ -950,8 +987,8 @@ function scheduleMetricsUpdate(full=false){
 
 function applyMetricsNow(full=false){
   beginBatch();
-  recalcMetrics(ACTIVE_FONT_NAME);
-  rebuildAllAtlases();
+  recalcMetrics(metricsStore.ACTIVE_FONT_NAME);
+  contextCallbacks.rebuildAllAtlases();
   for (const p of state.pages){
     p.grainCanvas = null;
     p.grainForSize = { w:0, h:0 };
@@ -996,7 +1033,7 @@ async function initialize() {
   setZoomPercent(Math.round(state.zoom * 100) || 100);
   updateZoomUIFromState();
   setPaperOffset(0, 0);
-  await loadFontAndApply(savedFont || ACTIVE_FONT_NAME);
+  await loadFontAndApply(savedFont || metricsStore.ACTIVE_FONT_NAME);
   setLineHeightFactor(state.lineHeightFactor);
   renderMargins();
   clampCaretToBounds();
