@@ -202,6 +202,8 @@
 
   .page canvas{ display:block; width:100%; height:auto; }
   .caret{ position:absolute; width:2px; background:#111; pointer-events:none; animation:blink 1s steps(1) infinite; }
+  .safari-caret-fix .caret{ animation:none; opacity:1; will-change:opacity; }
+  .safari-caret-fix .caret.is-safari-caret-hidden{ opacity:0; }
   @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
 
   .side-panel {
