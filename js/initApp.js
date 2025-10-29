@@ -438,6 +438,263 @@ function applyLineHeight(){
   focusStage();
 }
 
+function toggleFontsPanel() {
+  const isOpen = app.fontsPanel.classList.toggle('is-open');
+  if (isOpen) {
+    for (const radio of app.fontRadios()) {
+      radio.checked = radio.value === ACTIVE_FONT_NAME;
+    }
+    app.settingsPanel.classList.remove('is-open');
+    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
+  }
+}
+
+function toggleSettingsPanel() {
+  const isOpen = app.settingsPanel.classList.toggle('is-open');
+  if (isOpen) {
+    app.fontsPanel.classList.remove('is-open');
+    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
+  }
+}
+
+function toggleInkSettingsPanel() {
+  if (!app.inkSettingsPanel) return;
+  const isOpen = app.inkSettingsPanel.classList.toggle('is-open');
+  if (isOpen) {
+    app.fontsPanel.classList.remove('is-open');
+    app.settingsPanel.classList.remove('is-open');
+  }
+}
+
+const TYPED_RUN_MAXLEN = 20;
+const TYPED_RUN_TIMEOUT = 500;
+const EXPAND_PASTE_WINDOW = 350;
+const BS_WINDOW = 250;
+const STRAY_V_WINDOW = 30;
+
+function isEditableTarget(target) {
+  if (!target) return false;
+  if (isToolbarInput(target)) return false;
+  const tag = (target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+  if (target.isContentEditable) return true;
+  const dlg = target.closest && (target.closest('dialog.settings-modal') || target.closest('aside.side-panel'));
+  if (dlg && (dlg.open || dlg.classList.contains('is-open'))) return true;
+  return false;
+}
+
+function resetTypedRun() {
+  typedRun.active = false;
+}
+
+function noteTypedCharPreInsert() {
+  const now = performance.now();
+  const caret = state.caret;
+  const contiguous =
+    typedRun.active &&
+    typedRun.page === caret.page &&
+    typedRun.rowMu === caret.rowMu &&
+    caret.col === typedRun.startCol + typedRun.length &&
+    now - typedRun.lastTs <= TYPED_RUN_TIMEOUT &&
+    typedRun.length < TYPED_RUN_MAXLEN;
+
+  if (contiguous) {
+    typedRun.length += 1;
+    typedRun.lastTs = now;
+  } else {
+    typedRun.active = true;
+    typedRun.page = caret.page;
+    typedRun.rowMu = caret.rowMu;
+    typedRun.startCol = caret.col;
+    typedRun.length = 1;
+    typedRun.lastTs = now;
+  }
+}
+
+function consumeBackspaceBurstIfAny() {
+  const now = performance.now();
+  if (now - bsBurstTs < BS_WINDOW && bsBurstCount > 0) {
+    const page = state.pages[state.caret.page] || addPage();
+    eraseCharacters(page, state.caret.rowMu, state.caret.col, bsBurstCount);
+    bsBurstCount = 0;
+    bsBurstTs = 0;
+    resetTypedRun();
+    return true;
+  }
+  return false;
+}
+
+const NUM_INPUT_KEYS = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  'Backspace',
+  'Delete',
+  'Tab',
+]);
+
+function isDigitKey(key) {
+  return key.length === 1 && /[0-9]/.test(key);
+}
+
+function handleKeyDown(e) {
+  if (isEditableTarget(e.target)) return;
+
+  if (e.target && isToolbarInput(e.target)) {
+    const key = e.key;
+    const allowDecimal = e.target.id === 'lhInput';
+    if (key === 'Enter') {
+      e.preventDefault();
+      if (e.target.id === 'lhInput') applyLineHeight();
+      else applySubmittedChanges();
+      focusStage();
+      return;
+    }
+    if (
+      NUM_INPUT_KEYS.has(key) ||
+      isDigitKey(key) ||
+      (key === ',' && allowDecimal) ||
+      (key === '.' && allowDecimal)
+    ) {
+      return;
+    }
+    try { e.target.blur(); } catch {}
+    focusStage();
+  }
+
+  const key = e.key;
+  const bounds = getCurrentBounds();
+
+  if (e.metaKey || e.ctrlKey) {
+    if (key.toLowerCase() === 'v' && performance.now() - lastDigitTs < 180 && lastDigitCaret) {
+      state.caret = { ...lastDigitCaret };
+      updateCaretPosition();
+    }
+    return;
+  }
+
+  if (key === 'Enter') {
+    e.preventDefault();
+    resetTypedRun();
+    handleNewline();
+    saveStateDebounced();
+    return;
+  }
+
+  if (key === 'Backspace') {
+    e.preventDefault();
+    const now = performance.now();
+    if (now - bsBurstTs < 200) bsBurstCount += 1; else bsBurstCount = 1;
+    bsBurstTs = now;
+    beginTypingFrameBatch();
+    handleBackspace();
+    resetTypedRun();
+    saveStateDebounced();
+    return;
+  }
+
+  if (key === 'ArrowLeft') {
+    e.preventDefault();
+    resetTypedRun();
+    state.caret.col = clamp(state.caret.col - 1, bounds.L, bounds.R);
+    updateCaretPosition();
+    return;
+  }
+
+  if (key === 'ArrowRight') {
+    e.preventDefault();
+    resetTypedRun();
+    state.caret.col = clamp(state.caret.col + 1, bounds.L, bounds.R);
+    updateCaretPosition();
+    return;
+  }
+
+  if (key === 'ArrowUp') {
+    e.preventDefault();
+    resetTypedRun();
+    state.caret.rowMu = clamp(state.caret.rowMu - state.lineStepMu, bounds.Tmu, bounds.Bmu);
+    updateCaretPosition();
+    return;
+  }
+
+  if (key === 'ArrowDown') {
+    e.preventDefault();
+    resetTypedRun();
+    state.caret.rowMu = clamp(state.caret.rowMu + state.lineStepMu, bounds.Tmu, bounds.Bmu);
+    updateCaretPosition();
+    return;
+  }
+
+  if (key === 'Tab') {
+    e.preventDefault();
+    resetTypedRun();
+    for (let i = 0; i < 5; i += 1) advanceCaret();
+    saveStateDebounced();
+    return;
+  }
+
+  if (key.length === 1) {
+    e.preventDefault();
+    if (key === 'v' && performance.now() - lastPasteTs < STRAY_V_WINDOW) return;
+
+    if (/[0-9]/.test(key)) {
+      lastDigitTs = performance.now();
+      lastDigitCaret = { ...state.caret };
+    } else {
+      lastDigitTs = 0;
+      lastDigitCaret = null;
+    }
+
+    beginTypingFrameBatch();
+    consumeBackspaceBurstIfAny();
+    noteTypedCharPreInsert();
+    const page = state.pages[state.caret.page] || addPage();
+    overtypeCharacter(page, state.caret.rowMu, state.caret.col, key, state.ink);
+    advanceCaret();
+    saveStateDebounced();
+  }
+}
+
+function handlePaste(e) {
+  if (isEditableTarget(e.target)) return;
+
+  const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
+  if (!text) return;
+
+  e.preventDefault();
+  lastPasteTs = performance.now();
+
+  beginBatch();
+
+  if (!consumeBackspaceBurstIfAny()) {
+    const fresh =
+      typedRun.active &&
+      typedRun.page === state.caret.page &&
+      typedRun.rowMu === state.caret.rowMu &&
+      lastPasteTs - typedRun.lastTs <= EXPAND_PASTE_WINDOW &&
+      typedRun.length > 0 &&
+      typedRun.length <= TYPED_RUN_MAXLEN;
+
+    if (fresh) {
+      state.caret.col = typedRun.startCol;
+      updateCaretPosition();
+      const page = state.pages[state.caret.page] || addPage();
+      eraseCharacters(page, state.caret.rowMu, state.caret.col, typedRun.length);
+      resetTypedRun();
+    }
+  }
+
+  insertTextFast(text);
+
+  resetTypedRun();
+  endBatch();
+}
+
 function mmX(px){ return (px * 210) / app.PAGE_W; }
 function mmY(px){ return (px * 297) / app.PAGE_H; }
 function pxX(mm){ return (mm * app.PAGE_W) / 210; }
