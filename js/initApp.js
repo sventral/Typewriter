@@ -1,13 +1,13 @@
-import { createDomRefs } from './domElements.js';
-import { computeBaseMetrics } from './metrics.js';
-import { createMainState, createEphemeralState } from './state.js';
-import { EDGE_BLEED, GRAIN_CFG, INK_TEXTURE } from './inkConfig.js';
+import { createDomRefs } from './utils/domElements.js';
+import { computeBaseMetrics } from './config/metrics.js';
+import { createMainState, createEphemeralState } from './state/state.js';
+import { EDGE_BLEED, GRAIN_CFG, INK_TEXTURE } from './config/inkConfig.js';
 import { clamp } from './utils/math.js';
 import { sanitizeIntegerField } from './utils/forms.js';
 import { detectSafariEnvironment, createStageLayoutController } from './layout/stageLayout.js';
 import { createGlyphAtlas } from './rendering/glyphAtlas.js';
 import { createPageRenderer } from './rendering/pageRendering.js';
-import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from './inkSettingsPanel.js';
+import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from './config/inkSettingsPanel.js';
 
 export function initApp(){
 
