@@ -1511,32 +1511,28 @@ function anchorPx(){
 }
 
 // MARKER-START: nudgePaperToAnchor
-function maybeApplyNativeScroll(ax, ay, cv, threshold){
+function maybeApplyNativeScroll(dx, dy, threshold){
   if (!IS_SAFARI || safariZoomMode !== 'steady') return false;
   const stage = app.stage;
   if (!stage) return false;
-  const stageRect = stage.getBoundingClientRect();
-  const anchorStageX = ax - stageRect.left;
-  const anchorStageY = ay - stageRect.top;
-  const caretOffsetX = cv.x - stageRect.left;
-  const caretOffsetY = cv.y - stageRect.top;
-  const caretContentX = stage.scrollLeft + caretOffsetX;
-  const caretContentY = stage.scrollTop + caretOffsetY;
-  const maxX = Math.max(0, stage.scrollWidth - stage.clientWidth);
-  const maxY = Math.max(0, stage.scrollHeight - stage.clientHeight);
-  const snap = (v) => Math.round(v * DPR) / DPR;
-  const targetScrollLeft = clamp(snap(caretContentX - anchorStageX), 0, maxX);
-  const targetScrollTop  = clamp(snap(caretContentY - anchorStageY), 0, maxY);
-  const movedX = Math.abs(targetScrollLeft - stage.scrollLeft) > threshold;
-  const movedY = Math.abs(targetScrollTop - stage.scrollTop) > threshold;
-  if (movedX) stage.scrollLeft = targetScrollLeft;
-  if (movedY) stage.scrollTop = targetScrollTop;
-  if (movedX || movedY){
-    positionRulers();
-    requestVirtualization();
-    return true;
+  let used = false;
+  const maxX = stage.scrollWidth - stage.clientWidth;
+  const maxY = stage.scrollHeight - stage.clientHeight;
+  if (Math.abs(dx) > threshold && maxX > 1){
+    const target = clamp(stage.scrollLeft - dx, 0, Math.max(0, maxX));
+    if (Math.abs(target - stage.scrollLeft) > threshold){
+      stage.scrollLeft = target;
+      used = true;
+    }
   }
-  return false;
+  if (Math.abs(dy) > threshold && maxY > 1){
+    const target = clamp(stage.scrollTop - dy, 0, Math.max(0, maxY));
+    if (Math.abs(target - stage.scrollTop) > threshold){
+      stage.scrollTop = target;
+      used = true;
+    }
+  }
+  return used;
 }
 
 function nudgePaperToAnchor(){
@@ -1544,20 +1540,17 @@ function nudgePaperToAnchor(){
   const cv = caretViewportPos();
   if (!cv) return;
   const { ax, ay } = anchorPx();
-  const dx = ax - cv.x;
-  const dy = ay - cv.y;
+  let dx = ax - cv.x, dy = ay - cv.y;
   const pxThreshold = 1 / DPR;
   if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-  if (IS_SAFARI && safariZoomMode === 'steady'){
-    const usedNative = maybeApplyNativeScroll(ax, ay, cv, pxThreshold);
-    const after = caretViewportPos();
-    if (!after) return;
-    const errX = ax - after.x;
-    const errY = ay - after.y;
-    if (usedNative && (Math.abs(errX) >= pxThreshold || Math.abs(errY) >= pxThreshold)){
-      requestHammerNudge();
+  const usedNative = maybeApplyNativeScroll(dx, dy, pxThreshold);
+  if (usedNative){
+    const updated = caretViewportPos();
+    if (updated){
+      dx = ax - updated.x;
+      dy = ay - updated.y;
+      if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
     }
-    return;
   }
   if (Math.abs(dx) < DEAD_X && Math.abs(dy) < DEAD_Y) return;
   const scale = cssScaleFactor() || 1;
