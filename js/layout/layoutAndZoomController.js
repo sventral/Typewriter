@@ -123,8 +123,12 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const scale = cssScaleFactor();
     const scaledW = stageW * scale;
     const scaledH = stageH * scale;
-    app.rulerH_host.style.width = `${scaledW}px`;
-    app.rulerV_host.style.height = `${scaledH}px`;
+    const viewportW = typeof window !== 'undefined' ? window.innerWidth : scaledW;
+    const viewportH = typeof window !== 'undefined' ? window.innerHeight : scaledH;
+    const rulerW = Math.max(scaledW, viewportW);
+    const rulerH = Math.max(scaledH, viewportH);
+    app.rulerH_host.style.width = `${rulerW}px`;
+    app.rulerV_host.style.height = `${rulerH}px`;
   }
 
   function documentHorizontalSpanPx() {
