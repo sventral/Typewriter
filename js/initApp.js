@@ -358,6 +358,176 @@ const {
 
 Object.assign(rendererHooks, { markRowAsDirty, schedulePaint });
 
+const prefersDarkMedia = (typeof window !== 'undefined' && typeof window.matchMedia === 'function')
+  ? window.matchMedia('(prefers-color-scheme: dark)')
+  : null;
+let lastDarkPageActive = null;
+
+function systemPrefersDark() {
+  return !!(prefersDarkMedia && prefersDarkMedia.matches);
+}
+
+function computeEffectiveTheme() {
+  if (state.themeMode === 'dark') return 'dark';
+  if (state.themeMode === 'light') return 'light';
+  return systemPrefersDark() ? 'dark' : 'light';
+}
+
+function updateRootThemeAttribute() {
+  const root = document.documentElement;
+  if (!root) return;
+  if (!state.themeMode || state.themeMode === 'auto') {
+    root.removeAttribute('data-theme');
+  } else {
+    root.setAttribute('data-theme', state.themeMode);
+  }
+}
+
+function setBodyPageTone(darkPageActive) {
+  const body = document.body;
+  if (!body) return;
+  if (darkPageActive) {
+    body.dataset.pageTone = 'dark';
+  } else if (body.dataset.pageTone) {
+    delete body.dataset.pageTone;
+  }
+}
+
+function readPageFillColor() {
+  let fill = '#ffffff';
+  try {
+    const styles = getComputedStyle(document.documentElement);
+    const candidate = styles.getPropertyValue('--page-bg');
+    if (candidate && candidate.trim()) {
+      fill = candidate.trim();
+    }
+  } catch {}
+  return fill;
+}
+
+function refreshPageFillColor() {
+  const nextFill = readPageFillColor();
+  if (nextFill && nextFill !== state.pageFillColor) {
+    state.pageFillColor = nextFill;
+    for (const page of state.pages) {
+      if (!page) continue;
+      page.dirtyAll = true;
+      touchPage(page);
+      schedulePaint(page);
+    }
+  }
+}
+
+function applyInkPaletteForTheme(darkPageActive) {
+  const nextRed = darkPageActive ? '#ff7a7a' : '#b00000';
+  let changed = false;
+  if (COLORS.b !== '#000000') {
+    COLORS.b = '#000000';
+    changed = true;
+  }
+  if (COLORS.w !== '#ffffff') {
+    COLORS.w = '#ffffff';
+    changed = true;
+  }
+  if (COLORS.r !== nextRed) {
+    COLORS.r = nextRed;
+    changed = true;
+  }
+  if (changed) {
+    rebuildAllAtlases();
+    for (const page of state.pages) {
+      if (!page) continue;
+      page.dirtyAll = true;
+      touchPage(page);
+      schedulePaint(page);
+    }
+  }
+}
+
+function swapDocumentInkColors() {
+  beginBatch();
+  for (const page of state.pages) {
+    if (!page) continue;
+    for (const rowMap of page.grid?.values() || []) {
+      if (!rowMap) continue;
+      for (const stack of rowMap.values()) {
+        if (!Array.isArray(stack)) continue;
+        for (const glyph of stack) {
+          if (!glyph) continue;
+          const currentInk = glyph.ink || 'b';
+          if (currentInk === 'b') {
+            glyph.ink = 'w';
+          } else if (currentInk === 'w') {
+            glyph.ink = 'b';
+          }
+        }
+      }
+    }
+    page.dirtyAll = true;
+    touchPage(page);
+    schedulePaint(page);
+  }
+  endBatch();
+}
+
+function applyAppearance() {
+  updateRootThemeAttribute();
+  if (app.darkPageToggle) app.darkPageToggle.disabled = state.themeMode === 'light';
+  const effectiveTheme = computeEffectiveTheme();
+  const darkPageActive = effectiveTheme === 'dark' && !!state.darkPageInDarkMode;
+  setBodyPageTone(darkPageActive);
+  refreshPageFillColor();
+  const shouldSwapInks = lastDarkPageActive !== null && lastDarkPageActive !== darkPageActive;
+  if (shouldSwapInks) swapDocumentInkColors();
+  applyInkPaletteForTheme(darkPageActive);
+  let inkChanged = false;
+  if (darkPageActive && lastDarkPageActive !== true && state.ink !== 'w') {
+    setInk('w');
+    inkChanged = true;
+  } else if (!darkPageActive && lastDarkPageActive === true && state.ink === 'w') {
+    setInk('b');
+    inkChanged = true;
+  }
+  lastDarkPageActive = darkPageActive;
+  return inkChanged;
+}
+
+function setThemeModePreference(mode) {
+  const normalized = mode === 'light' ? 'light' : mode === 'dark' ? 'dark' : 'auto';
+  if (state.themeMode !== normalized) {
+    state.themeMode = normalized;
+  }
+  if (app.appearanceAuto) app.appearanceAuto.checked = normalized === 'auto';
+  if (app.appearanceLight) app.appearanceLight.checked = normalized === 'light';
+  if (app.appearanceDark) app.appearanceDark.checked = normalized === 'dark';
+  if (app.darkPageToggle) app.darkPageToggle.disabled = normalized === 'light';
+  applyAppearance();
+  saveStateDebounced();
+}
+
+function setDarkPagePreference(enabled) {
+  const normalized = !!enabled;
+  if (state.darkPageInDarkMode !== normalized) {
+    state.darkPageInDarkMode = normalized;
+  }
+  if (app.darkPageToggle) app.darkPageToggle.checked = normalized;
+  applyAppearance();
+  saveStateDebounced();
+}
+
+if (prefersDarkMedia) {
+  const handlePrefChange = () => {
+    if (state.themeMode === 'auto') {
+      applyAppearance();
+    }
+  };
+  if (typeof prefersDarkMedia.addEventListener === 'function') {
+    prefersDarkMedia.addEventListener('change', handlePrefChange);
+  } else if (typeof prefersDarkMedia.addListener === 'function') {
+    prefersDarkMedia.addListener(handlePrefChange);
+  }
+}
+
 context.controllers.lifecycle.registerRendererHooks({ schedulePaint });
 
 context.controllers.layoutAndZoom = createLayoutAndZoomController(
@@ -440,6 +610,8 @@ const uiBindings = setupUIBindings(
     setDrag: setDragValue,
     getSaveTimer: getSaveTimerValue,
     setSaveTimer: setSaveTimerValue,
+    setThemeModePreference,
+    setDarkPagePreference,
   },
   {
     editing: {
@@ -1026,6 +1198,7 @@ async function initialize() {
   bootstrapFirstPage();
   const { loaded, savedFont } = loadPersistedState();
   populateInitialUI({ loaded });
+  const inkAdjustedByTheme = applyAppearance();
 
   updateStageEnvironment();
   setZoomPercent(Math.round(state.zoom * 100) || 100);
@@ -1038,7 +1211,7 @@ async function initialize() {
   updateCaretPosition();
   document.body.classList.toggle('rulers-off', !state.showRulers);
   if (state.showRulers) positionRulers();
-  setInk(state.ink || 'b');
+  if (!inkAdjustedByTheme) setInk(state.ink || 'b');
   requestVirtualization();
 }
 

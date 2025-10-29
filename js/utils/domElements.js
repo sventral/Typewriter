@@ -29,6 +29,11 @@ export function createDomRefs() {
   app.applyLHBtn = document.getElementById('applyLHBtn');
   app.showMarginBoxCb = document.getElementById('showMarginBoxCb');
   app.wordWrapCb = document.getElementById('wordWrapCb');
+  app.appearanceAuto = document.getElementById('appearanceAuto');
+  app.appearanceLight = document.getElementById('appearanceLight');
+  app.appearanceDark = document.getElementById('appearanceDark');
+  app.darkPageToggle = document.getElementById('darkPageToggle');
+  app.appearanceRadios = () => Array.from(document.querySelectorAll('input[name="appearanceMode"]'));
   app.grainInput = document.getElementById('grainPct');
   app.stageWidthPct = document.getElementById('stageWidthPct');
   app.stageHeightPct = document.getElementById('stageHeightPct');

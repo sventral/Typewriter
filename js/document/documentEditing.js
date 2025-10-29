@@ -541,7 +541,7 @@ export function createDocumentEditingController(context) {
       return { rows };
     });
     return {
-      v: 21,
+      v: 22,
       fontName: getActiveFontName(),
       margins: { L: state.marginL, R: state.marginR, T: state.marginTop, B: state.marginBottom },
       caret: state.caret,
@@ -560,13 +560,16 @@ export function createDocumentEditingController(context) {
       wordWrap: state.wordWrap,
       stageWidthFactor: state.stageWidthFactor,
       stageHeightFactor: state.stageHeightFactor,
+      themeMode: state.themeMode || 'auto',
+      darkPageInDarkMode: !!state.darkPageInDarkMode,
+      pageFillColor: state.pageFillColor,
       pages,
     };
   }
 
   function deserializeState(data) {
     const gridDiv = getGridDiv();
-    if (!data || data.v < 2 || data.v > 21) return false;
+    if (!data || data.v < 2 || data.v > 22) return false;
     state.pages = [];
     app.stageInner.innerHTML = '';
     const pgArr = data.pages || [];
@@ -641,6 +644,9 @@ export function createDocumentEditingController(context) {
       wordWrap: data.wordWrap !== false,
       stageWidthFactor: sanitizedStageWidth,
       stageHeightFactor: sanitizedStageHeight,
+      themeMode: ['auto', 'light', 'dark'].includes(data.themeMode) ? data.themeMode : (state.themeMode || 'auto'),
+      darkPageInDarkMode: data.darkPageInDarkMode === true,
+      pageFillColor: typeof data.pageFillColor === 'string' && data.pageFillColor.trim() ? data.pageFillColor : state.pageFillColor,
     });
     state.lineStepMu = Math.round(gridDiv * state.lineHeightFactor);
     if (data.fontName) setActiveFontName(data.fontName);
@@ -657,7 +663,6 @@ export function createDocumentEditingController(context) {
     setPaperOffset(0, 0);
     state.pages = [];
     state.caret = { page: 0, rowMu: 0, col: 0 };
-    state.ink = 'b';
     state.grainSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
     state.altSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
     app.stageInner.innerHTML = '';
