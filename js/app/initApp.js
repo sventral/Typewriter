@@ -40,13 +40,9 @@ let {
   pendingFullRebuild,
   virtRAF,
   fontLoadSeq,
-  safariCaretBlinkTimer,
-  safariCaretVisible,
 } = ephemeral;
 const touchedPages = ephemeral.touchedPages;
 let hammerNudgeRAF = 0;
-const SAFARI_CARET_HIDDEN_CLASS = 'is-safari-caret-hidden';
-const SAFARI_CARET_BLINK_MS = 530;
 // EOM
 
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
@@ -74,7 +70,7 @@ let safariZoomMode = IS_SAFARI ? 'steady' : 'transient';
 let lastSafariLayoutZoom = IS_SAFARI ? state.zoom : 1;
 
 if (IS_SAFARI) {
-  document.documentElement.classList.add('safari-no-blur', 'safari-caret-fix');
+  document.documentElement.classList.add('safari-no-blur');
 }
 
 function focusStage(){
@@ -1591,62 +1587,6 @@ function requestHammerNudge(){
   }
 }
 
-function clearSafariCaretBlinkTimer(){
-  if (!IS_SAFARI) return;
-  if (safariCaretBlinkTimer){
-    clearInterval(safariCaretBlinkTimer);
-    safariCaretBlinkTimer = 0;
-    ephemeral.safariCaretBlinkTimer = 0;
-  }
-}
-
-function setSafariCaretVisibility(visible){
-  if (!IS_SAFARI || !app.caretEl) return;
-  safariCaretVisible = !!visible;
-  ephemeral.safariCaretVisible = safariCaretVisible;
-  if (safariCaretVisible){
-    app.caretEl.classList.remove(SAFARI_CARET_HIDDEN_CLASS);
-  } else {
-    app.caretEl.classList.add(SAFARI_CARET_HIDDEN_CLASS);
-  }
-}
-
-function restartSafariCaretBlink(){
-  if (!IS_SAFARI) return;
-  clearSafariCaretBlinkTimer();
-  const doc = (typeof document !== 'undefined') ? document : null;
-  if (doc){
-    if (doc.visibilityState === 'hidden'){
-      setSafariCaretVisibility(false);
-      return;
-    }
-    if (typeof doc.hasFocus === 'function' && !doc.hasFocus()){
-      setSafariCaretVisibility(false);
-      return;
-    }
-  }
-  setSafariCaretVisibility(true);
-  safariCaretBlinkTimer = setInterval(() => {
-    setSafariCaretVisibility(!safariCaretVisible);
-  }, SAFARI_CARET_BLINK_MS);
-  ephemeral.safariCaretBlinkTimer = safariCaretBlinkTimer;
-}
-
-function stopSafariCaretBlink(){
-  if (!IS_SAFARI) return;
-  clearSafariCaretBlinkTimer();
-  setSafariCaretVisibility(false);
-}
-
-if (IS_SAFARI){
-  window.addEventListener('blur', stopSafariCaretBlink, { passive: true });
-  window.addEventListener('focus', restartSafariCaretBlink, { passive: true });
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') restartSafariCaretBlink();
-    else stopSafariCaretBlink();
-  }, { passive: true });
-}
-
 // EOM
 
 // MARKER-START: updateCaretPosition
@@ -1666,7 +1606,6 @@ function updateCaretPosition(){
     app.caretEl.remove();
     p.pageEl.appendChild(app.caretEl);
   }
-  restartSafariCaretBlink();
   if (!zooming) requestHammerNudge();
   requestVirtualization();
 }
