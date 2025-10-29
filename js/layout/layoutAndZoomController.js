@@ -346,8 +346,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const ticksH = app.rulerH_host.querySelector('.ruler-ticks');
     const ticksV = app.rulerV_host.querySelector('.ruler-v-ticks');
     if (!ticksH || !ticksV) return;
-    ticksH.innerHTML = '';
-    ticksV.innerHTML = '';
+    const fragmentH = document.createDocumentFragment();
+    const fragmentV = document.createDocumentFragment();
     const ppiH = (activePageRect.width / 210) * 25.4;
     const originX = activePageRect.left;
     const hostWidth = app.rulerH_host.getBoundingClientRect().width || window.innerWidth;
@@ -360,13 +360,13 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
         const tick = document.createElement('div');
         tick.className = j === 0 ? 'tick major' : j === 5 ? 'tick medium' : 'tick minor';
         tick.style.left = `${x}px`;
-        ticksH.appendChild(tick);
+        fragmentH.appendChild(tick);
         if (j === 0) {
           const lbl = document.createElement('div');
           lbl.className = 'tick-num';
           lbl.textContent = i;
           lbl.style.left = `${x + 4}px`;
-          ticksH.appendChild(lbl);
+          fragmentH.appendChild(lbl);
         }
       }
     }
@@ -382,15 +382,27 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
         const tick = document.createElement('div');
         tick.className = j === 0 ? 'tick-v major' : j === 5 ? 'tick-v medium' : 'tick-v minor';
         tick.style.top = `${y}px`;
-        ticksV.appendChild(tick);
+        fragmentV.appendChild(tick);
         if (j === 0) {
           const lbl = document.createElement('div');
           lbl.className = 'tick-v-num';
           lbl.textContent = i;
           lbl.style.top = `${y + 4}px`;
-          ticksV.appendChild(lbl);
+          fragmentV.appendChild(lbl);
         }
       }
+    }
+    if (typeof ticksH.replaceChildren === 'function') {
+      ticksH.replaceChildren(fragmentH);
+    } else {
+      ticksH.textContent = '';
+      ticksH.appendChild(fragmentH);
+    }
+    if (typeof ticksV.replaceChildren === 'function') {
+      ticksV.replaceChildren(fragmentV);
+    } else {
+      ticksV.textContent = '';
+      ticksV.appendChild(fragmentV);
     }
   }
 
