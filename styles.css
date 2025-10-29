@@ -201,7 +201,15 @@
   }
 
   .page canvas{ display:block; width:100%; height:auto; }
-  .caret{ position:absolute; width:2px; background:#111; pointer-events:none; animation:blink 1s steps(1) infinite; }
+  .caret{
+    position:absolute;
+    width:2px;
+    background:#111;
+    pointer-events:none;
+    animation:blink 1s steps(1) infinite;
+    transform-origin: top left;
+    will-change: transform;
+  }
   @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
 
   .side-panel {
