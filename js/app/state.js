@@ -45,5 +45,7 @@ export function createEphemeralState() {
     pendingFullRebuild: false,
     virtRAF: 0,
     fontLoadSeq: 0,
+    safariCaretBlinkTimer: 0,
+    safariCaretVisible: true,
   };
 }
