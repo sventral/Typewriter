@@ -517,12 +517,11 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const timer = setTimeout(() => {
       setZoomDebounceTimer(null);
       setZooming(false);
-      setFreezeVirtual(false);
-      if (isSafari) stageLayoutSetSafariZoomMode('steady', { force: true });
       requestHammerNudge();
       const runCrispRedraw = () => {
         pendingZoomRedrawRAF = 0;
         setRenderScaleForZoom();
+        if (isSafari) stageLayoutSetSafariZoomMode('steady', { force: true });
         for (const p of state.pages) {
           if (!p) continue;
           prepareCanvas(p.canvas);
@@ -535,6 +534,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
         for (const p of state.pages) {
           if (p?.active) schedulePaint(p);
         }
+        setFreezeVirtual(false);
         requestHammerNudge();
         if (isSafari) syncSafariZoomLayout(true);
       };
