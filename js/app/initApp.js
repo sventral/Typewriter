@@ -68,10 +68,23 @@ const IS_SAFARI = (() => {
 const SAFARI_SUPERSAMPLE_THRESHOLD = 1.75;
 let safariZoomMode = IS_SAFARI ? 'steady' : 'transient';
 let lastSafariLayoutZoom = IS_SAFARI ? state.zoom : 1;
+const SAFARI_NATIVE_SCROLL_CLASS = 'safari-native-scroll';
+
+const useSafariNativeScroll = () => IS_SAFARI && safariZoomMode === 'steady';
+
+function syncSafariNativeScrollClass(){
+  if (!IS_SAFARI) return;
+  const root = document.documentElement;
+  if (!root) return;
+  if (useSafariNativeScroll()) root.classList.add(SAFARI_NATIVE_SCROLL_CLASS);
+  else root.classList.remove(SAFARI_NATIVE_SCROLL_CLASS);
+}
 
 if (IS_SAFARI) {
   document.documentElement.classList.add('safari-no-blur');
 }
+
+syncSafariNativeScrollClass();
 
 function focusStage(){
   if (!app.stage) return;
@@ -185,6 +198,7 @@ function setSafariZoomMode(mode, { force = false } = {}){
   const layoutZoom = layoutZoomFactor();
   const requireUpdate = force || prevMode !== target || lastSafariLayoutZoom !== layoutZoom;
   syncSafariZoomLayout(requireUpdate);
+  syncSafariNativeScrollClass();
 }
 
 function stageDimensions(){
@@ -1491,17 +1505,42 @@ function updateStageEnvironment(){
 }
 
 function setPaperOffset(x,y){
+  const prevX = state.paperOffset.x;
+  const prevY = state.paperOffset.y;
   const clamped = clampPaperOffset(x, y);
   const scale = cssScaleFactor();
   const snap = (v)=> Math.round(v * DPR) / DPR;
   const snappedX = scale ? snap(clamped.x * scale) / scale : clamped.x;
   const snappedY = scale ? snap(clamped.y * scale) / scale : clamped.y;
+  const useNativeScroll = useSafariNativeScroll();
+  const deltaX = snappedX - prevX;
+  const deltaY = snappedY - prevY;
   state.paperOffset.x = snappedX;
   state.paperOffset.y = snappedY;
-  if (app.stageInner){
+  if (useNativeScroll && app.stage){
+    const stage = app.stage;
+    const scrollScale = scale || 1;
+    if (Math.abs(deltaX) > 1e-6){
+      const maxX = Math.max(0, stage.scrollWidth - stage.clientWidth);
+      const nextX = clamp(stage.scrollLeft - deltaX * scrollScale, 0, maxX);
+      if (!Number.isNaN(nextX)) stage.scrollLeft = nextX;
+    }
+    if (Math.abs(deltaY) > 1e-6){
+      const maxY = Math.max(0, stage.scrollHeight - stage.clientHeight);
+      const nextY = clamp(stage.scrollTop - deltaY * scrollScale, 0, maxY);
+      if (!Number.isNaN(nextY)) stage.scrollTop = nextY;
+    }
+    if (app.stageInner){
+      app.stageInner.style.transform = 'translate3d(0px,0px,0)';
+    }
+  } else if (app.stageInner){
     const tx = Math.round(snappedX * 1000) / 1000;
     const ty = Math.round(snappedY * 1000) / 1000;
     app.stageInner.style.transform = `translate3d(${tx}px,${ty}px,0)`;
+    if (app.stage){
+      if (app.stage.scrollLeft !== 0) app.stage.scrollLeft = 0;
+      if (app.stage.scrollTop !== 0) app.stage.scrollTop = 0;
+    }
   }
   positionRulers();
   requestVirtualization();
@@ -1512,27 +1551,8 @@ function anchorPx(){
 
 // MARKER-START: nudgePaperToAnchor
 function maybeApplyNativeScroll(dx, dy, threshold){
-  if (!IS_SAFARI || safariZoomMode !== 'steady') return false;
-  const stage = app.stage;
-  if (!stage) return false;
-  let used = false;
-  const maxX = stage.scrollWidth - stage.clientWidth;
-  const maxY = stage.scrollHeight - stage.clientHeight;
-  if (Math.abs(dx) > threshold && maxX > 1){
-    const target = clamp(stage.scrollLeft - dx, 0, Math.max(0, maxX));
-    if (Math.abs(target - stage.scrollLeft) > threshold){
-      stage.scrollLeft = target;
-      used = true;
-    }
-  }
-  if (Math.abs(dy) > threshold && maxY > 1){
-    const target = clamp(stage.scrollTop - dy, 0, Math.max(0, maxY));
-    if (Math.abs(target - stage.scrollTop) > threshold){
-      stage.scrollTop = target;
-      used = true;
-    }
-  }
-  return used;
+  if (!useSafariNativeScroll()) return false;
+  return false;
 }
 
 function nudgePaperToAnchor(){

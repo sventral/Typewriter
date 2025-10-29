@@ -148,6 +148,17 @@
   }
   .stage::-webkit-scrollbar-horizontal{ height:0; }
   .stage:focus{ outline:none; }
+  html.safari-native-scroll .stage{
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  html.safari-native-scroll .stage::-webkit-scrollbar{
+    width:0;
+    height:0;
+  }
+  html.safari-native-scroll .stage-inner{
+    transform:none;
+  }
   .zoom-wrap{ width:var(--stage-width-px); min-height:var(--stage-height-px); transform-origin: top center; will-change: transform; display:flex; justify-content:center; }
   .stage-inner{
     min-width:var(--stage-width-px);
