@@ -37,6 +37,8 @@ export function setupUIBindings(context, controllers) {
     setDrag,
     getSaveTimer,
     setSaveTimer,
+    setThemeModePreference,
+    setDarkPagePreference,
   } = context;
 
   const {
@@ -256,6 +258,24 @@ export function setupUIBindings(context, controllers) {
     });
   }
 
+  function bindAppearanceControls() {
+    if (typeof setThemeModePreference === 'function') {
+      const radios = typeof app.appearanceRadios === 'function' ? app.appearanceRadios() : [];
+      radios.forEach(radio => {
+        radio.addEventListener('change', () => {
+          if (radio.checked) {
+            setThemeModePreference(radio.value);
+          }
+        });
+      });
+    }
+    if (app.darkPageToggle && typeof setDarkPagePreference === 'function') {
+      app.darkPageToggle.addEventListener('change', () => {
+        setDarkPagePreference(!!app.darkPageToggle.checked);
+      });
+    }
+  }
+
   function bindStageSizeInputs() {
     const updateStageBounds = (allowEmpty) => {
       const widthFactor = sanitizeStageInput(app.stageWidthPct, state.stageWidthFactor, allowEmpty, true);
@@ -388,6 +408,7 @@ export function setupUIBindings(context, controllers) {
     bindMarginInputs();
     bindStageSizeInputs();
     bindToolbarInputs();
+    bindAppearanceControls();
     bindRulerInteractions();
     bindZoomControls();
     bindGlobalListeners();
@@ -428,6 +449,11 @@ export function setupUIBindings(context, controllers) {
     if (app.mmBottom) app.mmBottom.value = Math.round(mmY(state.marginBottom));
     if (app.stageWidthPct) app.stageWidthPct.value = String(Math.round(sanitizedStageWidthFactor() * 100));
     if (app.stageHeightPct) app.stageHeightPct.value = String(Math.round(sanitizedStageHeightFactor() * 100));
+    if (app.appearanceAuto) app.appearanceAuto.checked = !['light', 'dark'].includes(state.themeMode);
+    if (app.appearanceLight) app.appearanceLight.checked = state.themeMode === 'light';
+    if (app.appearanceDark) app.appearanceDark.checked = state.themeMode === 'dark';
+    if (app.darkPageToggle) app.darkPageToggle.checked = !!state.darkPageInDarkMode;
+    if (app.darkPageToggle) app.darkPageToggle.disabled = state.themeMode === 'light';
 
     if (!loaded) {
       state.cpi = 10;
