@@ -1,8 +1,8 @@
 {
   "name": "typewriter",
-  "version": "1.0.0",
+  "version": "1.7",
   "description": "Browser-based typewriter simulator rendered entirely on the client via ES modules.",
-  "main": "js/app.js",
+  "main": "js/main.js",
   "type": "module",
   "scripts": {
     "start": "TODO",
