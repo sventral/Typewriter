@@ -1597,12 +1597,11 @@ function updateCaretPosition(){
   const caretLeft = (state.caret.col * CHAR_W) * layoutScale;
   const caretTop = (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * layoutScale;
   const caretHeight = baseCaretHeightPx() * layoutScale;
+  app.caretEl.style.left = caretLeft + 'px';
+  app.caretEl.style.top  = caretTop + 'px';
   app.caretEl.style.height = caretHeight + 'px';
   const caretWidth = Math.max(1, Math.round(2 * layoutScale));
   app.caretEl.style.width = caretWidth + 'px';
-  const tx = Math.round(caretLeft * 1000) / 1000;
-  const ty = Math.round(caretTop * 1000) / 1000;
-  app.caretEl.style.transform = `translate3d(${tx}px, ${ty}px, 0)`;
   if (app.caretEl.parentNode !== p.pageEl){
     app.caretEl.remove();
     p.pageEl.appendChild(app.caretEl);
