@@ -516,6 +516,10 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
     const timer = setTimeout(() => {
       setZoomDebounceTimer(null);
+      if (getZooming()) {
+        scheduleZoomCrispRedraw();
+        return;
+      }
       setZooming(false);
       requestHammerNudge();
       const runCrispRedraw = () => {
@@ -589,6 +593,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   function onZoomPointerUp() {
     if (!zoomDrag) return;
     zoomDrag = null;
+    setZooming(false);
     scheduleZoomCrispRedraw();
   }
 
