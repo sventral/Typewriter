@@ -46,6 +46,47 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let zoomDrag = null;
   let zoomIndicatorTimer = null;
 
+  const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
+  let zoomMeasurements = null;
+  let zoomMeasurementsObserver = null;
+
+  function refreshZoomMeasurements() {
+    if (!app.zoomTrack) {
+      zoomMeasurements = null;
+      return null;
+    }
+    const trackRect = app.zoomTrack.getBoundingClientRect();
+    const thumbRect = app.zoomThumb?.getBoundingClientRect();
+    zoomMeasurements = {
+      top: trackRect.top,
+      height: trackRect.height,
+      thumbHeight: thumbRect?.height || DEFAULT_ZOOM_THUMB_HEIGHT,
+    };
+    return zoomMeasurements;
+  }
+
+  function ensureZoomMeasurements() {
+    if (!zoomMeasurements || !Number.isFinite(zoomMeasurements.height) || zoomMeasurements.height <= 0) {
+      return refreshZoomMeasurements();
+    }
+    return zoomMeasurements;
+  }
+
+  function setupZoomMeasurementTracking() {
+    if (!app.zoomTrack) {
+      zoomMeasurements = null;
+      return;
+    }
+    refreshZoomMeasurements();
+    if (typeof ResizeObserver !== 'function' || zoomMeasurementsObserver) return;
+    zoomMeasurementsObserver = new ResizeObserver(() => {
+      refreshZoomMeasurements();
+      updateZoomUIFromState();
+    });
+    zoomMeasurementsObserver.observe(app.zoomTrack);
+    if (app.zoomThumb) zoomMeasurementsObserver.observe(app.zoomThumb);
+  }
+
   function updateRulerHostDimensions(stageW, stageH) {
     if (!app.rulerH_host || !app.rulerV_host) return;
     const scale = cssScaleFactor();
@@ -454,9 +495,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   function updateZoomUIFromState() {
     if (!app.zoomTrack || !app.zoomFill || !app.zoomThumb) return;
-    const trackRect = app.zoomTrack.getBoundingClientRect();
-    const th = app.zoomThumb.getBoundingClientRect().height || 13;
-    const H = trackRect.height;
+    const measurements = ensureZoomMeasurements();
+    if (!measurements || !measurements.height) return;
+    const { height: H, thumbHeight: th } = measurements;
     const n = normFromZ(state.zoom * 100);
     const fillH = n * H;
     app.zoomFill.style.height = `${fillH}px`;
@@ -504,14 +545,16 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   const percentFromPointer = (clientY) => {
     if (!app.zoomTrack) return state.zoom * 100;
-    const r = app.zoomTrack.getBoundingClientRect();
-    const y = clamp(clientY - r.top, 0, r.height);
-    return zFromNorm(1 - y / r.height);
+    const measurements = ensureZoomMeasurements();
+    if (!measurements || !measurements.height) return state.zoom * 100;
+    const y = clamp(clientY - measurements.top, 0, measurements.height);
+    return zFromNorm(1 - y / measurements.height);
   };
 
   function onZoomPointerDown(e) {
     if (!app.zoomThumb || !app.zoomTrack) return;
     e.preventDefault();
+    refreshZoomMeasurements();
     setZooming(true);
     setFreezeVirtual(true);
     if (isSafari) setSafariZoomMode('transient', { force: true });
@@ -543,6 +586,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       setPaperOffset(state.paperOffset.x - dx / state.zoom, state.paperOffset.y - dy / state.zoom);
     }
   }
+
+  setupZoomMeasurementTracking();
 
   return {
     updateStageEnvironment,
