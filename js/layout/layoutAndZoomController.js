@@ -45,6 +45,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let hammerNudgeRAF = 0;
   let zoomDrag = null;
   let zoomIndicatorTimer = null;
+  let pendingZoomRedrawRAF = 0;
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
@@ -509,26 +510,39 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   function scheduleZoomCrispRedraw() {
     const existing = getZoomDebounceTimer();
     if (existing) clearTimeout(existing);
+    if (pendingZoomRedrawRAF && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(pendingZoomRedrawRAF);
+      pendingZoomRedrawRAF = 0;
+    }
     const timer = setTimeout(() => {
       setZoomDebounceTimer(null);
       setZooming(false);
       setFreezeVirtual(false);
-      setRenderScaleForZoom();
       if (isSafari) stageLayoutSetSafariZoomMode('steady', { force: true });
-      for (const p of state.pages) {
-        if (!p) continue;
-        prepareCanvas(p.canvas);
-        prepareCanvas(p.backCanvas);
-        configureCanvasContext(p.ctx);
-        configureCanvasContext(p.backCtx);
-        p.dirtyAll = true;
-      }
-      rebuildAllAtlases();
-      for (const p of state.pages) {
-        if (p?.active) schedulePaint(p);
-      }
       requestHammerNudge();
-      if (isSafari) syncSafariZoomLayout(true);
+      const runCrispRedraw = () => {
+        pendingZoomRedrawRAF = 0;
+        setRenderScaleForZoom();
+        for (const p of state.pages) {
+          if (!p) continue;
+          prepareCanvas(p.canvas);
+          prepareCanvas(p.backCanvas);
+          configureCanvasContext(p.ctx);
+          configureCanvasContext(p.backCtx);
+          p.dirtyAll = true;
+        }
+        rebuildAllAtlases();
+        for (const p of state.pages) {
+          if (p?.active) schedulePaint(p);
+        }
+        requestHammerNudge();
+        if (isSafari) syncSafariZoomLayout(true);
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        pendingZoomRedrawRAF = requestAnimationFrame(runCrispRedraw);
+      } else {
+        setTimeout(runCrispRedraw, 0);
+      }
     }, 160);
     setZoomDebounceTimer(timer);
   }
