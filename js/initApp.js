@@ -9,6 +9,7 @@ import { createGlyphAtlas } from './rendering/glyphAtlas.js';
 import { createPageRenderer } from './rendering/pageRendering.js';
 import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from './config/inkSettingsPanel.js';
 import { createDocumentEditingController } from './document/documentEditing.js';
+import { createPageLifecycleController } from './document/pageLifecycle.js';
 
 export function initApp(){
 
@@ -43,6 +44,24 @@ let {
 const touchedPages = ephemeral.touchedPages;
 let hammerNudgeRAF = 0;
 let layoutZoomFactorRef = () => 1;
+
+let lifecycleController = null;
+let pendingVirtualization = false;
+
+const touchPage = (...args) => lifecycleController?.touchPage(...args);
+const prepareCanvas = (...args) => lifecycleController?.prepareCanvas(...args);
+const configureCanvasContext = (...args) => lifecycleController?.configureCanvasContext(...args);
+const makePageRecord = (...args) => lifecycleController?.makePageRecord(...args);
+const addPage = (...args) => lifecycleController?.addPage(...args);
+const bootstrapFirstPage = (...args) => lifecycleController?.bootstrapFirstPage(...args);
+const resetPagesBlankPreserveSettings = (...args) => lifecycleController?.resetPagesBlankPreserveSettings(...args);
+const requestVirtualization = (...args) => {
+  if (!lifecycleController) {
+    pendingVirtualization = true;
+    return;
+  }
+  return lifecycleController.requestVirtualization(...args);
+};
 
 const rendererHooks = {};
 let rebuildAllAtlasesFn = () => {};
@@ -81,11 +100,35 @@ const editingController = createDocumentEditingController({
   layoutZoomFactor: () => layoutZoomFactorRef(),
   requestHammerNudge,
   isZooming: () => zooming,
-  handlePageClick,
+  resetPagesBlankPreserveSettings,
 });
 
+const lifecycleContext = {
+  app,
+  state,
+  layoutZoomFactor: () => layoutZoomFactorRef(),
+  getRenderScale: () => RENDER_SCALE,
+  getFontSize: () => FONT_SIZE,
+  getActiveFontName: () => ACTIVE_FONT_NAME,
+  exactFontString,
+  getGridHeight: () => GRID_H,
+  getCharWidth: () => CHAR_W,
+  getFreezeVirtual: () => freezeVirtual,
+  getVirtRAF: () => virtRAF,
+  setVirtRAF: (value) => { virtRAF = value; },
+  renderMargins,
+  positionRulers,
+  resetTypedRun,
+};
+
+lifecycleController = createPageLifecycleController(lifecycleContext, editingController);
+
+if (pendingVirtualization) {
+  pendingVirtualization = false;
+  lifecycleController.requestVirtualization();
+}
+
 const {
-  touchPage,
   getCurrentBounds,
   snapRowMuToStep,
   clampCaretToBounds,
@@ -167,12 +210,14 @@ const {
   rebuildAllAtlases,
   drawGlyph,
   applyGrainOverlayOnRegion,
-  touchPage,
+  lifecycle: lifecycleController,
   getCurrentBounds,
   getBatchDepth: () => batchDepth,
 });
 
 Object.assign(rendererHooks, { markRowAsDirty, schedulePaint });
+
+lifecycleController.registerRendererHooks({ schedulePaint });
 
 function focusStage(){
   if (!app.stage) return;
@@ -284,22 +329,6 @@ function setRenderScaleForZoom(){
   const desired = DPR * zb;
   RENDER_SCALE = Math.min(desired, computeMaxRenderScale());
 }
-function prepareCanvas(canvas) {
-  canvas.width  = Math.floor(app.PAGE_W * RENDER_SCALE);
-  canvas.height = Math.floor(app.PAGE_H * RENDER_SCALE);
-  const displayZoom = layoutZoomFactor();
-  canvas.style.width  = (app.PAGE_W * displayZoom) + 'px';
-  canvas.style.height = (app.PAGE_H * displayZoom) + 'px';
-}
-function configureCanvasContext(ctx) {
-  ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
-  ctx.font = exactFontString(FONT_SIZE, ACTIVE_FONT_NAME);
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-  ctx.imageSmoothingEnabled = false;
-  try { ctx.filter = 'none'; } catch {}
-  ctx.globalCompositeOperation = 'source-over';
-}
 function prewarmFontFace(face){
   const px = Math.max(12, Math.ceil(getTargetPitchPx()));
   const ghost = document.createElement('span');
@@ -375,56 +404,6 @@ function applyMetricsNow(full=false){
   requestVirtualization();
   saveStateDebounced();
   endBatch();
-}
-
-function makePageRecord(idx, wrapEl, pageEl, canvas, marginBoxEl) {
-  try { pageEl.style.cursor = 'text'; } catch {}
-  prepareCanvas(canvas);
-  const ctx = canvas.getContext('2d');
-  configureCanvasContext(ctx);
-  const backCanvas = document.createElement('canvas');
-  prepareCanvas(backCanvas);
-  const backCtx = backCanvas.getContext('2d');
-  configureCanvasContext(backCtx);
-  backCtx.save();
-  backCtx.globalCompositeOperation = 'source-over';
-  backCtx.globalAlpha = 1;
-  backCtx.fillStyle = '#ffffff';
-  backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
-  backCtx.restore();
-  const page = {
-    index: idx, wrapEl, pageEl, canvas, ctx, backCanvas, backCtx,
-    grid: new Map(), raf: 0, dirtyAll: true, active: false,
-    _dirtyRowMinMu: undefined, _dirtyRowMaxMu: undefined,
-    marginBoxEl, grainCanvas: null, grainForSize: { w:0, h:0 }
-  };
-  pageEl.addEventListener('mousedown', (e) => handlePageClick(e, idx), { capture:false });
-  canvas.addEventListener('mousedown', (e) => handlePageClick(e, idx), { capture:false });
-  return page;
-}
-
-function addPage() {
-  const idx = state.pages.length;
-  const wrap = document.createElement('div'); wrap.className = 'page-wrap'; wrap.dataset.page = String(idx);
-  const pageEl = document.createElement('div'); pageEl.className = 'page'; pageEl.style.height = app.PAGE_H + 'px';
-  const canvas = document.createElement('canvas');
-  const mb = document.createElement('div'); mb.className = 'margin-box';
-  mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
-  pageEl.appendChild(canvas); pageEl.appendChild(mb); wrap.appendChild(pageEl); app.stageInner.appendChild(wrap);
-  const page = makePageRecord(idx, wrap, pageEl, canvas, mb);
-  page.canvas.style.visibility = 'hidden';
-  state.pages.push(page);
-  renderMargins();
-  requestVirtualization();
-  return page;
-}
-function bootstrapFirstPage() {
-  const pageEl = app.firstPage; pageEl.style.height = app.PAGE_H + 'px';
-  const canvas = pageEl.querySelector('canvas');
-  const page = makePageRecord(0, app.firstPageWrap, pageEl, canvas, app.marginBox);
-  page.canvas.style.visibility = 'hidden';
-  page.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
-  state.pages.push(page);
 }
 
 const DEAD_X = 1.25, DEAD_Y = 3.0;
@@ -1107,73 +1086,8 @@ function handleWheelPan(e){
   const dx = e.deltaX, dy = e.deltaY;
   if (dx || dy) setPaperOffset(state.paperOffset.x - dx / state.zoom, state.paperOffset.y - dy / state.zoom);
 }
-function handlePageClick(e, pageIndex){
-  e.preventDefault();
-  e.stopPropagation();
-  const ae = document.activeElement;
-  if (ae && ae !== document.body) { try { ae.blur(); } catch {} }
-  const pageEl = (e.currentTarget.classList?.contains('page')) ? e.currentTarget : e.currentTarget.closest('.page');
-  if (!pageEl) return;
-  const r = pageEl.getBoundingClientRect();
-  const b = getCurrentBounds();
-  let rawRowMu = Math.round(((e.clientY - r.top) / state.zoom) / GRID_H);
-  let rowMu = snapRowMuToStep(clamp(rawRowMu, b.Tmu, b.Bmu), b);
-  let col = clamp(Math.floor(((e.clientX - r.left) / state.zoom) / CHAR_W), b.L, b.R);
-  state.caret = { page: pageIndex, rowMu, col };
-  app.activePageIndex = pageIndex;
-  resetTypedRun();
-  updateCaretPosition();
-  positionRulers();
-}
-
 function saveStateNow(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState())); }catch{} }
 function saveStateDebounced(){ if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(saveStateNow, 400); }
-function effectiveVirtualPad(){ return state.zoom >= 3 ? 0 : 1; }
-function setPageActive(page, active) {
-  if (!page || page.active === active) return;
-  page.active = active;
-  if (active) {
-    page.canvas.style.visibility = 'visible';
-    page.dirtyAll = true;
-    schedulePaint(page);
-  } else {
-    page.canvas.style.visibility = 'hidden';
-  }
-}
-
-function visibleWindowIndices() {
-  const sp = app.stage.getBoundingClientRect();
-  const scrollCenterY = (sp.top + sp.bottom) / 2;
-  let bestIdx = 0, bestDist = Infinity;
-  for (let i = 0; i < state.pages.length; i++) {
-    const r = state.pages[i].wrapEl.getBoundingClientRect();
-    const d = Math.abs(((r.top + r.bottom) / 2) - scrollCenterY);
-    if (d < bestDist) { bestDist = d; bestIdx = i; }
-  }
-  const PAD = effectiveVirtualPad();
-  let i0 = Math.max(0, bestIdx - PAD);
-  let i1 = Math.min(state.pages.length - 1, bestIdx + PAD);
-  const cp = state.caret.page;
-  i0 = Math.min(i0, cp);
-  i1 = Math.max(i1, cp);
-  return [i0, i1];
-}
-
-function updateVirtualization() {
-  if (freezeVirtual) {
-    for (let i=0;i<state.pages.length;i++) setPageActive(state.pages[i], true);
-    return;
-  }
-  if (state.pages.length === 0) return;
-  const [i0, i1] = visibleWindowIndices();
-  for (let i = 0; i < state.pages.length; i++) {
-    setPageActive(state.pages[i], i >= i0 && i <= i1);
-  }
-}
-function requestVirtualization() {
-  if (virtRAF) return;
-  virtRAF = requestAnimationFrame(() => { virtRAF = 0; updateVirtualization(); });
-}
 function applyDefaultMargins() {
   const mmw = app.PAGE_W / 210, mmh = app.PAGE_H / 297, mW = 20 * mmw, mH = 20 * mmh;
   state.marginL = mW; state.marginR = app.PAGE_W - mW;

@@ -26,6 +26,7 @@ export function createDocumentEditingController(context) {
     makePageRecord,
     prepareCanvas,
     configureCanvasContext,
+    resetPagesBlankPreserveSettings,
     recalcMetrics,
     rebuildAllAtlases,
     setPaperOffset,
@@ -35,7 +36,6 @@ export function createDocumentEditingController(context) {
     layoutZoomFactor,
     requestHammerNudge,
     isZooming,
-    handlePageClick,
   } = context;
 
   function markRowAsDirty(page, rowMu) {
@@ -511,33 +511,6 @@ export function createDocumentEditingController(context) {
     }
   }
 
-  function resetPagesBlankPreserveSettings() {
-    state.pages = [];
-    app.stageInner.innerHTML = '';
-    const wrap = document.createElement('div');
-    wrap.className = 'page-wrap';
-    wrap.dataset.page = '0';
-    const pageEl = document.createElement('div');
-    pageEl.className = 'page';
-    pageEl.style.height = app.PAGE_H + 'px';
-    const cv = document.createElement('canvas');
-    const mb = document.createElement('div');
-    mb.className = 'margin-box';
-    mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
-    pageEl.appendChild(cv);
-    pageEl.appendChild(mb);
-    wrap.appendChild(pageEl);
-    app.stageInner.appendChild(wrap);
-    app.firstPageWrap = wrap;
-    app.firstPage = pageEl;
-    app.marginBox = mb;
-    const page = makePageRecord(0, wrap, pageEl, cv, mb);
-    page.canvas.style.visibility = 'hidden';
-    state.pages.push(page);
-    renderMargins();
-    requestVirtualization();
-  }
-
   function rewrapDocumentToCurrentBounds() {
     beginBatch();
     const { tokens, caretIndex } = flattenGridToStreamWithCaret();
@@ -613,9 +586,6 @@ export function createDocumentEditingController(context) {
       wrap.appendChild(pageEl);
       app.stageInner.appendChild(wrap);
       const page = makePageRecord(idx, wrap, pageEl, cv, mb);
-      if (handlePageClick) {
-        pageEl.addEventListener('mousedown', e => handlePageClick(e, idx));
-      }
       state.pages.push(page);
       if (Array.isArray(pg.rows)) {
         for (const [rmu, cols] of pg.rows) {
