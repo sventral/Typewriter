@@ -11,6 +11,7 @@ import { createPageRenderer } from './rendering/pageRendering.js';
 import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from './config/inkSettingsPanel.js';
 import { createDocumentEditingController } from './document/documentEditing.js';
 import { createPageLifecycleController } from './document/pageLifecycle.js';
+import { setupUIBindings } from './init/uiBindings.js';
 
 export function initApp(){
 
@@ -44,6 +45,19 @@ let {
 } = ephemeral;
 const touchedPages = ephemeral.touchedPages;
 let layoutZoomFactorRef = () => 1;
+
+const saveHooks = {
+  saveStateNow: () => {},
+  saveStateDebounced: () => {},
+};
+
+function saveStateNow(...args) {
+  return saveHooks.saveStateNow(...args);
+}
+
+function saveStateDebounced(...args) {
+  return saveHooks.saveStateDebounced(...args);
+}
 
 let layoutAndZoomApi = createNoopLayoutAndZoomApi();
 
@@ -126,6 +140,18 @@ function onZoomPointerMove(...args) {
 
 function onZoomPointerUp(...args) {
   return layoutAndZoomApi.onZoomPointerUp(...args);
+}
+
+function setDragValue(value) {
+  drag = value;
+}
+
+function getSaveTimerValue() {
+  return saveTimer;
+}
+
+function setSaveTimerValue(value) {
+  saveTimer = value;
 }
 
 let lifecycleController = null;
@@ -344,19 +370,77 @@ layoutAndZoomApi = createLayoutAndZoomController(
 
 layoutZoomFactorRef = layoutZoomFactor;
 
+const uiBindings = setupUIBindings(
+  {
+    app,
+    state,
+    storageKey: STORAGE_KEY,
+    focusStage,
+    pxX,
+    pxY,
+    mmX,
+    mmY,
+    sanitizeStageInput,
+    sanitizedStageWidthFactor,
+    sanitizedStageHeightFactor,
+    updateStageEnvironment,
+    renderMargins,
+    clampCaretToBounds,
+    updateCaretPosition,
+    positionRulers,
+    requestVirtualization,
+    schedulePaint,
+    setZoomPercent,
+    applyDefaultMargins,
+    computeColsFromCpi,
+    applySubmittedChanges,
+    applyLineHeight,
+    readStagedLH,
+    toggleRulers,
+    toggleFontsPanel,
+    toggleSettingsPanel,
+    toggleInkSettingsPanel,
+    loadFontAndApply,
+    requestHammerNudge,
+    isZooming: () => zooming,
+    setDrag: setDragValue,
+    getSaveTimer: getSaveTimerValue,
+    setSaveTimer: setSaveTimerValue,
+  },
+  {
+    editing: {
+      setInk,
+      createNewDocument,
+      serializeState,
+      deserializeState,
+    },
+    layout: {
+      handleWheelPan,
+      handleHorizontalMarginDrag,
+      handleVerticalMarginDrag,
+      endMarginDrag,
+      onZoomPointerDown,
+      onZoomPointerMove,
+      onZoomPointerUp,
+      setMarginBoxesVisible,
+    },
+    input: {
+      handleKeyDown,
+      handlePaste,
+    },
+  },
+);
+
+saveHooks.saveStateNow = uiBindings.saveStateNow;
+saveHooks.saveStateDebounced = uiBindings.saveStateDebounced;
+
+const { loadPersistedState, populateInitialUI } = uiBindings;
+
 function computeColsFromCpi(cpi){
   const raw = A4_WIDTH_IN * cpi;
   const cols3 = Math.round(raw * 1000) / 1000;
   const cols2 = Math.round(cols3 * 100) / 100;
   return { cols3, cols2 };
-}
-
-function updateColsPreviewUI(){
-  const cpi = parseFloat(app.cpiSelect?.value) || 10;
-  const { cols2 } = computeColsFromCpi(cpi);
-  if (app.colsPreviewSpan) {
-    app.colsPreviewSpan.textContent = `Columns: ${cols2.toFixed(2)}`;
-  }
 }
 
 function readStagedCpi(){
@@ -887,8 +971,6 @@ function applyMetricsNow(full=false){
   endBatch();
 }
 
-function saveStateNow(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState())); }catch{} }
-function saveStateDebounced(){ if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(saveStateNow, 400); }
 function applyDefaultMargins() {
   const mmw = app.PAGE_W / 210, mmh = app.PAGE_H / 297, mW = 20 * mmw, mH = 20 * mmh;
   state.marginL = mW; state.marginR = app.PAGE_W - mW;
@@ -901,245 +983,19 @@ function toggleRulers(){
   saveStateDebounced();
 }
 
-function exportToTextFile(){
-  const out=[];
-  for (let p=0;p<state.pages.length;p++){
-    const page=state.pages[p];
-    if (!page){ out.push(''); continue; }
-    const rows = Array.from(page.grid.keys()).sort((a,b)=>a-b);
-    if (!rows.length){ out.push(''); continue; }
-    for (let i=0;i<rows.length;i++){
-      const rmu = rows[i];
-      const rowMap = page.grid.get(rmu);
-      let minCol = Infinity, maxCol = -1;
-      for (const c of rowMap.keys()){ if (c < minCol) minCol = c; if (c > maxCol) maxCol = c; }
-      if (!isFinite(minCol) || maxCol < 0){ out.push(''); continue; }
-      let line = '';
-      for (let c=minCol;c<=maxCol;c++){
-        const st=rowMap?.get(c);
-        line += st && st.length ? st[st.length-1].char : ' ';
-      }
-      out.push(line.replace(/\s+$/,''));
-    }
-    if (p<state.pages.length-1) out.push('');
-  }
-  const txt = out.join('\n');
-  const blob = new Blob([txt], {type:'text/plain;charset=utf-8'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='typewriter.txt';
-  document.body.appendChild(a); a.click(); URL.revokeObjectURL(a.href); a.remove();
-}
-
-function bindEventListeners(){
-  app.toggleMarginsBtn.onclick = toggleRulers;
-  app.exportBtn.addEventListener('click', exportToTextFile);
-  if (app.newDocBtn) app.newDocBtn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); createNewDocument(); });
-
-  const onOpacitySliderInput = (key, sliderEl, valueEl) => {
-    const v = parseInt(sliderEl.value, 10);
-    valueEl.textContent = `${v}%`;
-    state.inkOpacity[key] = v;
-    saveStateDebounced();
-    for (const p of state.pages){ if (p.active){ p.dirtyAll = true; schedulePaint(p); } }
-  };
-  app.inkOpacityBSlider.addEventListener('input', () => onOpacitySliderInput('b', app.inkOpacityBSlider, app.inkOpacityBValue));
-  app.inkOpacityRSlider.addEventListener('input', () => onOpacitySliderInput('r', app.inkOpacityRSlider, app.inkOpacityRValue));
-  app.inkOpacityWSlider.addEventListener('input', () => onOpacitySliderInput('w', app.inkOpacityWSlider, app.inkOpacityWValue));
-
-  const LONG_PRESS_DURATION = 500;
-  const setupInkButton = (btn, ink, popup) => {
-    let pressTimer = null;
-    let isLongPress = false;
-    const startPress = () => {
-      isLongPress = false;
-      pressTimer = setTimeout(() => {
-        isLongPress = true;
-        const allPopups = [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup];
-        allPopups.forEach(p => { if (p !== popup) p.classList.remove('active'); });
-        popup.classList.add('active');
-      }, LONG_PRESS_DURATION);
-    };
-    const endPress = () => {
-      clearTimeout(pressTimer);
-      if (!isLongPress) {
-        setInk(ink);
-        const allPopups = [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup];
-        allPopups.forEach(p => p.classList.remove('active'));
-      }
-    };
-    btn.addEventListener('pointerdown', startPress);
-    btn.addEventListener('pointerup', endPress);
-    btn.addEventListener('pointerleave', () => clearTimeout(pressTimer));
-    popup.addEventListener('pointerdown', e => e.stopPropagation());
-  };
-  setupInkButton(app.inkBlackBtn, 'b', app.inkBlackSliderPopup);
-  setupInkButton(app.inkRedBtn, 'r', app.inkRedSliderPopup);
-  setupInkButton(app.inkWhiteBtn, 'w', app.inkWhiteSliderPopup);
-  document.body.addEventListener('pointerdown', () => {
-    [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup].forEach(p => p.classList.remove('active'));
-  });
-
-  app.grainInput.addEventListener('input', ()=>{
-    const v = clamp(parseInt(app.grainInput.value || '0', 10), 0, 100);
-    app.grainInput.value = String(v);
-    state.grainPct = v;
-    saveStateDebounced();
-    for (const p of state.pages){ if (p.active){ p.dirtyAll = true; schedulePaint(p); } }
-  });
-
-  app.fontsBtn.onclick = toggleFontsPanel;
-  app.settingsBtnNew.onclick = toggleSettingsPanel;
-  if (app.inkSettingsBtn) app.inkSettingsBtn.onclick = toggleInkSettingsPanel;
-  window.addEventListener('keydown', e=>{ if (e.key === 'Escape') {
-    app.fontsPanel.classList.remove('is-open');
-    app.settingsPanel.classList.remove('is-open');
-    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
-  }});
-  app.fontRadios().forEach(radio=>{ radio.addEventListener('change', async ()=>{ if (radio.checked){ await loadFontAndApply(radio.value); focusStage(); } }); });
-
-  const applyMm = ()=>{
-    state.marginL = pxX(Math.max(0, Number(app.mmLeft?.value)  || 0));
-    state.marginR = app.PAGE_W - pxX(Math.max(0, Number(app.mmRight?.value) || 0));
-    state.marginTop = pxY(Math.max(0, Number(app.mmTop?.value)   || 0));
-    state.marginBottom = pxY(Math.max(0, Number(app.mmBottom?.value)|| 0));
-    renderMargins(); clampCaretToBounds(); updateCaretPosition(); positionRulers(); saveStateDebounced();
-  };
-  [app.mmLeft, app.mmRight, app.mmTop, app.mmBottom].forEach(inp=>{
-    if (!inp) return;
-    inp.addEventListener('input', ()=>{
-      sanitizeIntegerField(inp, { min:0, allowEmpty:true });
-      applyMm();
-    });
-    inp.addEventListener('change', ()=>{
-      sanitizeIntegerField(inp, { min:0, allowEmpty:false, fallbackValue:0 });
-      applyMm();
-      focusStage();
-    });
-  });
-
-  const updateStageBounds = (allowEmpty)=>{
-    const widthFactor = sanitizeStageInput(app.stageWidthPct, state.stageWidthFactor, allowEmpty, true);
-    const heightFactor = sanitizeStageInput(app.stageHeightPct, state.stageHeightFactor, allowEmpty, false);
-    if (widthFactor == null || heightFactor == null) return;
-    const changed = (widthFactor !== state.stageWidthFactor) || (heightFactor !== state.stageHeightFactor);
-    state.stageWidthFactor = widthFactor;
-    state.stageHeightFactor = heightFactor;
-    updateStageEnvironment();
-    if (changed) saveStateDebounced();
-  };
-  [app.stageWidthPct, app.stageHeightPct].forEach(inp=>{
-    if (!inp) return;
-    inp.addEventListener('input', ()=> updateStageBounds(true));
-    inp.addEventListener('change', ()=>{ updateStageBounds(false); focusStage(); });
-  });
-
-  if (app.sizeInput){
-    app.sizeInput.addEventListener('input', ()=>{ sanitizeIntegerField(app.sizeInput, { min:1, max:150, allowEmpty:true }); });
-    app.sizeInput.addEventListener('change', ()=>{
-      sanitizeIntegerField(app.sizeInput, { min:1, max:150, allowEmpty:false, fallbackValue: state.inkWidthPct || 84 });
-      focusStage();
-    });
-    const applyOnEnter = (e)=>{ if (e.key === 'Enter') { e.preventDefault(); applySubmittedChanges(); } };
-    app.sizeInput.addEventListener('keydown', applyOnEnter);
-  }
-
-  if (app.applyBtn) app.applyBtn.addEventListener('click', applySubmittedChanges);
-  if (app.applyLHBtn) app.applyLHBtn.addEventListener('click', applyLineHeight);
-  if (app.lhInput) app.lhInput.addEventListener('input', ()=>{ app.lhInput.value = String(readStagedLH()); });
-  if (app.showMarginBoxCb) app.showMarginBoxCb.addEventListener('change', ()=>{ state.showMarginBox = !!app.showMarginBoxCb.checked; renderMargins(); saveStateDebounced(); focusStage(); });
-
-  if (app.cpiSelect) app.cpiSelect.addEventListener('change', ()=>{ updateColsPreviewUI(); focusStage(); });
-
-  if (app.wordWrapCb){
-    app.wordWrapCb.addEventListener('change', ()=>{
-      state.wordWrap = !!app.wordWrapCb.checked;
-      saveStateDebounced();
-      focusStage();
-    });
-  }
-
-  app.rulerH_stops_container.addEventListener('pointerdown', e=>{
-    const tri = e.target.closest('.tri'); if (!tri) return;
-    e.preventDefault();
-    drag = { kind:'h', side: tri.classList.contains('left') ? 'left' : 'right', pointerId: e.pointerId };
-    setMarginBoxesVisible(false);
-    (tri.setPointerCapture && tri.setPointerCapture(e.pointerId));
-    document.addEventListener('pointermove', handleHorizontalMarginDrag);
-    document.addEventListener('pointerup', endMarginDrag, true);
-    document.addEventListener('pointercancel', endMarginDrag, true);
-  }, {passive:false});
-  app.rulerV_stops_container.addEventListener('pointerdown', e=>{
-    const tri = e.target.closest('.tri-v'); if (!tri) return;
-    e.preventDefault();
-    drag = { kind:'v', side: tri.classList.contains('top') ? 'top' : 'bottom', pointerId: e.pointerId };
-    setMarginBoxesVisible(false);
-    (tri.setPointerCapture && tri.setPointerCapture(e.pointerId));
-    document.addEventListener('pointermove', handleVerticalMarginDrag);
-    document.addEventListener('pointerup', endMarginDrag, true);
-    document.addEventListener('pointercancel', endMarginDrag, true);
-  }, {passive:false});
-
-  app.zoomSlider.addEventListener('pointerdown', onZoomPointerDown, {passive:false});
-  window.addEventListener('pointermove', onZoomPointerMove, {passive:true});
-  window.addEventListener('pointerup', onZoomPointerUp, {passive:true});
-  app.zoomIndicator.addEventListener('dblclick', ()=> setZoomPercent(100));
-
-  window.addEventListener('keydown', handleKeyDown, { capture: true });
-  window.addEventListener('paste', handlePaste, { capture: true });
-  app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
-  window.addEventListener('resize', () => { positionRulers(); if (!zooming) requestHammerNudge(); requestVirtualization(); }, { passive: true });
-  window.addEventListener('beforeunload', saveStateNow);
-  window.addEventListener('click', () => window.focus(), { passive: true });
-}
-
 async function initialize() {
-  bindEventListeners();
   setupInkSettingsPanel({
     refreshGlyphs: refreshGlyphEffects,
     refreshGrain: refreshGrainEffects
   });
   bootstrapFirstPage();
-  let raw = null, loaded = false, savedFont = null;
-  try { raw = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch {}
-  if (raw) savedFont = raw.fontName;
-  try { loaded = deserializeState(raw); } catch {}
-
-  app.inkOpacityBSlider.value = String(state.inkOpacity.b);
-  app.inkOpacityRSlider.value = String(state.inkOpacity.r);
-  app.inkOpacityWSlider.value = String(state.inkOpacity.w);
-  app.inkOpacityBValue.textContent = `${state.inkOpacity.b}%`;
-  app.inkOpacityRValue.textContent = `${state.inkOpacity.r}%`;
-  app.inkOpacityWValue.textContent = `${state.inkOpacity.w}%`;
-
-  app.grainInput.value  = String(state.grainPct);
-  app.cpiSelect.value = String(state.cpi || 10);
-  updateColsPreviewUI();
-  app.sizeInput.value = String(clamp(Math.round(state.inkWidthPct ?? 84), 1, 150));
-  app.lhInput.value = String(state.lineHeightFactor);
-  app.showMarginBoxCb.checked = !!state.showMarginBox;
-  if (app.wordWrapCb) app.wordWrapCb.checked = !!state.wordWrap;
-  app.mmLeft.value   = Math.round(mmX(state.marginL));
-  app.mmRight.value  = Math.round(mmX(app.PAGE_W - state.marginR));
-  app.mmTop.value    = Math.round(mmY(state.marginTop));
-  app.mmBottom.value = Math.round(mmY(state.marginBottom));
-  if (app.stageWidthPct) app.stageWidthPct.value = String(Math.round(sanitizedStageWidthFactor() * 100));
-  if (app.stageHeightPct) app.stageHeightPct.value = String(Math.round(sanitizedStageHeightFactor() * 100));
-
-  if (!loaded){
-    state.cpi = 10;
-    state.colsAcross = computeColsFromCpi(10).cols2;
-    state.inkWidthPct = 84;
-    state.inkOpacity = { b:100, r:100, w:100 };
-    state.grainPct = 0;
-    state.grainSeed = ((Math.random()*0xFFFFFFFF)>>>0);
-    state.altSeed = ((Math.random()*0xFFFFFFFF)>>>0);
-    state.wordWrap = true;
-    applyDefaultMargins();
-  }
+  const { loaded, savedFont } = loadPersistedState();
+  populateInitialUI({ loaded });
 
   updateStageEnvironment();
-  setZoomPercent(Math.round(state.zoom*100) || 100);
+  setZoomPercent(Math.round(state.zoom * 100) || 100);
   updateZoomUIFromState();
-  setPaperOffset(0,0);
+  setPaperOffset(0, 0);
   await loadFontAndApply(savedFont || ACTIVE_FONT_NAME);
   setLineHeightFactor(state.lineHeightFactor);
   renderMargins();
