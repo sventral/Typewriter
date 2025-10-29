@@ -38,7 +38,6 @@ export function createStageLayoutController({
     try {
       document.documentElement.classList.add('safari-no-blur');
     } catch {
-      /* ignore */
     }
   }
 
