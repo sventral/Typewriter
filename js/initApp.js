@@ -396,8 +396,9 @@ function setBodyPageTone(darkPageActive) {
 function readPageFillColor() {
   let fill = '#ffffff';
   try {
-    const styles = getComputedStyle(document.documentElement);
-    const candidate = styles.getPropertyValue('--page-bg');
+    const target = app.firstPage || document.body || document.documentElement;
+    const styles = target ? getComputedStyle(target) : null;
+    const candidate = styles?.getPropertyValue('--page-bg');
     if (candidate && candidate.trim()) {
       fill = candidate.trim();
     }
