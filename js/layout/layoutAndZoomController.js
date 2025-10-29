@@ -538,7 +538,28 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   }
 
   function runBatchedZoomRedraw() {
-    const pages = state.pages.slice();
+    const orderedPages = [];
+    const seen = new Set();
+
+    const enqueue = (page) => {
+      if (!page || seen.has(page)) return;
+      seen.add(page);
+      orderedPages.push(page);
+    };
+
+    const activeIndex = Number.isInteger(app.activePageIndex) ? app.activePageIndex : null;
+    if (activeIndex != null) enqueue(state.pages[activeIndex]);
+
+    const caretIndex = Number.isInteger(state.caret?.page) ? state.caret.page : null;
+    if (caretIndex != null) enqueue(state.pages[caretIndex]);
+
+    for (const page of state.pages) {
+      if (page?.active) enqueue(page);
+    }
+
+    for (const page of state.pages) enqueue(page);
+
+    const pages = orderedPages;
     const now =
       typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? () => performance.now()
