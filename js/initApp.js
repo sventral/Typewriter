@@ -396,7 +396,16 @@ function setBodyPageTone(darkPageActive) {
 function readPageFillColor() {
   let fill = '#ffffff';
   try {
-    const target = app.firstPage || document.body || document.documentElement;
+    let target = app.firstPage;
+    if (!target || !target.isConnected) {
+      target = document.querySelector('.page');
+    }
+    if (!target || !target.isConnected) {
+      target = document.body;
+    }
+    if (!target) {
+      target = document.documentElement;
+    }
     const styles = target ? getComputedStyle(target) : null;
     const candidate = styles?.getPropertyValue('--page-bg');
     if (candidate && candidate.trim()) {
