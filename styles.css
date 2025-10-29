@@ -83,7 +83,7 @@
       --control-bg: #25262b;
       --control-border: #3f4047;
       --divider-color: #3f4047;
-      --caret-color:#f4f4f4;
+      --caret-color:#111111;
       --page-shadow:0 14px 36px rgba(0,0,0,0.55);
     }
 }
@@ -109,7 +109,7 @@
     --control-bg: #25262b;
     --control-border: #3f4047;
     --divider-color: #3f4047;
-    --caret-color:#f4f4f4;
+    --caret-color:#111111;
     --page-shadow:0 14px 36px rgba(0,0,0,0.55);
 }
 
