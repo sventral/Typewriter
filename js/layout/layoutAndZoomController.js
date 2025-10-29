@@ -538,75 +538,76 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   }
 
   function runBatchedZoomRedraw() {
-    const orderedPages = [];
     const seen = new Set();
+    const priority = [];
+    const rest = [];
 
-    const enqueue = (page) => {
+    const enqueue = (page, target) => {
       if (!page || seen.has(page)) return;
       seen.add(page);
-      orderedPages.push(page);
+      target.push(page);
     };
 
     const activeIndex = Number.isInteger(app.activePageIndex) ? app.activePageIndex : null;
-    if (activeIndex != null) enqueue(state.pages[activeIndex]);
+    if (activeIndex != null) enqueue(state.pages[activeIndex], priority);
 
     const caretIndex = Number.isInteger(state.caret?.page) ? state.caret.page : null;
-    if (caretIndex != null) enqueue(state.pages[caretIndex]);
+    if (caretIndex != null) enqueue(state.pages[caretIndex], priority);
 
     for (const page of state.pages) {
-      if (page?.active) enqueue(page);
+      if (page?.active) enqueue(page, priority);
     }
 
-    for (const page of state.pages) enqueue(page);
+    for (const page of state.pages) enqueue(page, rest);
 
-    const pages = orderedPages;
+    if (!priority.length && rest.length) {
+      priority.push(rest.shift());
+    }
+
     const now =
       typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? () => performance.now()
         : () => Date.now();
+
+    const prepPage = (page) => {
+      if (!page) return;
+      if (page.canvas) prepareCanvas(page.canvas);
+      if (page.backCanvas) prepareCanvas(page.backCanvas);
+      if (page.ctx) configureCanvasContext(page.ctx);
+      if (page.backCtx) configureCanvasContext(page.backCtx);
+      page.dirtyAll = true;
+      if (page.active) schedulePaint(page);
+    };
+
+    for (const page of priority) prepPage(page);
+
+    rebuildAllAtlases();
+
     const finalize = () => {
       setFreezeVirtual(false);
       requestHammerNudge();
       if (isSafari) syncSafariZoomLayout(true);
     };
 
-    if (!pages.length) {
-      finalize();
-      return;
-    }
+    finalize();
+
+    if (!rest.length) return;
 
     let index = 0;
 
-    function runAtlasAndFinalize() {
-      rebuildAllAtlases();
-      for (const page of state.pages) {
-        if (page?.active) schedulePaint(page);
-      }
-      finalize();
-    }
-
-    function processBatch() {
+    const processBatch = () => {
       const start = now();
       const budgetMs = 7;
-      while (index < pages.length) {
-        const page = pages[index++];
-        if (!page) continue;
-        if (page.canvas) prepareCanvas(page.canvas);
-        if (page.backCanvas) prepareCanvas(page.backCanvas);
-        if (page.ctx) configureCanvasContext(page.ctx);
-        if (page.backCtx) configureCanvasContext(page.backCtx);
-        page.dirtyAll = true;
-        if (page.active) schedulePaint(page);
+      while (index < rest.length) {
+        const page = rest[index++];
+        prepPage(page);
         if (now() - start >= budgetMs) break;
       }
 
-      if (index < pages.length) {
+      if (index < rest.length) {
         scheduleZoomRedrawFrame(processBatch);
-        return;
       }
-
-      scheduleZoomRedrawFrame(runAtlasAndFinalize);
-    }
+    };
 
     scheduleZoomRedrawFrame(processBatch);
   }
