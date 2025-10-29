@@ -11,21 +11,14 @@ import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from '
 
 export function initApp(){
 
-// MARKER-START: DOM_ELEMENT_REFERENCES
 const app = createDomRefs();
-// EOM
 
-// MARKER-START: CONSTANTS_AND_METRICS
 const metrics = computeBaseMetrics(app);
 const { DPR, GRID_DIV, COLORS, STORAGE_KEY, A4_WIDTH_IN, PPI, LPI, LINE_H_RAW } = metrics;
 let { GRID_H, ACTIVE_FONT_NAME, RENDER_SCALE, FONT_FAMILY, FONT_SIZE, ASC, DESC, CHAR_W, BASELINE_OFFSET_CELL } = metrics;
-// EOM
 
-// MARKER-START: APPLICATION_STATE_MAIN
 const state = createMainState(app, GRID_DIV);
-// EOM
 
-// MARKER-START: APPLICATION_STATE_EPHEMERAL
 const ephemeral = createEphemeralState();
 let {
   lastDigitTs,
@@ -48,7 +41,6 @@ let {
 } = ephemeral;
 const touchedPages = ephemeral.touchedPages;
 let hammerNudgeRAF = 0;
-// EOM
 
 const { isSafari: IS_SAFARI, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD } = detectSafariEnvironment();
 
@@ -127,7 +119,6 @@ function focusStage(){
   });
 }
 
-// MARKER-START: isToolbarInput
 function isToolbarInput(el){
   if (!el) return false;
   const id = el.id || '';
@@ -139,7 +130,6 @@ function isToolbarInput(el){
     id.includes('Slider')
   );
 }
-// EOM
 
 function beginBatch(){ batchDepth++; }
 function endBatch(){
@@ -178,7 +168,6 @@ function faceAvailable(face){
   try { return document.fonts.check(`12px "${face}"`, 'MW@#123'); } catch { return false; }
 }
 
-// MARKER-START: resolveAvailableFace
 async function resolveAvailableFace(preferredFace){
   try { await document.fonts.ready; } catch {}
   const tried = new Set();
@@ -192,9 +181,7 @@ async function resolveAvailableFace(preferredFace){
   }
   return 'monospace';
 }
-// EOM
 
-// MARKER-START: calibrateMonospaceFont
 function calibrateMonospaceFont(targetPitchPx, face, inkWidthPct){
   const pct = (typeof inkWidthPct === 'number' && isFinite(inkWidthPct)) ? inkWidthPct : 84;
   const targetInkPx = Math.max(0.25, targetPitchPx * (pct / 100));
@@ -209,7 +196,6 @@ function calibrateMonospaceFont(targetPitchPx, face, inkWidthPct){
   const m = c.measureText('Hg');
   return { size, asc: m.actualBoundingBoxAscent || size*0.8, desc: m.actualBoundingBoxDescent || size*0.2 };
 }
-// EOM
 
 const roundToDPR = (v) => {
   const q = Math.round(v * DPR);
@@ -255,7 +241,6 @@ function prewarmFontFace(face){
   return ghost;
 }
 
-// MARKER-START: loadFontAndApply
 async function loadFontAndApply(requestedFace){
   const seq = ++fontLoadSeq;
   const tryFace = requestedFace || ACTIVE_FONT_NAME;
@@ -279,7 +264,6 @@ async function loadFontAndApply(requestedFace){
   FONT_FAMILY = `${ACTIVE_FONT_NAME}`;
   applyMetricsNow(true);
 }
-// EOM
 
 
 function recalcMetrics(face){
@@ -302,7 +286,6 @@ function scheduleMetricsUpdate(full=false){
   });
 }
 
-// MARKER-START: applyMetricsNow
 function applyMetricsNow(full=false){
   beginBatch();
   recalcMetrics(ACTIVE_FONT_NAME);
@@ -325,7 +308,6 @@ function applyMetricsNow(full=false){
   saveStateDebounced();
   endBatch();
 }
-// EOM
 
 function ensureRowExists(page, rowMu){
   let r = page.grid.get(rowMu);
@@ -333,7 +315,6 @@ function ensureRowExists(page, rowMu){
   return r;
 }
 
-// MARKER-START: writeRunToRow
 function writeRunToRow(page, rowMu, startCol, text, ink){
   if (!text || !text.length) return;
   const rowMap = ensureRowExists(page, rowMu);
@@ -345,9 +326,7 @@ function writeRunToRow(page, rowMu, startCol, text, ink){
   }
   markRowAsDirty(page, rowMu);
 }
-// EOM
 
-// MARKER-START: insertStringFast
 function insertStringFast(s){
   const text = (s || '').replace(/\r\n?/g, '\n');
   const b = getCurrentBounds();
@@ -426,7 +405,6 @@ function insertStringFast(s){
   requestVirtualization();
   saveStateDebounced();
 }
-// EOM
 
 function overtypeCharacter(page, rowMu, col, ch, ink){
   const rowMap = ensureRowExists(page, rowMu);
@@ -451,7 +429,6 @@ function eraseCharacters(page, rowMu, startCol, count){
   if (changed) markRowAsDirty(page, rowMu);
 }
 
-// MARKER-START: makePageRecord
 function makePageRecord(idx, wrapEl, pageEl, canvas, marginBoxEl) {
   try { pageEl.style.cursor = 'text'; } catch {}
   prepareCanvas(canvas);
@@ -477,7 +454,6 @@ function makePageRecord(idx, wrapEl, pageEl, canvas, marginBoxEl) {
   canvas.addEventListener('mousedown', (e) => handlePageClick(e, idx), { capture:false });
   return page;
 }
-// EOM
 
 function addPage() {
   const idx = state.pages.length;
@@ -503,7 +479,6 @@ function bootstrapFirstPage() {
   state.pages.push(page);
 }
 
-// MARKER-START: resetPagesBlankPreserveSettings
 function resetPagesBlankPreserveSettings(){
   state.pages = [];
   app.stageInner.innerHTML = '';
@@ -524,9 +499,7 @@ function resetPagesBlankPreserveSettings(){
   renderMargins();
   requestVirtualization();
 }
-// EOM
 
-// MARKER-START: flattenGridToStreamWithCaret
 function flattenGridToStreamWithCaret(){
   const tokens = [];
   let linear = 0;
@@ -571,9 +544,7 @@ function flattenGridToStreamWithCaret(){
   while (out.length && out[out.length - 1].ch === '\n') out.pop();
   return { tokens: out, caretIndex };
 }
-// EOM
 
-// MARKER-START: attemptWordWrapAtOverflow
 function attemptWordWrapAtOverflow(prevRowMu, pageIndex, b, mutateCaret = true){
   if (!state.wordWrap) return false;
   const page = state.pages[pageIndex] || addPage();
@@ -631,9 +602,7 @@ function attemptWordWrapAtOverflow(prevRowMu, pageIndex, b, mutateCaret = true){
   }
   return nextPos;
 }
-// EOM
 
-// MARKER-START: typeStreamIntoGrid
 function typeStreamIntoGrid(tokens, caretIndex){
   const b = getCurrentBounds();
   let pageIndex = 0, rowMu = b.Tmu, col = b.L;
@@ -686,9 +655,7 @@ function typeStreamIntoGrid(tokens, caretIndex){
   }
   if (!caretSet){ state.caret = { page: pageIndex, rowMu, col }; }
 }
-// EOM
 
-// MARKER-START: rewrapDocumentToCurrentBounds
 function rewrapDocumentToCurrentBounds(){
   beginBatch();
   const { tokens, caretIndex } = flattenGridToStreamWithCaret();
@@ -703,7 +670,6 @@ function rewrapDocumentToCurrentBounds(){
   saveStateDebounced();
   endBatch();
 }
-// EOM
 
 const DEAD_X = 1.25, DEAD_Y = 3.0;
 function caretViewportPos(){
@@ -806,7 +772,6 @@ function anchorPx(){
   return { ax: Math.round(window.innerWidth * state.caretAnchor.x), ay: Math.round(window.innerHeight * state.caretAnchor.y) };
 }
 
-// MARKER-START: nudgePaperToAnchor
 function maybeApplyNativeScroll(dx, dy, threshold){
   if (!isSafariSteadyZoom()) return false;
   const stage = app.stage;
@@ -883,9 +848,7 @@ function requestHammerNudge(){
   }
 }
 
-// EOM
 
-// MARKER-START: updateCaretPosition
 function updateCaretPosition(){
   const p = state.pages[state.caret.page];
   if (!p) return;
@@ -905,9 +868,7 @@ function updateCaretPosition(){
   if (!zooming) requestHammerNudge();
   requestVirtualization();
 }
-// EOM
 
-// MARKER-START: computeSnappedVisualMargins
 function computeSnappedVisualMargins(){
   const Lcol = Math.ceil(state.marginL / CHAR_W);
   const Rcol = Math.floor((state.marginR - 1) / CHAR_W);
@@ -919,9 +880,7 @@ function computeSnappedVisualMargins(){
   const Bmu = Math.floor((app.PAGE_H - state.marginBottom - DESC) / GRID_H);
   return { leftPx, rightPx, topPx, bottomPx, Lcol, Rcol, Tmu, Bmu };
 }
-// EOM
 
-// MARKER-START: renderMargins
 function renderMargins(){
   const snap = computeSnappedVisualMargins();
   const layoutScale = layoutZoomFactor();
@@ -938,9 +897,7 @@ function renderMargins(){
     p.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
   }
 }
-// EOM
 
-// MARKER-START: getCurrentBounds
 function getCurrentBounds(){
   const L = Math.ceil(state.marginL / CHAR_W);
   const Rstrict = Math.floor((state.marginR - 1) / CHAR_W);
@@ -954,7 +911,6 @@ function getCurrentBounds(){
   const Rc = allowEdgeOverflow ? pageMaxStart : RcStrict;
   return { L: Math.min(Lc, Rc), R: Math.max(Lc, Rc), Tmu, Bmu };
 }
-// EOM
 
 function snapRowMuToStep(rowMu, b){
   const step = state.lineStepMu;
@@ -973,7 +929,6 @@ function getActivePageRect(){
   return new DOMRect(r.left, r.top, r.width, app.PAGE_H * state.zoom);
 }
 
-// MARKER-START: updateRulerTicks
 function updateRulerTicks(activePageRect){
   const ticksH = app.rulerH_host.querySelector('.ruler-ticks');
   const ticksV = app.rulerV_host.querySelector('.ruler-v-ticks');
@@ -1017,9 +972,7 @@ function updateRulerTicks(activePageRect){
     }
   }
 }
-// EOM
 
-// MARKER-START: positionRulers
 function positionRulers(){
   if (!state.showRulers) return;
   app.rulerH_stops_container.innerHTML = '';
@@ -1044,7 +997,6 @@ function positionRulers(){
   app.rulerV_stops_container.appendChild(mBottom);
   updateRulerTicks(pageRect);
 }
-// EOM
 
 function setMarginBoxesVisible(show){
   for (const p of state.pages){
@@ -1054,7 +1006,6 @@ function setMarginBoxesVisible(show){
 function snapXToGrid(x){ return Math.round(x / CHAR_W) * CHAR_W; }
 function snapYToGrid(y){ return Math.round(y / GRID_H) * GRID_H; }
 
-// MARKER-START: handleHorizontalMarginDrag
 function handleHorizontalMarginDrag(ev){
   if (!drag || drag.kind !== 'h') return;
   const pr = getActivePageRect();
@@ -1067,9 +1018,7 @@ function handleHorizontalMarginDrag(ev){
   app.guideV.style.left = (pr.left + x * state.zoom) + 'px';
   app.guideV.style.display = 'block';
 }
-// EOM
 
-// MARKER-START: handleVerticalMarginDrag
 function handleVerticalMarginDrag(ev){
   if (!drag || drag.kind !== 'v') return;
   const pr = getActivePageRect();
@@ -1086,9 +1035,7 @@ function handleVerticalMarginDrag(ev){
   }
   app.guideH.style.display = 'block';
 }
-// EOM
 
-// MARKER-START: endMarginDrag
 function endMarginDrag(){
   if (!drag) return;
   document.removeEventListener('pointermove', handleHorizontalMarginDrag);
@@ -1104,7 +1051,6 @@ function endMarginDrag(){
   setMarginBoxesVisible(true);
   drag = null;
 }
-// EOM
 
 function computeColsFromCpi(cpi){
   const raw = A4_WIDTH_IN * cpi;
@@ -1124,7 +1070,6 @@ function readStagedSize(){
   return (typeof val === 'number' && Number.isFinite(val)) ? val : fallback;
 }
 
-// MARKER-START: applySubmittedChanges
 function applySubmittedChanges(){
   const newCpi = readStagedCpi();
   const { cols2 } = computeColsFromCpi(newCpi);
@@ -1160,7 +1105,6 @@ function applySubmittedChanges(){
     focusStage();
   }
 }
-// EOM
 
 function setLineHeightFactor(f){
   const allowed = [1, 1.5, 2, 2.5, 3];
@@ -1195,7 +1139,6 @@ function applyZoomCSS(){
   requestVirtualization();
 }
 
-// MARKER-START: scheduleZoomCrispRedraw
 function scheduleZoomCrispRedraw(){
   if (zoomDebounceTimer) clearTimeout(zoomDebounceTimer);
   zoomDebounceTimer = setTimeout(()=>{
@@ -1216,7 +1159,6 @@ function scheduleZoomCrispRedraw(){
     requestHammerNudge();
   }, 160);
 }
-// EOM
 
 const Z_MIN = 50, Z_KNEE = 100, Z_MAX = 400, N_KNEE = 1/3, LOG2 = Math.log(2), LOG4 = Math.log(4);
 function zFromNorm(n){
@@ -1231,7 +1173,6 @@ function normFromZ(pct){
 }
 function detent(p){ return (Math.abs(p - 100) <= 6) ? 100 : p; }
 
-// MARKER-START: setZoomPercent
 function setZoomPercent(p){
   const z = detent(Math.round(Math.max(Z_MIN, Math.min(Z_MAX, p))));
   state.zoom = z / 100;
@@ -1241,7 +1182,6 @@ function setZoomPercent(p){
   updateZoomUIFromState();
   saveStateDebounced();
 }
-// EOM
 
 let zoomIndicatorTimer = null;
 function showZoomIndicator(){
@@ -1293,7 +1233,6 @@ function mmY(px){ return (px * 297) / app.PAGE_H; }
 function pxX(mm){ return (mm * app.PAGE_W) / 210; }
 function pxY(mm){ return (mm * app.PAGE_H) / 297; }
 
-// New/modified panel functions
 function toggleFontsPanel() {
   const isOpen = app.fontsPanel.classList.toggle('is-open');
   if (isOpen) {
@@ -1319,7 +1258,6 @@ function toggleInkSettingsPanel() {
   }
 }
 
-// MARKER-START: advanceCaret
 function advanceCaret(){
   const b = getCurrentBounds();
   state.caret.col++;
@@ -1341,7 +1279,6 @@ function advanceCaret(){
   }
   updateCaretPosition();
 }
-// EOM
 
 function handleNewline(){
   const b = getCurrentBounds();
@@ -1367,7 +1304,6 @@ function handleBackspace(){
   updateCaretPosition();
 }
 
-// MARKER-START: insertString
 function insertString(s){
   beginBatch();
   const text = (s || '').replace(/\r\n?/g, '\n');
@@ -1382,7 +1318,6 @@ function insertString(s){
   saveStateDebounced();
   endBatch();
 }
-// EOM
 
 const TYPED_RUN_MAXLEN = 20, TYPED_RUN_TIMEOUT = 500, EXPAND_PASTE_WINDOW = 350, BS_WINDOW = 250, STRAY_V_WINDOW = 30;
 function isEditableTarget(t){
@@ -1423,7 +1358,6 @@ function consumeBackspaceBurstIfAny(){
 const NUM_INPUT_KEYS = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown','Backspace','Delete','Tab']);
 function isDigitKey(k){ return k.length === 1 && /[0-9]/.test(k); }
 
-// MARKER-START: handleKeyDown
 function handleKeyDown(e){
   if (isEditableTarget(e.target)) return;
   if (e.target && isToolbarInput(e.target)){
@@ -1483,9 +1417,7 @@ function handleKeyDown(e){
     saveStateDebounced();
   }
 }
-// EOM
 
-// MARKER-START: handlePaste
 function handlePaste(e){
   if (isEditableTarget(e.target)) return;
   const txt = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
@@ -1518,7 +1450,6 @@ function handlePaste(e){
   resetTypedRun();
   endBatch();
 }
-// EOM
 
 function handleWheelPan(e){
   e.preventDefault();
@@ -1544,7 +1475,6 @@ function handlePageClick(e, pageIndex){
   positionRulers();
 }
 
-// MARKER-START: serializeState
 function serializeState(){
   const pages = state.pages.map(p=>{
     const rows=[]; for (const [rmu,rowMap] of p.grid){
@@ -1568,9 +1498,7 @@ function serializeState(){
     pages
   };
 }
-// EOM
 
-// MARKER-START: deserializeState
 function deserializeState(data){
   if (!data || (data.v<2 || data.v>21)) return false;
   state.pages=[]; app.stageInner.innerHTML='';
@@ -1635,7 +1563,6 @@ function deserializeState(data){
   document.body.classList.toggle('rulers-off', !state.showRulers);
   return true;
 }
-// EOM
 
 function saveStateNow(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState())); }catch{} }
 function saveStateDebounced(){ if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(saveStateNow, 400); }
@@ -1652,7 +1579,6 @@ function setPageActive(page, active) {
   }
 }
 
-// MARKER-START: visibleWindowIndices
 function visibleWindowIndices() {
   const sp = app.stage.getBoundingClientRect();
   const scrollCenterY = (sp.top + sp.bottom) / 2;
@@ -1670,7 +1596,6 @@ function visibleWindowIndices() {
   i1 = Math.max(i1, cp);
   return [i0, i1];
 }
-// EOM
 
 function updateVirtualization() {
   if (freezeVirtual) {
@@ -1706,7 +1631,6 @@ function toggleRulers(){
   saveStateDebounced();
 }
 
-// MARKER-START: exportToTextFile
 function exportToTextFile(){
   const out=[];
   for (let p=0;p<state.pages.length;p++){
@@ -1734,9 +1658,7 @@ function exportToTextFile(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='typewriter.txt';
   document.body.appendChild(a); a.click(); URL.revokeObjectURL(a.href); a.remove();
 }
-// EOM
 
-// MARKER-START: createNewDocument
 function createNewDocument(){
   beginBatch();
   lastDigitTs = 0; lastDigitCaret = null;
@@ -1777,9 +1699,7 @@ function createNewDocument(){
   saveStateNow();
   endBatch();
 }
-// EOM
 
-// MARKER-START: bindEventListeners
 function bindEventListeners(){
   app.toggleMarginsBtn.onclick = toggleRulers;
   app.exportBtn.addEventListener('click', exportToTextFile);
@@ -1941,9 +1861,7 @@ function bindEventListeners(){
   window.addEventListener('beforeunload', saveStateNow);
   window.addEventListener('click', () => window.focus(), { passive: true });
 }
-// EOM
 
-// MARKER-START: initialize
 async function initialize() {
   bindEventListeners();
   setupInkSettingsPanel({
@@ -2003,7 +1921,6 @@ async function initialize() {
   setInk(state.ink || 'b');
   requestVirtualization();
 }
-// EOM
 
 initialize();
 }
