@@ -588,6 +588,11 @@ export function createDocumentEditingController(context) {
       pageEl.appendChild(mb);
       wrap.appendChild(pageEl);
       app.stageInner.appendChild(wrap);
+      if (idx === 0) {
+        app.firstPageWrap = wrap;
+        app.firstPage = pageEl;
+        app.marginBox = mb;
+      }
       const page = makePageRecord(idx, wrap, pageEl, cv, mb);
       state.pages.push(page);
       if (Array.isArray(pg.rows)) {
