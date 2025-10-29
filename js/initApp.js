@@ -45,6 +45,7 @@ let hammerNudgeRAF = 0;
 let layoutZoomFactorRef = () => 1;
 
 const rendererHooks = {};
+let rebuildAllAtlasesFn = () => {};
 
 const editingController = createDocumentEditingController({
   app,
@@ -72,7 +73,7 @@ const editingController = createDocumentEditingController({
   prepareCanvas,
   configureCanvasContext,
   recalcMetrics,
-  rebuildAllAtlases,
+  rebuildAllAtlases: (...args) => rebuildAllAtlasesFn(...args),
   setPaperOffset,
   applyDefaultMargins,
   computeColsFromCpi,
@@ -123,6 +124,8 @@ const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphA
   edgeBleedConfig: () => EDGE_BLEED,
   grainConfig: () => GRAIN_CFG,
 });
+
+rebuildAllAtlasesFn = rebuildAllAtlases;
 
 const {
   layoutZoomFactor,
