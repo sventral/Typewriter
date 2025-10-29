@@ -3,7 +3,10 @@ import { computeBaseMetrics } from './metrics.js';
 import { createMainState, createEphemeralState } from './state.js';
 import { EDGE_BLEED, GRAIN_CFG, INK_TEXTURE } from './inkConfig.js';
 import { clamp } from './utils/math.js';
+import { sanitizeIntegerField } from './utils/forms.js';
+import { detectSafariEnvironment, createStageLayoutController } from './layout/stageLayout.js';
 import { createGlyphAtlas } from './rendering/glyphAtlas.js';
+import { createPageRenderer } from './rendering/pageRendering.js';
 import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from './inkSettingsPanel.js';
 
 export function initApp(){
@@ -47,32 +50,7 @@ const touchedPages = ephemeral.touchedPages;
 let hammerNudgeRAF = 0;
 // EOM
 
-const STAGE_WIDTH_MIN = 1.0;
-const STAGE_WIDTH_MAX = 5.0;
-const STAGE_HEIGHT_MIN = 1.0;
-const STAGE_HEIGHT_MAX = 5.0;
-
-let cachedToolbarHeight = null;
-
-const IS_SAFARI = (() => {
-  if (typeof navigator === 'undefined') return false;
-  const ua = navigator.userAgent || '';
-  const vendor = navigator.vendor || '';
-  const platform = navigator.platform || '';
-  const maxTouch = Number.isFinite(navigator.maxTouchPoints) ? navigator.maxTouchPoints : 0;
-  const isIos = /iP(ad|hone|od)/i.test(ua) || (platform === 'MacIntel' && maxTouch > 1);
-  const isSafariDesktop = /Safari/i.test(ua) && /Apple/i.test(vendor) && !/Chrome|CriOS|FxiOS|Edg|Android/i.test(ua);
-  if (isIos) return /Safari/i.test(ua) || /Version\//i.test(ua);
-  return isSafariDesktop;
-})();
-
-const SAFARI_SUPERSAMPLE_THRESHOLD = 1.75;
-let safariZoomMode = IS_SAFARI ? 'steady' : 'transient';
-let lastSafariLayoutZoom = IS_SAFARI ? state.zoom : 1;
-
-if (IS_SAFARI) {
-  document.documentElement.classList.add('safari-no-blur');
-}
+const { isSafari: IS_SAFARI, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD } = detectSafariEnvironment();
 
 const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphAtlas({
   app,
@@ -94,6 +72,49 @@ const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphA
   grainConfig: () => GRAIN_CFG,
 });
 
+const {
+  layoutZoomFactor,
+  cssScaleFactor,
+  sanitizedStageWidthFactor,
+  sanitizedStageHeightFactor,
+  stageDimensions,
+  toolbarHeightPx,
+  sanitizeStageInput,
+  updateZoomWrapTransform,
+  syncSafariZoomLayout,
+  setSafariZoomMode,
+  isSafariSteadyZoom,
+} = createStageLayoutController({
+  app,
+  state,
+  isSafari: IS_SAFARI,
+  renderMargins,
+  updateStageEnvironment,
+  updateCaretPosition,
+});
+
+const {
+  refreshGlyphEffects,
+  refreshGrainEffects,
+  markRowAsDirty,
+  schedulePaint,
+} = createPageRenderer({
+  app,
+  state,
+  getAsc: () => ASC,
+  getDesc: () => DESC,
+  getCharWidth: () => CHAR_W,
+  getGridHeight: () => GRID_H,
+  gridDiv: GRID_DIV,
+  getRenderScale: () => RENDER_SCALE,
+  rebuildAllAtlases,
+  drawGlyph,
+  applyGrainOverlayOnRegion,
+  touchPage,
+  getCurrentBounds,
+  getBatchDepth: () => batchDepth,
+});
+
 function focusStage(){
   if (!app.stage) return;
   requestAnimationFrame(() => {
@@ -104,144 +125,6 @@ function focusStage(){
     try { app.stage.focus({ preventScroll: true }); }
     catch { try { app.stage.focus(); } catch {} }
   });
-}
-
-function sanitizeIntegerField(el, options = {}){
-  if (!el) return null;
-  const {
-    min = Number.NEGATIVE_INFINITY,
-    max = Number.POSITIVE_INFINITY,
-    allowEmpty = true,
-    fallbackValue = null,
-  } = options;
-  const raw = el.value ?? '';
-  const digits = raw.replace(/\D+/g, '');
-  if (!digits){
-    if (!allowEmpty){
-      let fallback = Number.isFinite(fallbackValue) ? fallbackValue : (Number.isFinite(min) ? min : 0);
-      if (Number.isFinite(min)) fallback = Math.max(min, fallback);
-      if (Number.isFinite(max)) fallback = Math.min(max, fallback);
-      el.value = String(fallback);
-      return fallback;
-    }
-    el.value = '';
-    return null;
-  }
-  let n = parseInt(digits, 10);
-  if (Number.isFinite(min)) n = Math.max(min, n);
-  if (Number.isFinite(max)) n = Math.min(max, n);
-  el.value = String(n);
-  return n;
-}
-
-function sanitizedStageWidthFactor(){
-  const raw = Number(state.stageWidthFactor);
-  const fallback = 2.0;
-  const sanitized = clamp(Number.isFinite(raw) ? raw : fallback, STAGE_WIDTH_MIN, STAGE_WIDTH_MAX);
-  if (sanitized !== state.stageWidthFactor) state.stageWidthFactor = sanitized;
-  return sanitized;
-}
-
-function sanitizedStageHeightFactor(){
-  const raw = Number(state.stageHeightFactor);
-  const fallback = 1.2;
-  const sanitized = clamp(Number.isFinite(raw) ? raw : fallback, STAGE_HEIGHT_MIN, STAGE_HEIGHT_MAX);
-  if (sanitized !== state.stageHeightFactor) state.stageHeightFactor = sanitized;
-  return sanitized;
-}
-
-function layoutZoomFactor(){
-  if (!IS_SAFARI) return 1;
-  return safariZoomMode === 'steady' ? state.zoom : 1;
-}
-
-function cssScaleFactor(){
-  if (!IS_SAFARI) return state.zoom;
-  return safariZoomMode === 'steady' ? 1 : state.zoom;
-}
-
-function updateZoomWrapTransform(){
-  if (!app.zoomWrap) return;
-  const scale = cssScaleFactor();
-  if (Math.abs(scale - 1) < 1e-6) {
-    app.zoomWrap.style.transform = 'none';
-  } else {
-    app.zoomWrap.style.transform = `scale(${scale})`;
-  }
-}
-
-function syncSafariZoomLayout(force = false){
-  if (!IS_SAFARI) return;
-  const layoutZoom = layoutZoomFactor();
-  if (!force && lastSafariLayoutZoom === layoutZoom) {
-    updateZoomWrapTransform();
-    return;
-  }
-  lastSafariLayoutZoom = layoutZoom;
-  updateStageEnvironment();
-  const cssW = app.PAGE_W * layoutZoom;
-  const cssH = app.PAGE_H * layoutZoom;
-  for (const page of state.pages){
-    if (!page) continue;
-    if (page.pageEl) page.pageEl.style.height = `${cssH}px`;
-    if (page.canvas){
-      page.canvas.style.width = `${cssW}px`;
-      page.canvas.style.height = `${cssH}px`;
-    }
-    if (page.backCanvas){
-      page.backCanvas.style.width = `${cssW}px`;
-      page.backCanvas.style.height = `${cssH}px`;
-    }
-  }
-  renderMargins();
-  updateCaretPosition();
-  updateZoomWrapTransform();
-}
-
-function setSafariZoomMode(mode, { force = false } = {}){
-  if (!IS_SAFARI) return;
-  const target = (mode === 'transient') ? 'transient' : 'steady';
-  const prevMode = safariZoomMode;
-  safariZoomMode = target;
-  const layoutZoom = layoutZoomFactor();
-  const requireUpdate = force || prevMode !== target || lastSafariLayoutZoom !== layoutZoom;
-  syncSafariZoomLayout(requireUpdate);
-}
-
-function stageDimensions(){
-  const widthFactor = sanitizedStageWidthFactor();
-  const heightFactor = sanitizedStageHeightFactor();
-  const layoutZoom = layoutZoomFactor();
-  const pageW = app.PAGE_W * layoutZoom;
-  const pageH = app.PAGE_H * layoutZoom;
-  const width = pageW * widthFactor;
-  const height = pageH * heightFactor;
-  const extraX = Math.max(0, (width - pageW) / 2);
-  const extraY = Math.max(0, (height - pageH) / 2);
-  return { widthFactor, heightFactor, width, height, extraX, extraY, pageW, pageH };
-}
-
-function toolbarHeightPx(){
-  if (cachedToolbarHeight !== null) return cachedToolbarHeight;
-  try {
-    const raw = getComputedStyle(document.documentElement).getPropertyValue('--toolbar-h');
-    const parsed = parseFloat(raw);
-    cachedToolbarHeight = Number.isFinite(parsed) ? parsed : 48;
-  } catch {
-    cachedToolbarHeight = 48;
-  }
-  return cachedToolbarHeight;
-}
-
-function sanitizeStageInput(input, fallbackFactor, allowEmpty, isWidth){
-  if (!input) return null;
-  const minPct = Math.round((isWidth ? STAGE_WIDTH_MIN : STAGE_HEIGHT_MIN) * 100);
-  const maxPct = Math.round((isWidth ? STAGE_WIDTH_MAX : STAGE_HEIGHT_MAX) * 100);
-  const fallbackPct = clamp(Math.round(fallbackFactor * 100), minPct, maxPct);
-  const value = sanitizeIntegerField(input, { min: minPct, max: maxPct, allowEmpty, fallbackValue: fallbackPct });
-  if (value === null || !Number.isFinite(value)) return allowEmpty ? null : clamp(fallbackFactor, isWidth ? STAGE_WIDTH_MIN : STAGE_HEIGHT_MIN, isWidth ? STAGE_WIDTH_MAX : STAGE_HEIGHT_MAX);
-  const factor = value / 100;
-  return clamp(factor, isWidth ? STAGE_WIDTH_MIN : STAGE_HEIGHT_MIN, isWidth ? STAGE_WIDTH_MAX : STAGE_HEIGHT_MAX);
 }
 
 // MARKER-START: isToolbarInput
@@ -399,134 +282,6 @@ async function loadFontAndApply(requestedFace){
 // EOM
 
 
-function refreshGlyphEffects(){
-  rebuildAllAtlases();
-  for (const page of state.pages){
-    if (!page) continue;
-    page.dirtyAll = true;
-    if (page.active) schedulePaint(page);
-  }
-}
-
-function refreshGrainEffects(){
-  for (const page of state.pages){
-    if (!page) continue;
-    page.grainCanvas = null;
-    page.grainForSize = { w:0, h:0 };
-    page.dirtyAll = true;
-    if (page.active) schedulePaint(page);
-  }
-}
-
-function markRowAsDirty(page, rowMu) {
-  if (page._dirtyRowMinMu === undefined) {
-    page._dirtyRowMinMu = rowMu;
-    page._dirtyRowMaxMu = rowMu;
-  } else {
-    if (rowMu < page._dirtyRowMinMu) page._dirtyRowMinMu = rowMu;
-    if (rowMu > page._dirtyRowMaxMu) page._dirtyRowMaxMu = rowMu;
-  }
-  touchPage(page);
-  if (!page.active) return;
-  if (batchDepth === 0) schedulePaint(page);
-}
-function schedulePaint(page) {
-  if (!page.active) return;
-  if (page.raf) return;
-  page.raf = requestAnimationFrame(() => { page.raf = 0; paintPage(page); });
-}
-
-// MARKER-START: paintWholePageToBackBuffer
-function paintWholePageToBackBuffer(page) {
-  const { backCtx } = page;
-  backCtx.save();
-  backCtx.globalCompositeOperation = 'source-over';
-  backCtx.globalAlpha = 1;
-  backCtx.fillStyle = '#ffffff';
-  backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
-  backCtx.restore();
-  for (const [rowMu, rowMap] of page.grid) {
-    if (!rowMap) continue;
-    const baseline = rowMu * GRID_H;
-    for (const [col, stack] of rowMap) {
-      const x = col * CHAR_W;
-      for (let k = 0; k < stack.length; k++) {
-        const s = stack[k];
-        drawGlyph(backCtx, s.char, s.ink || 'b', x, baseline, k, stack.length, page.index, rowMu, col);
-      }
-    }
-  }
-  page.ctx.drawImage(page.backCanvas, 0, 0, page.backCanvas.width, page.backCanvas.height, 0, 0, app.PAGE_W, app.PAGE_H);
-  if (state.grainPct > 0) {
-    applyGrainOverlayOnRegion(page, 0, app.PAGE_H);
-  }
-}
-// EOM
-
-// MARKER-START: paintDirtyRowsBand
-function paintDirtyRowsBand(page, dirtyRowMinMu, dirtyRowMaxMu) {
-  const { backCtx, ctx } = page;
-  const BLEED_TOP_CSS    = Math.ceil(ASC + 2);
-  const BLEED_BOTTOM_CSS = Math.ceil(DESC + 2);
-
-  const bandTop_css = Math.max(0, dirtyRowMinMu * GRID_H - BLEED_TOP_CSS);
-  const bandBot_css = Math.min(app.PAGE_H, dirtyRowMaxMu * GRID_H + BLEED_BOTTOM_CSS);
-  const bandH_css   = Math.max(0, bandBot_css - bandTop_css);
-  if (bandH_css <= 0) return;
-
-  backCtx.save();
-  backCtx.globalCompositeOperation = 'source-over';
-  backCtx.globalAlpha = 1;
-  backCtx.fillStyle = '#ffffff';
-  backCtx.fillRect(0, bandTop_css, app.PAGE_W, bandH_css);
-  backCtx.restore();
-
-  const b = getCurrentBounds();
-  const step = Math.max(1, state.lineStepMu || GRID_DIV);
-  const startMu = b.Tmu + Math.ceil((dirtyRowMinMu - b.Tmu) / step) * step;
-  const endMu   = b.Tmu + Math.floor((dirtyRowMaxMu - b.Tmu) / step) * step;
-
-  for (let rowMu = startMu; rowMu <= endMu; rowMu += step) {
-    const rowMap = page.grid.get(rowMu);
-    if (!rowMap) continue;
-
-    const baseline = rowMu * GRID_H;
-    const rowTop_css = baseline - BLEED_TOP_CSS;
-    const rowBot_css = baseline + BLEED_BOTTOM_CSS;
-    if (rowBot_css <= bandTop_css || rowTop_css >= bandBot_css) continue;
-
-    for (const [col, stack] of rowMap) {
-      const x = col * CHAR_W;
-      for (let k = 0; k < stack.length; k++) {
-        const s = stack[k];
-        drawGlyph(backCtx, s.char, s.ink || 'b', x, baseline, k, stack.length, page.index, rowMu, col);
-      }
-    }
-  }
-
-  const sx = 0, sy = Math.round(bandTop_css * RENDER_SCALE);
-  const sw = page.backCanvas.width, sh = Math.round(bandH_css * RENDER_SCALE);
-  const dx = 0, dy = bandTop_css, dw = app.PAGE_W, dh = bandH_css;
-  ctx.drawImage(page.backCanvas, sx, sy, sw, sh, dx, dy, dw, dh);
-
-  if (state.grainPct > 0) applyGrainOverlayOnRegion(page, bandTop_css, bandH_css);
-}
-// EOM
-
-function paintPage(page) {
-  if (!page.active) return;
-  if (page.dirtyAll) {
-    page.dirtyAll = false;
-    paintWholePageToBackBuffer(page);
-    page._dirtyRowMinMu = page._dirtyRowMaxMu = undefined;
-    return;
-  }
-  const hasDirtyRows = page._dirtyRowMinMu !== undefined || page._dirtyRowMaxMu !== undefined;
-  if (hasDirtyRows) {
-    paintDirtyRowsBand(page, page._dirtyRowMinMu, page._dirtyRowMaxMu);
-    page._dirtyRowMinMu = page._dirtyRowMaxMu = undefined;
-  }
-}
 function recalcMetrics(face){
   const targetPitch = getTargetPitchPx();
   const m = calibrateMonospaceFont(targetPitch, face, state.inkWidthPct);
@@ -1053,7 +808,7 @@ function anchorPx(){
 
 // MARKER-START: nudgePaperToAnchor
 function maybeApplyNativeScroll(dx, dy, threshold){
-  if (!IS_SAFARI || safariZoomMode !== 'steady') return false;
+  if (!isSafariSteadyZoom()) return false;
   const stage = app.stage;
   if (!stage) return false;
   let used = false;
