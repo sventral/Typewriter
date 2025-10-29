@@ -356,8 +356,6 @@ const {
   getBatchDepth: () => batchDepth,
 });
 
-context.setCallback('schedulePaint', schedulePaint);
-
 Object.assign(rendererHooks, { markRowAsDirty, schedulePaint });
 
 context.controllers.lifecycle.registerRendererHooks({ schedulePaint });
