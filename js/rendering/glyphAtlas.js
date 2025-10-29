@@ -1,24 +1,46 @@
 import { clamp } from '../utils/math.js';
 
-export function createGlyphAtlas({
-  app,
-  state,
-  colors,
-  getFontSize,
-  getActiveFontName,
-  getAsc,
-  getDesc,
-  getCharWidth,
-  getRenderScale,
-  getStateZoom,
-  isSafari,
-  safariSupersampleThreshold,
-  getInkEffectFactor,
-  isInkSectionEnabled,
-  inkTextureConfig,
-  edgeBleedConfig,
-  grainConfig,
-}) {
+export function createGlyphAtlas(options) {
+  const {
+    context,
+    app: explicitApp,
+    state: explicitState,
+    colors,
+    getFontSize,
+    getActiveFontName,
+    getAsc,
+    getDesc,
+    getCharWidth,
+    getRenderScale,
+    getStateZoom,
+    isSafari,
+    safariSupersampleThreshold,
+    getInkEffectFactor,
+    isInkSectionEnabled,
+    inkTextureConfig,
+    edgeBleedConfig,
+    grainConfig,
+  } = options || {};
+
+  const app = explicitApp || context?.app;
+  const state = explicitState || context?.state || {};
+  const metrics = context?.scalars;
+
+  const ensureMetricGetter = (fn, key) => {
+    if (typeof fn === 'function') return fn;
+    if (metrics && key in metrics) {
+      return () => metrics[key];
+    }
+    return () => undefined;
+  };
+
+  const getFontSizeFn = ensureMetricGetter(getFontSize, 'FONT_SIZE');
+  const getActiveFontNameFn = ensureMetricGetter(getActiveFontName, 'ACTIVE_FONT_NAME');
+  const getAscFn = ensureMetricGetter(getAsc, 'ASC');
+  const getDescFn = ensureMetricGetter(getDesc, 'DESC');
+  const getCharWidthFn = ensureMetricGetter(getCharWidth, 'CHAR_W');
+  const getRenderScaleFn = ensureMetricGetter(getRenderScale, 'RENDER_SCALE');
+  const getStateZoomFn = typeof getStateZoom === 'function' ? getStateZoom : (() => state.zoom);
   const ALT_VARIANTS = 9;
   const atlases = new Map();
   window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
@@ -249,12 +271,12 @@ export function createGlyphAtlas({
     let atlas = atlases.get(key);
     if (atlas) return atlas;
 
-    const ASC = getAsc();
-    const DESC = getDesc();
-    const CHAR_W = getCharWidth();
-    const FONT_SIZE = getFontSize();
-    const ACTIVE_FONT_NAME = getActiveFontName();
-    const RENDER_SCALE = getRenderScale();
+    const ASC = getAscFn();
+    const DESC = getDescFn();
+    const CHAR_W = getCharWidthFn();
+    const FONT_SIZE = getFontSizeFn();
+    const ACTIVE_FONT_NAME = getActiveFontNameFn();
+    const RENDER_SCALE = getRenderScaleFn();
     const COLORS = colors;
     const INK_TEXTURE = inkTextureConfig();
     const EDGE_BLEED = edgeBleedConfig();
@@ -295,7 +317,7 @@ export function createGlyphAtlas({
     const SHIFT_EPS = 0.5;
 
     const useTexture = (ink !== 'w') && INK_TEXTURE.enabled;
-    const safariSupersample = (isSafari && getStateZoom() >= safariSupersampleThreshold) ? 2 : 1;
+    const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
     const textureSupersample = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
     const sampleScale = Math.max(safariSupersample, textureSupersample);
     const bleedEnabled = (ink !== 'w') && EDGE_BLEED.enabled && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
@@ -524,6 +546,10 @@ export function createGlyphAtlas({
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, sy, app.PAGE_W, sh);
     ctx.restore();
+  }
+
+  if (context?.setCallback) {
+    context.setCallback('rebuildAllAtlases', rebuildAllAtlases);
   }
 
   return { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion };

@@ -1,19 +1,39 @@
-export function createPageRenderer({
-  app,
-  state,
-  getAsc,
-  getDesc,
-  getCharWidth,
-  getGridHeight,
-  gridDiv,
-  getRenderScale,
-  rebuildAllAtlases,
-  drawGlyph,
-  applyGrainOverlayOnRegion,
-  lifecycle,
-  getCurrentBounds,
-  getBatchDepth,
-}) {
+export function createPageRenderer(options) {
+  const {
+    context,
+    app: explicitApp,
+    state: explicitState,
+    getAsc,
+    getDesc,
+    getCharWidth,
+    getGridHeight,
+    gridDiv,
+    getRenderScale,
+    rebuildAllAtlases,
+    drawGlyph,
+    applyGrainOverlayOnRegion,
+    lifecycle,
+    getCurrentBounds,
+    getBatchDepth,
+  } = options || {};
+
+  const app = explicitApp || context?.app;
+  const state = explicitState || context?.state || {};
+  const metrics = context?.scalars;
+
+  const ensureMetricGetter = (fn, key) => {
+    if (typeof fn === 'function') return fn;
+    if (metrics && key in metrics) {
+      return () => metrics[key];
+    }
+    return () => undefined;
+  };
+
+  const getAscFn = ensureMetricGetter(getAsc, 'ASC');
+  const getDescFn = ensureMetricGetter(getDesc, 'DESC');
+  const getCharWidthFn = ensureMetricGetter(getCharWidth, 'CHAR_W');
+  const getGridHeightFn = ensureMetricGetter(getGridHeight, 'GRID_H');
+  const getRenderScaleFn = ensureMetricGetter(getRenderScale, 'RENDER_SCALE');
   const { touchPage } = lifecycle;
 
   function refreshGlyphEffects() {
@@ -59,6 +79,8 @@ export function createPageRenderer({
 
   function paintWholePageToBackBuffer(page) {
     const { backCtx } = page;
+    const gridHeight = getGridHeightFn();
+    const charWidth = getCharWidthFn();
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
     backCtx.globalAlpha = 1;
@@ -67,9 +89,9 @@ export function createPageRenderer({
     backCtx.restore();
     for (const [rowMu, rowMap] of page.grid) {
       if (!rowMap) continue;
-      const baseline = rowMu * getGridHeight();
+      const baseline = rowMu * gridHeight;
       for (const [col, stack] of rowMap) {
-        const x = col * getCharWidth();
+        const x = col * charWidth;
         for (let k = 0; k < stack.length; k++) {
           const s = stack[k];
           drawGlyph(backCtx, s.char, s.ink || 'b', x, baseline, k, stack.length, page.index, rowMu, col);
@@ -84,10 +106,10 @@ export function createPageRenderer({
 
   function paintDirtyRowsBand(page, dirtyRowMinMu, dirtyRowMaxMu) {
     const { backCtx, ctx } = page;
-    const asc = getAsc();
-    const desc = getDesc();
-    const charWidth = getCharWidth();
-    const gridHeight = getGridHeight();
+    const asc = getAscFn();
+    const desc = getDescFn();
+    const charWidth = getCharWidthFn();
+    const gridHeight = getGridHeightFn();
 
     const BLEED_TOP_CSS = Math.ceil(asc + 2);
     const BLEED_BOTTOM_CSS = Math.ceil(desc + 2);
@@ -127,7 +149,7 @@ export function createPageRenderer({
       }
     }
 
-    const renderScale = getRenderScale();
+    const renderScale = getRenderScaleFn();
     const sx = 0;
     const sy = Math.round(bandTopCss * renderScale);
     const sw = page.backCanvas.width;
@@ -154,6 +176,10 @@ export function createPageRenderer({
       paintDirtyRowsBand(page, page._dirtyRowMinMu, page._dirtyRowMaxMu);
       page._dirtyRowMinMu = page._dirtyRowMaxMu = undefined;
     }
+  }
+
+  if (context?.setCallback) {
+    context.setCallback('schedulePaint', schedulePaint);
   }
 
   return {
