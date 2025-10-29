@@ -8,6 +8,7 @@ import { detectSafariEnvironment, createStageLayoutController } from './layout/s
 import { createGlyphAtlas } from './rendering/glyphAtlas.js';
 import { createPageRenderer } from './rendering/pageRendering.js';
 import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from './config/inkSettingsPanel.js';
+import { createDocumentEditingController } from './document/documentEditing.js';
 
 export function initApp(){
 
@@ -41,6 +42,66 @@ let {
 } = ephemeral;
 const touchedPages = ephemeral.touchedPages;
 let hammerNudgeRAF = 0;
+let layoutZoomFactorRef = () => 1;
+
+const rendererHooks = {};
+let rebuildAllAtlasesFn = () => {};
+
+const editingController = createDocumentEditingController({
+  app,
+  state,
+  getGridDiv: () => GRID_DIV,
+  getGridHeight: () => GRID_H,
+  getCharWidth: () => CHAR_W,
+  getAsc: () => ASC,
+  getDesc: () => DESC,
+  getBaselineOffsetCell: () => BASELINE_OFFSET_CELL,
+  getActiveFontName: () => ACTIVE_FONT_NAME,
+  setActiveFontName: (name) => { ACTIVE_FONT_NAME = name; FONT_FAMILY = `${name}`; },
+  touchedPages,
+  getFreezeVirtual: () => freezeVirtual,
+  setFreezeVirtual: (value) => { freezeVirtual = value; },
+  requestVirtualization,
+  positionRulers,
+  saveStateDebounced,
+  saveStateNow,
+  renderMargins,
+  beginBatch,
+  endBatch,
+  addPage,
+  makePageRecord,
+  prepareCanvas,
+  configureCanvasContext,
+  recalcMetrics,
+  rebuildAllAtlases: (...args) => rebuildAllAtlasesFn(...args),
+  setPaperOffset,
+  applyDefaultMargins,
+  computeColsFromCpi,
+  rendererHooks,
+  layoutZoomFactor: () => layoutZoomFactorRef(),
+  requestHammerNudge,
+  isZooming: () => zooming,
+  handlePageClick,
+});
+
+const {
+  touchPage,
+  getCurrentBounds,
+  snapRowMuToStep,
+  clampCaretToBounds,
+  updateCaretPosition,
+  advanceCaret,
+  handleNewline,
+  handleBackspace,
+  insertTextFast,
+  overtypeCharacter,
+  eraseCharacters,
+  rewrapDocumentToCurrentBounds,
+  serializeState,
+  deserializeState,
+  setInk,
+  createNewDocument,
+} = editingController;
 
 const { isSafari: IS_SAFARI, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD } = detectSafariEnvironment();
 
@@ -64,6 +125,8 @@ const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphA
   grainConfig: () => GRAIN_CFG,
 });
 
+rebuildAllAtlasesFn = rebuildAllAtlases;
+
 const {
   layoutZoomFactor,
   cssScaleFactor,
@@ -84,6 +147,8 @@ const {
   updateStageEnvironment,
   updateCaretPosition,
 });
+
+layoutZoomFactorRef = layoutZoomFactor;
 
 const {
   refreshGlyphEffects,
@@ -106,6 +171,8 @@ const {
   getCurrentBounds,
   getBatchDepth: () => batchDepth,
 });
+
+Object.assign(rendererHooks, { markRowAsDirty, schedulePaint });
 
 function focusStage(){
   if (!app.stage) return;
@@ -139,15 +206,12 @@ function endBatch(){
     touchedPages.clear();
   }
 }
-function touchPage(page){ touchedPages.add(page); }
 function beginTypingFrameBatch(){
   if (batchDepth === 0) beginBatch();
   if (!typingBatchRAF){
     typingBatchRAF = requestAnimationFrame(()=>{ typingBatchRAF = 0; endBatch(); });
   }
 }
-
-function baseCaretHeightPx(){ return GRID_DIV * GRID_H; }
 function getTargetPitchPx(){ return app.PAGE_W / state.colsAcross; }
 function targetPitchForCpi(cpi){
   const { cols2 } = computeColsFromCpi(cpi);
@@ -180,6 +244,10 @@ async function resolveAvailableFace(preferredFace){
     if (faceAvailable(face)) return face;
   }
   return 'monospace';
+}
+
+function baseCaretHeightPx(){
+  return GRID_DIV * GRID_H;
 }
 
 function calibrateMonospaceFont(targetPitchPx, face, inkWidthPct){
@@ -309,126 +377,6 @@ function applyMetricsNow(full=false){
   endBatch();
 }
 
-function ensureRowExists(page, rowMu){
-  let r = page.grid.get(rowMu);
-  if (!r){ r = new Map(); page.grid.set(rowMu, r); }
-  return r;
-}
-
-function writeRunToRow(page, rowMu, startCol, text, ink){
-  if (!text || !text.length) return;
-  const rowMap = ensureRowExists(page, rowMu);
-  for (let i = 0; i < text.length; i++){
-    const col = startCol + i;
-    let stack = rowMap.get(col);
-    if (!stack){ stack = []; rowMap.set(col, stack); }
-    stack.push({ char: text[i], ink: ink || 'b' });
-  }
-  markRowAsDirty(page, rowMu);
-}
-
-function insertStringFast(s){
-  const text = (s || '').replace(/\r\n?/g, '\n');
-  const b = getCurrentBounds();
-
-  let pageIndex = state.caret.page;
-  let page = state.pages[pageIndex] || addPage();
-  let rowMu = state.caret.rowMu;
-  let startCol = state.caret.col;
-  const ink = state.ink;
-
-  const prevFreeze = freezeVirtual;
-  freezeVirtual = true;
-
-  const newline = () => {
-    startCol = b.L;
-    rowMu += state.lineStepMu;
-    if (rowMu > b.Bmu){
-      pageIndex++;
-      page = state.pages[pageIndex] || addPage();
-      rowMu = b.Tmu;
-    }
-  };
-
-  let buf = '';
-  let lastSpacePos = -1;
-
-  const flush = () => {
-    if (buf.length){
-      writeRunToRow(page, rowMu, startCol, buf, ink);
-      startCol += buf.length;
-      buf = '';
-      lastSpacePos = -1;
-    }
-  };
-
-  for (let i = 0; i < text.length; i++){
-    const ch = text[i];
-
-    if (ch === '\n'){
-      flush();
-      newline();
-      continue;
-    }
-
-    buf += ch;
-    if (/\s/.test(ch)) lastSpacePos = buf.length - 1;
-
-    const colForCh = startCol + buf.length - 1;
-
-    if (colForCh > b.R){
-      if (state.wordWrap && lastSpacePos >= 0){
-        const head = buf.slice(0, lastSpacePos);
-        const tail = buf.slice(lastSpacePos + 1);
-        if (head.length) writeRunToRow(page, rowMu, startCol, head, ink);
-        newline();
-        startCol = b.L;
-        buf = tail;
-        lastSpacePos = -1;
-      } else {
-        const head = buf.slice(0, buf.length - 1);
-        if (head.length) writeRunToRow(page, rowMu, startCol, head, ink);
-        newline();
-        startCol = b.L;
-        buf = ch;
-        lastSpacePos = /\s/.test(ch) ? 0 : -1;
-      }
-    }
-  }
-  flush();
-
-  state.caret = { page: pageIndex, rowMu, col: startCol };
-
-  freezeVirtual = prevFreeze;
-  updateCaretPosition();
-  positionRulers();
-  requestVirtualization();
-  saveStateDebounced();
-}
-
-function overtypeCharacter(page, rowMu, col, ch, ink){
-  const rowMap = ensureRowExists(page, rowMu);
-  let stack = rowMap.get(col);
-  if (!stack){ stack = []; rowMap.set(col, stack); }
-  stack.push({ char: ch, ink });
-  markRowAsDirty(page, rowMu);
-}
-function eraseCharacters(page, rowMu, startCol, count){
-  let changed = false;
-  const rowMap = page.grid.get(rowMu);
-  if (!rowMap) return;
-  for (let i=0;i<count;i++){
-    const col = startCol + i;
-    const stack = rowMap.get(col);
-    if (stack && stack.length){
-      stack.pop();
-      changed = true;
-      if (!stack.length) rowMap.delete(col);
-    }
-  }
-  if (changed) markRowAsDirty(page, rowMu);
-}
-
 function makePageRecord(idx, wrapEl, pageEl, canvas, marginBoxEl) {
   try { pageEl.style.cursor = 'text'; } catch {}
   prepareCanvas(canvas);
@@ -477,198 +425,6 @@ function bootstrapFirstPage() {
   page.canvas.style.visibility = 'hidden';
   page.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
   state.pages.push(page);
-}
-
-function resetPagesBlankPreserveSettings(){
-  state.pages = [];
-  app.stageInner.innerHTML = '';
-  const wrap = document.createElement('div'); wrap.className = 'page-wrap'; wrap.dataset.page = '0';
-  const pageEl = document.createElement('div'); pageEl.className = 'page'; pageEl.style.height = app.PAGE_H+'px';
-  const cv = document.createElement('canvas');
-  const mb = document.createElement('div'); mb.className = 'margin-box';
-  mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
-  pageEl.appendChild(cv); pageEl.appendChild(mb);
-  wrap.appendChild(pageEl);
-  app.stageInner.appendChild(wrap);
-  app.firstPageWrap = wrap;
-  app.firstPage = pageEl;
-  app.marginBox = mb;
-  const page = makePageRecord(0, wrap, pageEl, cv, mb);
-  page.canvas.style.visibility = 'hidden';
-  state.pages.push(page);
-  renderMargins();
-  requestVirtualization();
-}
-
-function flattenGridToStreamWithCaret(){
-  const tokens = [];
-  let linear = 0;
-  let caretIndex = null;
-  function maybeSetCaret2(pageIdx, rowMu, colStart, emittedBefore){
-    if (caretIndex != null) return;
-    if (state.caret.page !== pageIdx || state.caret.rowMu !== rowMu) return;
-    const offset = Math.max(0, state.caret.col - colStart);
-    caretIndex = linear + emittedBefore + offset;
-  }
-  for (let p = 0; p < state.pages.length; p++){
-    const page = state.pages[p];
-    if (!page || page.grid.size === 0) continue;
-    const rows = Array.from(page.grid.keys()).sort((a,b)=>a-b);
-    for (let ri = 0; ri < rows.length; ri++){
-      const rmu = rows[ri];
-      const rowMap = page.grid.get(rmu);
-      if (!rowMap || rowMap.size === 0){
-        if (p === state.caret.page && rmu === state.caret.rowMu && caretIndex == null) caretIndex = linear;
-        tokens.push({ ch:'\n' });
-        continue;
-      }
-      let minCol = Infinity, maxCol = -1;
-      for (const c of rowMap.keys()){ if (c < minCol) minCol = c; if (c > maxCol) maxCol = c; }
-      if (!isFinite(minCol) || maxCol < 0){ tokens.push({ ch:'\n' }); continue; }
-      maybeSetCaret2(p, rmu, minCol, 0);
-      for (let c = minCol; c <= maxCol; c++){
-        const stack = rowMap.get(c);
-        if (!stack || stack.length === 0){ tokens.push({ ch:' ' }); linear++; continue; }
-        tokens.push({ layers: stack.map(s => ({ ch:s.char, ink:s.ink || 'b' })) });
-        linear++;
-      }
-      tokens.push({ ch:'\n' });
-    }
-  }
-  if (caretIndex == null) caretIndex = linear;
-  const out = [];
-  for (let i = 0; i < tokens.length; i++){
-    const t = tokens[i];
-    if (t.ch === '\n' || t.layers || t.ch === ' '){ out.push(t); }
-  }
-  while (out.length && out[out.length - 1].ch === '\n') out.pop();
-  return { tokens: out, caretIndex };
-}
-
-function attemptWordWrapAtOverflow(prevRowMu, pageIndex, b, mutateCaret = true){
-  if (!state.wordWrap) return false;
-  const page = state.pages[pageIndex] || addPage();
-  const rowMap = page.grid.get(prevRowMu);
-  if (!rowMap) return false;
-
-  let minCol = Infinity, maxCol = -1;
-  for (const c of rowMap.keys()){ if (c < minCol) minCol = c; if (c > maxCol) maxCol = c; }
-  if (!isFinite(minCol) || maxCol < b.L) return false;
-
-  let splitAt = -1;
-  for (let c = Math.min(maxCol, b.R); c >= b.L; c--){
-    const st = rowMap.get(c);
-    if (!st || !st.length) continue;
-    const ch = st[st.length - 1].char;
-    if (/\s/.test(ch)) { splitAt = c; break; }
-  }
-  if (splitAt < b.L) return false;
-
-  const start = splitAt + 1;
-  if (start > maxCol) return false;
-
-  let destPageIndex = pageIndex;
-  let destRowMu = prevRowMu + state.lineStepMu;
-  if (destRowMu > b.Bmu){
-    destPageIndex++;
-    const np = state.pages[destPageIndex] || addPage();
-    app.activePageIndex = np.index;
-    requestVirtualization();
-    destRowMu = b.Tmu;
-    positionRulers();
-  }
-  const destPage = state.pages[destPageIndex] || addPage();
-  const destRowMap = ensureRowExists(destPage, destRowMu);
-
-  let destCol = b.L;
-  for (let c = start; c <= maxCol; c++){
-    const stack = rowMap.get(c);
-    if (!stack || !stack.length) continue;
-    let dstack = destRowMap.get(destCol);
-    if (!dstack){ dstack = []; destRowMap.set(destCol, dstack); }
-    for (const s of stack){ dstack.push({ char: s.char, ink: s.ink || 'b' }); }
-    rowMap.delete(c);
-    destCol++;
-  }
-
-  markRowAsDirty(page, prevRowMu);
-  markRowAsDirty(destPage, destRowMu);
-
-  const nextPos = { pageIndex: destPageIndex, rowMu: destRowMu, col: destCol };
-  if (mutateCaret){
-    state.caret.page  = nextPos.pageIndex;
-    state.caret.rowMu = nextPos.rowMu;
-    state.caret.col   = nextPos.col;
-  }
-  return nextPos;
-}
-
-function typeStreamIntoGrid(tokens, caretIndex){
-  const b = getCurrentBounds();
-  let pageIndex = 0, rowMu = b.Tmu, col = b.L;
-  let page = state.pages[0] || addPage();
-  let pos = 0, caretSet = false;
-
-  const newline = () => {
-    col = b.L; rowMu += state.lineStepMu;
-    if (rowMu > b.Bmu){
-      pageIndex++;
-      page = state.pages[pageIndex] || addPage();
-      app.activePageIndex = page.index;
-      requestVirtualization();
-      rowMu = b.Tmu; col = b.L;
-      positionRulers();
-    }
-  };
-  const advance = () => {
-    col++;
-    if (col > b.R){
-      const moved = attemptWordWrapAtOverflow(rowMu, pageIndex, b, false);
-      if (moved){
-        pageIndex = moved.pageIndex; rowMu = moved.rowMu; col = moved.col;
-        page = state.pages[pageIndex] || addPage();
-      } else {
-        newline();
-      }
-    }
-  };
-  const maybeSetCaret = () => { if (!caretSet && pos === caretIndex){ state.caret = { page: pageIndex, rowMu, col }; caretSet = true; } };
-
-  for (const t of tokens){
-    if (t.ch === '\n'){ newline(); continue; }
-    if (col > b.R){
-      const moved = attemptWordWrapAtOverflow(rowMu, pageIndex, b, false);
-      if (moved){
-        pageIndex = moved.pageIndex; rowMu = moved.rowMu; col = moved.col;
-        page = state.pages[pageIndex] || addPage();
-      } else {
-        newline();
-      }
-    }
-    maybeSetCaret();
-    if (t.layers){
-      for (const L of t.layers){ overtypeCharacter(page, rowMu, col, L.ch, L.ink || 'b'); }
-    } else if (t.ch !== ' '){
-      overtypeCharacter(page, rowMu, col, t.ch, t.ink || 'b');
-    }
-    advance(); pos++;
-  }
-  if (!caretSet){ state.caret = { page: pageIndex, rowMu, col }; }
-}
-
-function rewrapDocumentToCurrentBounds(){
-  beginBatch();
-  const { tokens, caretIndex } = flattenGridToStreamWithCaret();
-  resetPagesBlankPreserveSettings();
-  typeStreamIntoGrid(tokens, caretIndex);
-  for (const p of state.pages){ p.dirtyAll = true; }
-  renderMargins();
-  clampCaretToBounds();
-  updateCaretPosition();
-  positionRulers();
-  requestVirtualization();
-  saveStateDebounced();
-  endBatch();
 }
 
 const DEAD_X = 1.25, DEAD_Y = 3.0;
@@ -849,26 +605,6 @@ function requestHammerNudge(){
 }
 
 
-function updateCaretPosition(){
-  const p = state.pages[state.caret.page];
-  if (!p) return;
-  const layoutScale = layoutZoomFactor();
-  const caretLeft = (state.caret.col * CHAR_W) * layoutScale;
-  const caretTop = (state.caret.rowMu * GRID_H - BASELINE_OFFSET_CELL) * layoutScale;
-  const caretHeight = baseCaretHeightPx() * layoutScale;
-  app.caretEl.style.left = caretLeft + 'px';
-  app.caretEl.style.top  = caretTop + 'px';
-  app.caretEl.style.height = caretHeight + 'px';
-  const caretWidth = Math.max(1, Math.round(2 * layoutScale));
-  app.caretEl.style.width = caretWidth + 'px';
-  if (app.caretEl.parentNode !== p.pageEl){
-    app.caretEl.remove();
-    p.pageEl.appendChild(app.caretEl);
-  }
-  if (!zooming) requestHammerNudge();
-  requestVirtualization();
-}
-
 function computeSnappedVisualMargins(){
   const Lcol = Math.ceil(state.marginL / CHAR_W);
   const Rcol = Math.floor((state.marginR - 1) / CHAR_W);
@@ -898,31 +634,6 @@ function renderMargins(){
   }
 }
 
-function getCurrentBounds(){
-  const L = Math.ceil(state.marginL / CHAR_W);
-  const Rstrict = Math.floor((state.marginR - 1) / CHAR_W);
-  const pageMaxStart = Math.ceil(app.PAGE_W / CHAR_W) - 1;
-  const Tmu = Math.ceil((state.marginTop + ASC) / GRID_H);
-  const Bmu = Math.floor((app.PAGE_H - state.marginBottom - DESC) / GRID_H);
-  const clamp2 = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const allowEdgeOverflow = (state.marginR >= app.PAGE_W - 0.5);
-  const Lc = clamp2(L, 0, pageMaxStart);
-  const RcStrict = clamp2(Rstrict, 0, pageMaxStart);
-  const Rc = allowEdgeOverflow ? pageMaxStart : RcStrict;
-  return { L: Math.min(Lc, Rc), R: Math.max(Lc, Rc), Tmu, Bmu };
-}
-
-function snapRowMuToStep(rowMu, b){
-  const step = state.lineStepMu;
-  const k = Math.round((rowMu - b.Tmu) / step);
-  return clamp(b.Tmu + k * step, b.Tmu, b.Bmu);
-}
-function clampCaretToBounds(){
-  const b = getCurrentBounds();
-  state.caret.col  = clamp(state.caret.col,  b.L,  b.R);
-  state.caret.rowMu = snapRowMuToStep(clamp(state.caret.rowMu, b.Tmu, b.Bmu), b);
-  updateCaretPosition();
-}
 function getActivePageRect(){
   const p = state.pages[app.activePageIndex ?? state.caret.page] || state.pages[0];
   const r = p.wrapEl.getBoundingClientRect();
@@ -1258,67 +969,6 @@ function toggleInkSettingsPanel() {
   }
 }
 
-function advanceCaret(){
-  const b = getCurrentBounds();
-  state.caret.col++;
-  if (state.caret.col > b.R){
-    const moved = attemptWordWrapAtOverflow(state.caret.rowMu, state.caret.page, b, true);
-    if (!moved){
-      state.caret.col = b.L;
-      state.caret.rowMu += state.lineStepMu;
-      if (state.caret.rowMu > b.Bmu){
-        state.caret.page++;
-        const np = state.pages[state.caret.page] || addPage();
-        app.activePageIndex = np.index;
-        requestVirtualization();
-        state.caret.rowMu = b.Tmu;
-        state.caret.col = b.L;
-        positionRulers();
-      }
-    }
-  }
-  updateCaretPosition();
-}
-
-function handleNewline(){
-  const b = getCurrentBounds();
-  typedRun.active=false;
-  state.caret.col = b.L;
-  state.caret.rowMu += state.lineStepMu;
-  if (state.caret.rowMu > b.Bmu){
-    state.caret.page++;
-    const np = state.pages[state.caret.page] || addPage();
-    app.activePageIndex = np.index;
-    requestVirtualization();
-    state.caret.rowMu = b.Tmu; state.caret.col = b.L;
-    positionRulers();
-  }
-  updateCaretPosition();
-}
-function handleBackspace(){
-  const b = getCurrentBounds();
-  typedRun.active=false;
-  if (state.caret.col > b.L) { state.caret.col--; }
-  else if (state.caret.rowMu > b.Tmu) { state.caret.rowMu -= state.lineStepMu; state.caret.col = b.R; }
-  else if (state.caret.page > 0) { state.caret.page--; app.activePageIndex = state.caret.page; state.caret.rowMu = b.Bmu; state.caret.col = b.R; positionRulers(); }
-  updateCaretPosition();
-}
-
-function insertString(s){
-  beginBatch();
-  const text = (s || '').replace(/\r\n?/g, '\n');
-  for (const ch of text){
-    if (ch === '\n'){ handleNewline(); }
-    else {
-      const page = state.pages[state.caret.page] || addPage();
-      overtypeCharacter(page, state.caret.rowMu, state.caret.col, ch, state.ink);
-      advanceCaret();
-    }
-  }
-  saveStateDebounced();
-  endBatch();
-}
-
 const TYPED_RUN_MAXLEN = 20, TYPED_RUN_TIMEOUT = 500, EXPAND_PASTE_WINDOW = 350, BS_WINDOW = 250, STRAY_V_WINDOW = 30;
 function isEditableTarget(t){
   if (!t) return false;
@@ -1383,7 +1033,7 @@ function handleKeyDown(e){
     }
     return;
   }
-  if (k === 'Enter'){ e.preventDefault(); handleNewline(); saveStateDebounced(); return; }
+  if (k === 'Enter'){ e.preventDefault(); resetTypedRun(); handleNewline(); saveStateDebounced(); return; }
   if (k === 'Backspace'){
     e.preventDefault();
     const now = performance.now();
@@ -1391,6 +1041,7 @@ function handleKeyDown(e){
     bsBurstTs = now;
     beginTypingFrameBatch();
     handleBackspace();
+    resetTypedRun();
     saveStateDebounced();
     return;
   }
@@ -1445,7 +1096,7 @@ function handlePaste(e){
     }
   }
 
-  insertStringFast(txt);
+  insertTextFast(txt);
 
   resetTypedRun();
   endBatch();
@@ -1473,95 +1124,6 @@ function handlePageClick(e, pageIndex){
   resetTypedRun();
   updateCaretPosition();
   positionRulers();
-}
-
-function serializeState(){
-  const pages = state.pages.map(p=>{
-    const rows=[]; for (const [rmu,rowMap] of p.grid){
-      const cols=[]; for (const [c,stack] of rowMap){
-        cols.push([c, stack.map(s=>({ ch:s.char, ink:s.ink||'b' }))]);
-      }
-      rows.push([rmu, cols]);
-    }
-    return { rows };
-  });
-  return {
-    v:21, fontName: ACTIVE_FONT_NAME,
-    margins:{ L:state.marginL, R:state.marginR, T:state.marginTop, B:state.marginBottom },
-    caret: state.caret, ink: state.ink, showRulers: state.showRulers, showMarginBox: state.showMarginBox,
-    cpi: state.cpi, colsAcross: state.colsAcross, inkWidthPct: state.inkWidthPct,
-    inkOpacity: state.inkOpacity, lineHeightFactor: state.lineHeightFactor, zoom: state.zoom,
-    grainPct: state.grainPct, grainSeed: state.grainSeed >>> 0, altSeed: state.altSeed >>> 0,
-    wordWrap: state.wordWrap,
-    stageWidthFactor: state.stageWidthFactor,
-    stageHeightFactor: state.stageHeightFactor,
-    pages
-  };
-}
-
-function deserializeState(data){
-  if (!data || (data.v<2 || data.v>21)) return false;
-  state.pages=[]; app.stageInner.innerHTML='';
-  const pgArr = data.pages || [];
-  pgArr.forEach((pg, idx)=>{
-    const wrap=document.createElement('div'); wrap.className='page-wrap'; wrap.dataset.page=String(idx);
-    const pageEl=document.createElement('div'); pageEl.className='page'; pageEl.style.height=app.PAGE_H+'px';
-    const cv=document.createElement('canvas'); prepareCanvas(cv);
-    const mb=document.createElement('div'); mb.className='margin-box';
-    pageEl.appendChild(cv); pageEl.appendChild(mb); wrap.appendChild(pageEl); app.stageInner.appendChild(wrap);
-    const page = makePageRecord(idx, wrap, pageEl, cv, mb);
-    pageEl.addEventListener('mousedown', e => handlePageClick(e, idx));
-    state.pages.push(page);
-    if (Array.isArray(pg.rows)){
-      for (const [rmu, cols] of pg.rows){
-        const rowMap = new Map();
-        for (const [c, stackArr] of cols){
-          rowMap.set(c, stackArr.map(s => ({ char:s.ch, ink:s.ink || 'b' })));
-        }
-        page.grid.set(rmu, rowMap);
-      }
-    }
-  });
-  let inferredCols = data.colsAcross, cpiVal = data.cpi ?? null;
-  if (cpiVal) inferredCols = computeColsFromCpi(cpiVal).cols2;
-  const inkOpacity = (data.inkOpacity && typeof data.inkOpacity === 'object')
-    ? { b: clamp(Number(data.inkOpacity.b ?? 100),0,100), r: clamp(Number(data.inkOpacity.r ?? 100),0,100), w: clamp(Number(data.inkOpacity.w ?? 100),0,100) }
-    : { b:100, r:100, w:100 };
-  const storedInkWidth = Number(data.inkWidthPct);
-  const sanitizedInkWidth = Number.isFinite(storedInkWidth)
-    ? clamp(Math.round(storedInkWidth), 1, 150)
-    : 84;
-  const storedStageWidth = Number(data.stageWidthFactor);
-  const storedStageHeight = Number(data.stageHeightFactor);
-  const sanitizedStageWidth = Number.isFinite(storedStageWidth)
-    ? clamp(storedStageWidth, 1, 5)
-    : state.stageWidthFactor;
-  const sanitizedStageHeight = Number.isFinite(storedStageHeight)
-    ? clamp(storedStageHeight, 1, 5)
-    : state.stageHeightFactor;
-  Object.assign(state, {
-    marginL: data.margins?.L ?? state.marginL, marginR: data.margins?.R ?? state.marginR,
-    marginTop: data.margins?.T ?? state.marginTop, marginBottom: data.margins?.B ?? state.marginBottom,
-    caret: data.caret ? { page:data.caret.page||0, rowMu:data.caret.rowMu||0, col:data.caret.col||0 } : state.caret,
-    ink: ['b','r','w'].includes(data.ink) ? data.ink : 'b',
-    showRulers: data.showRulers !== false, showMarginBox: !!data.showMarginBox,
-    cpi: cpiVal || 10, colsAcross: inferredCols ?? state.colsAcross,
-    inkWidthPct: sanitizedInkWidth, inkOpacity,
-    lineHeightFactor: ([1,1.5,2,2.5,3].includes(data.lineHeightFactor)) ? data.lineHeightFactor : 1,
-    zoom: (typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4) ? data.zoom : 1.0,
-    grainPct: clamp(Number(data.grainPct ?? 0), 0, 100),
-    grainSeed: (data.grainSeed >>> 0) || ((Math.random()*0xFFFFFFFF)>>>0),
-    altSeed: (data.altSeed >>> 0) || (((data.grainSeed>>>0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random()*0xFFFFFFFF)>>>0),
-    wordWrap: (data.wordWrap !== false),
-    stageWidthFactor: sanitizedStageWidth,
-    stageHeightFactor: sanitizedStageHeight
-  });
-  state.lineStepMu = Math.round(GRID_DIV * state.lineHeightFactor);
-  if (data.fontName) ACTIVE_FONT_NAME = data.fontName;
-  FONT_FAMILY = `${ACTIVE_FONT_NAME}`;
-  for (const p of state.pages){ p.dirtyAll = true; }
-  document.body.classList.toggle('rulers-off', !state.showRulers);
-  return true;
 }
 
 function saveStateNow(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState())); }catch{} }
@@ -1617,13 +1179,6 @@ function applyDefaultMargins() {
   state.marginL = mW; state.marginR = app.PAGE_W - mW;
   state.marginTop = mH; state.marginBottom = mH;
 }
-function setInk(ink){
-  state.ink = ink;
-  app.inkBlackBtn.dataset.active = String(ink === 'b');
-  app.inkRedBtn.dataset.active   = String(ink === 'r');
-  app.inkWhiteBtn.dataset.active = String(ink === 'w');
-  saveStateDebounced();
-}
 function toggleRulers(){
   state.showRulers = !state.showRulers;
   document.body.classList.toggle('rulers-off', !state.showRulers);
@@ -1657,47 +1212,6 @@ function exportToTextFile(){
   const blob = new Blob([txt], {type:'text/plain;charset=utf-8'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='typewriter.txt';
   document.body.appendChild(a); a.click(); URL.revokeObjectURL(a.href); a.remove();
-}
-
-function createNewDocument(){
-  beginBatch();
-  lastDigitTs = 0; lastDigitCaret = null;
-  bsBurstCount = 0; bsBurstTs = 0;
-  typedRun = { active:false, page:0, rowMu:0, startCol:0, length:0, lastTs:0 };
-  state.paperOffset = { x:0, y:0 };
-  setPaperOffset(0,0);
-  state.pages = [];
-  state.caret = { page:0, rowMu:0, col:0 };
-  state.ink   = 'b';
-  state.grainSeed = ((Math.random()*0xFFFFFFFF)>>>0);
-  state.altSeed = ((Math.random()*0xFFFFFFFF)>>>0);
-  app.stageInner.innerHTML = '';
-  const wrap=document.createElement('div'); wrap.className='page-wrap'; wrap.dataset.page='0';
-  const pageEl=document.createElement('div'); pageEl.className='page'; pageEl.style.height=app.PAGE_H+'px';
-  const cv=document.createElement('canvas'); prepareCanvas(cv);
-  const mb=document.createElement('div'); mb.className='margin-box';
-  mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
-  pageEl.appendChild(cv); pageEl.appendChild(mb); wrap.appendChild(pageEl); app.stageInner.appendChild(wrap);
-  app.firstPageWrap=wrap; app.firstPage=pageEl; app.marginBox=mb;
-  const page = makePageRecord(0, wrap, pageEl, cv, mb);
-  page.canvas.style.visibility = 'hidden';
-  state.pages.push(page);
-  applyDefaultMargins();
-  recalcMetrics(ACTIVE_FONT_NAME);
-  rebuildAllAtlases();
-  for (const p of state.pages){
-    p.grainCanvas = null; p.grainForSize = { w:0, h:0 };
-    configureCanvasContext(p.ctx); configureCanvasContext(p.backCtx);
-    p.dirtyAll = true; schedulePaint(p);
-  }
-  renderMargins();
-  clampCaretToBounds();
-  updateCaretPosition();
-  document.body.classList.toggle('rulers-off', !state.showRulers);
-  positionRulers();
-  requestVirtualization();
-  saveStateNow();
-  endBatch();
 }
 
 function bindEventListeners(){
