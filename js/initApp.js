@@ -8,6 +8,8 @@ import { detectSafariEnvironment, createStageLayoutController } from './layout/s
 import { createGlyphAtlas } from './rendering/glyphAtlas.js';
 import { createPageRenderer } from './rendering/pageRendering.js';
 import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from './config/inkSettingsPanel.js';
+import { createDocumentModel } from './document/model.js';
+import { createPersistenceController } from './state/persistence.js';
 
 export function initApp(){
 
@@ -27,7 +29,6 @@ let {
   bsBurstTs,
   lastPasteTs,
   typedRun,
-  drag,
   saveTimer,
   zoomDebounceTimer,
   zooming,
@@ -41,6 +42,23 @@ let {
 } = ephemeral;
 const touchedPages = ephemeral.touchedPages;
 let hammerNudgeRAF = 0;
+
+let ensureRowExists;
+let writeRunToRow;
+let overtypeCharacter;
+let eraseCharacters;
+let makePageRecord;
+let addPage;
+let bootstrapFirstPage;
+let resetPagesBlankPreserveSettings;
+let flattenGridToStreamWithCaret;
+let typeStreamIntoGrid;
+let rewrapDocumentToCurrentBounds;
+let getCurrentBounds = () => ({ L: 0, R: 0, Tmu: 0, Bmu: 0 });
+let snapRowMuToStep;
+let clampCaretToBounds;
+let exportToTextFile;
+let documentModelSetPersistenceHooks = () => {};
 
 const { isSafari: IS_SAFARI, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD } = detectSafariEnvironment();
 
@@ -76,12 +94,41 @@ const {
   syncSafariZoomLayout,
   setSafariZoomMode,
   isSafariSteadyZoom,
+  updateStageEnvironment,
+  setPaperOffset,
+  caretViewportPos,
+  anchorPx,
+  maybeApplyNativeScroll,
+  nudgePaperToAnchor,
+  requestHammerNudge,
+  computeSnappedVisualMargins,
+  renderMargins,
+  updateRulerTicks,
+  positionRulers,
+  setMarginBoxesVisible,
+  snapXToGrid,
+  snapYToGrid,
+  handleHorizontalMarginDrag,
+  handleVerticalMarginDrag,
+  beginMarginDrag,
+  endMarginDrag,
+  mmX,
+  mmY,
+  pxX,
+  pxY,
+  setDocumentModelHooks,
+  setPersistenceHooks,
 } = createStageLayoutController({
   app,
   state,
   isSafari: IS_SAFARI,
-  renderMargins,
-  updateStageEnvironment,
+  DPR,
+  requestVirtualization,
+  getZooming: () => zooming,
+  getCharWidth: () => CHAR_W,
+  getGridHeight: () => GRID_H,
+  getAsc: () => ASC,
+  getDesc: () => DESC,
   updateCaretPosition,
 });
 
@@ -106,6 +153,84 @@ const {
   getCurrentBounds,
   getBatchDepth: () => batchDepth,
 });
+
+({
+  ensureRowExists,
+  writeRunToRow,
+  overtypeCharacter,
+  eraseCharacters,
+  makePageRecord,
+  addPage,
+  bootstrapFirstPage,
+  resetPagesBlankPreserveSettings,
+  flattenGridToStreamWithCaret,
+  typeStreamIntoGrid,
+  rewrapDocumentToCurrentBounds,
+  getCurrentBounds: docGetCurrentBounds,
+  snapRowMuToStep,
+  clampCaretToBounds: docClampCaretToBounds,
+  exportToTextFile,
+  setPersistenceHooks: docSetPersistenceHooks,
+} = createDocumentModel({
+  app,
+  state,
+  getCharWidth: () => CHAR_W,
+  getGridHeight: () => GRID_H,
+  getAsc: () => ASC,
+  getDesc: () => DESC,
+  markRowAsDirty,
+  prepareCanvas,
+  configureCanvasContext,
+  handlePageClick,
+  requestVirtualization,
+  renderMargins,
+  positionRulers,
+  updateCaretPosition,
+  beginBatch,
+  endBatch,
+  attemptWordWrapAtOverflow,
+}));
+
+getCurrentBounds = docGetCurrentBounds;
+clampCaretToBounds = docClampCaretToBounds;
+documentModelSetPersistenceHooks = docSetPersistenceHooks;
+
+setDocumentModelHooks({
+  getCurrentBounds,
+  clampCaret: clampCaretToBounds,
+});
+
+const getSaveTimer = () => saveTimer;
+const setSaveTimerValue = (timer) => { saveTimer = timer; };
+const getActiveFontName = () => ACTIVE_FONT_NAME;
+const applyActiveFontName = (name) => {
+  if (!name) return;
+  ACTIVE_FONT_NAME = name;
+  FONT_FAMILY = `${ACTIVE_FONT_NAME}`;
+};
+
+const {
+  serializeState,
+  deserializeState,
+  saveStateNow,
+  saveStateDebounced,
+} = createPersistenceController({
+  state,
+  app,
+  storageKey: STORAGE_KEY,
+  gridDiv: GRID_DIV,
+  getActiveFontName,
+  setActiveFontName: applyActiveFontName,
+  makePageRecord,
+  prepareCanvas,
+  handlePageClick,
+  computeColsFromCpi,
+  getSaveTimer,
+  setSaveTimer: setSaveTimerValue,
+});
+
+documentModelSetPersistenceHooks({ saveStateDebounced });
+setPersistenceHooks({ saveStateDebounced });
 
 function focusStage(){
   if (!app.stage) return;
@@ -309,24 +434,6 @@ function applyMetricsNow(full=false){
   endBatch();
 }
 
-function ensureRowExists(page, rowMu){
-  let r = page.grid.get(rowMu);
-  if (!r){ r = new Map(); page.grid.set(rowMu, r); }
-  return r;
-}
-
-function writeRunToRow(page, rowMu, startCol, text, ink){
-  if (!text || !text.length) return;
-  const rowMap = ensureRowExists(page, rowMu);
-  for (let i = 0; i < text.length; i++){
-    const col = startCol + i;
-    let stack = rowMap.get(col);
-    if (!stack){ stack = []; rowMap.set(col, stack); }
-    stack.push({ char: text[i], ink: ink || 'b' });
-  }
-  markRowAsDirty(page, rowMu);
-}
-
 function insertStringFast(s){
   const text = (s || '').replace(/\r\n?/g, '\n');
   const b = getCurrentBounds();
@@ -406,145 +513,6 @@ function insertStringFast(s){
   saveStateDebounced();
 }
 
-function overtypeCharacter(page, rowMu, col, ch, ink){
-  const rowMap = ensureRowExists(page, rowMu);
-  let stack = rowMap.get(col);
-  if (!stack){ stack = []; rowMap.set(col, stack); }
-  stack.push({ char: ch, ink });
-  markRowAsDirty(page, rowMu);
-}
-function eraseCharacters(page, rowMu, startCol, count){
-  let changed = false;
-  const rowMap = page.grid.get(rowMu);
-  if (!rowMap) return;
-  for (let i=0;i<count;i++){
-    const col = startCol + i;
-    const stack = rowMap.get(col);
-    if (stack && stack.length){
-      stack.pop();
-      changed = true;
-      if (!stack.length) rowMap.delete(col);
-    }
-  }
-  if (changed) markRowAsDirty(page, rowMu);
-}
-
-function makePageRecord(idx, wrapEl, pageEl, canvas, marginBoxEl) {
-  try { pageEl.style.cursor = 'text'; } catch {}
-  prepareCanvas(canvas);
-  const ctx = canvas.getContext('2d');
-  configureCanvasContext(ctx);
-  const backCanvas = document.createElement('canvas');
-  prepareCanvas(backCanvas);
-  const backCtx = backCanvas.getContext('2d');
-  configureCanvasContext(backCtx);
-  backCtx.save();
-  backCtx.globalCompositeOperation = 'source-over';
-  backCtx.globalAlpha = 1;
-  backCtx.fillStyle = '#ffffff';
-  backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
-  backCtx.restore();
-  const page = {
-    index: idx, wrapEl, pageEl, canvas, ctx, backCanvas, backCtx,
-    grid: new Map(), raf: 0, dirtyAll: true, active: false,
-    _dirtyRowMinMu: undefined, _dirtyRowMaxMu: undefined,
-    marginBoxEl, grainCanvas: null, grainForSize: { w:0, h:0 }
-  };
-  pageEl.addEventListener('mousedown', (e) => handlePageClick(e, idx), { capture:false });
-  canvas.addEventListener('mousedown', (e) => handlePageClick(e, idx), { capture:false });
-  return page;
-}
-
-function addPage() {
-  const idx = state.pages.length;
-  const wrap = document.createElement('div'); wrap.className = 'page-wrap'; wrap.dataset.page = String(idx);
-  const pageEl = document.createElement('div'); pageEl.className = 'page'; pageEl.style.height = app.PAGE_H + 'px';
-  const canvas = document.createElement('canvas');
-  const mb = document.createElement('div'); mb.className = 'margin-box';
-  mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
-  pageEl.appendChild(canvas); pageEl.appendChild(mb); wrap.appendChild(pageEl); app.stageInner.appendChild(wrap);
-  const page = makePageRecord(idx, wrap, pageEl, canvas, mb);
-  page.canvas.style.visibility = 'hidden';
-  state.pages.push(page);
-  renderMargins();
-  requestVirtualization();
-  return page;
-}
-function bootstrapFirstPage() {
-  const pageEl = app.firstPage; pageEl.style.height = app.PAGE_H + 'px';
-  const canvas = pageEl.querySelector('canvas');
-  const page = makePageRecord(0, app.firstPageWrap, pageEl, canvas, app.marginBox);
-  page.canvas.style.visibility = 'hidden';
-  page.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
-  state.pages.push(page);
-}
-
-function resetPagesBlankPreserveSettings(){
-  state.pages = [];
-  app.stageInner.innerHTML = '';
-  const wrap = document.createElement('div'); wrap.className = 'page-wrap'; wrap.dataset.page = '0';
-  const pageEl = document.createElement('div'); pageEl.className = 'page'; pageEl.style.height = app.PAGE_H+'px';
-  const cv = document.createElement('canvas');
-  const mb = document.createElement('div'); mb.className = 'margin-box';
-  mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
-  pageEl.appendChild(cv); pageEl.appendChild(mb);
-  wrap.appendChild(pageEl);
-  app.stageInner.appendChild(wrap);
-  app.firstPageWrap = wrap;
-  app.firstPage = pageEl;
-  app.marginBox = mb;
-  const page = makePageRecord(0, wrap, pageEl, cv, mb);
-  page.canvas.style.visibility = 'hidden';
-  state.pages.push(page);
-  renderMargins();
-  requestVirtualization();
-}
-
-function flattenGridToStreamWithCaret(){
-  const tokens = [];
-  let linear = 0;
-  let caretIndex = null;
-  function maybeSetCaret2(pageIdx, rowMu, colStart, emittedBefore){
-    if (caretIndex != null) return;
-    if (state.caret.page !== pageIdx || state.caret.rowMu !== rowMu) return;
-    const offset = Math.max(0, state.caret.col - colStart);
-    caretIndex = linear + emittedBefore + offset;
-  }
-  for (let p = 0; p < state.pages.length; p++){
-    const page = state.pages[p];
-    if (!page || page.grid.size === 0) continue;
-    const rows = Array.from(page.grid.keys()).sort((a,b)=>a-b);
-    for (let ri = 0; ri < rows.length; ri++){
-      const rmu = rows[ri];
-      const rowMap = page.grid.get(rmu);
-      if (!rowMap || rowMap.size === 0){
-        if (p === state.caret.page && rmu === state.caret.rowMu && caretIndex == null) caretIndex = linear;
-        tokens.push({ ch:'\n' });
-        continue;
-      }
-      let minCol = Infinity, maxCol = -1;
-      for (const c of rowMap.keys()){ if (c < minCol) minCol = c; if (c > maxCol) maxCol = c; }
-      if (!isFinite(minCol) || maxCol < 0){ tokens.push({ ch:'\n' }); continue; }
-      maybeSetCaret2(p, rmu, minCol, 0);
-      for (let c = minCol; c <= maxCol; c++){
-        const stack = rowMap.get(c);
-        if (!stack || stack.length === 0){ tokens.push({ ch:' ' }); linear++; continue; }
-        tokens.push({ layers: stack.map(s => ({ ch:s.char, ink:s.ink || 'b' })) });
-        linear++;
-      }
-      tokens.push({ ch:'\n' });
-    }
-  }
-  if (caretIndex == null) caretIndex = linear;
-  const out = [];
-  for (let i = 0; i < tokens.length; i++){
-    const t = tokens[i];
-    if (t.ch === '\n' || t.layers || t.ch === ' '){ out.push(t); }
-  }
-  while (out.length && out[out.length - 1].ch === '\n') out.pop();
-  return { tokens: out, caretIndex };
-}
-
 function attemptWordWrapAtOverflow(prevRowMu, pageIndex, b, mutateCaret = true){
   if (!state.wordWrap) return false;
   const page = state.pages[pageIndex] || addPage();
@@ -603,252 +571,6 @@ function attemptWordWrapAtOverflow(prevRowMu, pageIndex, b, mutateCaret = true){
   return nextPos;
 }
 
-function typeStreamIntoGrid(tokens, caretIndex){
-  const b = getCurrentBounds();
-  let pageIndex = 0, rowMu = b.Tmu, col = b.L;
-  let page = state.pages[0] || addPage();
-  let pos = 0, caretSet = false;
-
-  const newline = () => {
-    col = b.L; rowMu += state.lineStepMu;
-    if (rowMu > b.Bmu){
-      pageIndex++;
-      page = state.pages[pageIndex] || addPage();
-      app.activePageIndex = page.index;
-      requestVirtualization();
-      rowMu = b.Tmu; col = b.L;
-      positionRulers();
-    }
-  };
-  const advance = () => {
-    col++;
-    if (col > b.R){
-      const moved = attemptWordWrapAtOverflow(rowMu, pageIndex, b, false);
-      if (moved){
-        pageIndex = moved.pageIndex; rowMu = moved.rowMu; col = moved.col;
-        page = state.pages[pageIndex] || addPage();
-      } else {
-        newline();
-      }
-    }
-  };
-  const maybeSetCaret = () => { if (!caretSet && pos === caretIndex){ state.caret = { page: pageIndex, rowMu, col }; caretSet = true; } };
-
-  for (const t of tokens){
-    if (t.ch === '\n'){ newline(); continue; }
-    if (col > b.R){
-      const moved = attemptWordWrapAtOverflow(rowMu, pageIndex, b, false);
-      if (moved){
-        pageIndex = moved.pageIndex; rowMu = moved.rowMu; col = moved.col;
-        page = state.pages[pageIndex] || addPage();
-      } else {
-        newline();
-      }
-    }
-    maybeSetCaret();
-    if (t.layers){
-      for (const L of t.layers){ overtypeCharacter(page, rowMu, col, L.ch, L.ink || 'b'); }
-    } else if (t.ch !== ' '){
-      overtypeCharacter(page, rowMu, col, t.ch, t.ink || 'b');
-    }
-    advance(); pos++;
-  }
-  if (!caretSet){ state.caret = { page: pageIndex, rowMu, col }; }
-}
-
-function rewrapDocumentToCurrentBounds(){
-  beginBatch();
-  const { tokens, caretIndex } = flattenGridToStreamWithCaret();
-  resetPagesBlankPreserveSettings();
-  typeStreamIntoGrid(tokens, caretIndex);
-  for (const p of state.pages){ p.dirtyAll = true; }
-  renderMargins();
-  clampCaretToBounds();
-  updateCaretPosition();
-  positionRulers();
-  requestVirtualization();
-  saveStateDebounced();
-  endBatch();
-}
-
-const DEAD_X = 1.25, DEAD_Y = 3.0;
-function caretViewportPos(){
-  if (!app || !app.caretEl) return null;
-  const rect = app.caretEl.getBoundingClientRect();
-  return { x: rect.left, y: rect.top };
-}
-function updateRulerHostDimensions(stageW, stageH){
-  if (!app.rulerH_host || !app.rulerV_host) return;
-  const scale = cssScaleFactor();
-  const scaledW = stageW * scale;
-  const scaledH = stageH * scale;
-  app.rulerH_host.style.width = `${scaledW}px`;
-  app.rulerV_host.style.height = `${scaledH}px`;
-}
-
-function documentHorizontalSpanPx(){
-  if (!state.pages || !state.pages.length) return app.PAGE_W;
-  const first = state.pages[0];
-  if (!first || !first.wrapEl) return app.PAGE_W;
-  const width = first.wrapEl.offsetWidth;
-  return Number.isFinite(width) && width > 0 ? width : app.PAGE_W;
-}
-
-function documentVerticalSpanPx(){
-  if (!state.pages || !state.pages.length) return app.PAGE_H;
-  const first = state.pages[0];
-  const last = state.pages[state.pages.length - 1];
-  if (!first?.wrapEl || !last?.wrapEl) return app.PAGE_H;
-  const top = first.wrapEl.offsetTop;
-  const bottom = last.wrapEl.offsetTop + last.wrapEl.offsetHeight;
-  const span = bottom - top;
-  return Number.isFinite(span) && span > 0 ? span : app.PAGE_H;
-}
-
-function hammerAllowanceX(){
-  const span = documentHorizontalSpanPx();
-  return Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_W / 2;
-}
-
-function hammerAllowanceY(){
-  const span = documentVerticalSpanPx();
-  return Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_H / 2;
-}
-
-function clampPaperOffset(x, y){
-  const { extraX, extraY } = stageDimensions();
-  const hammerX = hammerAllowanceX();
-  const hammerY = hammerAllowanceY();
-  const minX = -(extraX + hammerX);
-  const maxX = extraX + hammerX;
-  const minY = -(extraY + hammerY);
-  const maxY = extraY + hammerY;
-  return { x: clamp(x, minX, maxX), y: clamp(y, minY, maxY) };
-}
-
-function updateStageEnvironment(){
-  const dims = stageDimensions();
-  const rootStyle = document.documentElement.style;
-  const layoutZoom = layoutZoomFactor();
-  rootStyle.setProperty('--page-w', (app.PAGE_W * layoutZoom).toString());
-  rootStyle.setProperty('--stage-width-mult', dims.widthFactor.toString());
-  rootStyle.setProperty('--stage-height-mult', dims.heightFactor.toString());
-  if (app.zoomWrap){
-    app.zoomWrap.style.width = `${dims.width}px`;
-    app.zoomWrap.style.minHeight = `${dims.height}px`;
-    app.zoomWrap.style.height = '';
-  }
-  if (app.stageInner){
-    app.stageInner.style.minWidth = `${dims.width}px`;
-    app.stageInner.style.minHeight = `${dims.height}px`;
-    app.stageInner.style.paddingLeft = `${dims.extraX}px`;
-    app.stageInner.style.paddingRight = `${dims.extraX}px`;
-    const padTop = dims.extraY;
-    const padBottom = dims.extraY + toolbarHeightPx();
-    app.stageInner.style.paddingTop = `${padTop}px`;
-    app.stageInner.style.paddingBottom = `${padBottom}px`;
-  }
-  updateRulerHostDimensions(dims.width, dims.height);
-  setPaperOffset(state.paperOffset.x, state.paperOffset.y);
-}
-
-function setPaperOffset(x,y){
-  const clamped = clampPaperOffset(x, y);
-  const scale = cssScaleFactor();
-  const snap = (v)=> Math.round(v * DPR) / DPR;
-  const snappedX = scale ? snap(clamped.x * scale) / scale : clamped.x;
-  const snappedY = scale ? snap(clamped.y * scale) / scale : clamped.y;
-  state.paperOffset.x = snappedX;
-  state.paperOffset.y = snappedY;
-  if (app.stageInner){
-    const tx = Math.round(snappedX * 1000) / 1000;
-    const ty = Math.round(snappedY * 1000) / 1000;
-    app.stageInner.style.transform = `translate3d(${tx}px,${ty}px,0)`;
-  }
-  positionRulers();
-  requestVirtualization();
-}
-function anchorPx(){
-  return { ax: Math.round(window.innerWidth * state.caretAnchor.x), ay: Math.round(window.innerHeight * state.caretAnchor.y) };
-}
-
-function maybeApplyNativeScroll(dx, dy, threshold){
-  if (!isSafariSteadyZoom()) return false;
-  const stage = app.stage;
-  if (!stage) return false;
-  let used = false;
-  const maxX = stage.scrollWidth - stage.clientWidth;
-  const maxY = stage.scrollHeight - stage.clientHeight;
-  if (Math.abs(dx) > threshold && maxX > 1){
-    const target = clamp(stage.scrollLeft - dx, 0, Math.max(0, maxX));
-    if (Math.abs(target - stage.scrollLeft) > threshold){
-      stage.scrollLeft = target;
-      used = true;
-    }
-  }
-  if (Math.abs(dy) > threshold && maxY > 1){
-    const target = clamp(stage.scrollTop - dy, 0, Math.max(0, maxY));
-    if (Math.abs(target - stage.scrollTop) > threshold){
-      stage.scrollTop = target;
-      used = true;
-    }
-  }
-  return used;
-}
-
-function nudgePaperToAnchor(){
-  if (!state.hammerLock || zooming) return;
-  const cv = caretViewportPos();
-  if (!cv) return;
-  const { ax, ay } = anchorPx();
-  let dx = ax - cv.x, dy = ay - cv.y;
-  const pxThreshold = 1 / DPR;
-  if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-  const usedNative = maybeApplyNativeScroll(dx, dy, pxThreshold);
-  if (usedNative){
-    const updated = caretViewportPos();
-    if (updated){
-      dx = ax - updated.x;
-      dy = ay - updated.y;
-      if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-    }
-  }
-  if (Math.abs(dx) < DEAD_X && Math.abs(dy) < DEAD_Y) return;
-  const scale = cssScaleFactor() || 1;
-  const prevX = state.paperOffset.x;
-  const prevY = state.paperOffset.y;
-  setPaperOffset(prevX + dx / scale, prevY + dy / scale);
-  const movedX = Math.abs(state.paperOffset.x - prevX) > 1e-6;
-  const movedY = Math.abs(state.paperOffset.y - prevY) > 1e-6;
-  if (!movedX && !movedY) return;
-  const after = caretViewportPos();
-  if (!after) return;
-  const errX = ax - after.x;
-  const errY = ay - after.y;
-  if (Math.abs(errX) >= pxThreshold || Math.abs(errY) >= pxThreshold){
-    requestHammerNudge();
-  }
-}
-function requestHammerNudge(){
-  if (zooming || !state.hammerLock) return;
-  if (hammerNudgeRAF) return;
-  const schedule = () => {
-    hammerNudgeRAF = requestAnimationFrame(() => {
-      hammerNudgeRAF = 0;
-      nudgePaperToAnchor();
-    });
-  };
-  if (IS_SAFARI){
-    hammerNudgeRAF = requestAnimationFrame(() => {
-      hammerNudgeRAF = 0;
-      schedule();
-    });
-  } else {
-    schedule();
-  }
-}
-
-
 function updateCaretPosition(){
   const p = state.pages[state.caret.page];
   if (!p) return;
@@ -867,189 +589,6 @@ function updateCaretPosition(){
   }
   if (!zooming) requestHammerNudge();
   requestVirtualization();
-}
-
-function computeSnappedVisualMargins(){
-  const Lcol = Math.ceil(state.marginL / CHAR_W);
-  const Rcol = Math.floor((state.marginR - 1) / CHAR_W);
-  const leftPx  = Lcol * CHAR_W;
-  const rightPx = (Rcol + 1) * CHAR_W;
-  const topPx    = state.marginTop;
-  const bottomPx = state.marginBottom;
-  const Tmu = Math.ceil((state.marginTop + ASC) / GRID_H);
-  const Bmu = Math.floor((app.PAGE_H - state.marginBottom - DESC) / GRID_H);
-  return { leftPx, rightPx, topPx, bottomPx, Lcol, Rcol, Tmu, Bmu };
-}
-
-function renderMargins(){
-  const snap = computeSnappedVisualMargins();
-  const layoutScale = layoutZoomFactor();
-  for (const p of state.pages){
-    if (p?.pageEl) p.pageEl.style.height = (app.PAGE_H * layoutScale) + 'px';
-    const leftPx = Math.round(snap.leftPx * layoutScale);
-    const rightPx = Math.round((app.PAGE_W - snap.rightPx) * layoutScale);
-    const topPx = Math.round(snap.topPx * layoutScale);
-    const bottomPx = Math.round(snap.bottomPx * layoutScale);
-    p.marginBoxEl.style.left   = leftPx + 'px';
-    p.marginBoxEl.style.right  = rightPx + 'px';
-    p.marginBoxEl.style.top    = topPx + 'px';
-    p.marginBoxEl.style.bottom = bottomPx + 'px';
-    p.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
-  }
-}
-
-function getCurrentBounds(){
-  const L = Math.ceil(state.marginL / CHAR_W);
-  const Rstrict = Math.floor((state.marginR - 1) / CHAR_W);
-  const pageMaxStart = Math.ceil(app.PAGE_W / CHAR_W) - 1;
-  const Tmu = Math.ceil((state.marginTop + ASC) / GRID_H);
-  const Bmu = Math.floor((app.PAGE_H - state.marginBottom - DESC) / GRID_H);
-  const clamp2 = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const allowEdgeOverflow = (state.marginR >= app.PAGE_W - 0.5);
-  const Lc = clamp2(L, 0, pageMaxStart);
-  const RcStrict = clamp2(Rstrict, 0, pageMaxStart);
-  const Rc = allowEdgeOverflow ? pageMaxStart : RcStrict;
-  return { L: Math.min(Lc, Rc), R: Math.max(Lc, Rc), Tmu, Bmu };
-}
-
-function snapRowMuToStep(rowMu, b){
-  const step = state.lineStepMu;
-  const k = Math.round((rowMu - b.Tmu) / step);
-  return clamp(b.Tmu + k * step, b.Tmu, b.Bmu);
-}
-function clampCaretToBounds(){
-  const b = getCurrentBounds();
-  state.caret.col  = clamp(state.caret.col,  b.L,  b.R);
-  state.caret.rowMu = snapRowMuToStep(clamp(state.caret.rowMu, b.Tmu, b.Bmu), b);
-  updateCaretPosition();
-}
-function getActivePageRect(){
-  const p = state.pages[app.activePageIndex ?? state.caret.page] || state.pages[0];
-  const r = p.wrapEl.getBoundingClientRect();
-  return new DOMRect(r.left, r.top, r.width, app.PAGE_H * state.zoom);
-}
-
-function updateRulerTicks(activePageRect){
-  const ticksH = app.rulerH_host.querySelector('.ruler-ticks');
-  const ticksV = app.rulerV_host.querySelector('.ruler-v-ticks');
-  ticksH.innerHTML = ''; ticksV.innerHTML = '';
-  const ppiH = (activePageRect.width / 210) * 25.4;
-  const originX = activePageRect.left;
-  const hostWidth = app.rulerH_host.getBoundingClientRect().width || window.innerWidth;
-  const startInchH = Math.floor(-originX / ppiH), endInchH = Math.ceil((hostWidth - originX) / ppiH);
-  for (let i=startInchH;i<=endInchH;i++){
-    for (let j=0;j<10;j++){
-      const x = originX + (i + j/10) * ppiH;
-      if (x < 0 || x > hostWidth) continue;
-      const tick = document.createElement('div');
-      tick.className = j===0 ? 'tick major' : j===5 ? 'tick medium' : 'tick minor';
-      tick.style.left = x + 'px';
-      ticksH.appendChild(tick);
-      if (j===0){
-        const lbl = document.createElement('div'); lbl.className='tick-num';
-        lbl.textContent = i; lbl.style.left = (x + 4) + 'px';
-        ticksH.appendChild(lbl);
-      }
-    }
-  }
-  const ppiV = (activePageRect.height / 297) * 25.4;
-  const originY = activePageRect.top;
-  const hostHeight = app.rulerV_host.getBoundingClientRect().height || window.innerHeight;
-  const startInchV = Math.floor(-originY / ppiV), endInchV = Math.ceil((hostHeight - originY) / ppiV);
-  for (let i=startInchV;i<=endInchV;i++){
-    for (let j=0;j<10;j++){
-      const y = originY + (i + j/10) * ppiV;
-      if (y < 0 || y > hostHeight) continue;
-      const tick = document.createElement('div');
-      tick.className = j===0 ? 'tick-v major' : j===5 ? 'tick-v medium' : 'tick-v minor';
-      tick.style.top = y + 'px';
-      ticksV.appendChild(tick);
-      if (j===0){
-        const lbl = document.createElement('div'); lbl.className='tick-v-num';
-        lbl.textContent = i; lbl.style.top = (y + 4) + 'px';
-        ticksV.appendChild(lbl);
-      }
-    }
-  }
-}
-
-function positionRulers(){
-  if (!state.showRulers) return;
-  app.rulerH_stops_container.innerHTML = '';
-  app.rulerV_stops_container.innerHTML = '';
-  const pageRect = getActivePageRect();
-  const snap = computeSnappedVisualMargins();
-  const mLeft = document.createElement('div');
-  mLeft.className = 'tri left';
-  mLeft.style.left = (pageRect.left + snap.leftPx * state.zoom) + 'px';
-  app.rulerH_stops_container.appendChild(mLeft);
-  const mRight = document.createElement('div');
-  mRight.className = 'tri right';
-  mRight.style.left = (pageRect.left + snap.rightPx * state.zoom) + 'px';
-  app.rulerH_stops_container.appendChild(mRight);
-  const mTop = document.createElement('div');
-  mTop.className = 'tri-v top';
-  mTop.style.top = (pageRect.top + snap.topPx * state.zoom) + 'px';
-  app.rulerV_stops_container.appendChild(mTop);
-  const mBottom = document.createElement('div');
-  mBottom.className = 'tri-v bottom';
-  mBottom.style.top = (pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom) + 'px';
-  app.rulerV_stops_container.appendChild(mBottom);
-  updateRulerTicks(pageRect);
-}
-
-function setMarginBoxesVisible(show){
-  for (const p of state.pages){
-    if (p?.marginBoxEl) p.marginBoxEl.style.visibility = (show && state.showMarginBox) ? 'visible' : 'hidden';
-  }
-}
-function snapXToGrid(x){ return Math.round(x / CHAR_W) * CHAR_W; }
-function snapYToGrid(y){ return Math.round(y / GRID_H) * GRID_H; }
-
-function handleHorizontalMarginDrag(ev){
-  if (!drag || drag.kind !== 'h') return;
-  const pr = getActivePageRect();
-  let x = snapXToGrid(clamp((ev.clientX - pr.left) / state.zoom, 0, app.PAGE_W));
-  if (drag.side === 'left'){
-    state.marginL = Math.min(x, Math.max(0, state.marginR - CHAR_W));
-  } else {
-    state.marginR = Math.max(x, Math.min(app.PAGE_W, state.marginL + CHAR_W));
-  }
-  app.guideV.style.left = (pr.left + x * state.zoom) + 'px';
-  app.guideV.style.display = 'block';
-}
-
-function handleVerticalMarginDrag(ev){
-  if (!drag || drag.kind !== 'v') return;
-  const pr = getActivePageRect();
-  let y = snapYToGrid(clamp((ev.clientY - pr.top) / state.zoom, 0, app.PAGE_H));
-  if (drag.side === 'top'){
-    const maxTop = (app.PAGE_H - state.marginBottom) - (state.lineStepMu * GRID_H);
-    state.marginTop = Math.min(y, snapYToGrid(maxTop));
-    app.guideH.style.top = (pr.top + state.marginTop * state.zoom) + 'px';
-  } else {
-    const bottomEdge = Math.max(state.marginTop + (state.lineStepMu * GRID_H), y);
-    const snappedBottomEdge = snapYToGrid(Math.min(bottomEdge, app.PAGE_H));
-    state.marginBottom = app.PAGE_H - snappedBottomEdge;
-    app.guideH.style.top = (pr.top + snappedBottomEdge * state.zoom) + 'px';
-  }
-  app.guideH.style.display = 'block';
-}
-
-function endMarginDrag(){
-  if (!drag) return;
-  document.removeEventListener('pointermove', handleHorizontalMarginDrag);
-  document.removeEventListener('pointermove', handleVerticalMarginDrag);
-  document.removeEventListener('pointerup', endMarginDrag, true);
-  document.removeEventListener('pointercancel', endMarginDrag, true);
-  renderMargins();
-  positionRulers();
-  clampCaretToBounds();
-  saveStateDebounced();
-  app.guideV.style.display = 'none';
-  app.guideH.style.display = 'none';
-  setMarginBoxesVisible(true);
-  drag = null;
 }
 
 function computeColsFromCpi(cpi){
@@ -1133,8 +672,7 @@ function applyLineHeight(){
 }
 function applyZoomCSS(){
   updateZoomWrapTransform();
-  const dims = stageDimensions();
-  updateRulerHostDimensions(dims.width, dims.height);
+  updateStageEnvironment();
   positionRulers();
   requestVirtualization();
 }
@@ -1228,11 +766,6 @@ function onZoomPointerUp(e){
   zoomDrag = null;
   scheduleZoomCrispRedraw();
 }
-function mmX(px){ return (px * 210) / app.PAGE_W; }
-function mmY(px){ return (px * 297) / app.PAGE_H; }
-function pxX(mm){ return (mm * app.PAGE_W) / 210; }
-function pxY(mm){ return (mm * app.PAGE_H) / 297; }
-
 function toggleFontsPanel() {
   const isOpen = app.fontsPanel.classList.toggle('is-open');
   if (isOpen) {
@@ -1475,97 +1008,6 @@ function handlePageClick(e, pageIndex){
   positionRulers();
 }
 
-function serializeState(){
-  const pages = state.pages.map(p=>{
-    const rows=[]; for (const [rmu,rowMap] of p.grid){
-      const cols=[]; for (const [c,stack] of rowMap){
-        cols.push([c, stack.map(s=>({ ch:s.char, ink:s.ink||'b' }))]);
-      }
-      rows.push([rmu, cols]);
-    }
-    return { rows };
-  });
-  return {
-    v:21, fontName: ACTIVE_FONT_NAME,
-    margins:{ L:state.marginL, R:state.marginR, T:state.marginTop, B:state.marginBottom },
-    caret: state.caret, ink: state.ink, showRulers: state.showRulers, showMarginBox: state.showMarginBox,
-    cpi: state.cpi, colsAcross: state.colsAcross, inkWidthPct: state.inkWidthPct,
-    inkOpacity: state.inkOpacity, lineHeightFactor: state.lineHeightFactor, zoom: state.zoom,
-    grainPct: state.grainPct, grainSeed: state.grainSeed >>> 0, altSeed: state.altSeed >>> 0,
-    wordWrap: state.wordWrap,
-    stageWidthFactor: state.stageWidthFactor,
-    stageHeightFactor: state.stageHeightFactor,
-    pages
-  };
-}
-
-function deserializeState(data){
-  if (!data || (data.v<2 || data.v>21)) return false;
-  state.pages=[]; app.stageInner.innerHTML='';
-  const pgArr = data.pages || [];
-  pgArr.forEach((pg, idx)=>{
-    const wrap=document.createElement('div'); wrap.className='page-wrap'; wrap.dataset.page=String(idx);
-    const pageEl=document.createElement('div'); pageEl.className='page'; pageEl.style.height=app.PAGE_H+'px';
-    const cv=document.createElement('canvas'); prepareCanvas(cv);
-    const mb=document.createElement('div'); mb.className='margin-box';
-    pageEl.appendChild(cv); pageEl.appendChild(mb); wrap.appendChild(pageEl); app.stageInner.appendChild(wrap);
-    const page = makePageRecord(idx, wrap, pageEl, cv, mb);
-    pageEl.addEventListener('mousedown', e => handlePageClick(e, idx));
-    state.pages.push(page);
-    if (Array.isArray(pg.rows)){
-      for (const [rmu, cols] of pg.rows){
-        const rowMap = new Map();
-        for (const [c, stackArr] of cols){
-          rowMap.set(c, stackArr.map(s => ({ char:s.ch, ink:s.ink || 'b' })));
-        }
-        page.grid.set(rmu, rowMap);
-      }
-    }
-  });
-  let inferredCols = data.colsAcross, cpiVal = data.cpi ?? null;
-  if (cpiVal) inferredCols = computeColsFromCpi(cpiVal).cols2;
-  const inkOpacity = (data.inkOpacity && typeof data.inkOpacity === 'object')
-    ? { b: clamp(Number(data.inkOpacity.b ?? 100),0,100), r: clamp(Number(data.inkOpacity.r ?? 100),0,100), w: clamp(Number(data.inkOpacity.w ?? 100),0,100) }
-    : { b:100, r:100, w:100 };
-  const storedInkWidth = Number(data.inkWidthPct);
-  const sanitizedInkWidth = Number.isFinite(storedInkWidth)
-    ? clamp(Math.round(storedInkWidth), 1, 150)
-    : 84;
-  const storedStageWidth = Number(data.stageWidthFactor);
-  const storedStageHeight = Number(data.stageHeightFactor);
-  const sanitizedStageWidth = Number.isFinite(storedStageWidth)
-    ? clamp(storedStageWidth, 1, 5)
-    : state.stageWidthFactor;
-  const sanitizedStageHeight = Number.isFinite(storedStageHeight)
-    ? clamp(storedStageHeight, 1, 5)
-    : state.stageHeightFactor;
-  Object.assign(state, {
-    marginL: data.margins?.L ?? state.marginL, marginR: data.margins?.R ?? state.marginR,
-    marginTop: data.margins?.T ?? state.marginTop, marginBottom: data.margins?.B ?? state.marginBottom,
-    caret: data.caret ? { page:data.caret.page||0, rowMu:data.caret.rowMu||0, col:data.caret.col||0 } : state.caret,
-    ink: ['b','r','w'].includes(data.ink) ? data.ink : 'b',
-    showRulers: data.showRulers !== false, showMarginBox: !!data.showMarginBox,
-    cpi: cpiVal || 10, colsAcross: inferredCols ?? state.colsAcross,
-    inkWidthPct: sanitizedInkWidth, inkOpacity,
-    lineHeightFactor: ([1,1.5,2,2.5,3].includes(data.lineHeightFactor)) ? data.lineHeightFactor : 1,
-    zoom: (typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4) ? data.zoom : 1.0,
-    grainPct: clamp(Number(data.grainPct ?? 0), 0, 100),
-    grainSeed: (data.grainSeed >>> 0) || ((Math.random()*0xFFFFFFFF)>>>0),
-    altSeed: (data.altSeed >>> 0) || (((data.grainSeed>>>0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random()*0xFFFFFFFF)>>>0),
-    wordWrap: (data.wordWrap !== false),
-    stageWidthFactor: sanitizedStageWidth,
-    stageHeightFactor: sanitizedStageHeight
-  });
-  state.lineStepMu = Math.round(GRID_DIV * state.lineHeightFactor);
-  if (data.fontName) ACTIVE_FONT_NAME = data.fontName;
-  FONT_FAMILY = `${ACTIVE_FONT_NAME}`;
-  for (const p of state.pages){ p.dirtyAll = true; }
-  document.body.classList.toggle('rulers-off', !state.showRulers);
-  return true;
-}
-
-function saveStateNow(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeState())); }catch{} }
-function saveStateDebounced(){ if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(saveStateNow, 400); }
 function effectiveVirtualPad(){ return state.zoom >= 3 ? 0 : 1; }
 function setPageActive(page, active) {
   if (!page || page.active === active) return;
@@ -1629,34 +1071,6 @@ function toggleRulers(){
   document.body.classList.toggle('rulers-off', !state.showRulers);
   positionRulers();
   saveStateDebounced();
-}
-
-function exportToTextFile(){
-  const out=[];
-  for (let p=0;p<state.pages.length;p++){
-    const page=state.pages[p];
-    if (!page){ out.push(''); continue; }
-    const rows = Array.from(page.grid.keys()).sort((a,b)=>a-b);
-    if (!rows.length){ out.push(''); continue; }
-    for (let i=0;i<rows.length;i++){
-      const rmu = rows[i];
-      const rowMap = page.grid.get(rmu);
-      let minCol = Infinity, maxCol = -1;
-      for (const c of rowMap.keys()){ if (c < minCol) minCol = c; if (c > maxCol) maxCol = c; }
-      if (!isFinite(minCol) || maxCol < 0){ out.push(''); continue; }
-      let line = '';
-      for (let c=minCol;c<=maxCol;c++){
-        const st=rowMap?.get(c);
-        line += st && st.length ? st[st.length-1].char : ' ';
-      }
-      out.push(line.replace(/\s+$/,''));
-    }
-    if (p<state.pages.length-1) out.push('');
-  }
-  const txt = out.join('\n');
-  const blob = new Blob([txt], {type:'text/plain;charset=utf-8'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='typewriter.txt';
-  document.body.appendChild(a); a.click(); URL.revokeObjectURL(a.href); a.remove();
 }
 
 function createNewDocument(){
@@ -1831,8 +1245,7 @@ function bindEventListeners(){
   app.rulerH_stops_container.addEventListener('pointerdown', e=>{
     const tri = e.target.closest('.tri'); if (!tri) return;
     e.preventDefault();
-    drag = { kind:'h', side: tri.classList.contains('left') ? 'left' : 'right', pointerId: e.pointerId };
-    setMarginBoxesVisible(false);
+    beginMarginDrag('h', tri.classList.contains('left') ? 'left' : 'right', e.pointerId);
     (tri.setPointerCapture && tri.setPointerCapture(e.pointerId));
     document.addEventListener('pointermove', handleHorizontalMarginDrag);
     document.addEventListener('pointerup', endMarginDrag, true);
@@ -1841,8 +1254,7 @@ function bindEventListeners(){
   app.rulerV_stops_container.addEventListener('pointerdown', e=>{
     const tri = e.target.closest('.tri-v'); if (!tri) return;
     e.preventDefault();
-    drag = { kind:'v', side: tri.classList.contains('top') ? 'top' : 'bottom', pointerId: e.pointerId };
-    setMarginBoxesVisible(false);
+    beginMarginDrag('v', tri.classList.contains('top') ? 'top' : 'bottom', e.pointerId);
     (tri.setPointerCapture && tri.setPointerCapture(e.pointerId));
     document.addEventListener('pointermove', handleVerticalMarginDrag);
     document.addEventListener('pointerup', endMarginDrag, true);
