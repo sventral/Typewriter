@@ -136,7 +136,7 @@
   }
   .slider-value { font-size: 11px; color: var(--ui-text); text-align: center; }
 
-  .stage{
+  .stage{ 
     height:100vh;
     overflow:hidden;
     background:var(--stage-bg);
@@ -145,6 +145,10 @@
     display:flex;
     align-items:center;
     justify-content:center;
+  }
+  html.safari-no-blur #stage,
+  html.safari-no-blur #stage * {
+    caret-color: transparent;
   }
   .stage::-webkit-scrollbar-horizontal{ height:0; }
   .stage:focus{ outline:none; }
