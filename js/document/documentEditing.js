@@ -1,5 +1,13 @@
 import { clamp } from '../utils/math.js';
 
+const DEFAULT_DOCUMENT_TITLE = 'Untitled Document';
+
+function normalizeDocumentTitle(title) {
+  if (typeof title !== 'string') return DEFAULT_DOCUMENT_TITLE;
+  const trimmed = title.trim();
+  return trimmed ? trimmed.slice(0, 200) : DEFAULT_DOCUMENT_TITLE;
+}
+
 export function createDocumentEditingController(context) {
   const {
     app,
@@ -543,6 +551,8 @@ export function createDocumentEditingController(context) {
     return {
       v: 22,
       fontName: getActiveFontName(),
+      documentId: state.documentId || null,
+      documentTitle: state.documentTitle || DEFAULT_DOCUMENT_TITLE,
       margins: { L: state.marginL, R: state.marginR, T: state.marginTop, B: state.marginBottom },
       caret: state.caret,
       ink: state.ink,
@@ -653,6 +663,12 @@ export function createDocumentEditingController(context) {
       darkPageInDarkMode: data.darkPageInDarkMode === true,
       pageFillColor: typeof data.pageFillColor === 'string' && data.pageFillColor.trim() ? data.pageFillColor : state.pageFillColor,
     });
+    if (typeof data.documentId === 'string' && data.documentId.trim()) {
+      state.documentId = data.documentId.trim();
+    }
+    if (typeof data.documentTitle === 'string') {
+      state.documentTitle = normalizeDocumentTitle(data.documentTitle);
+    }
     state.lineStepMu = Math.round(gridDiv * state.lineHeightFactor);
     if (data.fontName) setActiveFontName(data.fontName);
     for (const p of state.pages) {
@@ -662,7 +678,20 @@ export function createDocumentEditingController(context) {
     return true;
   }
 
-  function createNewDocument() {
+  function createNewDocument(options = {}) {
+    const { documentId, documentTitle, skipSave } = options || {};
+    let resolvedId = null;
+    if (typeof documentId === 'string' && documentId.trim()) {
+      resolvedId = documentId.trim();
+    } else if (typeof state.documentId === 'string' && state.documentId.trim()) {
+      resolvedId = state.documentId.trim();
+    } else if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      resolvedId = crypto.randomUUID();
+    } else {
+      resolvedId = `doc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+    state.documentId = resolvedId;
+    state.documentTitle = normalizeDocumentTitle(documentTitle ?? state.documentTitle);
     beginBatch();
     state.paperOffset = { x: 0, y: 0 };
     setPaperOffset(0, 0);
@@ -709,8 +738,9 @@ export function createDocumentEditingController(context) {
     document.body.classList.toggle('rulers-off', !state.showRulers);
     positionRulers();
     requestVirtualization();
-    saveStateNow();
+    if (!skipSave) saveStateNow();
     endBatch();
+    return state.documentId;
   }
 
   function setInk(ink) {

@@ -70,9 +70,397 @@ export function setupUIBindings(context, controllers) {
     handlePaste,
   } = input;
 
+  const DOCUMENTS_KEY = `${storageKey}::documents.v1`;
+  const DEFAULT_DOCUMENT_TITLE = 'Untitled Document';
+  const docState = { documents: [], activeId: null };
+  const docMenuState = { open: false };
+  let isEditingTitle = false;
+
+  const docUpdatedFormatter = (() => {
+    if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
+      return null;
+    }
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return null;
+    }
+  })();
+
+  function sanitizeDocumentTitle(title) {
+    if (typeof title !== 'string') return DEFAULT_DOCUMENT_TITLE;
+    const trimmed = title.trim().slice(0, 200);
+    return trimmed || DEFAULT_DOCUMENT_TITLE;
+  }
+
+  function formatUpdatedAt(ts) {
+    if (!Number.isFinite(ts) || ts <= 0) return '';
+    if (!docUpdatedFormatter) return '';
+    try {
+      return docUpdatedFormatter.format(new Date(ts));
+    } catch {
+      return '';
+    }
+  }
+
+  function generateDocumentId(existingIds = null) {
+    const baseSet = existingIds instanceof Set
+      ? existingIds
+      : new Set(docState.documents.map(doc => doc.id));
+    const hasCrypto = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function';
+    let id;
+    do {
+      id = hasCrypto
+        ? crypto.randomUUID()
+        : `doc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    } while (baseSet.has(id));
+    if (existingIds instanceof Set) {
+      existingIds.add(id);
+    }
+    return id;
+  }
+
+  function createDocumentRecord({ id, title, data, createdAt, updatedAt } = {}) {
+    const now = Date.now();
+    const safeId = typeof id === 'string' && id.trim() ? id.trim() : generateDocumentId();
+    const safeCreated = Number.isFinite(createdAt) ? createdAt : now;
+    const safeUpdated = Number.isFinite(updatedAt) ? updatedAt : safeCreated;
+    const safeData = data && typeof data === 'object' ? data : null;
+    return {
+      id: safeId,
+      title: sanitizeDocumentTitle(title),
+      createdAt: safeCreated,
+      updatedAt: safeUpdated,
+      data: safeData,
+    };
+  }
+
+  function sortDocumentsInPlace() {
+    docState.documents.sort((a, b) => {
+      const au = Number(a?.updatedAt) || 0;
+      const bu = Number(b?.updatedAt) || 0;
+      return bu - au;
+    });
+  }
+
+  function renderDocumentList() {
+    if (!app.docMenuList) return;
+    sortDocumentsInPlace();
+    app.docMenuList.innerHTML = '';
+    if (!docState.documents.length) {
+      const empty = document.createElement('div');
+      empty.className = 'doc-menu-empty';
+      empty.textContent = 'No documents yet';
+      app.docMenuList.appendChild(empty);
+      return;
+    }
+    docState.documents.forEach(doc => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'doc-list-item';
+      item.setAttribute('role', 'menuitem');
+      item.dataset.id = doc.id;
+      if (doc.id === docState.activeId) {
+        item.classList.add('is-active');
+      }
+      const titleSpan = document.createElement('span');
+      titleSpan.textContent = doc.title || DEFAULT_DOCUMENT_TITLE;
+      item.appendChild(titleSpan);
+      const updatedText = formatUpdatedAt(doc.updatedAt);
+      if (updatedText) {
+        const meta = document.createElement('span');
+        meta.className = 'doc-updated';
+        meta.textContent = updatedText;
+        item.appendChild(meta);
+      }
+      app.docMenuList.appendChild(item);
+    });
+  }
+
+  function ensureDocumentTitleInput() {
+    if (!app.docTitleInput || isEditingTitle) return;
+    app.docTitleInput.value = state.documentTitle || '';
+  }
+
+  function openDocMenu() {
+    if (!app.docMenuPopup || docMenuState.open) return;
+    app.docMenuPopup.classList.add('open');
+    if (app.docMenuBtn) app.docMenuBtn.setAttribute('aria-expanded', 'true');
+    docMenuState.open = true;
+  }
+
+  function closeDocMenu() {
+    if (!app.docMenuPopup || !docMenuState.open) return;
+    app.docMenuPopup.classList.remove('open');
+    if (app.docMenuBtn) app.docMenuBtn.setAttribute('aria-expanded', 'false');
+    docMenuState.open = false;
+  }
+
+  function toggleDocMenu() {
+    if (docMenuState.open) {
+      closeDocMenu();
+    } else {
+      openDocMenu();
+    }
+  }
+
+  function getActiveDocument() {
+    if (!docState.activeId) return null;
+    return docState.documents.find(doc => doc.id === docState.activeId) || null;
+  }
+
+  function loadDocumentIndexFromStorage() {
+    let parsed = null;
+    try {
+      parsed = JSON.parse(localStorage.getItem(DOCUMENTS_KEY));
+    } catch {}
+    const documents = [];
+    const seen = new Set();
+    if (parsed && Array.isArray(parsed.documents)) {
+      parsed.documents.forEach(entry => {
+        const base = entry && typeof entry === 'object' ? entry : {};
+        let id = typeof base.id === 'string' && base.id.trim() ? base.id.trim() : '';
+        if (!id || seen.has(id)) {
+          id = generateDocumentId(seen);
+        } else {
+          seen.add(id);
+        }
+        documents.push(createDocumentRecord({
+          id,
+          title: base.title,
+          data: base.data && typeof base.data === 'object' ? base.data : null,
+          createdAt: Number(base.createdAt),
+          updatedAt: Number(base.updatedAt),
+        }));
+      });
+    }
+    let activeId = (parsed && typeof parsed.activeId === 'string' && parsed.activeId.trim())
+      ? parsed.activeId.trim()
+      : null;
+    if (activeId && !documents.some(doc => doc.id === activeId)) {
+      activeId = null;
+    }
+    if (!activeId && documents.length) {
+      activeId = documents[0].id;
+    }
+    return { documents, activeId };
+  }
+
+  function migrateLegacyDocument() {
+    let raw = null;
+    try {
+      raw = JSON.parse(localStorage.getItem(storageKey));
+    } catch {}
+    if (!raw) return null;
+    const migrated = createDocumentRecord({
+      id: generateDocumentId(),
+      title: typeof raw.documentTitle === 'string' ? raw.documentTitle : DEFAULT_DOCUMENT_TITLE,
+      data: raw,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {}
+    return migrated;
+  }
+
+  function persistDocuments() {
+    sortDocumentsInPlace();
+    try {
+      const payload = {
+        version: 1,
+        activeId: docState.activeId,
+        documents: docState.documents.map(doc => ({
+          id: doc.id,
+          title: doc.title,
+          createdAt: doc.createdAt,
+          updatedAt: doc.updatedAt,
+          data: doc.data,
+        })),
+      };
+      localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(payload));
+      localStorage.removeItem(storageKey);
+    } catch {}
+  }
+
+  function refreshDocumentEnvironment() {
+    updateStageEnvironment();
+    setZoomPercent(Math.round((state.zoom || 1) * 100) || 100);
+    renderMargins();
+    clampCaretToBounds();
+    updateCaretPosition();
+    positionRulers();
+    document.body.classList.toggle('rulers-off', !state.showRulers);
+    requestVirtualization();
+  }
+
+  function syncDocumentUi() {
+    ensureDocumentTitleInput();
+    renderDocumentList();
+  }
+
+  function applyDocumentRecord(doc) {
+    if (!doc) return;
+    doc.title = sanitizeDocumentTitle(doc.title);
+    let loaded = false;
+    if (doc.data) {
+      try {
+        loaded = deserializeState(doc.data);
+      } catch {
+        loaded = false;
+      }
+    }
+    if (!loaded) {
+      createNewDocument({ documentId: doc.id, documentTitle: doc.title, skipSave: true });
+    } else {
+      state.documentId = doc.id;
+      state.documentTitle = doc.title;
+    }
+    docState.activeId = doc.id;
+    populateInitialUI({ loaded: true, documents: docState.documents, activeDocumentId: doc.id });
+    refreshDocumentEnvironment();
+    syncDocumentUi();
+    saveStateDebounced();
+    focusStage();
+  }
+
+  function handleDocumentSelection(id) {
+    if (!id || docState.activeId === id) {
+      closeDocMenu();
+      return;
+    }
+    saveStateNow();
+    const nextDoc = docState.documents.find(record => record.id === id);
+    if (!nextDoc) {
+      closeDocMenu();
+      return;
+    }
+    applyDocumentRecord(nextDoc);
+    closeDocMenu();
+  }
+
+  function handleCreateDocument() {
+    saveStateNow();
+    const now = Date.now();
+    const newId = generateDocumentId();
+    const newDoc = {
+      id: newId,
+      title: DEFAULT_DOCUMENT_TITLE,
+      createdAt: now,
+      updatedAt: now,
+      data: null,
+    };
+    docState.documents.push(newDoc);
+    docState.activeId = newId;
+    createNewDocument({ documentId: newId, documentTitle: newDoc.title, skipSave: true });
+    newDoc.data = serializeState();
+    persistDocuments();
+    applyDocumentRecord(newDoc);
+    saveStateNow();
+    closeDocMenu();
+  }
+
+  function handleDeleteDocument() {
+    const active = getActiveDocument();
+    if (!active) return;
+    const idx = docState.documents.findIndex(doc => doc.id === active.id);
+    if (idx < 0) return;
+    docState.documents.splice(idx, 1);
+    if (!docState.documents.length) {
+      const blank = createDocumentRecord({ id: generateDocumentId(), title: DEFAULT_DOCUMENT_TITLE });
+      docState.documents.push(blank);
+      docState.activeId = blank.id;
+      createNewDocument({ documentId: blank.id, documentTitle: blank.title, skipSave: true });
+      blank.data = serializeState();
+      blank.createdAt = Date.now();
+      blank.updatedAt = blank.createdAt;
+      persistDocuments();
+      populateInitialUI({ loaded: true, documents: docState.documents, activeDocumentId: blank.id });
+      refreshDocumentEnvironment();
+      syncDocumentUi();
+      saveStateNow();
+      closeDocMenu();
+      return;
+    }
+    const nextDoc = docState.documents[Math.min(idx, docState.documents.length - 1)];
+    docState.activeId = nextDoc.id;
+    persistDocuments();
+    applyDocumentRecord(nextDoc);
+    closeDocMenu();
+  }
+
+  function handleDocumentTitleInput() {
+    if (!app.docTitleInput) return;
+    const raw = app.docTitleInput.value.slice(0, 200);
+    state.documentTitle = raw;
+    const active = getActiveDocument();
+    if (active) {
+      active.title = raw;
+    }
+    renderDocumentList();
+  }
+
+  function commitDocumentTitle() {
+    if (!app.docTitleInput) return;
+    const sanitized = sanitizeDocumentTitle(app.docTitleInput.value);
+    app.docTitleInput.value = sanitized;
+    const active = getActiveDocument();
+    state.documentTitle = sanitized;
+    let changed = false;
+    if (active) {
+      const prev = sanitizeDocumentTitle(active.title);
+      if (prev !== sanitized) {
+        active.title = sanitized;
+        active.updatedAt = Date.now();
+        changed = true;
+      } else {
+        active.title = sanitized;
+      }
+    }
+    syncDocumentUi();
+    if (changed) {
+      saveStateNow();
+    } else {
+      persistDocuments();
+    }
+  }
   function saveStateNow() {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(serializeState()));
+      const serialized = serializeState();
+      const activeId = typeof state.documentId === 'string' && state.documentId.trim()
+        ? state.documentId.trim()
+        : (docState.activeId || generateDocumentId());
+      const title = sanitizeDocumentTitle(serialized.documentTitle || state.documentTitle);
+      const now = Date.now();
+      let doc = docState.documents.find(d => d.id === activeId);
+      if (!doc) {
+        doc = {
+          id: activeId,
+          title,
+          createdAt: now,
+          updatedAt: now,
+          data: serialized,
+        };
+        docState.documents.push(doc);
+      } else {
+        doc.title = title;
+        doc.updatedAt = now;
+        doc.data = serialized;
+        if (!Number.isFinite(doc.createdAt)) {
+          doc.createdAt = now;
+        }
+      }
+      state.documentId = activeId;
+      state.documentTitle = title;
+      docState.activeId = activeId;
+      persistDocuments();
+      syncDocumentUi();
     } catch {}
   }
 
@@ -394,13 +782,68 @@ export function setupUIBindings(context, controllers) {
       app.newDocBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        createNewDocument();
+        handleCreateDocument();
       });
     }
   }
 
+  function bindDocumentControls() {
+    if (app.docMenuBtn) {
+      app.docMenuBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleDocMenu();
+      });
+    }
+    if (app.docMenuPopup) {
+      app.docMenuPopup.addEventListener('pointerdown', e => e.stopPropagation());
+    }
+    if (app.docMenuList) {
+      app.docMenuList.addEventListener('click', (e) => {
+        const item = e.target.closest('.doc-list-item');
+        if (!item) return;
+        e.preventDefault();
+        handleDocumentSelection(item.dataset.id || '');
+      });
+    }
+    if (app.docTitleInput) {
+      app.docTitleInput.addEventListener('focus', () => {
+        isEditingTitle = true;
+      });
+      app.docTitleInput.addEventListener('blur', () => {
+        isEditingTitle = false;
+        commitDocumentTitle();
+      });
+      app.docTitleInput.addEventListener('input', handleDocumentTitleInput);
+      app.docTitleInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          app.docTitleInput.blur();
+        }
+      });
+    }
+    if (app.deleteDocBtn) {
+      app.deleteDocBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleDeleteDocument();
+      });
+    }
+    document.addEventListener('pointerdown', (e) => {
+      if (!docMenuState.open) return;
+      if (app.docMenuPopup?.contains(e.target) || app.docMenuBtn?.contains(e.target)) return;
+      closeDocMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeDocMenu();
+      }
+    });
+  }
+
   function bindEventListeners() {
     bindPrimaryControls();
+    bindDocumentControls();
     bindOpacitySliders();
     bindInkButtons();
     bindGrainInput();
@@ -415,20 +858,78 @@ export function setupUIBindings(context, controllers) {
   }
 
   function loadPersistedState() {
-    let raw = null;
     let savedFont = null;
     let loaded = false;
-    try {
-      raw = JSON.parse(localStorage.getItem(storageKey));
-    } catch {}
-    if (raw) savedFont = raw.fontName;
-    try {
-      loaded = deserializeState(raw);
-    } catch {}
-    return { loaded, savedFont };
+    const { documents, activeId } = loadDocumentIndexFromStorage();
+    docState.documents = documents;
+    docState.activeId = activeId || (documents[0]?.id ?? null);
+
+    let activeDoc = getActiveDocument();
+    if (!activeDoc && docState.documents.length) {
+      activeDoc = docState.documents[0];
+      docState.activeId = activeDoc.id;
+    }
+
+    if (!activeDoc) {
+      const migrated = migrateLegacyDocument();
+      if (migrated) {
+        docState.documents.push(migrated);
+        docState.activeId = migrated.id;
+        activeDoc = migrated;
+        persistDocuments();
+      }
+    }
+
+    if (activeDoc && activeDoc.data) {
+      try {
+        loaded = deserializeState(activeDoc.data);
+        savedFont = activeDoc.data.fontName || null;
+      } catch {
+        loaded = false;
+      }
+    }
+
+    if (!activeDoc) {
+      const blank = createDocumentRecord({ id: generateDocumentId(), title: DEFAULT_DOCUMENT_TITLE });
+      docState.documents.push(blank);
+      docState.activeId = blank.id;
+      createNewDocument({ documentId: blank.id, documentTitle: blank.title, skipSave: true });
+      blank.data = serializeState();
+      blank.createdAt = Date.now();
+      blank.updatedAt = blank.createdAt;
+      persistDocuments();
+      loaded = false;
+      state.documentId = blank.id;
+      state.documentTitle = blank.title;
+    } else if (!loaded) {
+      createNewDocument({ documentId: activeDoc.id, documentTitle: activeDoc.title, skipSave: true });
+      state.documentId = activeDoc.id;
+      state.documentTitle = sanitizeDocumentTitle(activeDoc.title);
+    } else {
+      state.documentId = activeDoc.id;
+      state.documentTitle = sanitizeDocumentTitle(activeDoc.title);
+    }
+
+    renderDocumentList();
+    ensureDocumentTitleInput();
+
+    return {
+      loaded,
+      savedFont,
+      documents: docState.documents.map(doc => ({ ...doc })),
+      activeDocumentId: docState.activeId,
+    };
   }
 
-  function populateInitialUI({ loaded }) {
+  function populateInitialUI({ loaded, documents, activeDocumentId } = {}) {
+    if (Array.isArray(documents)) {
+      docState.documents = documents.map(doc => ({ ...doc }));
+      sortDocumentsInPlace();
+    }
+    if (activeDocumentId) {
+      docState.activeId = activeDocumentId;
+    }
+    syncDocumentUi();
     if (app.inkOpacityBSlider) app.inkOpacityBSlider.value = String(state.inkOpacity.b);
     if (app.inkOpacityRSlider) app.inkOpacityRSlider.value = String(state.inkOpacity.r);
     if (app.inkOpacityWSlider) app.inkOpacityWSlider.value = String(state.inkOpacity.w);

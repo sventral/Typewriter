@@ -15,6 +15,11 @@ export function createDomRefs() {
   app.guideH = document.getElementById('guideH');
   app.newDocBtn = document.getElementById('newDocBtn');
   app.exportBtn = document.getElementById('exportTxtBtn');
+  app.docMenuBtn = document.getElementById('docMenuBtn');
+  app.docMenuPopup = document.getElementById('docMenuPopup');
+  app.docMenuList = document.getElementById('docMenuList');
+  app.docTitleInput = document.getElementById('docTitleInput');
+  app.deleteDocBtn = document.getElementById('deleteDocBtn');
   app.inkBlackBtn = document.getElementById('inkBlackBtn');
   app.inkRedBtn = document.getElementById('inkRedBtn');
   app.inkWhiteBtn = document.getElementById('inkWhiteBtn');
