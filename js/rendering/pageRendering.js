@@ -164,13 +164,20 @@ export function createPageRenderer(options) {
     backCtx.restore();
 
     const bounds = getCurrentBounds();
-    const step = Math.max(1, state.lineStepMu || gridDiv);
-    const startMu = bounds.Tmu + Math.ceil((dirtyRowMinMu - bounds.Tmu) / step) * step;
-    const endMu = bounds.Tmu + Math.floor((dirtyRowMaxMu - bounds.Tmu) / step) * step;
+    const minMu = Math.max(bounds.Tmu, dirtyRowMinMu - gridDiv);
+    const maxMu = Math.min(bounds.Bmu, dirtyRowMaxMu + gridDiv);
+    if (minMu > maxMu) return;
 
-    for (let rowMu = startMu; rowMu <= endMu; rowMu += step) {
-      const rowMap = page.grid.get(rowMu);
+    const rowsToRender = [];
+    for (const [rowMu, rowMap] of page.grid) {
       if (!rowMap) continue;
+      if (rowMu < minMu || rowMu > maxMu) continue;
+      rowsToRender.push([rowMu, rowMap]);
+    }
+
+    rowsToRender.sort((a, b) => a[0] - b[0]);
+
+    for (const [rowMu, rowMap] of rowsToRender) {
 
       const baseline = rowMu * gridHeight;
       const rowTopCss = baseline - BLEED_TOP_CSS;
