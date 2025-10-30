@@ -51,5 +51,6 @@ export function createEphemeralState() {
     pendingFullRebuild: false,
     virtRAF: 0,
     fontLoadSeq: 0,
+    primedMetricsAreFallback: false,
   };
 }
