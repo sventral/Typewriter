@@ -38,18 +38,28 @@ export function createPageRenderer(options) {
 
   function computeEffectOverrides(stack) {
     if (!Array.isArray(stack) || stack.length < 2) return null;
+    const preferWhiteEffects = !!state.inkEffectsPreferWhite;
     let seenWhiteAbove = false;
+    let seenDarkAbove = false;
     let anyOverrides = false;
     const overrides = new Array(stack.length);
     for (let i = stack.length - 1; i >= 0; i--) {
       const glyph = stack[i];
       if (!glyph) continue;
       const ink = glyph.ink || 'b';
+      const isDarkInk = ink !== 'w';
       if (ink === 'w') {
+        if (preferWhiteEffects && seenDarkAbove) {
+          overrides[i] = 'disabled';
+          anyOverrides = true;
+        }
         seenWhiteAbove = true;
-      } else if (seenWhiteAbove && ink === 'b') {
-        overrides[i] = 'disabled';
-        anyOverrides = true;
+      } else if (isDarkInk) {
+        if (!preferWhiteEffects && seenWhiteAbove) {
+          overrides[i] = 'disabled';
+          anyOverrides = true;
+        }
+        seenDarkAbove = true;
       }
     }
     return anyOverrides ? overrides : null;

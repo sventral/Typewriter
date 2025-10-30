@@ -14,6 +14,8 @@ import { createPageLifecycleController } from './document/pageLifecycle.js';
 import { setupUIBindings } from './init/uiBindings.js';
 import { createAppContext } from './init/appContext.js';
 
+const DARK_PAGE_HEX = '#1f2024';
+
 export function initApp(){
 
 const app = createDomRefs();
@@ -458,8 +460,8 @@ function syncBleedInksForPageTone(darkPageActive) {
 function applyInkPaletteForTheme(darkPageActive) {
   const nextRed = darkPageActive ? '#ff7a7a' : '#b00000';
   let changed = false;
-  if (COLORS.b !== '#000000') {
-    COLORS.b = '#000000';
+  if (COLORS.b !== DARK_PAGE_HEX) {
+    COLORS.b = DARK_PAGE_HEX;
     changed = true;
   }
   if (COLORS.w !== '#ffffff') {
