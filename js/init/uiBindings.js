@@ -1,5 +1,14 @@
 import { clamp } from '../utils/math.js';
 import { sanitizeIntegerField } from '../utils/forms.js';
+import {
+  DEFAULT_DOCUMENT_TITLE,
+  normalizeDocumentTitle,
+  generateDocumentId,
+  createDocumentRecord,
+  loadDocumentIndexFromStorage,
+  migrateLegacyDocument,
+  persistDocuments,
+} from '../document/documentStore.js';
 
 export function setupUIBindings(context, controllers) {
   const {
@@ -69,8 +78,6 @@ export function setupUIBindings(context, controllers) {
     handlePaste,
   } = input;
 
-  const DOCUMENTS_KEY = `${storageKey}::documents.v1`;
-  const DEFAULT_DOCUMENT_TITLE = 'Untitled Document';
   const docState = { documents: [], activeId: null };
   const docMenuState = { open: false };
   let isEditingTitle = false;
@@ -91,12 +98,6 @@ export function setupUIBindings(context, controllers) {
     }
   })();
 
-  function sanitizeDocumentTitle(title) {
-    if (typeof title !== 'string') return DEFAULT_DOCUMENT_TITLE;
-    const trimmed = title.trim().slice(0, 200);
-    return trimmed || DEFAULT_DOCUMENT_TITLE;
-  }
-
   function formatUpdatedAt(ts) {
     if (!Number.isFinite(ts) || ts <= 0) return '';
     if (!docUpdatedFormatter) return '';
@@ -107,44 +108,17 @@ export function setupUIBindings(context, controllers) {
     }
   }
 
-  function generateDocumentId(existingIds = null) {
-    const baseSet = existingIds instanceof Set
-      ? existingIds
-      : new Set(docState.documents.map(doc => doc.id));
-    const hasCrypto = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function';
-    let id;
-    do {
-      id = hasCrypto
-        ? crypto.randomUUID()
-        : `doc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    } while (baseSet.has(id));
-    if (existingIds instanceof Set) {
-      existingIds.add(id);
-    }
-    return id;
-  }
-
-  function createDocumentRecord({ id, title, data, createdAt, updatedAt } = {}) {
-    const now = Date.now();
-    const safeId = typeof id === 'string' && id.trim() ? id.trim() : generateDocumentId();
-    const safeCreated = Number.isFinite(createdAt) ? createdAt : now;
-    const safeUpdated = Number.isFinite(updatedAt) ? updatedAt : safeCreated;
-    const safeData = data && typeof data === 'object' ? data : null;
-    return {
-      id: safeId,
-      title: sanitizeDocumentTitle(title),
-      createdAt: safeCreated,
-      updatedAt: safeUpdated,
-      data: safeData,
-    };
-  }
-
   function sortDocumentsInPlace() {
     docState.documents.sort((a, b) => {
       const au = Number(a?.updatedAt) || 0;
       const bu = Number(b?.updatedAt) || 0;
       return bu - au;
     });
+  }
+
+  function persistDocumentIndex() {
+    sortDocumentsInPlace();
+    persistDocuments(storageKey, docState);
   }
 
   function renderDocumentList() {
@@ -213,81 +187,6 @@ export function setupUIBindings(context, controllers) {
     return docState.documents.find(doc => doc.id === docState.activeId) || null;
   }
 
-  function loadDocumentIndexFromStorage() {
-    let parsed = null;
-    try {
-      parsed = JSON.parse(localStorage.getItem(DOCUMENTS_KEY));
-    } catch {}
-    const documents = [];
-    const seen = new Set();
-    if (parsed && Array.isArray(parsed.documents)) {
-      parsed.documents.forEach(entry => {
-        const base = entry && typeof entry === 'object' ? entry : {};
-        let id = typeof base.id === 'string' && base.id.trim() ? base.id.trim() : '';
-        if (!id || seen.has(id)) {
-          id = generateDocumentId(seen);
-        } else {
-          seen.add(id);
-        }
-        documents.push(createDocumentRecord({
-          id,
-          title: base.title,
-          data: base.data && typeof base.data === 'object' ? base.data : null,
-          createdAt: Number(base.createdAt),
-          updatedAt: Number(base.updatedAt),
-        }));
-      });
-    }
-    let activeId = (parsed && typeof parsed.activeId === 'string' && parsed.activeId.trim())
-      ? parsed.activeId.trim()
-      : null;
-    if (activeId && !documents.some(doc => doc.id === activeId)) {
-      activeId = null;
-    }
-    if (!activeId && documents.length) {
-      activeId = documents[0].id;
-    }
-    return { documents, activeId };
-  }
-
-  function migrateLegacyDocument() {
-    let raw = null;
-    try {
-      raw = JSON.parse(localStorage.getItem(storageKey));
-    } catch {}
-    if (!raw) return null;
-    const migrated = createDocumentRecord({
-      id: generateDocumentId(),
-      title: typeof raw.documentTitle === 'string' ? raw.documentTitle : DEFAULT_DOCUMENT_TITLE,
-      data: raw,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    try {
-      localStorage.removeItem(storageKey);
-    } catch {}
-    return migrated;
-  }
-
-  function persistDocuments() {
-    sortDocumentsInPlace();
-    try {
-      const payload = {
-        version: 1,
-        activeId: docState.activeId,
-        documents: docState.documents.map(doc => ({
-          id: doc.id,
-          title: doc.title,
-          createdAt: doc.createdAt,
-          updatedAt: doc.updatedAt,
-          data: doc.data,
-        })),
-      };
-      localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(payload));
-      localStorage.removeItem(storageKey);
-    } catch {}
-  }
-
   function refreshDocumentEnvironment() {
     updateStageEnvironment();
     setZoomPercent(Math.round((state.zoom || 1) * 100) || 100);
@@ -306,7 +205,7 @@ export function setupUIBindings(context, controllers) {
 
   function applyDocumentRecord(doc) {
     if (!doc) return;
-    doc.title = sanitizeDocumentTitle(doc.title);
+    doc.title = normalizeDocumentTitle(doc.title);
     let loaded = false;
     if (doc.data) {
       try {
@@ -347,19 +246,20 @@ export function setupUIBindings(context, controllers) {
   function handleCreateDocument() {
     saveStateNow();
     const now = Date.now();
-    const newId = generateDocumentId();
-    const newDoc = {
+    const existingIds = new Set(docState.documents.map(doc => doc.id));
+    const newId = generateDocumentId(existingIds);
+    const newDoc = createDocumentRecord({
       id: newId,
       title: DEFAULT_DOCUMENT_TITLE,
       createdAt: now,
       updatedAt: now,
       data: null,
-    };
+    }, existingIds);
     docState.documents.push(newDoc);
     docState.activeId = newId;
     createNewDocument({ documentId: newId, documentTitle: newDoc.title, skipSave: true });
     newDoc.data = serializeState();
-    persistDocuments();
+    persistDocumentIndex();
     applyDocumentRecord(newDoc);
     saveStateNow();
     closeDocMenu();
@@ -372,14 +272,16 @@ export function setupUIBindings(context, controllers) {
     if (idx < 0) return;
     docState.documents.splice(idx, 1);
     if (!docState.documents.length) {
-      const blank = createDocumentRecord({ id: generateDocumentId(), title: DEFAULT_DOCUMENT_TITLE });
+      const existingIds = new Set(docState.documents.map(doc => doc.id));
+      const blankId = generateDocumentId(existingIds);
+      const blank = createDocumentRecord({ id: blankId, title: DEFAULT_DOCUMENT_TITLE }, existingIds);
       docState.documents.push(blank);
       docState.activeId = blank.id;
       createNewDocument({ documentId: blank.id, documentTitle: blank.title, skipSave: true });
       blank.data = serializeState();
       blank.createdAt = Date.now();
       blank.updatedAt = blank.createdAt;
-      persistDocuments();
+      persistDocumentIndex();
       populateInitialUI({ loaded: true, documents: docState.documents, activeDocumentId: blank.id });
       refreshDocumentEnvironment();
       syncDocumentUi();
@@ -389,7 +291,7 @@ export function setupUIBindings(context, controllers) {
     }
     const nextDoc = docState.documents[Math.min(idx, docState.documents.length - 1)];
     docState.activeId = nextDoc.id;
-    persistDocuments();
+    persistDocumentIndex();
     applyDocumentRecord(nextDoc);
     closeDocMenu();
   }
@@ -407,13 +309,13 @@ export function setupUIBindings(context, controllers) {
 
   function commitDocumentTitle() {
     if (!app.docTitleInput) return;
-    const sanitized = sanitizeDocumentTitle(app.docTitleInput.value);
+    const sanitized = normalizeDocumentTitle(app.docTitleInput.value);
     app.docTitleInput.value = sanitized;
     const active = getActiveDocument();
     state.documentTitle = sanitized;
     let changed = false;
     if (active) {
-      const prev = sanitizeDocumentTitle(active.title);
+      const prev = normalizeDocumentTitle(active.title);
       if (prev !== sanitized) {
         active.title = sanitized;
         active.updatedAt = Date.now();
@@ -426,7 +328,7 @@ export function setupUIBindings(context, controllers) {
     if (changed) {
       saveStateNow();
     } else {
-      persistDocuments();
+      persistDocumentIndex();
     }
   }
   function saveStateNow() {
@@ -434,8 +336,8 @@ export function setupUIBindings(context, controllers) {
       const serialized = serializeState();
       const activeId = typeof state.documentId === 'string' && state.documentId.trim()
         ? state.documentId.trim()
-        : (docState.activeId || generateDocumentId());
-      const title = sanitizeDocumentTitle(serialized.documentTitle || state.documentTitle);
+        : (docState.activeId || generateDocumentId(new Set(docState.documents.map(doc => doc.id))));
+      const title = normalizeDocumentTitle(serialized.documentTitle || state.documentTitle);
       const now = Date.now();
       let doc = docState.documents.find(d => d.id === activeId);
       if (!doc) {
@@ -458,7 +360,7 @@ export function setupUIBindings(context, controllers) {
       state.documentId = activeId;
       state.documentTitle = title;
       docState.activeId = activeId;
-      persistDocuments();
+      persistDocumentIndex();
       syncDocumentUi();
     } catch {}
   }
@@ -860,8 +762,9 @@ export function setupUIBindings(context, controllers) {
   function loadPersistedState() {
     let savedFont = null;
     let loaded = false;
-    const { documents, activeId } = loadDocumentIndexFromStorage();
+    const { documents, activeId } = loadDocumentIndexFromStorage(storageKey);
     docState.documents = documents;
+    sortDocumentsInPlace();
     docState.activeId = activeId || (documents[0]?.id ?? null);
 
     let activeDoc = getActiveDocument();
@@ -871,12 +774,12 @@ export function setupUIBindings(context, controllers) {
     }
 
     if (!activeDoc) {
-      const migrated = migrateLegacyDocument();
+      const migrated = migrateLegacyDocument(storageKey);
       if (migrated) {
         docState.documents.push(migrated);
         docState.activeId = migrated.id;
         activeDoc = migrated;
-        persistDocuments();
+        persistDocumentIndex();
       }
     }
 
@@ -890,24 +793,26 @@ export function setupUIBindings(context, controllers) {
     }
 
     if (!activeDoc) {
-      const blank = createDocumentRecord({ id: generateDocumentId(), title: DEFAULT_DOCUMENT_TITLE });
+      const existingIds = new Set(docState.documents.map(doc => doc.id));
+      const blankId = generateDocumentId(existingIds);
+      const blank = createDocumentRecord({ id: blankId, title: DEFAULT_DOCUMENT_TITLE }, existingIds);
       docState.documents.push(blank);
       docState.activeId = blank.id;
       createNewDocument({ documentId: blank.id, documentTitle: blank.title, skipSave: true });
       blank.data = serializeState();
       blank.createdAt = Date.now();
       blank.updatedAt = blank.createdAt;
-      persistDocuments();
+      persistDocumentIndex();
       loaded = false;
       state.documentId = blank.id;
       state.documentTitle = blank.title;
     } else if (!loaded) {
       createNewDocument({ documentId: activeDoc.id, documentTitle: activeDoc.title, skipSave: true });
       state.documentId = activeDoc.id;
-      state.documentTitle = sanitizeDocumentTitle(activeDoc.title);
+      state.documentTitle = normalizeDocumentTitle(activeDoc.title);
     } else {
       state.documentId = activeDoc.id;
-      state.documentTitle = sanitizeDocumentTitle(activeDoc.title);
+      state.documentTitle = normalizeDocumentTitle(activeDoc.title);
     }
 
     renderDocumentList();
