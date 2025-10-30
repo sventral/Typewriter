@@ -341,9 +341,46 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   }
 
   function getActivePageRect() {
-    const p = state.pages[app.activePageIndex ?? state.caret.page] || state.pages[0];
-    const r = p.wrapEl.getBoundingClientRect();
-    return new DOMRect(r.left, r.top, r.width, app.PAGE_H * state.zoom);
+    const page = state.pages[app.activePageIndex ?? state.caret.page] || state.pages[0];
+    if (!page?.wrapEl) {
+      return new DOMRect(0, 0, app.PAGE_W * state.zoom, app.PAGE_H * state.zoom);
+    }
+
+    const stage = app.stage;
+    if (!stage) {
+      const fallback = page.wrapEl.getBoundingClientRect();
+      return new DOMRect(fallback.left, fallback.top, fallback.width, app.PAGE_H * state.zoom);
+    }
+
+    const stageRect = stage.getBoundingClientRect();
+    const dims = stageDimensions();
+    const cssScale = cssScaleFactor() || 1;
+    const layoutZoom = layoutZoomFactor();
+
+    const scaledStageWidth = dims.width * cssScale;
+    const scaledStageHeight = dims.height * cssScale;
+    const baseStageLeft = stageRect.left + (stageRect.width - scaledStageWidth) / 2;
+    const baseStageTop = stageRect.top + (stageRect.height - scaledStageHeight) / 2;
+
+    const scrollLeft = stage.scrollLeft || 0;
+    const scrollTop = stage.scrollTop || 0;
+    const offsetX = (state.paperOffset?.x || 0) * cssScale;
+    const offsetY = (state.paperOffset?.y || 0) * cssScale;
+
+    const stageContentLeft = baseStageLeft - scrollLeft + offsetX;
+    const stageContentTop = baseStageTop - scrollTop + offsetY;
+
+    const localLeft = (page.wrapEl.offsetLeft || 0) * cssScale;
+    const localTop = (page.wrapEl.offsetTop || 0) * cssScale;
+    const pageWidth = (page.pageEl?.offsetWidth || app.PAGE_W * layoutZoom) * cssScale;
+    const pageHeight = (page.pageEl?.offsetHeight || app.PAGE_H * layoutZoom) * cssScale;
+
+    return new DOMRect(
+      stageContentLeft + localLeft,
+      stageContentTop + localTop,
+      pageWidth,
+      pageHeight,
+    );
   }
 
   function updateRulerTicks(activePageRect) {
@@ -398,8 +435,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  let safariRulerRAF = 0;
-
   function positionRulersImmediate() {
     if (!state.showRulers) return;
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
@@ -427,22 +462,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   }
 
   function positionRulers() {
-    if (!state.showRulers) {
-      if (safariRulerRAF) {
-        cancelAnimationFrame(safariRulerRAF);
-        safariRulerRAF = 0;
-      }
-      return;
-    }
-    if (!isSafari) {
-      positionRulersImmediate();
-      return;
-    }
-    if (safariRulerRAF) return;
-    safariRulerRAF = requestAnimationFrame(() => {
-      safariRulerRAF = 0;
-      positionRulersImmediate();
-    });
+    if (!state.showRulers) return;
+    positionRulersImmediate();
   }
 
   function setMarginBoxesVisible(show) {
