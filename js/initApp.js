@@ -27,6 +27,8 @@ const ephemeral = createEphemeralState();
 const context = createAppContext({ app, state, metrics, ephemeral });
 const metricsStore = context.scalars;
 const { callbacks: contextCallbacks } = context;
+
+primeInitialMetrics();
 let {
   lastDigitTs,
   lastDigitCaret,
@@ -1188,7 +1190,17 @@ function recalcMetrics(face){
   metricsStore.CHAR_W = roundToDPR(targetPitch);
   metricsStore.GRID_H = LINE_H_RAW / GRID_DIV;
   metricsStore.BASELINE_OFFSET_CELL = metricsStore.ASC;
-  app.caretEl.style.height = baseCaretHeightPx() + 'px';
+  if (context?.metrics){
+    context.metrics.FONT_SIZE = metricsStore.FONT_SIZE;
+    context.metrics.ASC = metricsStore.ASC;
+    context.metrics.DESC = metricsStore.DESC;
+    context.metrics.CHAR_W = metricsStore.CHAR_W;
+    context.metrics.BASELINE_OFFSET_CELL = metricsStore.BASELINE_OFFSET_CELL;
+    context.metrics.GRID_H = metricsStore.GRID_H;
+  }
+  if (app?.caretEl?.style){
+    app.caretEl.style.height = baseCaretHeightPx() + 'px';
+  }
 }
 function scheduleMetricsUpdate(full=false){
   pendingFullRebuild = pendingFullRebuild || full;
@@ -1221,6 +1233,17 @@ function applyMetricsNow(full=false){
   requestVirtualization();
   saveStateDebounced();
   endBatch();
+}
+
+function primeInitialMetrics(){
+  if (metricsStore?.CHAR_W > 0 && metricsStore?.ASC > 0 && metricsStore?.DESC > 0 && metricsStore?.BASELINE_OFFSET_CELL > 0) {
+    return;
+  }
+  try {
+    recalcMetrics(metricsStore.ACTIVE_FONT_NAME);
+  } catch (err) {
+    console.warn('Failed to initialize base metrics', err);
+  }
 }
 
 function applyDefaultMargins() {
