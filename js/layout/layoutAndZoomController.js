@@ -43,6 +43,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   const { clampCaretToBounds } = editingController;
 
   let hammerNudgeRAF = 0;
+  let pendingRulerRAF = 0;
+  let lastMeasuredPageRect = null;
+  let lastMeasuredPageIndex = null;
   let zoomDrag = null;
   let zoomIndicatorTimer = null;
   let pendingZoomRedrawRAF = 0;
@@ -340,88 +343,310 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  function getActivePageRect() {
-    const p = state.pages[app.activePageIndex ?? state.caret.page] || state.pages[0];
-    const r = p.wrapEl.getBoundingClientRect();
-    return new DOMRect(r.left, r.top, r.width, app.PAGE_H * state.zoom);
+  function readLivePageRect(page) {
+    const target = page?.pageEl || page?.wrapEl;
+    if (!target || typeof target.getBoundingClientRect !== 'function') return null;
+    const rect = target.getBoundingClientRect();
+    if (!Number.isFinite(rect.left) || !Number.isFinite(rect.top)) return null;
+    if (!Number.isFinite(rect.width) || rect.width <= 0) return null;
+    if (!Number.isFinite(rect.height) || rect.height <= 0) return null;
+    return new DOMRect(rect.left, rect.top, rect.width, rect.height);
+  }
+
+  function computeManualPageRect(page) {
+    if (!page?.wrapEl) {
+      return new DOMRect(0, 0, app.PAGE_W * state.zoom, app.PAGE_H * state.zoom);
+    }
+
+    const stage = app.stage;
+    if (!stage) {
+      const fallback =
+        typeof page.wrapEl.getBoundingClientRect === 'function'
+          ? page.wrapEl.getBoundingClientRect()
+          : null;
+      if (fallback) {
+        return new DOMRect(
+          fallback.left,
+          fallback.top,
+          fallback.width,
+          fallback.height || app.PAGE_H * state.zoom,
+        );
+      }
+      return new DOMRect(0, 0, app.PAGE_W * state.zoom, app.PAGE_H * state.zoom);
+    }
+
+    const stageRect = stage.getBoundingClientRect();
+    const dims = stageDimensions();
+    const cssScale = cssScaleFactor() || 1;
+    const layoutZoom = layoutZoomFactor();
+
+    const scaledStageWidth = dims.width * cssScale;
+    const scaledStageHeight = dims.height * cssScale;
+    const baseStageLeft = stageRect.left + (stageRect.width - scaledStageWidth) / 2;
+    const baseStageTop = stageRect.top + (stageRect.height - scaledStageHeight) / 2;
+
+    const scrollLeft = stage.scrollLeft || 0;
+    const scrollTop = stage.scrollTop || 0;
+    const offsetX = (state.paperOffset?.x || 0) * cssScale;
+    const offsetY = (state.paperOffset?.y || 0) * cssScale;
+
+    const stageContentLeft = baseStageLeft - scrollLeft + offsetX;
+    const stageContentTop = baseStageTop - scrollTop + offsetY;
+
+    const localLeft = (page.wrapEl.offsetLeft || 0) * cssScale;
+    const localTop = (page.wrapEl.offsetTop || 0) * cssScale;
+    const pageWidth = (page.pageEl?.offsetWidth || app.PAGE_W * layoutZoom) * cssScale;
+    const pageHeight = (page.pageEl?.offsetHeight || app.PAGE_H * layoutZoom) * cssScale;
+
+    return new DOMRect(
+      stageContentLeft + localLeft,
+      stageContentTop + localTop,
+      pageWidth,
+      pageHeight,
+    );
+  }
+
+  function getActivePageRect({ preferLiveLayout = false } = {}) {
+    const activeIndex =
+      Number.isInteger(app.activePageIndex) ? app.activePageIndex : state.caret?.page;
+    const index = Number.isInteger(activeIndex) ? activeIndex : 0;
+    const page = state.pages[index] || state.pages[0];
+    if (!page) {
+      return new DOMRect(0, 0, app.PAGE_W * state.zoom, app.PAGE_H * state.zoom);
+    }
+
+    if (preferLiveLayout) {
+      const live = readLivePageRect(page);
+      if (live) {
+        lastMeasuredPageRect = live;
+        lastMeasuredPageIndex = index;
+        return live;
+      }
+    }
+
+    if (lastMeasuredPageRect && lastMeasuredPageIndex === index) {
+      return lastMeasuredPageRect;
+    }
+
+    const manual = computeManualPageRect(page);
+    lastMeasuredPageRect = manual;
+    lastMeasuredPageIndex = index;
+    return manual;
+  }
+
+  const rulerTickState = {
+    horizontal: null,
+    vertical: null,
+  };
+
+  function rebuildHorizontalTicks(ticksH, { originX, ppi, hostWidth }) {
+    if (!ticksH) return;
+    ticksH.innerHTML = '';
+    const baseGuard = Math.max(hostWidth, ppi * 10);
+    const overshoot = Math.ceil(ppi);
+    const extent = baseGuard + overshoot;
+    const totalWidth = hostWidth + extent * 2;
+    ticksH.style.width = `${totalWidth}px`;
+    ticksH.style.left = `${-extent}px`;
+    ticksH.style.right = 'auto';
+    ticksH.style.top = '0';
+    ticksH.style.bottom = '0';
+    const baseOffset = extent;
+    const startInch = Math.floor((-extent - originX) / ppi);
+    const endInch = Math.ceil((hostWidth + extent - originX) / ppi);
+    for (let i = startInch; i <= endInch; i++) {
+      for (let j = 0; j < 10; j++) {
+        const x = originX + (i + j / 10) * ppi;
+        const tick = document.createElement('div');
+        tick.className = j === 0 ? 'tick major' : j === 5 ? 'tick medium' : 'tick minor';
+        tick.style.left = `${baseOffset + x}px`;
+        ticksH.appendChild(tick);
+        if (j === 0) {
+          const lbl = document.createElement('div');
+          lbl.className = 'tick-num';
+          lbl.textContent = i;
+          lbl.style.left = `${baseOffset + x + 4}px`;
+          ticksH.appendChild(lbl);
+        }
+      }
+    }
+    ticksH.style.transform = 'translateX(0px)';
+    rulerTickState.horizontal = {
+      baseOrigin: originX,
+      ppi,
+      hostWidth,
+      travelGuard: extent,
+    };
+  }
+
+  function rebuildVerticalTicks(ticksV, { originY, ppi, hostHeight }) {
+    if (!ticksV) return;
+    ticksV.innerHTML = '';
+    const baseGuard = Math.max(hostHeight, ppi * 10);
+    const overshoot = Math.ceil(ppi);
+    const extent = baseGuard + overshoot;
+    const totalHeight = hostHeight + extent * 2;
+    ticksV.style.height = `${totalHeight}px`;
+    ticksV.style.top = `${-extent}px`;
+    ticksV.style.bottom = 'auto';
+    ticksV.style.left = '0';
+    ticksV.style.right = '0';
+    const baseOffset = extent;
+    const startInch = Math.floor((-extent - originY) / ppi);
+    const endInch = Math.ceil((hostHeight + extent - originY) / ppi);
+    for (let i = startInch; i <= endInch; i++) {
+      for (let j = 0; j < 10; j++) {
+        const y = originY + (i + j / 10) * ppi;
+        const tick = document.createElement('div');
+        tick.className = j === 0 ? 'tick-v major' : j === 5 ? 'tick-v medium' : 'tick-v minor';
+        tick.style.top = `${baseOffset + y}px`;
+        ticksV.appendChild(tick);
+        if (j === 0) {
+          const lbl = document.createElement('div');
+          lbl.className = 'tick-v-num';
+          lbl.textContent = i;
+          lbl.style.top = `${baseOffset + y + 4}px`;
+          ticksV.appendChild(lbl);
+        }
+      }
+    }
+    ticksV.style.transform = 'translateY(0px)';
+    rulerTickState.vertical = {
+      baseOrigin: originY,
+      ppi,
+      hostHeight,
+      travelGuard: extent,
+    };
   }
 
   function updateRulerTicks(activePageRect) {
     const ticksH = app.rulerH_host.querySelector('.ruler-ticks');
     const ticksV = app.rulerV_host.querySelector('.ruler-v-ticks');
     if (!ticksH || !ticksV) return;
-    ticksH.innerHTML = '';
-    ticksV.innerHTML = '';
+
+    const hostWidthCandidate = app.rulerH_host ? app.rulerH_host.clientWidth : 0;
+    const hostHeightCandidate = app.rulerV_host ? app.rulerV_host.clientHeight : 0;
+    const hostWidth = hostWidthCandidate || window.innerWidth;
+    const hostHeight = hostHeightCandidate || window.innerHeight;
+
     const ppiH = (activePageRect.width / 210) * 25.4;
     const originX = activePageRect.left;
-    const hostWidth = app.rulerH_host.getBoundingClientRect().width || window.innerWidth;
-    const startInchH = Math.floor(-originX / ppiH);
-    const endInchH = Math.ceil((hostWidth - originX) / ppiH);
-    for (let i = startInchH; i <= endInchH; i++) {
-      for (let j = 0; j < 10; j++) {
-        const x = originX + (i + j / 10) * ppiH;
-        if (x < 0 || x > hostWidth) continue;
-        const tick = document.createElement('div');
-        tick.className = j === 0 ? 'tick major' : j === 5 ? 'tick medium' : 'tick minor';
-        tick.style.left = `${x}px`;
-        ticksH.appendChild(tick);
-        if (j === 0) {
-          const lbl = document.createElement('div');
-          lbl.className = 'tick-num';
-          lbl.textContent = i;
-          lbl.style.left = `${x + 4}px`;
-          ticksH.appendChild(lbl);
-        }
+    const hState = rulerTickState.horizontal;
+    const needsHorizontalRebuild =
+      !hState ||
+      Math.abs(hState.ppi - ppiH) > 1e-6 ||
+      Math.abs(hState.hostWidth - hostWidth) > 0.5;
+    if (needsHorizontalRebuild) {
+      rebuildHorizontalTicks(ticksH, { originX, ppi: ppiH, hostWidth });
+    }
+    const hCache = rulerTickState.horizontal;
+    if (hCache) {
+      const dx = originX - hCache.baseOrigin;
+      if (Math.abs(dx) > hCache.travelGuard) {
+        rebuildHorizontalTicks(ticksH, { originX, ppi: ppiH, hostWidth });
+      } else {
+        ticksH.style.transform = `translateX(${dx}px)`;
       }
     }
+
     const ppiV = (activePageRect.height / 297) * 25.4;
     const originY = activePageRect.top;
-    const hostHeight = app.rulerV_host.getBoundingClientRect().height || window.innerHeight;
-    const startInchV = Math.floor(-originY / ppiV);
-    const endInchV = Math.ceil((hostHeight - originY) / ppiV);
-    for (let i = startInchV; i <= endInchV; i++) {
-      for (let j = 0; j < 10; j++) {
-        const y = originY + (i + j / 10) * ppiV;
-        if (y < 0 || y > hostHeight) continue;
-        const tick = document.createElement('div');
-        tick.className = j === 0 ? 'tick-v major' : j === 5 ? 'tick-v medium' : 'tick-v minor';
-        tick.style.top = `${y}px`;
-        ticksV.appendChild(tick);
-        if (j === 0) {
-          const lbl = document.createElement('div');
-          lbl.className = 'tick-v-num';
-          lbl.textContent = i;
-          lbl.style.top = `${y + 4}px`;
-          ticksV.appendChild(lbl);
-        }
+    const vState = rulerTickState.vertical;
+    const needsVerticalRebuild =
+      !vState ||
+      Math.abs(vState.ppi - ppiV) > 1e-6 ||
+      Math.abs(vState.hostHeight - hostHeight) > 0.5;
+    if (needsVerticalRebuild) {
+      rebuildVerticalTicks(ticksV, { originY, ppi: ppiV, hostHeight });
+    }
+    const vCache = rulerTickState.vertical;
+    if (vCache) {
+      const dy = originY - vCache.baseOrigin;
+      if (Math.abs(dy) > vCache.travelGuard) {
+        rebuildVerticalTicks(ticksV, { originY, ppi: ppiV, hostHeight });
+      } else {
+        ticksV.style.transform = `translateY(${dy}px)`;
       }
     }
   }
 
-  function positionRulers() {
+  const rulerMarkers = {
+    left: null,
+    right: null,
+    top: null,
+    bottom: null,
+  };
+
+  function ensureRulerMarkers() {
+    if (!rulerMarkers.left) {
+      rulerMarkers.left = document.createElement('div');
+      rulerMarkers.left.className = 'tri left';
+    }
+    if (!rulerMarkers.right) {
+      rulerMarkers.right = document.createElement('div');
+      rulerMarkers.right.className = 'tri right';
+    }
+    if (!rulerMarkers.top) {
+      rulerMarkers.top = document.createElement('div');
+      rulerMarkers.top.className = 'tri-v top';
+    }
+    if (!rulerMarkers.bottom) {
+      rulerMarkers.bottom = document.createElement('div');
+      rulerMarkers.bottom.className = 'tri-v bottom';
+    }
+  }
+
+  function syncMarkerContainer(container, markers) {
+    if (!container) return;
+    const desired = markers.filter(Boolean);
+    if (!desired.length) {
+      container.textContent = '';
+      return;
+    }
+    let needsAttach = false;
+    for (const marker of desired) {
+      if (marker.parentElement !== container) {
+        needsAttach = true;
+        break;
+      }
+    }
+    if (needsAttach || container.children.length !== desired.length) {
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+      for (const marker of desired) {
+        container.appendChild(marker);
+      }
+    }
+  }
+
+  function positionRulersInternal(preferLiveLayout = false) {
     if (!state.showRulers) return;
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
-    app.rulerH_stops_container.innerHTML = '';
-    app.rulerV_stops_container.innerHTML = '';
-    const pageRect = getActivePageRect();
+    ensureRulerMarkers();
+    syncMarkerContainer(app.rulerH_stops_container, [rulerMarkers.left, rulerMarkers.right]);
+    syncMarkerContainer(app.rulerV_stops_container, [rulerMarkers.top, rulerMarkers.bottom]);
+    const pageRect = getActivePageRect({ preferLiveLayout });
     const snap = computeSnappedVisualMargins();
-    const mLeft = document.createElement('div');
-    mLeft.className = 'tri left';
-    mLeft.style.left = `${pageRect.left + snap.leftPx * state.zoom}px`;
-    app.rulerH_stops_container.appendChild(mLeft);
-    const mRight = document.createElement('div');
-    mRight.className = 'tri right';
-    mRight.style.left = `${pageRect.left + snap.rightPx * state.zoom}px`;
-    app.rulerH_stops_container.appendChild(mRight);
-    const mTop = document.createElement('div');
-    mTop.className = 'tri-v top';
-    mTop.style.top = `${pageRect.top + snap.topPx * state.zoom}px`;
-    app.rulerV_stops_container.appendChild(mTop);
-    const mBottom = document.createElement('div');
-    mBottom.className = 'tri-v bottom';
-    mBottom.style.top = `${pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom}px`;
-    app.rulerV_stops_container.appendChild(mBottom);
+    rulerMarkers.left.style.left = `${pageRect.left + snap.leftPx * state.zoom}px`;
+    rulerMarkers.right.style.left = `${pageRect.left + snap.rightPx * state.zoom}px`;
+    rulerMarkers.top.style.top = `${pageRect.top + snap.topPx * state.zoom}px`;
+    const pageBottom = pageRect.top + pageRect.height;
+    rulerMarkers.bottom.style.top = `${pageBottom - snap.bottomPx * state.zoom}px`;
     updateRulerTicks(pageRect);
+  }
+
+  function positionRulers(options = {}) {
+    if (!state.showRulers) return;
+    const preferLiveLayout = Boolean(options?.preferLiveLayout);
+    positionRulersInternal(preferLiveLayout);
+    if (preferLiveLayout) return;
+    if (typeof requestAnimationFrame !== 'function') return;
+    if (pendingRulerRAF) return;
+    pendingRulerRAF = requestAnimationFrame(() => {
+      pendingRulerRAF = 0;
+      positionRulers({ preferLiveLayout: true });
+    });
   }
 
   function setMarginBoxesVisible(show) {
