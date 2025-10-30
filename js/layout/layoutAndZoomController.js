@@ -54,6 +54,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     vBottom: null,
   };
   let rulerMarkersInitialized = false;
+  let safariRulerFollowupHandle = 0;
+  let safariRulerFollowupFrames = 0;
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
@@ -437,6 +439,11 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     return rulerMarkers;
   }
 
+  function flushSafariStageLayout() {
+    if (!isSafari || !app.stageInner) return;
+    app.stageInner.getBoundingClientRect();
+  }
+
   function flushSafariRulerMarkers(markers) {
     if (!isSafari || !markers) return;
     markers.hLeft?.getBoundingClientRect();
@@ -445,10 +452,33 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     markers.vBottom?.getBoundingClientRect();
   }
 
+  function runSafariRulerFollowup() {
+    safariRulerFollowupHandle = 0;
+    if (!state.showRulers) {
+      safariRulerFollowupFrames = 0;
+      return;
+    }
+    positionRulersImmediate();
+    safariRulerFollowupFrames = Math.max(0, safariRulerFollowupFrames - 1);
+    if (safariRulerFollowupFrames > 0 && typeof requestAnimationFrame === 'function') {
+      safariRulerFollowupHandle = requestAnimationFrame(runSafariRulerFollowup);
+    } else {
+      safariRulerFollowupFrames = 0;
+    }
+  }
+
+  function scheduleSafariRulerSettling(frames = 2) {
+    if (!isSafari || typeof requestAnimationFrame !== 'function') return;
+    safariRulerFollowupFrames = Math.max(safariRulerFollowupFrames, frames);
+    if (safariRulerFollowupHandle) return;
+    safariRulerFollowupHandle = requestAnimationFrame(runSafariRulerFollowup);
+  }
+
   function positionRulersImmediate() {
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
     const markers = ensureRulerMarkers();
     if (!markers) return;
+    flushSafariStageLayout();
     const pageRect = getActivePageRect();
     const snap = computeSnappedVisualMargins();
     const left = pageRect.left + snap.leftPx * state.zoom;
@@ -471,6 +501,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       return;
     }
     positionRulersImmediate();
+    scheduleSafariRulerSettling();
   }
 
   function setMarginBoxesVisible(show) {

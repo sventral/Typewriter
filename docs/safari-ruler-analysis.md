@@ -14,8 +14,9 @@ These call sites explain why scrolling appears to help: a page activation or car
 
 ## 3. Safari-specific behaviour after the refinement
 - The implementation still keeps persistent triangle nodes (`ensureRulerMarkers()`) instead of rebuilding them on every call. That helper clears the container only when the nodes go missing, then reuses the same elements thereafter. 【F:js/layout/layoutAndZoomController.js†L408-L435】
-- To force Safari to apply the new `left`/`top` values immediately we now invoke `flushSafariRulerMarkers()` right after mutating the styles. The helper simply reads each marker’s bounding rect which compels Safari to flush layout synchronously. 【F:js/layout/layoutAndZoomController.js†L440-L445】【F:js/layout/layoutAndZoomController.js†L448-L463】
-- Because the layout flush happens inline we no longer need the requestAnimationFrame-based safety net, and `positionRulers()` just calls `positionRulersImmediate()` directly. 【F:js/layout/layoutAndZoomController.js†L466-L473】
+- Before reading the active page rect we now call `flushSafariStageLayout()`, which forces Safari to apply the current stage transform by touching `stageInner.getBoundingClientRect()`. That keeps the ruler measurements aligned with any caret-driven paper motion. 【F:js/layout/layoutAndZoomController.js†L437-L444】【F:js/layout/layoutAndZoomController.js†L448-L463】
+- After updating the marker positions we still invoke `flushSafariRulerMarkers()`, reading each triangle’s bounds so Safari commits the new `left`/`top` values immediately. 【F:js/layout/layoutAndZoomController.js†L446-L463】
+- `positionRulers()` runs the immediate update and then schedules at most two follow-up animation frames via `scheduleSafariRulerSettling()`. Those extra frames give Safari a chance to settle any delayed transforms without the perpetual loop we removed earlier. 【F:js/layout/layoutAndZoomController.js†L423-L444】【F:js/layout/layoutAndZoomController.js†L466-L475】
 
 ## 4. Behaviour before the recent Safari patches
 The previous implementation rebuilt the triangle nodes from scratch on every `positionRulers()` call. That logic forced Safari to remove and recreate the elements, which implicitly flushed layout before assigning fresh positions:
@@ -51,8 +52,8 @@ function positionRulers() {
 That behaviour explains why scrolling—which mutates the DOM around the page wrappers—still gives you smooth updates: Safari sees DOM nodes being inserted and flushed each frame.
 
 ## 5. Root cause of the lag and resolution
-- **Deferred style application.** Safari waited to reflect the new `left`/`top` assignments until another layout-invalidating operation (such as scrolling) occurred. Reading the markers’ geometry right after updating the styles forces Safari to flush the layout immediately, restoring frame-by-frame alignment while typing. 【F:js/layout/layoutAndZoomController.js†L440-L463】
-- **Unnecessary scheduling overhead.** The requestAnimationFrame loop introduced earlier attempted to paper over the delay, but it still depended on Safari eventually flushing layout. Removing the loop eliminates the extra delay at startup and after each line break. 【F:js/layout/layoutAndZoomController.js†L466-L473】
+- **Deferred transform + style application.** Safari lagged behind when the page wrapper moved because the `stageInner` transform and the marker `left`/`top` styles were only committed after a later layout pass (for example, when scrolling). Forcing rect reads on both the stage wrapper and the markers guarantees the new geometry is visible immediately after typing. 【F:js/layout/layoutAndZoomController.js†L437-L463】
+- **Targeted settling instead of open-ended loops.** Rather than running an infinite requestAnimationFrame loop, we now schedule just two Safari-only follow-up frames. That brief settle window handles any remaining delayed transforms without introducing startup pauses or long-term drift. 【F:js/layout/layoutAndZoomController.js†L423-L444】【F:js/layout/layoutAndZoomController.js†L466-L475】
 
 ## 6. Follow-up verification
 - Confirm in Safari that typing, inserting new lines, and resizing the window keep the ruler triangles glued to the actual margins without waiting for scroll-induced layout flushes.
