@@ -1266,8 +1266,9 @@ async function initialize() {
     refreshGrain: refreshGrainEffects
   });
   bootstrapFirstPage();
-  const { loaded, savedFont } = loadPersistedState();
-  populateInitialUI({ loaded });
+  const persistedState = loadPersistedState();
+  populateInitialUI(persistedState);
+  const { loaded, savedFont } = persistedState;
   const inkAdjustedByTheme = applyAppearance();
 
   updateStageEnvironment();

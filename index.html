@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.3.7b</div>
+  <div class="app-version">v.3.8b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -47,8 +47,29 @@
   <div class="toolbar">
     <div class="toolbar-left">
       <button class="btn" id="settingsBtnNew">Settings</button>
-      <button class="btn" id="exportTxtBtn">Save</button>
-      <button class="btn" id="newDocBtn">New</button>
+      <div class="doc-controls" id="docControls">
+        <button class="btn icon-only" id="docMenuBtn" aria-haspopup="true" aria-expanded="false" title="Documents" aria-label="Documents">
+          <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+            <path d="M4 5.25a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 5.25Zm0 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 9.25Zm0 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 13.25Z" fill="currentColor" />
+          </svg>
+        </button>
+        <input class="doc-title-input" id="docTitleInput" type="text" maxlength="200" placeholder="Untitled Document" aria-label="Document title" />
+        <div class="doc-menu-popup" id="docMenuPopup" role="menu" aria-labelledby="docMenuBtn">
+          <div class="doc-menu-header">Documents</div>
+          <div class="doc-menu-list" id="docMenuList"></div>
+        </div>
+      </div>
+      <button class="btn icon-only" id="deleteDocBtn" title="Delete document" aria-label="Delete document">
+        <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+          <path d="M7.25 3a1 1 0 0 1 .97-.75h3.56a1 1 0 0 1 .97.75l.3 1.25h3.75a.75.75 0 0 1 0 1.5h-.7l-.73 10.01A2.25 2.25 0 0 1 12.13 18H7.87a2.25 2.25 0 0 1-2.24-2.24L4.9 5.75h-.65a.75.75 0 0 1 0-1.5h3.75ZM6.4 5.75l.7 9.72c.05.4.38.7.77.7h4.26c.4 0 .73-.3.77-.7l.7-9.72H6.4Zm3.1 2a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5a.75.75 0 0 1 .75-.75Z" fill="currentColor" />
+        </svg>
+      </button>
+      <button class="btn icon-only" id="newDocBtn" title="New document" aria-label="New document">
+        <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+          <path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z" fill="currentColor" />
+        </svg>
+      </button>
+      <button class="btn" id="exportTxtBtn">Export</button>
     </div>
     <div class="toolbar-right">
       <button class="btn" id="inkSettingsBtn">Ink settings</button>

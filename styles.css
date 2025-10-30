@@ -140,6 +140,118 @@ body[data-page-tone='dark']{
   }
   .toolbar-left, .toolbar-right { display:flex; align-items:center; gap:.5rem; }
 
+  .btn.icon-only {
+    padding: 0;
+    min-width: 30px;
+    width: 30px;
+  }
+
+  .btn.icon-only .icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .doc-controls {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+  }
+
+  .doc-title-input {
+    box-sizing: border-box;
+    height: 30px;
+    padding: .25rem .5rem;
+    border-radius: 6px;
+    border: 1px solid var(--btn-border);
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    width: clamp(160px, 18vw, 240px);
+    font-size: 14px;
+  }
+
+  .doc-title-input:focus {
+    outline: 2px solid var(--active-outline);
+    outline-offset: 1px;
+  }
+
+  .doc-menu-popup {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    max-height: 240px;
+    display: none;
+    flex-direction: column;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.2);
+    z-index: 90;
+    overflow: hidden;
+    min-width: 220px;
+  }
+
+  .doc-menu-popup.open {
+    display: flex;
+  }
+
+  .doc-menu-header {
+    padding: .5rem .75rem;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    opacity: .7;
+  }
+
+  .doc-menu-list {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .doc-menu-empty {
+    padding: .75rem;
+    font-size: 13px;
+    opacity: .6;
+  }
+
+  .doc-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .55rem .75rem;
+    background: transparent;
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    color: inherit;
+    text-align: left;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .doc-list-item:first-of-type {
+    border-top: none;
+  }
+
+  .doc-list-item:hover,
+  .doc-list-item:focus {
+    background: rgba(120, 120, 128, 0.18);
+  }
+
+  .doc-list-item.is-active {
+    background: rgba(120, 120, 128, 0.24);
+    font-weight: 600;
+  }
+
+  .doc-list-item .doc-updated {
+    font-size: 11px;
+    opacity: .55;
+    margin-left: auto;
+  }
+
   .btn{
     box-sizing:border-box; border:1px solid var(--btn-border);
     background:var(--btn-bg); color:var(--btn-fg); padding:.2rem .6rem;
