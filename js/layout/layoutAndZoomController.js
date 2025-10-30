@@ -47,6 +47,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let zoomIndicatorTimer = null;
   let pendingZoomRedrawRAF = 0;
   let pendingZoomRedrawIsTimeout = false;
+  let pendingRulerRAF = 0;
+  let pendingSafariRulerRAF = 0;
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
@@ -398,8 +400,22 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  function positionRulers() {
-    if (!state.showRulers) return;
+  function clearPendingRulerFrames() {
+    if (pendingRulerRAF) {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(pendingRulerRAF);
+      }
+      pendingRulerRAF = 0;
+    }
+    if (pendingSafariRulerRAF) {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(pendingSafariRulerRAF);
+      }
+      pendingSafariRulerRAF = 0;
+    }
+  }
+
+  function positionRulersImmediate() {
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
     app.rulerH_stops_container.innerHTML = '';
     app.rulerV_stops_container.innerHTML = '';
@@ -422,6 +438,30 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     mBottom.style.top = `${pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom}px`;
     app.rulerV_stops_container.appendChild(mBottom);
     updateRulerTicks(pageRect);
+  }
+
+  function positionRulers() {
+    if (!state.showRulers) {
+      clearPendingRulerFrames();
+      return;
+    }
+    if (!app.rulerH_stops_container || !app.rulerV_stops_container) {
+      clearPendingRulerFrames();
+      return;
+    }
+    if (!isSafari) {
+      positionRulersImmediate();
+      return;
+    }
+    if (pendingRulerRAF || pendingSafariRulerRAF) return;
+    pendingRulerRAF = requestAnimationFrame(() => {
+      pendingRulerRAF = 0;
+      pendingSafariRulerRAF = requestAnimationFrame(() => {
+        pendingSafariRulerRAF = 0;
+        if (!state.showRulers) return;
+        positionRulersImmediate();
+      });
+    });
   }
 
   function setMarginBoxesVisible(show) {
