@@ -47,6 +47,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let zoomIndicatorTimer = null;
   let pendingZoomRedrawRAF = 0;
   let pendingZoomRedrawIsTimeout = false;
+  let pendingRulerRealign = 0;
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
@@ -398,7 +399,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  function positionRulers() {
+  function positionRulersNow() {
     if (!state.showRulers) return;
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
     app.rulerH_stops_container.innerHTML = '';
@@ -422,6 +423,28 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     mBottom.style.top = `${pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom}px`;
     app.rulerV_stops_container.appendChild(mBottom);
     updateRulerTicks(pageRect);
+  }
+
+  function schedulePostLayoutRulerSync() {
+    if (!state.showRulers) return;
+    if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
+    if (pendingRulerRealign) return;
+    if (typeof requestAnimationFrame === 'function') {
+      pendingRulerRealign = requestAnimationFrame(() => {
+        pendingRulerRealign = 0;
+        positionRulersNow();
+      });
+    } else {
+      pendingRulerRealign = setTimeout(() => {
+        pendingRulerRealign = 0;
+        positionRulersNow();
+      }, 16);
+    }
+  }
+
+  function positionRulers() {
+    positionRulersNow();
+    schedulePostLayoutRulerSync();
   }
 
   function setMarginBoxesVisible(show) {
