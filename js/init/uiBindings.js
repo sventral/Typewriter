@@ -37,14 +37,13 @@ export function setupUIBindings(context, controllers) {
     setDrag,
     getSaveTimer,
     setSaveTimer,
-    setThemeModePreference,
-    setDarkPagePreference,
   } = context;
 
   const {
     editing,
     layout,
     input,
+    theme,
   } = controllers;
 
   const {
@@ -647,19 +646,20 @@ export function setupUIBindings(context, controllers) {
   }
 
   function bindAppearanceControls() {
-    if (typeof setThemeModePreference === 'function') {
+    const themeApi = theme || {};
+    if (typeof themeApi.setThemeModePreference === 'function') {
       const radios = typeof app.appearanceRadios === 'function' ? app.appearanceRadios() : [];
       radios.forEach(radio => {
         radio.addEventListener('change', () => {
           if (radio.checked) {
-            setThemeModePreference(radio.value);
+            themeApi.setThemeModePreference(radio.value);
           }
         });
       });
     }
-    if (app.darkPageToggle && typeof setDarkPagePreference === 'function') {
+    if (app.darkPageToggle && typeof themeApi.setDarkPagePreference === 'function') {
       app.darkPageToggle.addEventListener('change', () => {
-        setDarkPagePreference(!!app.darkPageToggle.checked);
+        themeApi.setDarkPagePreference(!!app.darkPageToggle.checked);
       });
     }
   }
