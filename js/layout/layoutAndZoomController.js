@@ -442,21 +442,30 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   function rebuildHorizontalTicks(ticksH, { originX, ppi, hostWidth }) {
     if (!ticksH) return;
     ticksH.innerHTML = '';
-    const guardWidth = hostWidth + Math.max(hostWidth, ppi * 10);
-    const startInch = Math.floor((-guardWidth) / ppi);
-    const endInch = Math.ceil((hostWidth + guardWidth) / ppi);
+    const baseGuard = Math.max(hostWidth, ppi * 10);
+    const overshoot = Math.ceil(ppi);
+    const extent = baseGuard + overshoot;
+    const totalWidth = hostWidth + extent * 2;
+    ticksH.style.width = `${totalWidth}px`;
+    ticksH.style.left = `${-extent}px`;
+    ticksH.style.right = 'auto';
+    ticksH.style.top = '0';
+    ticksH.style.bottom = '0';
+    const baseOffset = extent;
+    const startInch = Math.floor((-extent - originX) / ppi);
+    const endInch = Math.ceil((hostWidth + extent - originX) / ppi);
     for (let i = startInch; i <= endInch; i++) {
       for (let j = 0; j < 10; j++) {
         const x = originX + (i + j / 10) * ppi;
         const tick = document.createElement('div');
         tick.className = j === 0 ? 'tick major' : j === 5 ? 'tick medium' : 'tick minor';
-        tick.style.left = `${x}px`;
+        tick.style.left = `${baseOffset + x}px`;
         ticksH.appendChild(tick);
         if (j === 0) {
           const lbl = document.createElement('div');
           lbl.className = 'tick-num';
           lbl.textContent = i;
-          lbl.style.left = `${x + 4}px`;
+          lbl.style.left = `${baseOffset + x + 4}px`;
           ticksH.appendChild(lbl);
         }
       }
@@ -466,28 +475,37 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       baseOrigin: originX,
       ppi,
       hostWidth,
-      guardWidth,
+      travelGuard: extent,
     };
   }
 
   function rebuildVerticalTicks(ticksV, { originY, ppi, hostHeight }) {
     if (!ticksV) return;
     ticksV.innerHTML = '';
-    const guardHeight = hostHeight + Math.max(hostHeight, ppi * 10);
-    const startInch = Math.floor((-guardHeight) / ppi);
-    const endInch = Math.ceil((hostHeight + guardHeight) / ppi);
+    const baseGuard = Math.max(hostHeight, ppi * 10);
+    const overshoot = Math.ceil(ppi);
+    const extent = baseGuard + overshoot;
+    const totalHeight = hostHeight + extent * 2;
+    ticksV.style.height = `${totalHeight}px`;
+    ticksV.style.top = `${-extent}px`;
+    ticksV.style.bottom = 'auto';
+    ticksV.style.left = '0';
+    ticksV.style.right = '0';
+    const baseOffset = extent;
+    const startInch = Math.floor((-extent - originY) / ppi);
+    const endInch = Math.ceil((hostHeight + extent - originY) / ppi);
     for (let i = startInch; i <= endInch; i++) {
       for (let j = 0; j < 10; j++) {
         const y = originY + (i + j / 10) * ppi;
         const tick = document.createElement('div');
         tick.className = j === 0 ? 'tick-v major' : j === 5 ? 'tick-v medium' : 'tick-v minor';
-        tick.style.top = `${y}px`;
+        tick.style.top = `${baseOffset + y}px`;
         ticksV.appendChild(tick);
         if (j === 0) {
           const lbl = document.createElement('div');
           lbl.className = 'tick-v-num';
           lbl.textContent = i;
-          lbl.style.top = `${y + 4}px`;
+          lbl.style.top = `${baseOffset + y + 4}px`;
           ticksV.appendChild(lbl);
         }
       }
@@ -497,7 +515,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       baseOrigin: originY,
       ppi,
       hostHeight,
-      guardHeight,
+      travelGuard: extent,
     };
   }
 
@@ -524,7 +542,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const hCache = rulerTickState.horizontal;
     if (hCache) {
       const dx = originX - hCache.baseOrigin;
-      if (Math.abs(dx) > hCache.guardWidth) {
+      if (Math.abs(dx) > hCache.travelGuard) {
         rebuildHorizontalTicks(ticksH, { originX, ppi: ppiH, hostWidth });
       } else {
         ticksH.style.transform = `translateX(${dx}px)`;
@@ -544,7 +562,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const vCache = rulerTickState.vertical;
     if (vCache) {
       const dy = originY - vCache.baseOrigin;
-      if (Math.abs(dy) > vCache.guardHeight) {
+      if (Math.abs(dy) > vCache.travelGuard) {
         rebuildVerticalTicks(ticksV, { originY, ppi: ppiV, hostHeight });
       } else {
         ticksV.style.transform = `translateY(${dy}px)`;
@@ -624,7 +642,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     positionRulersInternal(preferLiveLayout);
     if (preferLiveLayout) return;
     if (typeof requestAnimationFrame !== 'function') return;
-    if (pendingRulerRAF) cancelAnimationFrame(pendingRulerRAF);
+    if (pendingRulerRAF) return;
     pendingRulerRAF = requestAnimationFrame(() => {
       pendingRulerRAF = 0;
       positionRulers({ preferLiveLayout: true });
