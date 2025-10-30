@@ -48,7 +48,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let pendingZoomRedrawRAF = 0;
   let pendingZoomRedrawIsTimeout = false;
   let pendingRulerRAF = 0;
-  let pendingSafariRulerRAF = 0;
+  let pendingSafariRulerTimeout = 0;
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
@@ -407,11 +407,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       }
       pendingRulerRAF = 0;
     }
-    if (pendingSafariRulerRAF) {
-      if (typeof cancelAnimationFrame === 'function') {
-        cancelAnimationFrame(pendingSafariRulerRAF);
-      }
-      pendingSafariRulerRAF = 0;
+    if (pendingSafariRulerTimeout) {
+      clearTimeout(pendingSafariRulerTimeout);
+      pendingSafariRulerTimeout = 0;
     }
   }
 
@@ -453,15 +451,33 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       positionRulersImmediate();
       return;
     }
-    if (pendingRulerRAF || pendingSafariRulerRAF) return;
-    pendingRulerRAF = requestAnimationFrame(() => {
-      pendingRulerRAF = 0;
-      pendingSafariRulerRAF = requestAnimationFrame(() => {
-        pendingSafariRulerRAF = 0;
-        if (!state.showRulers) return;
-        positionRulersImmediate();
+    if (pendingRulerRAF || pendingSafariRulerTimeout) return;
+    const applyPosition = () => {
+      if (!state.showRulers) return;
+      positionRulersImmediate();
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      pendingRulerRAF = requestAnimationFrame(() => {
+        pendingRulerRAF = 0;
+        if (typeof setTimeout === 'function') {
+          pendingSafariRulerTimeout = setTimeout(() => {
+            pendingSafariRulerTimeout = 0;
+            applyPosition();
+          }, 0);
+        } else {
+          applyPosition();
+        }
       });
-    });
+      return;
+    }
+    if (typeof setTimeout === 'function') {
+      pendingSafariRulerTimeout = setTimeout(() => {
+        pendingSafariRulerTimeout = 0;
+        applyPosition();
+      }, 0);
+      return;
+    }
+    applyPosition();
   }
 
   function setMarginBoxesVisible(show) {
