@@ -47,6 +47,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let zoomIndicatorTimer = null;
   let pendingZoomRedrawRAF = 0;
   let pendingZoomRedrawIsTimeout = false;
+  let pendingRulerFrame = 0;
+  let pendingRulerIsTimeout = false;
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
@@ -398,7 +400,18 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  function positionRulers() {
+  function cancelPendingRulerFrame() {
+    if (!pendingRulerFrame) return;
+    if (pendingRulerIsTimeout) {
+      clearTimeout(pendingRulerFrame);
+    } else if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(pendingRulerFrame);
+    }
+    pendingRulerFrame = 0;
+    pendingRulerIsTimeout = false;
+  }
+
+  function applyRulerPositions() {
     if (!state.showRulers) return;
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
     app.rulerH_stops_container.innerHTML = '';
@@ -422,6 +435,31 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     mBottom.style.top = `${pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom}px`;
     app.rulerV_stops_container.appendChild(mBottom);
     updateRulerTicks(pageRect);
+  }
+
+  function positionRulers(options = {}) {
+    const immediate = options?.immediate === true;
+    if (immediate) {
+      cancelPendingRulerFrame();
+      applyRulerPositions();
+      return;
+    }
+    if (pendingRulerFrame) return;
+    if (typeof requestAnimationFrame === 'function') {
+      pendingRulerIsTimeout = false;
+      pendingRulerFrame = requestAnimationFrame(() => {
+        pendingRulerFrame = 0;
+        pendingRulerIsTimeout = false;
+        applyRulerPositions();
+      });
+      return;
+    }
+    pendingRulerIsTimeout = true;
+    pendingRulerFrame = setTimeout(() => {
+      pendingRulerFrame = 0;
+      pendingRulerIsTimeout = false;
+      applyRulerPositions();
+    }, 16);
   }
 
   function setMarginBoxesVisible(show) {
