@@ -47,10 +47,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let zoomIndicatorTimer = null;
   let pendingZoomRedrawRAF = 0;
   let pendingZoomRedrawIsTimeout = false;
-  const SAFARI_RULER_SYNC_WINDOW_MS = 240;
-  let safariRulerSyncRAF = 0;
-  let safariRulerSyncTimeout = 0;
-  let safariRulerSyncDeadline = 0;
   const rulerMarkers = {
     hLeft: null,
     hRight: null,
@@ -409,13 +405,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  function getTimelineNow() {
-    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-      return performance.now();
-    }
-    return Date.now();
-  }
-
   function ensureRulerMarkers() {
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return null;
     const needsInit =
@@ -448,68 +437,15 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     return rulerMarkers;
   }
 
-  function cancelSafariRulerSyncLoop() {
-    if (safariRulerSyncRAF && typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(safariRulerSyncRAF);
-    }
-    if (safariRulerSyncTimeout) {
-      clearTimeout(safariRulerSyncTimeout);
-    }
-    safariRulerSyncRAF = 0;
-    safariRulerSyncTimeout = 0;
-    safariRulerSyncDeadline = 0;
+  function flushSafariRulerMarkers(markers) {
+    if (!isSafari || !markers) return;
+    markers.hLeft?.getBoundingClientRect();
+    markers.hRight?.getBoundingClientRect();
+    markers.vTop?.getBoundingClientRect();
+    markers.vBottom?.getBoundingClientRect();
   }
 
-  function shouldContinueSafariRulerSync(timestamp) {
-    if (!safariRulerSyncDeadline) return false;
-    const now = Number.isFinite(timestamp) ? timestamp : getTimelineNow();
-    return now < safariRulerSyncDeadline;
-  }
-
-  function safariRulerSyncFrame(timestamp) {
-    safariRulerSyncRAF = 0;
-    safariRulerSyncTimeout = 0;
-    if (!state.showRulers) {
-      safariRulerSyncDeadline = 0;
-      return;
-    }
-    positionRulersImmediate({ skipTickUpdate: true });
-    if (!shouldContinueSafariRulerSync(timestamp)) {
-      safariRulerSyncDeadline = 0;
-      return;
-    }
-    queueSafariRulerSyncFrame();
-  }
-
-  function queueSafariRulerSyncFrame() {
-    if (!state.showRulers) {
-      safariRulerSyncDeadline = 0;
-      return;
-    }
-    if (typeof requestAnimationFrame === 'function') {
-      safariRulerSyncRAF = requestAnimationFrame(safariRulerSyncFrame);
-      return;
-    }
-    safariRulerSyncTimeout = setTimeout(() => safariRulerSyncFrame(getTimelineNow()), 16);
-  }
-
-  function ensureSafariRulerSyncLoop(windowMs = SAFARI_RULER_SYNC_WINDOW_MS) {
-    if (!state.showRulers) return;
-    if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
-    const now = getTimelineNow();
-    const target = now + windowMs;
-    safariRulerSyncDeadline = safariRulerSyncDeadline
-      ? Math.max(safariRulerSyncDeadline, target)
-      : target;
-    if (safariRulerSyncRAF || safariRulerSyncTimeout) return;
-    queueSafariRulerSyncFrame();
-  }
-
-  function clearPendingRulerFrames() {
-    cancelSafariRulerSyncLoop();
-  }
-
-  function positionRulersImmediate({ skipTickUpdate = false } = {}) {
+  function positionRulersImmediate() {
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
     const markers = ensureRulerMarkers();
     if (!markers) return;
@@ -523,26 +459,18 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     markers.hRight.style.left = `${right}px`;
     markers.vTop.style.top = `${top}px`;
     markers.vBottom.style.top = `${bottom}px`;
-    if (!skipTickUpdate) {
-      updateRulerTicks(pageRect);
-    }
+    flushSafariRulerMarkers(markers);
+    updateRulerTicks(pageRect);
   }
 
   function positionRulers() {
     if (!state.showRulers) {
-      clearPendingRulerFrames();
       return;
     }
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) {
-      clearPendingRulerFrames();
-      return;
-    }
-    if (!isSafari) {
-      positionRulersImmediate();
       return;
     }
     positionRulersImmediate();
-    ensureSafariRulerSyncLoop();
   }
 
   function setMarginBoxesVisible(show) {
