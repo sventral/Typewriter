@@ -279,6 +279,7 @@ body[data-page-tone='dark']{
     position:fixed;
     top:8px;
     left:12px;
+    padding-left:8px;
     font-size:12px;
     font-family:system-ui, -apple-system, sans-serif;
     color:var(--ui-text);
