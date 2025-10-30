@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.2.7b</div>
+  <div class="app-version">v.3.1b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -186,6 +186,28 @@
           <label for="wordWrapCb">Word Wrap</label>
           <input id="wordWrapCb" type="checkbox" checked />
         </div>
+      </div>
+      <hr class="divider">
+      <h3>Appearance</h3>
+      <div class="settings-group-new appearance-group">
+        <div class="appearance-options">
+          <label>
+            <input type="radio" name="appearanceMode" id="appearanceAuto" value="auto" checked />
+            <span>Automatic</span>
+          </label>
+          <label>
+            <input type="radio" name="appearanceMode" id="appearanceLight" value="light" />
+            <span>Light</span>
+          </label>
+          <label>
+            <input type="radio" name="appearanceMode" id="appearanceDark" value="dark" />
+            <span>Dark</span>
+          </label>
+        </div>
+        <label class="appearance-dark-toggle">
+          <input type="checkbox" id="darkPageToggle" />
+          <span>Dark page while in dark mode</span>
+        </label>
       </div>
     </div>
   </aside>

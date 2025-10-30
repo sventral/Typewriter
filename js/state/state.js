@@ -22,6 +22,10 @@ export function createMainState(app, gridDiv = 8) {
     grainSeed: 0xC0FFEE,
     altSeed: 0x51F15EED,
     wordWrap: true,
+    themeMode: 'auto',
+    darkPageInDarkMode: false,
+    pageFillColor: '#ffffff',
+    inkEffectsPreferWhite: false,
   };
 }
 

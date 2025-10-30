@@ -84,7 +84,7 @@ export function createPageRenderer(options) {
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
     backCtx.globalAlpha = 1;
-    backCtx.fillStyle = '#ffffff';
+    backCtx.fillStyle = state.pageFillColor || '#ffffff';
     backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
     backCtx.restore();
     for (const [rowMu, rowMap] of page.grid) {
@@ -122,7 +122,7 @@ export function createPageRenderer(options) {
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
     backCtx.globalAlpha = 1;
-    backCtx.fillStyle = '#ffffff';
+    backCtx.fillStyle = state.pageFillColor || '#ffffff';
     backCtx.fillRect(0, bandTopCss, app.PAGE_W, bandHCss);
     backCtx.restore();
 
