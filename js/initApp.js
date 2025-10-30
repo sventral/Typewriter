@@ -805,10 +805,15 @@ function applyMetricsNow(full=false){
   const oldBounds = (typeof getCurrentBounds === 'function') ? getCurrentBounds() : null;
   recalcMetrics(metricsStore.ACTIVE_FONT_NAME);
   const newBounds = (typeof getCurrentBounds === 'function') ? getCurrentBounds() : null;
+  let deltaTopMu = 0;
   if (oldBounds && newBounds) {
-    const deltaTopMu = newBounds.Tmu - oldBounds.Tmu;
-    if (deltaTopMu) shiftDocumentRows(deltaTopMu);
+    deltaTopMu = newBounds.Tmu - oldBounds.Tmu;
   }
+  if (ephemeral.primedMetricsAreFallback) {
+    deltaTopMu = 0;
+    ephemeral.primedMetricsAreFallback = false;
+  }
+  if (deltaTopMu) shiftDocumentRows(deltaTopMu);
   contextCallbacks.rebuildAllAtlases();
   for (const p of state.pages){
     p.grainCanvas = null;
@@ -835,6 +840,7 @@ function primeInitialMetrics(){
   }
   try {
     recalcMetrics(metricsStore.ACTIVE_FONT_NAME);
+    ephemeral.primedMetricsAreFallback = true;
   } catch (err) {
     console.warn('Failed to initialize base metrics', err);
   }
