@@ -398,7 +398,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  function positionRulers() {
+  let safariRulerRAF = 0;
+
+  function positionRulersImmediate() {
     if (!state.showRulers) return;
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
     app.rulerH_stops_container.innerHTML = '';
@@ -422,6 +424,25 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     mBottom.style.top = `${pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom}px`;
     app.rulerV_stops_container.appendChild(mBottom);
     updateRulerTicks(pageRect);
+  }
+
+  function positionRulers() {
+    if (!state.showRulers) {
+      if (safariRulerRAF) {
+        cancelAnimationFrame(safariRulerRAF);
+        safariRulerRAF = 0;
+      }
+      return;
+    }
+    if (!isSafari) {
+      positionRulersImmediate();
+      return;
+    }
+    if (safariRulerRAF) return;
+    safariRulerRAF = requestAnimationFrame(() => {
+      safariRulerRAF = 0;
+      positionRulersImmediate();
+    });
   }
 
   function setMarginBoxesVisible(show) {
