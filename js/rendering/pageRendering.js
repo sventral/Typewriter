@@ -36,6 +36,36 @@ export function createPageRenderer(options) {
   const getRenderScaleFn = ensureMetricGetter(getRenderScale, 'RENDER_SCALE');
   const { touchPage } = lifecycle;
 
+  function computeEffectOverrides(stack) {
+    if (!Array.isArray(stack) || stack.length < 2) return null;
+    let seenWhiteAbove = false;
+    let anyOverrides = false;
+    const overrides = new Array(stack.length);
+    for (let i = stack.length - 1; i >= 0; i--) {
+      const glyph = stack[i];
+      if (!glyph) continue;
+      const ink = glyph.ink || 'b';
+      if (ink === 'w') {
+        seenWhiteAbove = true;
+      } else if (seenWhiteAbove && ink === 'b') {
+        overrides[i] = 'disabled';
+        anyOverrides = true;
+      }
+    }
+    return anyOverrides ? overrides : null;
+  }
+
+  function drawGlyphStack(ctx, stack, x, baseline, pageIndex, rowMu, col) {
+    if (!Array.isArray(stack) || stack.length === 0) return;
+    const overrides = computeEffectOverrides(stack);
+    for (let k = 0; k < stack.length; k++) {
+      const glyph = stack[k];
+      if (!glyph) continue;
+      const effectOverride = overrides ? overrides[k] : undefined;
+      drawGlyph(ctx, glyph.char, glyph.ink || 'b', x, baseline, k, stack.length, pageIndex, rowMu, col, effectOverride);
+    }
+  }
+
   function refreshGlyphEffects() {
     rebuildAllAtlases();
     for (const page of state.pages) {
@@ -92,10 +122,7 @@ export function createPageRenderer(options) {
       const baseline = rowMu * gridHeight;
       for (const [col, stack] of rowMap) {
         const x = col * charWidth;
-        for (let k = 0; k < stack.length; k++) {
-          const s = stack[k];
-          drawGlyph(backCtx, s.char, s.ink || 'b', x, baseline, k, stack.length, page.index, rowMu, col);
-        }
+        drawGlyphStack(backCtx, stack, x, baseline, page.index, rowMu, col);
       }
     }
     page.ctx.drawImage(page.backCanvas, 0, 0, page.backCanvas.width, page.backCanvas.height, 0, 0, app.PAGE_W, app.PAGE_H);
@@ -142,10 +169,7 @@ export function createPageRenderer(options) {
 
       for (const [col, stack] of rowMap) {
         const x = col * charWidth;
-        for (let k = 0; k < stack.length; k++) {
-          const s = stack[k];
-          drawGlyph(backCtx, s.char, s.ink || 'b', x, baseline, k, stack.length, page.index, rowMu, col);
-        }
+        drawGlyphStack(backCtx, stack, x, baseline, page.index, rowMu, col);
       }
     }
 

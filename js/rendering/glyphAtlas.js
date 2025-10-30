@@ -266,8 +266,20 @@ export function createGlyphAtlas(options) {
     ctx.restore();
   }
 
-  function ensureAtlas(ink, variantIdx = 0) {
-    const key = `${ink}|v${variantIdx | 0}`;
+  function ensureAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
+    const preferWhiteEffects = !!state.inkEffectsPreferWhite;
+    let effectsAllowed =
+      ink === 'w' ? preferWhiteEffects :
+      ink === 'b' ? !preferWhiteEffects :
+      true;
+
+    if (effectOverride === 'disabled') {
+      effectsAllowed = false;
+    } else if (effectOverride === 'enabled') {
+      effectsAllowed = true;
+    }
+
+    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}`;
     let atlas = atlases.get(key);
     if (atlas) return atlas;
 
@@ -316,16 +328,11 @@ export function createGlyphAtlas(options) {
     const advCache = new Float32Array(ASCII_END + 1);
     const SHIFT_EPS = 0.5;
 
-    const preferWhiteEffects = !!state.inkEffectsPreferWhite;
-    const allowEffectsForInk =
-      ink === 'w' ? preferWhiteEffects :
-      ink === 'b' ? !preferWhiteEffects :
-      true;
-    const useTexture = INK_TEXTURE.enabled && allowEffectsForInk;
+    const useTexture = INK_TEXTURE.enabled && effectsAllowed;
     const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
     const textureSupersample = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
     const sampleScale = Math.max(safariSupersample, textureSupersample);
-    const bleedEnabled = EDGE_BLEED.enabled && allowEffectsForInk && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
+    const bleedEnabled = EDGE_BLEED.enabled && effectsAllowed && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
     const needsPipeline = useTexture || bleedEnabled || sampleScale > 1;
 
     let glyphCanvas = null;
@@ -455,8 +462,8 @@ export function createGlyphAtlas(options) {
     return (h >>> 0) % ALT_VARIANTS;
   }
 
-  function drawGlyph(ctx, ch, ink, x_css, baselineY_css, layerIndex, totalLayers, pageIndex, rowMu, col) {
-    const atlas = ensureAtlas(ink, variantIndexForCell(pageIndex | 0, rowMu | 0, col | 0));
+  function drawGlyph(ctx, ch, ink, x_css, baselineY_css, layerIndex, totalLayers, pageIndex, rowMu, col, effectsOverride = 'auto') {
+    const atlas = ensureAtlas(ink, variantIndexForCell(pageIndex | 0, rowMu | 0, col | 0), effectsOverride);
     const fallback = atlas.rectDpByCode['?'.charCodeAt(0)];
     const rect = atlas.rectDpByCode[ch.charCodeAt(0)] || fallback;
     if (!rect) return;
