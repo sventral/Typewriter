@@ -25,6 +25,7 @@ export function createMainState(app, gridDiv = 8) {
     themeMode: 'auto',
     darkPageInDarkMode: false,
     pageFillColor: '#ffffff',
+    inkEffectsPreferWhite: false,
   };
 }
 

@@ -316,11 +316,16 @@ export function createGlyphAtlas(options) {
     const advCache = new Float32Array(ASCII_END + 1);
     const SHIFT_EPS = 0.5;
 
-    const useTexture = (ink !== 'w') && INK_TEXTURE.enabled;
+    const preferWhiteEffects = !!state.inkEffectsPreferWhite;
+    const allowEffectsForInk =
+      ink === 'w' ? preferWhiteEffects :
+      ink === 'b' ? !preferWhiteEffects :
+      true;
+    const useTexture = INK_TEXTURE.enabled && allowEffectsForInk;
     const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
     const textureSupersample = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
     const sampleScale = Math.max(safariSupersample, textureSupersample);
-    const bleedEnabled = (ink !== 'w') && EDGE_BLEED.enabled && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
+    const bleedEnabled = EDGE_BLEED.enabled && allowEffectsForInk && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
     const needsPipeline = useTexture || bleedEnabled || sampleScale > 1;
 
     let glyphCanvas = null;

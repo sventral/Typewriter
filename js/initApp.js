@@ -362,6 +362,10 @@ const prefersDarkMedia = (typeof window !== 'undefined' && typeof window.matchMe
   ? window.matchMedia('(prefers-color-scheme: dark)')
   : null;
 let lastDarkPageActive = null;
+const LIGHT_EFFECT_INKS = ['b', 'r'];
+const DARK_EFFECT_INKS = ['w', 'r'];
+const LIGHT_EFFECT_INKS_SORTED = [...LIGHT_EFFECT_INKS].sort();
+const DARK_EFFECT_INKS_SORTED = [...DARK_EFFECT_INKS].sort();
 
 function systemPrefersDark() {
   return !!(prefersDarkMedia && prefersDarkMedia.matches);
@@ -428,6 +432,27 @@ function refreshPageFillColor() {
   }
 }
 
+function arraysEqualShallow(a = [], b = []) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function syncBleedInksForPageTone(darkPageActive) {
+  if (!Array.isArray(EDGE_BLEED.inks)) return false;
+  const currentSorted = [...EDGE_BLEED.inks].sort();
+  const matchesLight = arraysEqualShallow(currentSorted, LIGHT_EFFECT_INKS_SORTED);
+  const matchesDark = arraysEqualShallow(currentSorted, DARK_EFFECT_INKS_SORTED);
+  if (!matchesLight && !matchesDark) return false;
+  const target = darkPageActive ? DARK_EFFECT_INKS : LIGHT_EFFECT_INKS;
+  const targetSorted = darkPageActive ? DARK_EFFECT_INKS_SORTED : LIGHT_EFFECT_INKS_SORTED;
+  if (arraysEqualShallow(currentSorted, targetSorted)) return false;
+  EDGE_BLEED.inks = [...target];
+  return true;
+}
+
 function applyInkPaletteForTheme(darkPageActive) {
   const nextRed = darkPageActive ? '#ff7a7a' : '#b00000';
   let changed = false;
@@ -452,6 +477,7 @@ function applyInkPaletteForTheme(darkPageActive) {
       schedulePaint(page);
     }
   }
+  return changed;
 }
 
 function swapDocumentInkColors() {
@@ -487,9 +513,16 @@ function applyAppearance() {
   const darkPageActive = effectiveTheme === 'dark' && !!state.darkPageInDarkMode;
   setBodyPageTone(darkPageActive);
   refreshPageFillColor();
+  const preferWhite = !!darkPageActive;
+  const preferChanged = state.inkEffectsPreferWhite !== preferWhite;
+  state.inkEffectsPreferWhite = preferWhite;
+  const bleedAdjusted = syncBleedInksForPageTone(darkPageActive);
   const shouldSwapInks = lastDarkPageActive !== null && lastDarkPageActive !== darkPageActive;
   if (shouldSwapInks) swapDocumentInkColors();
   applyInkPaletteForTheme(darkPageActive);
+  if (preferChanged || bleedAdjusted) {
+    refreshGlyphEffects();
+  }
   let inkChanged = false;
   if (darkPageActive && lastDarkPageActive !== true && state.ink !== 'w') {
     setInk('w');
@@ -513,6 +546,7 @@ function setThemeModePreference(mode) {
   if (app.darkPageToggle) app.darkPageToggle.disabled = normalized === 'light';
   applyAppearance();
   saveStateDebounced();
+  focusStage();
 }
 
 function setDarkPagePreference(enabled) {
@@ -523,6 +557,7 @@ function setDarkPagePreference(enabled) {
   if (app.darkPageToggle) app.darkPageToggle.checked = normalized;
   applyAppearance();
   saveStateDebounced();
+  focusStage();
 }
 
 if (prefersDarkMedia) {
