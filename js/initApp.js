@@ -1183,6 +1183,26 @@ async function loadFontAndApply(requestedFace){
 }
 
 
+function shiftDocumentRows(deltaMu) {
+  if (!deltaMu) return;
+  for (const page of state.pages) {
+    if (!page || !page.grid) continue;
+    const newGrid = new Map();
+    for (const [rowMu, rowMap] of page.grid) {
+      newGrid.set(rowMu + deltaMu, rowMap);
+    }
+    page.grid = newGrid;
+    if (page._dirtyRowMinMu !== undefined) page._dirtyRowMinMu += deltaMu;
+    if (page._dirtyRowMaxMu !== undefined) page._dirtyRowMaxMu += deltaMu;
+  }
+  state.caret.rowMu += deltaMu;
+  if (typedRun?.active) typedRun.rowMu += deltaMu;
+  if (lastDigitCaret) {
+    lastDigitCaret = { ...lastDigitCaret, rowMu: lastDigitCaret.rowMu + deltaMu };
+    ephemeral.lastDigitCaret = lastDigitCaret;
+  }
+}
+
 function recalcMetrics(face){
   const targetPitch = getTargetPitchPx();
   const m = calibrateMonospaceFont(targetPitch, face, state.inkWidthPct);
@@ -1216,7 +1236,13 @@ function scheduleMetricsUpdate(full=false){
 
 function applyMetricsNow(full=false){
   beginBatch();
+  const oldBounds = (typeof getCurrentBounds === 'function') ? getCurrentBounds() : null;
   recalcMetrics(metricsStore.ACTIVE_FONT_NAME);
+  const newBounds = (typeof getCurrentBounds === 'function') ? getCurrentBounds() : null;
+  if (oldBounds && newBounds) {
+    const deltaTopMu = newBounds.Tmu - oldBounds.Tmu;
+    if (deltaTopMu) shiftDocumentRows(deltaTopMu);
+  }
   contextCallbacks.rebuildAllAtlases();
   for (const p of state.pages){
     p.grainCanvas = null;
