@@ -43,6 +43,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   const { clampCaretToBounds } = editingController;
 
   let hammerNudgeRAF = 0;
+  let pendingRulerRAF = 0;
+  let lastMeasuredPageRect = null;
+  let lastMeasuredPageIndex = null;
   let zoomDrag = null;
   let zoomIndicatorTimer = null;
   let pendingZoomRedrawRAF = 0;
@@ -340,16 +343,36 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  function getActivePageRect() {
-    const page = state.pages[app.activePageIndex ?? state.caret.page] || state.pages[0];
+  function readLivePageRect(page) {
+    const target = page?.pageEl || page?.wrapEl;
+    if (!target || typeof target.getBoundingClientRect !== 'function') return null;
+    const rect = target.getBoundingClientRect();
+    if (!Number.isFinite(rect.left) || !Number.isFinite(rect.top)) return null;
+    if (!Number.isFinite(rect.width) || rect.width <= 0) return null;
+    if (!Number.isFinite(rect.height) || rect.height <= 0) return null;
+    return new DOMRect(rect.left, rect.top, rect.width, rect.height);
+  }
+
+  function computeManualPageRect(page) {
     if (!page?.wrapEl) {
       return new DOMRect(0, 0, app.PAGE_W * state.zoom, app.PAGE_H * state.zoom);
     }
 
     const stage = app.stage;
     if (!stage) {
-      const fallback = page.wrapEl.getBoundingClientRect();
-      return new DOMRect(fallback.left, fallback.top, fallback.width, app.PAGE_H * state.zoom);
+      const fallback =
+        typeof page.wrapEl.getBoundingClientRect === 'function'
+          ? page.wrapEl.getBoundingClientRect()
+          : null;
+      if (fallback) {
+        return new DOMRect(
+          fallback.left,
+          fallback.top,
+          fallback.width,
+          fallback.height || app.PAGE_H * state.zoom,
+        );
+      }
+      return new DOMRect(0, 0, app.PAGE_W * state.zoom, app.PAGE_H * state.zoom);
     }
 
     const stageRect = stage.getBoundingClientRect();
@@ -383,6 +406,34 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     );
   }
 
+  function getActivePageRect({ preferLiveLayout = false } = {}) {
+    const activeIndex =
+      Number.isInteger(app.activePageIndex) ? app.activePageIndex : state.caret?.page;
+    const index = Number.isInteger(activeIndex) ? activeIndex : 0;
+    const page = state.pages[index] || state.pages[0];
+    if (!page) {
+      return new DOMRect(0, 0, app.PAGE_W * state.zoom, app.PAGE_H * state.zoom);
+    }
+
+    if (preferLiveLayout) {
+      const live = readLivePageRect(page);
+      if (live) {
+        lastMeasuredPageRect = live;
+        lastMeasuredPageIndex = index;
+        return live;
+      }
+    }
+
+    if (lastMeasuredPageRect && lastMeasuredPageIndex === index) {
+      return lastMeasuredPageRect;
+    }
+
+    const manual = computeManualPageRect(page);
+    lastMeasuredPageRect = manual;
+    lastMeasuredPageIndex = index;
+    return manual;
+  }
+
   const rulerTickState = {
     horizontal: null,
     vertical: null,
@@ -391,7 +442,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   function rebuildHorizontalTicks(ticksH, { originX, ppi, hostWidth }) {
     if (!ticksH) return;
     ticksH.innerHTML = '';
-    const guardWidth = Math.max(hostWidth, ppi * 10);
+    const guardWidth = hostWidth + Math.max(hostWidth, ppi * 10);
     const startInch = Math.floor((-guardWidth) / ppi);
     const endInch = Math.ceil((hostWidth + guardWidth) / ppi);
     for (let i = startInch; i <= endInch; i++) {
@@ -422,7 +473,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   function rebuildVerticalTicks(ticksV, { originY, ppi, hostHeight }) {
     if (!ticksV) return;
     ticksV.innerHTML = '';
-    const guardHeight = Math.max(hostHeight, ppi * 10);
+    const guardHeight = hostHeight + Math.max(hostHeight, ppi * 10);
     const startInch = Math.floor((-guardHeight) / ppi);
     const endInch = Math.ceil((hostHeight + guardHeight) / ppi);
     for (let i = startInch; i <= endInch; i++) {
@@ -551,24 +602,33 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  function positionRulersImmediate() {
+  function positionRulersInternal(preferLiveLayout = false) {
     if (!state.showRulers) return;
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
     ensureRulerMarkers();
     syncMarkerContainer(app.rulerH_stops_container, [rulerMarkers.left, rulerMarkers.right]);
     syncMarkerContainer(app.rulerV_stops_container, [rulerMarkers.top, rulerMarkers.bottom]);
-    const pageRect = getActivePageRect();
+    const pageRect = getActivePageRect({ preferLiveLayout });
     const snap = computeSnappedVisualMargins();
     rulerMarkers.left.style.left = `${pageRect.left + snap.leftPx * state.zoom}px`;
     rulerMarkers.right.style.left = `${pageRect.left + snap.rightPx * state.zoom}px`;
     rulerMarkers.top.style.top = `${pageRect.top + snap.topPx * state.zoom}px`;
-    rulerMarkers.bottom.style.top = `${pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom}px`;
+    const pageBottom = pageRect.top + pageRect.height;
+    rulerMarkers.bottom.style.top = `${pageBottom - snap.bottomPx * state.zoom}px`;
     updateRulerTicks(pageRect);
   }
 
-  function positionRulers() {
+  function positionRulers(options = {}) {
     if (!state.showRulers) return;
-    positionRulersImmediate();
+    const preferLiveLayout = Boolean(options?.preferLiveLayout);
+    positionRulersInternal(preferLiveLayout);
+    if (preferLiveLayout) return;
+    if (typeof requestAnimationFrame !== 'function') return;
+    if (pendingRulerRAF) cancelAnimationFrame(pendingRulerRAF);
+    pendingRulerRAF = requestAnimationFrame(() => {
+      pendingRulerRAF = 0;
+      positionRulers({ preferLiveLayout: true });
+    });
   }
 
   function setMarginBoxesVisible(show) {
