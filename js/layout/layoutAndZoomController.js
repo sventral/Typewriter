@@ -47,8 +47,17 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let zoomIndicatorTimer = null;
   let pendingZoomRedrawRAF = 0;
   let pendingZoomRedrawIsTimeout = false;
-  let pendingRulerRAF = 0;
-  let pendingSafariRulerTimeout = 0;
+  const SAFARI_RULER_SYNC_WINDOW_MS = 240;
+  let safariRulerSyncRAF = 0;
+  let safariRulerSyncTimeout = 0;
+  let safariRulerSyncDeadline = 0;
+  const rulerMarkers = {
+    hLeft: null,
+    hRight: null,
+    vTop: null,
+    vBottom: null,
+  };
+  let rulerMarkersInitialized = false;
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
@@ -400,42 +409,123 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  function clearPendingRulerFrames() {
-    if (pendingRulerRAF) {
-      if (typeof cancelAnimationFrame === 'function') {
-        cancelAnimationFrame(pendingRulerRAF);
-      }
-      pendingRulerRAF = 0;
+  function getTimelineNow() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+      return performance.now();
     }
-    if (pendingSafariRulerTimeout) {
-      clearTimeout(pendingSafariRulerTimeout);
-      pendingSafariRulerTimeout = 0;
-    }
+    return Date.now();
   }
 
-  function positionRulersImmediate() {
+  function ensureRulerMarkers() {
+    if (!app.rulerH_stops_container || !app.rulerV_stops_container) return null;
+    const needsInit =
+      !rulerMarkersInitialized ||
+      !rulerMarkers.hLeft?.isConnected ||
+      !rulerMarkers.hRight?.isConnected ||
+      !rulerMarkers.vTop?.isConnected ||
+      !rulerMarkers.vBottom?.isConnected ||
+      rulerMarkers.hLeft?.parentElement !== app.rulerH_stops_container ||
+      rulerMarkers.hRight?.parentElement !== app.rulerH_stops_container ||
+      rulerMarkers.vTop?.parentElement !== app.rulerV_stops_container ||
+      rulerMarkers.vBottom?.parentElement !== app.rulerV_stops_container;
+    if (needsInit) {
+      app.rulerH_stops_container.innerHTML = '';
+      app.rulerV_stops_container.innerHTML = '';
+      rulerMarkers.hLeft = document.createElement('div');
+      rulerMarkers.hLeft.className = 'tri left';
+      app.rulerH_stops_container.appendChild(rulerMarkers.hLeft);
+      rulerMarkers.hRight = document.createElement('div');
+      rulerMarkers.hRight.className = 'tri right';
+      app.rulerH_stops_container.appendChild(rulerMarkers.hRight);
+      rulerMarkers.vTop = document.createElement('div');
+      rulerMarkers.vTop.className = 'tri-v top';
+      app.rulerV_stops_container.appendChild(rulerMarkers.vTop);
+      rulerMarkers.vBottom = document.createElement('div');
+      rulerMarkers.vBottom.className = 'tri-v bottom';
+      app.rulerV_stops_container.appendChild(rulerMarkers.vBottom);
+      rulerMarkersInitialized = true;
+    }
+    return rulerMarkers;
+  }
+
+  function cancelSafariRulerSyncLoop() {
+    if (safariRulerSyncRAF && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(safariRulerSyncRAF);
+    }
+    if (safariRulerSyncTimeout) {
+      clearTimeout(safariRulerSyncTimeout);
+    }
+    safariRulerSyncRAF = 0;
+    safariRulerSyncTimeout = 0;
+    safariRulerSyncDeadline = 0;
+  }
+
+  function shouldContinueSafariRulerSync(timestamp) {
+    if (!safariRulerSyncDeadline) return false;
+    const now = Number.isFinite(timestamp) ? timestamp : getTimelineNow();
+    return now < safariRulerSyncDeadline;
+  }
+
+  function safariRulerSyncFrame(timestamp) {
+    safariRulerSyncRAF = 0;
+    safariRulerSyncTimeout = 0;
+    if (!state.showRulers) {
+      safariRulerSyncDeadline = 0;
+      return;
+    }
+    positionRulersImmediate({ skipTickUpdate: true });
+    if (!shouldContinueSafariRulerSync(timestamp)) {
+      safariRulerSyncDeadline = 0;
+      return;
+    }
+    queueSafariRulerSyncFrame();
+  }
+
+  function queueSafariRulerSyncFrame() {
+    if (!state.showRulers) {
+      safariRulerSyncDeadline = 0;
+      return;
+    }
+    if (typeof requestAnimationFrame === 'function') {
+      safariRulerSyncRAF = requestAnimationFrame(safariRulerSyncFrame);
+      return;
+    }
+    safariRulerSyncTimeout = setTimeout(() => safariRulerSyncFrame(getTimelineNow()), 16);
+  }
+
+  function ensureSafariRulerSyncLoop(windowMs = SAFARI_RULER_SYNC_WINDOW_MS) {
+    if (!state.showRulers) return;
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
-    app.rulerH_stops_container.innerHTML = '';
-    app.rulerV_stops_container.innerHTML = '';
+    const now = getTimelineNow();
+    const target = now + windowMs;
+    safariRulerSyncDeadline = safariRulerSyncDeadline
+      ? Math.max(safariRulerSyncDeadline, target)
+      : target;
+    if (safariRulerSyncRAF || safariRulerSyncTimeout) return;
+    queueSafariRulerSyncFrame();
+  }
+
+  function clearPendingRulerFrames() {
+    cancelSafariRulerSyncLoop();
+  }
+
+  function positionRulersImmediate({ skipTickUpdate = false } = {}) {
+    if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
+    const markers = ensureRulerMarkers();
+    if (!markers) return;
     const pageRect = getActivePageRect();
     const snap = computeSnappedVisualMargins();
-    const mLeft = document.createElement('div');
-    mLeft.className = 'tri left';
-    mLeft.style.left = `${pageRect.left + snap.leftPx * state.zoom}px`;
-    app.rulerH_stops_container.appendChild(mLeft);
-    const mRight = document.createElement('div');
-    mRight.className = 'tri right';
-    mRight.style.left = `${pageRect.left + snap.rightPx * state.zoom}px`;
-    app.rulerH_stops_container.appendChild(mRight);
-    const mTop = document.createElement('div');
-    mTop.className = 'tri-v top';
-    mTop.style.top = `${pageRect.top + snap.topPx * state.zoom}px`;
-    app.rulerV_stops_container.appendChild(mTop);
-    const mBottom = document.createElement('div');
-    mBottom.className = 'tri-v bottom';
-    mBottom.style.top = `${pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom}px`;
-    app.rulerV_stops_container.appendChild(mBottom);
-    updateRulerTicks(pageRect);
+    const left = pageRect.left + snap.leftPx * state.zoom;
+    const right = pageRect.left + snap.rightPx * state.zoom;
+    const top = pageRect.top + snap.topPx * state.zoom;
+    const bottom = pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom;
+    markers.hLeft.style.left = `${left}px`;
+    markers.hRight.style.left = `${right}px`;
+    markers.vTop.style.top = `${top}px`;
+    markers.vBottom.style.top = `${bottom}px`;
+    if (!skipTickUpdate) {
+      updateRulerTicks(pageRect);
+    }
   }
 
   function positionRulers() {
@@ -451,33 +541,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       positionRulersImmediate();
       return;
     }
-    if (pendingRulerRAF || pendingSafariRulerTimeout) return;
-    const applyPosition = () => {
-      if (!state.showRulers) return;
-      positionRulersImmediate();
-    };
-    if (typeof requestAnimationFrame === 'function') {
-      pendingRulerRAF = requestAnimationFrame(() => {
-        pendingRulerRAF = 0;
-        if (typeof setTimeout === 'function') {
-          pendingSafariRulerTimeout = setTimeout(() => {
-            pendingSafariRulerTimeout = 0;
-            applyPosition();
-          }, 0);
-        } else {
-          applyPosition();
-        }
-      });
-      return;
-    }
-    if (typeof setTimeout === 'function') {
-      pendingSafariRulerTimeout = setTimeout(() => {
-        pendingSafariRulerTimeout = 0;
-        applyPosition();
-      }, 0);
-      return;
-    }
-    applyPosition();
+    positionRulersImmediate();
+    ensureSafariRulerSyncLoop();
   }
 
   function setMarginBoxesVisible(show) {
