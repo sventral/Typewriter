@@ -1,5 +1,10 @@
 import { createDomRefs } from './utils/domElements.js';
-import { computeBaseMetrics } from './config/metrics.js';
+import {
+  computeBaseMetrics,
+  exactFontString,
+  recalcMetrics as recalcMetricsForContext,
+  scheduleMetricsUpdate as scheduleMetricsUpdateForContext,
+} from './config/metrics.js';
 import { createMainState, createEphemeralState } from './state/state.js';
 import { EDGE_BLEED, GRAIN_CFG, INK_TEXTURE } from './config/inkConfig.js';
 import { clamp } from './utils/math.js';
@@ -30,6 +35,27 @@ const context = createAppContext({ app, state, metrics, ephemeral });
 const metricsStore = context.scalars;
 const { callbacks: contextCallbacks } = context;
 
+const metricsOptions = {
+  state,
+  metricsStore,
+  contextMetrics: context.metrics,
+  app,
+  lineHeightRaw: LINE_H_RAW,
+  gridDiv: GRID_DIV,
+  getTargetPitchPx,
+  dpr: DPR,
+  onCaretHeightChange: (heightPx) => {
+    if (app?.caretEl?.style) {
+      app.caretEl.style.height = heightPx + 'px';
+    }
+  },
+};
+
+const recalcMetrics = (face) => recalcMetricsForContext(face, metricsOptions);
+
+const scheduleMetricsUpdate = (full = false) =>
+  scheduleMetricsUpdateForContext({ ephemeral, applyMetricsNow, requestAnimationFrameFn: requestAnimationFrame }, full);
+
 primeInitialMetrics();
 let {
   lastDigitTs,
@@ -45,8 +71,6 @@ let {
   freezeVirtual,
   batchDepth,
   typingBatchRAF,
-  metricsRAF,
-  pendingFullRebuild,
   virtRAF,
   fontLoadSeq,
 } = ephemeral;
@@ -233,7 +257,7 @@ const editingController = createDocumentEditingController({
   makePageRecord,
   prepareCanvas,
   configureCanvasContext,
-  recalcMetrics,
+  metricsOptions,
   rebuildAllAtlases: (...args) => contextCallbacks.rebuildAllAtlases(...args),
   setPaperOffset,
   applyDefaultMargins,
@@ -683,8 +707,6 @@ function targetPitchForCpi(cpi){
   const { cols2 } = computeColsFromCpi(cpi);
   return app.PAGE_W / cols2;
 }
-function exactFontString(sizePx, face){ return `400 ${sizePx}px "${face}"`; }
-
 const FONT_CANDIDATES = [
   () => metricsStore.ACTIVE_FONT_NAME, () => 'TT2020Base', () => 'TT2020StyleB',
   () => 'TT2020StyleD', () => 'TT2020StyleE', () => 'TT2020StyleF',
@@ -711,32 +733,6 @@ async function resolveAvailableFace(preferredFace){
   }
   return 'monospace';
 }
-
-function baseCaretHeightPx(){
-  return GRID_DIV * metricsStore.GRID_H;
-}
-
-function calibrateMonospaceFont(targetPitchPx, face, inkWidthPct){
-  const pct = (typeof inkWidthPct === 'number' && isFinite(inkWidthPct)) ? inkWidthPct : 84;
-  const targetInkPx = Math.max(0.25, targetPitchPx * (pct / 100));
-  const BASE = 200;
-  const TEST = 'MW@#%&()[]{}|/\\abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const c = document.createElement('canvas').getContext('2d');
-  const wmax = size => { c.font = exactFontString(size, face); let m=0; for (const ch of TEST) m=Math.max(m, c.measureText(ch).width); return m + 0.25; };
-  let size = Math.max(1, targetInkPx * BASE / wmax(BASE));
-  for (let i=0;i<8;i++){ const r = targetInkPx / Math.max(0.25, wmax(size)); if (Math.abs(1-r) < 0.002) break; size = Math.max(1, size * r); }
-  while (wmax(size) > targetInkPx) size = Math.max(1, size - 0.25);
-  c.font = exactFontString(size, face);
-  const m = c.measureText('Hg');
-  return { size, asc: m.actualBoundingBoxAscent || size*0.8, desc: m.actualBoundingBoxDescent || size*0.2 };
-}
-
-const roundToDPR = (v) => {
-  const q = Math.round(v * DPR);
-  let r = q / DPR;
-  if (r > v) r = (q - 1) / DPR;
-  return Math.max(0.25, r);
-};
 
 function computeMaxRenderScale(){
   const cap = 8192;
@@ -802,37 +798,6 @@ function shiftDocumentRows(deltaMu) {
     lastDigitCaret = { ...lastDigitCaret, rowMu: lastDigitCaret.rowMu + deltaMu };
     ephemeral.lastDigitCaret = lastDigitCaret;
   }
-}
-
-function recalcMetrics(face){
-  const targetPitch = getTargetPitchPx();
-  const m = calibrateMonospaceFont(targetPitch, face, state.inkWidthPct);
-  metricsStore.FONT_SIZE = m.size;
-  metricsStore.ASC = m.asc;
-  metricsStore.DESC = m.desc;
-  metricsStore.CHAR_W = roundToDPR(targetPitch);
-  metricsStore.GRID_H = LINE_H_RAW / GRID_DIV;
-  metricsStore.BASELINE_OFFSET_CELL = metricsStore.ASC;
-  if (context?.metrics){
-    context.metrics.FONT_SIZE = metricsStore.FONT_SIZE;
-    context.metrics.ASC = metricsStore.ASC;
-    context.metrics.DESC = metricsStore.DESC;
-    context.metrics.CHAR_W = metricsStore.CHAR_W;
-    context.metrics.BASELINE_OFFSET_CELL = metricsStore.BASELINE_OFFSET_CELL;
-    context.metrics.GRID_H = metricsStore.GRID_H;
-  }
-  if (app?.caretEl?.style){
-    app.caretEl.style.height = baseCaretHeightPx() + 'px';
-  }
-}
-function scheduleMetricsUpdate(full=false){
-  pendingFullRebuild = pendingFullRebuild || full;
-  if (metricsRAF) return;
-  metricsRAF = requestAnimationFrame(()=>{
-    metricsRAF = 0;
-    applyMetricsNow(pendingFullRebuild);
-    pendingFullRebuild=false;
-  });
 }
 
 function applyMetricsNow(full=false){
