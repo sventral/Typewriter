@@ -6,7 +6,7 @@
     --stage-height-mult: 1.2;
     --stage-width-px: calc(var(--page-width-px) * var(--stage-width-mult));
     --stage-height-px: calc(var(--page-height-px) * var(--stage-height-mult));
-    --stage-bg-light:#343639;
+    --stage-bg-light:#d1d1d3;
     --stage-bg-dark:#343639;
     --page-bg-light:#ffffff;
     --page-bg-dark:#1f2024;
