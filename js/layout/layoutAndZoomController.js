@@ -43,6 +43,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   const { clampCaretToBounds } = editingController;
 
   let hammerNudgeRAF = 0;
+  let pendingRulerFrame = 0;
+  let pendingRulerFrameIsTimeout = false;
   let zoomDrag = null;
   let zoomIndicatorTimer = null;
   let pendingZoomRedrawRAF = 0;
@@ -398,7 +400,20 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
-  function positionRulers() {
+  function clearPendingRulerFrame() {
+    if (!pendingRulerFrame) return;
+    if (pendingRulerFrameIsTimeout) {
+      clearTimeout(pendingRulerFrame);
+    } else if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(pendingRulerFrame);
+    }
+    pendingRulerFrame = 0;
+    pendingRulerFrameIsTimeout = false;
+  }
+
+  function applyRulerPositions() {
+    pendingRulerFrame = 0;
+    pendingRulerFrameIsTimeout = false;
     if (!state.showRulers) return;
     if (!app.rulerH_stops_container || !app.rulerV_stops_container) return;
     app.rulerH_stops_container.innerHTML = '';
@@ -422,6 +437,21 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     mBottom.style.top = `${pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom}px`;
     app.rulerV_stops_container.appendChild(mBottom);
     updateRulerTicks(pageRect);
+  }
+
+  function positionRulers() {
+    if (!state.showRulers) {
+      clearPendingRulerFrame();
+      return;
+    }
+    if (pendingRulerFrame) return;
+    if (typeof requestAnimationFrame === 'function') {
+      pendingRulerFrame = requestAnimationFrame(applyRulerPositions);
+      pendingRulerFrameIsTimeout = false;
+    } else {
+      pendingRulerFrameIsTimeout = true;
+      pendingRulerFrame = setTimeout(applyRulerPositions, 16);
+    }
   }
 
   function setMarginBoxesVisible(show) {
