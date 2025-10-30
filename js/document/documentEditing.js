@@ -1,4 +1,5 @@
 import { clamp } from '../utils/math.js';
+import { recalcMetrics as recalcMetricsForContext } from '../config/metrics.js';
 
 const DEFAULT_DOCUMENT_TITLE = 'Untitled Document';
 
@@ -35,7 +36,7 @@ export function createDocumentEditingController(context) {
     prepareCanvas,
     configureCanvasContext,
     resetPagesBlankPreserveSettings,
-    recalcMetrics,
+    metricsOptions,
     rebuildAllAtlases,
     setPaperOffset,
     applyDefaultMargins,
@@ -45,6 +46,8 @@ export function createDocumentEditingController(context) {
     requestHammerNudge,
     isZooming,
   } = context;
+
+  const recalcMetrics = (face) => recalcMetricsForContext(face, metricsOptions || {});
 
   function markRowAsDirty(page, rowMu) {
     if (rendererHooks.markRowAsDirty) {
