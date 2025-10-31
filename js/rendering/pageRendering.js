@@ -76,8 +76,10 @@ export function createPageRenderer(options) {
     }
   }
 
-  function refreshGlyphEffects() {
-    rebuildAllAtlases();
+  function refreshGlyphEffects(options = {}) {
+    if (options.rebuild !== false) {
+      rebuildAllAtlases();
+    }
     for (const page of state.pages) {
       if (!page) continue;
       page.dirtyAll = true;
