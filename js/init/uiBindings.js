@@ -1,6 +1,6 @@
 import { clamp } from '../utils/math.js';
 import { sanitizeIntegerField } from '../utils/forms.js';
-import { syncInkStrengthDisplays } from '../config/inkSettingsPanel.js';
+import { refreshSavedInkStylesUI, syncInkStrengthDisplays } from '../config/inkSettingsPanel.js';
 import {
   DEFAULT_DOCUMENT_TITLE,
   normalizeDocumentTitle,
@@ -874,7 +874,9 @@ export function setupUIBindings(context, controllers) {
       state.wordWrap = true;
       applyDefaultMargins();
     }
+    refreshSavedInkStylesUI();
     syncInkStrengthDisplays();
+    refreshSavedInkStylesUI();
   }
 
   bindEventListeners();

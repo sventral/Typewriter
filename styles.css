@@ -34,6 +34,10 @@
     --divider-color: #e0e0e0;
     --caret-color:#111111;
     --active-outline:#8aa2ff;
+    --accent-color:#556cd6;
+    --danger-color:#c24040;
+    --danger-hover:#a83232;
+    --danger-border:#c24141;
     --page-shadow:0 8px 24px rgba(0,0,0,0.10);
   }
 
@@ -60,6 +64,10 @@
     --divider-color: #e0e0e0;
     --caret-color:#111111;
     --active-outline:#8aa2ff;
+    --accent-color:#556cd6;
+    --danger-color:#c24040;
+    --danger-hover:#a83232;
+    --danger-border:#c24141;
     --page-shadow:0 8px 24px rgba(0,0,0,0.10);
 }
 
@@ -87,6 +95,10 @@
       --divider-color: #3f4047;
       --caret-color:#111111;
       --active-outline:#9ca3b5;
+      --accent-color:#9ca3ff;
+      --danger-color:#ff6b6b;
+      --danger-hover:#ff8787;
+      --danger-border:#ff8787;
       --page-shadow:0 14px 36px rgba(0,0,0,0.55);
     }
 }
@@ -114,6 +126,10 @@
     --divider-color: #3f4047;
     --caret-color:#111111;
     --active-outline:#9ca3b5;
+    --accent-color:#9ca3ff;
+    --danger-color:#ff6b6b;
+    --danger-hover:#ff8787;
+    --danger-border:#ff8787;
     --page-shadow:0 14px 36px rgba(0,0,0,0.55);
 }
 
@@ -520,7 +536,57 @@ body[data-page-tone='dark']{
   .ink-section.is-disabled { opacity: 0.55; }
   .ink-section-apply-row .btn { margin-left: 12px; }
   .ink-seed-input { font-family: 'SFMono-Regular', 'SFMono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; }
-  .ink-copy-row { margin-top: 16px; }
+  .ink-styles-section { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; }
+  .ink-style-save-row, .ink-style-io-row { display: flex; gap: 8px; align-items: center; }
+  .ink-style-save-row input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--control-border);
+    padding: 0 8px;
+    background: var(--control-bg);
+    color: var(--ui-text);
+    font-size: 13px;
+  }
+  .ink-style-save-row input[type="text"].input-error { border-color: var(--danger-border, #c24141); }
+  .ink-style-save-row .btn { white-space: nowrap; }
+  .ink-style-io-row { justify-content: flex-start; }
+  .ink-style-io-row .btn { flex: 0 0 auto; }
+  .ink-styles-list { display: flex; flex-direction: column; gap: 8px; }
+  .ink-styles-empty { font-size: 12px; opacity: 0.6; }
+  .ink-style-item {
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: var(--panel-item-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ink-style-item.is-active { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color); }
+  .ink-style-item-header { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+  .ink-style-item-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .ink-style-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+  .ink-style-actions { display: flex; gap: 12px; align-items: center; }
+  .ink-style-actions .btn-text { font-size: 12px; padding: 0; background: none; border: none; color: var(--accent-color); cursor: pointer; font: inherit; }
+  .ink-style-actions .btn-text.danger { color: var(--danger-color, #c24141); }
+  .ink-style-actions .btn-text:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+  .ink-style-rename-form { display: flex; gap: 6px; align-items: center; }
+  .ink-style-rename-form input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid var(--control-border);
+    padding: 0 8px;
+    background: var(--control-bg);
+    color: var(--ui-text);
+    font-size: 13px;
+  }
+  .ink-style-item.is-renaming .ink-style-item-header { display: none; }
+  .ink-style-rename-form .btn { padding: 0 10px; height: 26px; }
+  .ink-style-rename-form input.input-error { border-color: var(--danger-border, #c24141); }
   .input-with-suffix { position: relative; display: flex; }
   .input-with-suffix input { width: 100%; }
   .input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }
