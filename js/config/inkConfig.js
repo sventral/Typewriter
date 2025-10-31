@@ -17,15 +17,34 @@ export const INK_TEXTURE = {
     strength: 0.24,
     seed: 0xDEADC0DE
   },
-  jitterSeed: 0x8BADF00D
+  jitterSeed: 0x8BADF00D,
+  textureStrength: 1.0,
+  textureVoidsBias: 0.0,
+};
+
+export const POWDER_EFFECT = {
+  enabled: true,
+  powderStrength: 0.65,
+  powderGrainScale: 0.85,
+  powderEdgeFalloff: 2.2,
+  powderCoherence: 0.55,
+};
+
+export const EDGE_FUZZ = {
+  enabled: true,
+  fuzzWidthPx: 1.6,
+  fuzzInwardShare: 0.58,
+  fuzzRoughness: 0.65,
+  fuzzFrequency: 1.2,
+  fuzzOpacity: 0.8,
 };
 
 export const EDGE_BLEED = {
   enabled: true,
   inks: ['b', 'r'],
   passes: [
-    { width: 0.65, alpha: 0.18, jitter: 0.42, jitterY: 0.26, lighten: 0.38, strokes: 2, seed: 0x13579BDF },
-    { width: 1.1, alpha: 0.12, jitter: 0.75, jitterY: 0.45, lighten: 0.52, strokes: 1, seed: 0x2468ACE1 }
+    { width: 0.5, alpha: 0.12, jitter: 0.32, jitterY: 0.18, lighten: 0.28, strokes: 2, seed: 0x13579BDF },
+    { width: 0.9, alpha: 0.08, jitter: 0.55, jitterY: 0.32, lighten: 0.46, strokes: 1, seed: 0x2468ACE1 }
   ]
 };
 

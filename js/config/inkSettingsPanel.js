@@ -1,46 +1,7 @@
-import { EDGE_BLEED, GRAIN_CFG, INK_TEXTURE } from './inkConfig.js';
+import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE, POWDER_EFFECT } from './inkConfig.js';
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
-
-const SECTION_DEFS = [
-  {
-    id: 'texture',
-    label: 'Texture',
-    config: INK_TEXTURE,
-    keyOrder: ['supersample', 'noiseOctaves', 'noiseStrength', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
-    trigger: 'glyph'
-  },
-  {
-    id: 'bleed',
-    label: 'Bleed',
-    config: EDGE_BLEED,
-    keyOrder: ['inks', 'passes'],
-    trigger: 'glyph'
-  },
-  {
-    id: 'grain',
-    label: 'Grain',
-    config: GRAIN_CFG,
-    keyOrder: ['base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'post_gamma', 'alpha', 'seeds', 'composite_op'],
-    trigger: 'grain'
-  }
-];
-
-const state = {
-  overall: 1,
-  sections: {
-    texture: INK_TEXTURE.enabled !== false,
-    bleed: EDGE_BLEED.enabled !== false,
-    grain: GRAIN_CFG.enabled !== false
-  },
-  callbacks: {
-    refreshGlyphs: null,
-    refreshGrain: null
-  },
-  metas: [],
-  initialized: false
-};
-
+const clamp01 = (value) => clamp(Number(value) || 0, 0, 1);
 const HEX_MATCH_RE = /seed|hash/i;
 
 function isHexField(path) {
@@ -334,76 +295,7 @@ function buildObjectControls(meta, container, obj, path, label) {
   container.appendChild(group);
 }
 
-function buildSection(def, root) {
-  const sectionEl = document.createElement('section');
-  sectionEl.className = 'ink-section';
-
-  const header = document.createElement('div');
-  header.className = 'ink-section-header';
-  const title = document.createElement('h4');
-  title.textContent = def.label;
-  header.appendChild(title);
-
-  const toggleLabel = document.createElement('label');
-  toggleLabel.className = 'ink-section-toggle';
-  const toggle = document.createElement('input');
-  toggle.type = 'checkbox';
-  toggle.checked = def.id === 'grain' ? state.sections.grain : !!def.config.enabled;
-  toggleLabel.appendChild(toggle);
-  const toggleText = document.createElement('span');
-  toggleText.textContent = 'On';
-  toggleLabel.appendChild(toggleText);
-  header.appendChild(toggleLabel);
-
-  sectionEl.appendChild(header);
-
-  const body = document.createElement('div');
-  body.className = 'ink-section-body';
-  const meta = {
-    id: def.id,
-    config: def.config,
-    trigger: def.trigger,
-    root: sectionEl,
-    inputs: new Map(),
-    toggle,
-    applyBtn: null
-  };
-
-  def.keyOrder.forEach(key => {
-    const value = def.config[key];
-    const path = key;
-    if (Array.isArray(value)) {
-      buildArrayControls(meta, body, value, path, key);
-      return;
-    }
-    if (value && typeof value === 'object') {
-      buildObjectControls(meta, body, value, path, key);
-      return;
-    }
-    const input = createInputForValue(value, path);
-    if (typeof value === 'string') input.dataset.string = '1';
-    const row = buildControlRow(key, input);
-    body.appendChild(row);
-    meta.inputs.set(path, input);
-  });
-
-  const applyRow = document.createElement('div');
-  applyRow.className = 'control-row ink-section-apply-row';
-  applyRow.appendChild(document.createElement('div'));
-  const applyBtn = document.createElement('button');
-  applyBtn.className = 'btn apply-btn';
-  applyBtn.textContent = 'Apply';
-  applyRow.appendChild(applyBtn);
-  body.appendChild(applyRow);
-  meta.applyBtn = applyBtn;
-
-  sectionEl.appendChild(body);
-  root.appendChild(sectionEl);
-  state.metas.push(meta);
-  return meta;
-}
-
-function syncInputs(meta) {
+function syncConfigInputs(meta) {
   for (const [path, input] of meta.inputs.entries()) {
     const value = getValueByPath(meta.config, path);
     if (input.dataset.hex === '1') {
@@ -421,7 +313,7 @@ function syncInputs(meta) {
   }
 }
 
-function applySection(meta) {
+function applyConfig(meta) {
   for (const [path, input] of meta.inputs.entries()) {
     if (!input) continue;
     if (input.dataset.string === '1' && Array.isArray(getValueByPath(meta.config, path))) {
@@ -432,22 +324,527 @@ function applySection(meta) {
     const value = parseInputValue(input, path);
     setValueByPath(meta.config, path, value);
   }
-  if (meta.id === 'texture' || meta.id === 'bleed') {
-    if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
+  if (meta.id === 'textureConfig' && panelState.appState) {
+    const bias = Number(INK_TEXTURE.textureVoidsBias ?? panelState.appState.inkTextureVoidsBias ?? 0);
+    panelState.appState.inkTextureVoidsBias = clamp(bias, -1, 1);
   }
-  if (meta.id === 'grain') {
-    if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
+  if (['powderConfig', 'textureConfig', 'fuzzConfig', 'bleedConfig'].includes(meta.id)) {
+    if (typeof panelState.callbacks.refreshGlyphs === 'function') panelState.callbacks.refreshGlyphs();
+    if (typeof panelState.callbacks.saveState === 'function') panelState.callbacks.saveState();
   }
-  syncInputs(meta);
+  if (meta.id === 'grainConfig') {
+    if (typeof panelState.callbacks.refreshGrain === 'function') panelState.callbacks.refreshGrain();
+    if (typeof panelState.callbacks.saveState === 'function') panelState.callbacks.saveState();
+  }
+  syncConfigInputs(meta);
+}
+
+const panelState = {
+  overall: 1,
+  sectionStrengths: { interior: 1, edge: 1 },
+  effectStrengths: { powder: 0, texture: 1, fuzz: 0, bleed: 1 },
+  sliderControls: new Map(),
+  metas: [],
+  callbacks: { refreshGlyphs: null, refreshGrain: null, saveState: null },
+  initialized: false,
+  appState: null,
+  themeGateState: { preferWhite: false, inks: [] },
+  themeGateEl: null,
+  seedOutputEls: { grain: null, alt: null },
+};
+
+const EFFECT_CONFIG = {
+  powder: { config: POWDER_EFFECT, stateKey: 'inkPowderStrength', section: 'interior' },
+  texture: { config: INK_TEXTURE, stateKey: 'inkTextureStrength', section: 'interior' },
+  fuzz: { config: EDGE_FUZZ, stateKey: 'inkFuzzStrength', section: 'edge' },
+  bleed: { config: EDGE_BLEED, stateKey: 'inkBleedStrength', section: 'edge' },
+};
+
+const SECTION_STATE_KEYS = {
+  interior: 'inkInteriorStrength',
+  edge: 'inkEdgeStrength',
+};
+
+function setPanelStateFromApp(appState) {
+  panelState.appState = appState || null;
+  const src = panelState.appState || {};
+  panelState.overall = clamp01(src.inkEffectsOverall ?? panelState.overall ?? 1);
+  panelState.sectionStrengths.interior = clamp01(src.inkInteriorStrength ?? panelState.sectionStrengths.interior ?? 1);
+  panelState.sectionStrengths.edge = clamp01(src.inkEdgeStrength ?? panelState.sectionStrengths.edge ?? 1);
+  panelState.effectStrengths.powder = clamp01(src.inkPowderStrength ?? panelState.effectStrengths.powder);
+  panelState.effectStrengths.texture = clamp01(src.inkTextureStrength ?? panelState.effectStrengths.texture);
+  panelState.effectStrengths.fuzz = clamp01(src.inkFuzzStrength ?? panelState.effectStrengths.fuzz);
+  panelState.effectStrengths.bleed = clamp01(src.inkBleedStrength ?? panelState.effectStrengths.bleed);
+  if (panelState.appState && Number.isFinite(src.inkTextureVoidsBias)) {
+    panelState.appState.inkTextureVoidsBias = clamp(Number(src.inkTextureVoidsBias), -1, 1);
+  }
+  panelState.themeGateState = {
+    preferWhite: !!src.inkEffectsPreferWhite,
+    inks: Array.isArray(EDGE_BLEED.inks) ? [...EDGE_BLEED.inks] : [],
+  };
+  syncConfigEnabled();
+}
+
+function persistEffectToApp(effectId, normalized) {
+  const map = EFFECT_CONFIG[effectId];
+  if (!map || !panelState.appState) return;
+  panelState.appState[map.stateKey] = normalized;
+  if (effectId === 'texture' && Number.isFinite(panelState.appState.inkTextureVoidsBias)) {
+    panelState.appState.inkTextureVoidsBias = clamp(Number(panelState.appState.inkTextureVoidsBias), -1, 1);
+  }
+}
+
+function persistSectionStrengthToApp(sectionId, normalized) {
+  if (!panelState.appState) return;
+  const key = SECTION_STATE_KEYS[sectionId];
+  if (key) panelState.appState[key] = normalized;
+}
+
+function syncConfigEnabled() {
+  const overall = clamp01(panelState.overall);
+  const interior = overall > 0 ? clamp01(panelState.sectionStrengths.interior) : 0;
+  const edge = overall > 0 ? clamp01(panelState.sectionStrengths.edge) : 0;
+  POWDER_EFFECT.enabled = interior > 0 && clamp01(panelState.effectStrengths.powder) > 0;
+  INK_TEXTURE.enabled = interior > 0 && clamp01(panelState.effectStrengths.texture) > 0;
+  EDGE_FUZZ.enabled = edge > 0 && clamp01(panelState.effectStrengths.fuzz) > 0;
+  EDGE_BLEED.enabled = edge > 0 && clamp01(panelState.effectStrengths.bleed) > 0;
+}
+
+function applyEffectStrength(effectId, normalized) {
+  const cfg = EFFECT_CONFIG[effectId];
+  if (!cfg) return;
+  const max = effectId === 'texture' ? 1.5 : 1;
+  const sanitized = clamp(Number(normalized) || 0, 0, max);
+  if (panelState.effectStrengths[effectId] === sanitized) return;
+  panelState.effectStrengths[effectId] = sanitized;
+  persistEffectToApp(effectId, sanitized);
+  syncConfigEnabled();
+  if (typeof panelState.callbacks.refreshGlyphs === 'function') panelState.callbacks.refreshGlyphs();
+  if (typeof panelState.callbacks.saveState === 'function') panelState.callbacks.saveState();
+}
+
+function applySectionStrength(sectionId, normalized) {
+  const key = SECTION_STATE_KEYS[sectionId];
+  if (!key) return;
+  const value = clamp01(normalized);
+  if (panelState.sectionStrengths[sectionId] === value) return;
+  panelState.sectionStrengths[sectionId] = value;
+  persistSectionStrengthToApp(sectionId, value);
+  syncConfigEnabled();
+  if (typeof panelState.callbacks.refreshGlyphs === 'function') panelState.callbacks.refreshGlyphs();
+  if (sectionId === 'interior' && typeof panelState.callbacks.refreshGrain === 'function') panelState.callbacks.refreshGrain();
+  if (typeof panelState.callbacks.saveState === 'function') panelState.callbacks.saveState();
+}
+
+function applyOverallStrength(normalized) {
+  const clamped = clamp01(normalized);
+  if (panelState.overall === clamped) return;
+  panelState.overall = clamped;
+  if (panelState.appState) {
+    panelState.appState.inkEffectsOverall = clamped;
+  }
+  syncConfigEnabled();
+  if (typeof panelState.callbacks.refreshGlyphs === 'function') panelState.callbacks.refreshGlyphs();
+  if (typeof panelState.callbacks.refreshGrain === 'function') panelState.callbacks.refreshGrain();
+  if (typeof panelState.callbacks.saveState === 'function') panelState.callbacks.saveState();
+}
+
+function getSectionStrength(sectionId) {
+  return clamp01(panelState.sectionStrengths[sectionId] ?? 1);
+}
+
+function defaultFormat(value) {
+  return `${Math.round(value)}%`;
+}
+
+function registerSlider(key, { input, valueEl, min = 0, max = 100, step = 1, getSliderValue, onSliderChange, formatValue = defaultFormat, disabledWhen = null }) {
+  if (!input) return;
+  input.min = String(min);
+  input.max = String(max);
+  input.step = String(step);
+  panelState.sliderControls.set(key, { input, valueEl, min, max, getSliderValue, onSliderChange, formatValue, disabledWhen });
+  input.addEventListener('input', () => {
+    const raw = Number(input.value);
+    const clamped = clamp(raw, min, max);
+    if (clamped !== raw) input.value = String(clamped);
+    if (typeof onSliderChange === 'function') onSliderChange(clamped);
+    if (valueEl) valueEl.textContent = formatValue(clamped);
+    syncAllSliders();
+  });
+}
+
+function syncSlider(key) {
+  const control = panelState.sliderControls.get(key);
+  if (!control) return;
+  const { input, valueEl, min, max, getSliderValue, formatValue, disabledWhen } = control;
+  if (typeof getSliderValue === 'function') {
+    let sliderValue = Number(getSliderValue());
+    if (!Number.isFinite(sliderValue)) sliderValue = min;
+    sliderValue = clamp(sliderValue, min, max);
+    if (input) input.value = String(sliderValue);
+    if (valueEl) valueEl.textContent = formatValue(sliderValue);
+  }
+  if (input) input.disabled = typeof disabledWhen === 'function' ? !!disabledWhen() : false;
+}
+
+function syncAllSliders() {
+  for (const key of panelState.sliderControls.keys()) {
+    syncSlider(key);
+  }
+}
+
+function createSliderRow({ id, label, key, min = 0, max = 100, step = 1, getValue, onChange, formatValue = defaultFormat, disabledWhen }) {
+  const row = document.createElement('div');
+  row.className = 'control-row';
+  const labelEl = document.createElement('label');
+  labelEl.setAttribute('for', id);
+  labelEl.textContent = label;
+  row.appendChild(labelEl);
+  const sliderWrap = document.createElement('div');
+  sliderWrap.className = 'slider-control';
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.id = id;
+  input.className = 'ink-slider';
+  const valueEl = document.createElement('span');
+  valueEl.className = 'slider-value';
+  sliderWrap.appendChild(input);
+  sliderWrap.appendChild(valueEl);
+  row.appendChild(sliderWrap);
+  registerSlider(key, {
+    input,
+    valueEl,
+    min,
+    max,
+    step,
+    getSliderValue: getValue,
+    onSliderChange: onChange,
+    formatValue,
+    disabledWhen,
+  });
+  return row;
+}
+
+function buildConfigGroup(def, container) {
+  const group = document.createElement('div');
+  group.className = 'ink-subgroup';
+  if (def.label) {
+    const heading = document.createElement('div');
+    heading.className = 'ink-subheading';
+    heading.textContent = def.label;
+    group.appendChild(heading);
+  }
+  const meta = {
+    id: def.id,
+    config: def.config,
+    trigger: def.trigger || 'glyph',
+    root: group,
+    inputs: new Map(),
+    applyBtn: null,
+  };
+  def.keyOrder.forEach(key => {
+    const value = def.config[key];
+    const path = key;
+    if (Array.isArray(value)) {
+      buildArrayControls(meta, group, value, path, key);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      buildObjectControls(meta, group, value, path, key);
+      return;
+    }
+    const input = createInputForValue(value, path);
+    if (typeof value === 'string') input.dataset.string = '1';
+    const row = buildControlRow(key, input);
+    group.appendChild(row);
+    meta.inputs.set(path, input);
+  });
+  const applyRow = document.createElement('div');
+  applyRow.className = 'control-row ink-section-apply-row';
+  applyRow.appendChild(document.createElement('div'));
+  const applyBtn = document.createElement('button');
+  applyBtn.className = 'btn apply-btn';
+  applyBtn.textContent = 'Apply';
+  applyRow.appendChild(applyBtn);
+  group.appendChild(applyRow);
+  meta.applyBtn = applyBtn;
+  panelState.metas.push(meta);
+  applyBtn.addEventListener('click', () => applyConfig(meta));
+  syncConfigInputs(meta);
+  container.appendChild(group);
+  return group;
+}
+
+function createSection(title) {
+  const sectionEl = document.createElement('section');
+  sectionEl.className = 'ink-section';
+  const header = document.createElement('div');
+  header.className = 'ink-section-header';
+  const heading = document.createElement('h4');
+  heading.textContent = title;
+  header.appendChild(heading);
+  sectionEl.appendChild(header);
+  const body = document.createElement('div');
+  body.className = 'ink-section-body';
+  sectionEl.appendChild(body);
+  return { sectionEl, header, body };
+}
+
+function buildInteriorSection(root) {
+  const { sectionEl, body } = createSection('Ink (interior)');
+  const strengthRow = createSliderRow({
+    id: 'inkInteriorStrengthSlider',
+    label: 'Strength',
+    key: 'section:interior',
+    getValue: () => Math.round(getSectionStrength('interior') * 100),
+    onChange: (value) => applySectionStrength('interior', value / 100),
+  });
+  strengthRow.classList.add('strength-slider');
+  body.appendChild(strengthRow);
+
+  const powderSlider = createSliderRow({
+    id: 'inkPowderStrengthSlider',
+    label: 'Powder mix',
+    key: 'effect:powder',
+    getValue: () => Math.round(clamp01(panelState.effectStrengths.powder) * 100),
+    onChange: (value) => applyEffectStrength('powder', value / 100),
+    disabledWhen: () => getSectionStrength('interior') <= 0 || getInkEffectFactor() <= 0,
+  });
+  powderSlider.classList.add('effect-slider');
+  body.appendChild(powderSlider);
+
+  const textureSlider = createSliderRow({
+    id: 'inkTextureStrengthSlider',
+    label: 'Texture mix',
+    key: 'effect:texture',
+    getValue: () => Math.round(clamp01(panelState.effectStrengths.texture) * 100),
+    onChange: (value) => applyEffectStrength('texture', value / 100),
+    disabledWhen: () => getSectionStrength('interior') <= 0 || getInkEffectFactor() <= 0,
+  });
+  textureSlider.classList.add('effect-slider');
+  body.appendChild(textureSlider);
+
+  buildConfigGroup({
+    id: 'powderConfig',
+    label: 'Powder parameters',
+    config: POWDER_EFFECT,
+    keyOrder: ['powderStrength', 'powderGrainScale', 'powderCoherence', 'powderEdgeFalloff'],
+    trigger: 'glyph',
+  }, body);
+
+  buildConfigGroup({
+    id: 'textureConfig',
+    label: 'Texture',
+    config: INK_TEXTURE,
+    keyOrder: ['textureStrength', 'textureVoidsBias', 'supersample', 'noiseOctaves', 'noiseStrength', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
+    trigger: 'glyph',
+  }, body);
+
+  buildConfigGroup({
+    id: 'grainConfig',
+    label: 'Grain overlay',
+    config: GRAIN_CFG,
+    keyOrder: ['base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'post_gamma', 'alpha', 'seeds', 'composite_op'],
+    trigger: 'grain',
+  }, body);
+
+  root.appendChild(sectionEl);
+}
+
+function buildEdgeSection(root) {
+  const { sectionEl, body } = createSection('Edge');
+  const strengthRow = createSliderRow({
+    id: 'inkEdgeStrengthSlider',
+    label: 'Strength',
+    key: 'section:edge',
+    getValue: () => Math.round(getSectionStrength('edge') * 100),
+    onChange: (value) => applySectionStrength('edge', value / 100),
+  });
+  strengthRow.classList.add('strength-slider');
+  body.appendChild(strengthRow);
+
+  const fuzzSlider = createSliderRow({
+    id: 'inkFuzzStrengthSlider',
+    label: 'Fuzz strength',
+    key: 'effect:fuzz',
+    getValue: () => Math.round(clamp01(panelState.effectStrengths.fuzz) * 100),
+    onChange: (value) => applyEffectStrength('fuzz', value / 100),
+    disabledWhen: () => getSectionStrength('edge') <= 0 || getInkEffectFactor() <= 0,
+  });
+  fuzzSlider.classList.add('effect-slider');
+  body.appendChild(fuzzSlider);
+
+  const bleedSlider = createSliderRow({
+    id: 'inkBleedStrengthSlider',
+    label: 'Halo strength',
+    key: 'effect:bleed',
+    getValue: () => Math.round(clamp01(panelState.effectStrengths.bleed) * 100),
+    onChange: (value) => applyEffectStrength('bleed', value / 100),
+    disabledWhen: () => getSectionStrength('edge') <= 0 || getInkEffectFactor() <= 0,
+  });
+  bleedSlider.classList.add('effect-slider');
+  body.appendChild(bleedSlider);
+
+  const sharpRow = document.createElement('div');
+  sharpRow.className = 'control-row';
+  const sharpLabel = document.createElement('label');
+  sharpLabel.textContent = 'Edge helper';
+  sharpRow.appendChild(sharpLabel);
+  const sharpControls = document.createElement('div');
+  sharpControls.className = 'ink-inline-controls';
+  const sharpBtn = document.createElement('button');
+  sharpBtn.type = 'button';
+  sharpBtn.className = 'btn';
+  sharpBtn.textContent = 'Keep edges sharp';
+  sharpBtn.addEventListener('click', () => {
+    applyEffectStrength('fuzz', 0);
+    applyEffectStrength('bleed', 0);
+    syncAllSliders();
+  });
+  sharpControls.appendChild(sharpBtn);
+  sharpRow.appendChild(sharpControls);
+  body.appendChild(sharpRow);
+
+  buildConfigGroup({
+    id: 'fuzzConfig',
+    label: 'Edge fuzz parameters',
+    config: EDGE_FUZZ,
+    keyOrder: ['fuzzWidthPx', 'fuzzInwardShare', 'fuzzRoughness', 'fuzzFrequency', 'fuzzOpacity'],
+    trigger: 'glyph',
+  }, body);
+
+  buildConfigGroup({
+    id: 'bleedConfig',
+    label: 'Halo passes',
+    config: EDGE_BLEED,
+    keyOrder: ['inks', 'passes'],
+    trigger: 'glyph',
+  }, body);
+
+  root.appendChild(sectionEl);
+}
+
+function formatInkList(inks = []) {
+  if (!Array.isArray(inks) || !inks.length) return '';
+  const names = { b: 'Black', r: 'Red', w: 'White' };
+  return inks.map(ink => names[ink] || ink).join(', ');
+}
+
+function applyThemeGateIndicator() {
+  if (!panelState.themeGateEl) return;
+  const { preferWhite, inks } = panelState.themeGateState;
+  const modeLine = panelState.themeGateEl.mode;
+  const inksLine = panelState.themeGateEl.inks;
+  if (modeLine) {
+    modeLine.textContent = preferWhite
+      ? 'Theme gating: Effects favor white ink on dark pages.'
+      : 'Theme gating: Effects favor black ink on light pages.';
+  }
+  if (inksLine) {
+    const friendly = formatInkList(inks);
+    inksLine.textContent = friendly ? `Active inks: ${friendly}` : 'Active inks: —';
+  }
+}
+
+function updateSeedDisplay() {
+  if (!panelState.appState) return;
+  const grain = panelState.appState.grainSeed >>> 0;
+  const alt = panelState.appState.altSeed >>> 0;
+  if (panelState.seedOutputEls.grain) {
+    panelState.seedOutputEls.grain.textContent = toHex(grain);
+  }
+  if (panelState.seedOutputEls.alt) {
+    panelState.seedOutputEls.alt.textContent = toHex(alt);
+  }
+}
+
+function regenerateSeeds() {
+  if (!panelState.appState) return;
+  const rand = () => (Math.random() * 0xFFFFFFFF) >>> 0;
+  panelState.appState.grainSeed = rand();
+  panelState.appState.altSeed = rand();
+  updateSeedDisplay();
+  if (typeof panelState.callbacks.refreshGlyphs === 'function') panelState.callbacks.refreshGlyphs();
+  if (typeof panelState.callbacks.refreshGrain === 'function') panelState.callbacks.refreshGrain();
+  if (typeof panelState.callbacks.saveState === 'function') panelState.callbacks.saveState();
+}
+
+function buildGlobalSection(root) {
+  const { sectionEl, body } = createSection('Global');
+  const overallRow = createSliderRow({
+    id: 'inkEffectsOverallSlider',
+    label: 'Overall effects strength',
+    key: 'overall',
+    getValue: () => Math.round(getInkEffectFactor() * 100),
+    onChange: (value) => applyOverallStrength(value / 100),
+  });
+  overallRow.classList.add('strength-slider');
+  body.appendChild(overallRow);
+
+  const themeBlock = document.createElement('div');
+  themeBlock.className = 'ink-theme-gate';
+  const modeLine = document.createElement('div');
+  const inksLine = document.createElement('div');
+  themeBlock.appendChild(modeLine);
+  themeBlock.appendChild(inksLine);
+  panelState.themeGateEl = { container: themeBlock, mode: modeLine, inks: inksLine };
+  applyThemeGateIndicator();
+  body.appendChild(themeBlock);
+
+  const seedWrap = document.createElement('div');
+  seedWrap.className = 'ink-seed-fields';
+  const grainField = document.createElement('div');
+  grainField.className = 'ink-seed-field';
+  const grainLabel = document.createElement('span');
+  grainLabel.textContent = 'Grain seed';
+  const grainValue = document.createElement('code');
+  grainValue.textContent = '—';
+  grainField.appendChild(grainLabel);
+  grainField.appendChild(grainValue);
+  panelState.seedOutputEls.grain = grainValue;
+  seedWrap.appendChild(grainField);
+
+  const altField = document.createElement('div');
+  altField.className = 'ink-seed-field';
+  const altLabel = document.createElement('span');
+  altLabel.textContent = 'Alt seed';
+  const altValue = document.createElement('code');
+  altValue.textContent = '—';
+  altField.appendChild(altLabel);
+  altField.appendChild(altValue);
+  panelState.seedOutputEls.alt = altValue;
+  seedWrap.appendChild(altField);
+
+  body.appendChild(seedWrap);
+
+  const regenRow = document.createElement('div');
+  regenRow.className = 'control-row';
+  regenRow.appendChild(document.createElement('div'));
+  const regenBtnWrap = document.createElement('div');
+  regenBtnWrap.className = 'ink-inline-controls';
+  const regenBtn = document.createElement('button');
+  regenBtn.type = 'button';
+  regenBtn.className = 'btn apply-btn';
+  regenBtn.textContent = 'Regenerate seeds';
+  regenBtn.addEventListener('click', regenerateSeeds);
+  regenBtnWrap.appendChild(regenBtn);
+  regenRow.appendChild(regenBtnWrap);
+  body.appendChild(regenRow);
+
+  root.appendChild(sectionEl);
 }
 
 function formatConfigExport() {
   const parts = [
+    `export const POWDER_EFFECT = ${formatValue(POWDER_EFFECT, 0, 'POWDER_EFFECT')};`,
+    '',
     `export const INK_TEXTURE = ${formatValue(INK_TEXTURE, 0, 'INK_TEXTURE')};`,
+    '',
+    `export const EDGE_FUZZ = ${formatValue(EDGE_FUZZ, 0, 'EDGE_FUZZ')};`,
     '',
     `export const EDGE_BLEED = ${formatValue(EDGE_BLEED, 0, 'EDGE_BLEED')};`,
     '',
-    `export const GRAIN_CFG = ${formatValue(GRAIN_CFG, 0, 'GRAIN_CFG')};`
+    `export const GRAIN_CFG = ${formatValue(GRAIN_CFG, 0, 'GRAIN_CFG')};`,
   ];
   return `${parts.join('\n')}\n`;
 }
@@ -495,89 +892,92 @@ function fallbackCopy(text, button) {
 }
 
 export function getInkEffectFactor() {
-  return clamp(state.overall, 0, 1);
+  return clamp01(panelState.overall);
+}
+
+export function getPowderEffectStrength() {
+  return clamp01(panelState.effectStrengths.powder || 0) * getSectionStrength('interior') * getInkEffectFactor();
+}
+
+export function getTextureEffectStrength() {
+  return clamp01(panelState.effectStrengths.texture || 0) * getSectionStrength('interior') * getInkEffectFactor();
+}
+
+export function getFuzzEffectStrength() {
+  return clamp01(panelState.effectStrengths.fuzz || 0) * getSectionStrength('edge') * getInkEffectFactor();
+}
+
+export function getBleedEffectStrength() {
+  return clamp01(panelState.effectStrengths.bleed || 0) * getSectionStrength('edge') * getInkEffectFactor();
+}
+
+export function getTextureVoidsBias() {
+  return clamp(Number(panelState.appState?.inkTextureVoidsBias ?? 0), -1, 1);
 }
 
 export function isInkSectionEnabled(sectionId) {
-  if (sectionId === 'grain') return !!state.sections.grain && GRAIN_CFG.enabled !== false;
-  if (sectionId === 'texture') return !!state.sections.texture && INK_TEXTURE.enabled !== false;
-  if (sectionId === 'bleed') return !!state.sections.bleed && EDGE_BLEED.enabled !== false;
-  return true;
+  const overall = getInkEffectFactor();
+  if (overall <= 0) return false;
+  if (sectionId === 'grain') return getSectionStrength('interior') > 0 && GRAIN_CFG.enabled !== false;
+  if (sectionId === 'powder') return POWDER_EFFECT.enabled !== false && getPowderEffectStrength() > 0;
+  if (sectionId === 'texture') return INK_TEXTURE.enabled !== false && getTextureEffectStrength() > 0;
+  if (sectionId === 'fuzz') return EDGE_FUZZ.enabled !== false && getFuzzEffectStrength() > 0;
+  if (sectionId === 'bleed') return EDGE_BLEED.enabled !== false && getBleedEffectStrength() > 0;
+  return overall > 0;
 }
 
-function setOverallStrength(percent) {
-  const pct = clamp(Number(percent) || 0, 0, 100);
-  state.overall = pct / 100;
-  if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-  if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
-  return pct;
+export function updateThemeGateIndicator(preferWhite, inks) {
+  panelState.themeGateState = {
+    preferWhite: !!preferWhite,
+    inks: Array.isArray(inks) ? [...inks] : [],
+  };
+  applyThemeGateIndicator();
 }
 
 export function setupInkSettingsPanel(options = {}) {
-  if (state.initialized) return;
+  if (panelState.initialized) return;
   const {
     refreshGlyphs,
-    refreshGrain
+    refreshGrain,
+    saveStateDebounced,
+    state: appState,
   } = options;
-  state.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
-  state.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
+  panelState.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
+  panelState.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
+  panelState.callbacks.saveState = typeof saveStateDebounced === 'function' ? () => saveStateDebounced() : null;
 
-  const sectionsRoot = document.getElementById('inkSettingsSections');
-  const overallInput = document.getElementById('inkOverallStrength');
-  const overallApplyBtn = document.getElementById('inkOverallApplyBtn');
+  setPanelStateFromApp(appState);
+
+  const root = document.getElementById('inkSettingsSections');
   const copyBtn = document.getElementById('inkSettingsCopyBtn');
-  if (!sectionsRoot) return;
+  if (!root) return;
 
-  state.sections.texture = INK_TEXTURE.enabled !== false;
-  state.sections.bleed = EDGE_BLEED.enabled !== false;
-  state.sections.grain = GRAIN_CFG.enabled !== false;
+  root.innerHTML = '';
+  panelState.sliderControls.clear();
+  panelState.metas = [];
 
-  SECTION_DEFS.forEach(def => {
-    const meta = buildSection(def, sectionsRoot);
-    meta.toggle.addEventListener('change', () => {
-      if (meta.id === 'grain') {
-        state.sections.grain = !!meta.toggle.checked;
-        GRAIN_CFG.enabled = state.sections.grain;
-        meta.root.classList.toggle('is-disabled', !state.sections.grain);
-        if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
-      } else if (meta.id === 'texture') {
-        state.sections.texture = !!meta.toggle.checked;
-        INK_TEXTURE.enabled = state.sections.texture;
-        meta.root.classList.toggle('is-disabled', !state.sections.texture);
-        if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-      } else if (meta.id === 'bleed') {
-        state.sections.bleed = !!meta.toggle.checked;
-        EDGE_BLEED.enabled = state.sections.bleed;
-        meta.root.classList.toggle('is-disabled', !state.sections.bleed);
-        if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-      }
-    });
-    meta.applyBtn.addEventListener('click', () => applySection(meta));
-    const isEnabled = meta.id === 'grain'
-      ? state.sections.grain
-      : meta.id === 'texture'
-        ? state.sections.texture
-        : meta.id === 'bleed'
-          ? state.sections.bleed
-          : true;
-    meta.root.classList.toggle('is-disabled', !isEnabled);
-    syncInputs(meta);
-  });
+  buildInteriorSection(root);
+  buildEdgeSection(root);
+  buildGlobalSection(root);
 
-  if (overallInput) {
-    const pct = clamp(Math.round(state.overall * 100), 0, 100);
-    overallInput.value = String(pct);
-  }
-  if (overallApplyBtn && overallInput) {
-    overallApplyBtn.addEventListener('click', () => {
-      const pct = clamp(Number.parseFloat(overallInput.value) || 0, 0, 100);
-      overallInput.value = String(pct);
-      setOverallStrength(pct);
-    });
-  }
+  updateSeedDisplay();
+  syncAllSliders();
+
   if (copyBtn) {
     copyBtn.addEventListener('click', () => copyConfigToClipboard(copyBtn));
   }
 
-  state.initialized = true;
+  panelState.initialized = true;
+}
+
+export function syncInkSettingsUiFromState(appState = panelState.appState) {
+  if (!panelState.initialized) {
+    setPanelStateFromApp(appState);
+    return;
+  }
+  setPanelStateFromApp(appState);
+  syncAllSliders();
+  panelState.metas.forEach(syncConfigInputs);
+  updateSeedDisplay();
+  applyThemeGateIndicator();
 }

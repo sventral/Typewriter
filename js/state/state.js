@@ -28,6 +28,14 @@ export function createMainState(app, gridDiv = 8) {
     darkPageInDarkMode: false,
     pageFillColor: '#ffffff',
     inkEffectsPreferWhite: false,
+    inkEffectsOverall: 1.0,
+    inkInteriorStrength: 1.0,
+    inkEdgeStrength: 1.0,
+    inkPowderStrength: 0.0,
+    inkTextureStrength: 1.0,
+    inkTextureVoidsBias: 0.0,
+    inkFuzzStrength: 0.0,
+    inkBleedStrength: 1.0,
   };
 }
 

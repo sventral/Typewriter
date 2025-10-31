@@ -56,7 +56,7 @@ export function createPageRenderer(options) {
         seenWhiteAbove = true;
       } else if (isDarkInk) {
         if (!preferWhiteEffects && seenWhiteAbove) {
-          overrides[i] = 'disabled';
+          overrides[i] = { mode: 'auto', allowFuzz: false };
           anyOverrides = true;
         }
         seenDarkAbove = true;

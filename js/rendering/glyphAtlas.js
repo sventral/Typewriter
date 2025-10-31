@@ -20,6 +20,13 @@ export function createGlyphAtlas(options) {
     inkTextureConfig,
     edgeBleedConfig,
     grainConfig,
+    getPowderEffectStrength,
+    getTextureEffectStrength,
+    getFuzzEffectStrength,
+    getBleedEffectStrength,
+    getTextureVoidsBias,
+    powderConfig,
+    fuzzConfig,
   } = options || {};
 
   const app = explicitApp || context?.app;
@@ -41,6 +48,13 @@ export function createGlyphAtlas(options) {
   const getCharWidthFn = ensureMetricGetter(getCharWidth, 'CHAR_W');
   const getRenderScaleFn = ensureMetricGetter(getRenderScale, 'RENDER_SCALE');
   const getStateZoomFn = typeof getStateZoom === 'function' ? getStateZoom : (() => state.zoom);
+  const getPowderStrengthFn = typeof getPowderEffectStrength === 'function' ? getPowderEffectStrength : () => 0;
+  const getTextureStrengthFn = typeof getTextureEffectStrength === 'function' ? getTextureEffectStrength : () => 0;
+  const getFuzzStrengthFn = typeof getFuzzEffectStrength === 'function' ? getFuzzEffectStrength : () => 0;
+  const getBleedStrengthFn = typeof getBleedEffectStrength === 'function' ? getBleedEffectStrength : () => 0;
+  const getTextureVoidsBiasFn = typeof getTextureVoidsBias === 'function' ? getTextureVoidsBias : () => 0;
+  const getPowderConfig = typeof powderConfig === 'function' ? powderConfig : () => ({ enabled: false });
+  const getFuzzConfig = typeof fuzzConfig === 'function' ? fuzzConfig : () => ({ enabled: false });
   const ALT_VARIANTS = 9;
   const atlases = new Map();
   window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
@@ -123,61 +137,269 @@ export function createGlyphAtlas(options) {
     return new ImageData(out, outW, outH);
   }
 
-  function lightenHexColor(hex, factor) {
-    if (typeof hex !== 'string' || !hex.startsWith('#')) return hex;
-    const norm = hex.length === 4
-      ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
-      : hex;
-    const num = Number.parseInt(norm.slice(1), 16);
-    if (!Number.isFinite(num)) return hex;
-    const r = (num >> 16) & 0xFF;
-    const g = (num >> 8) & 0xFF;
-    const b = num & 0xFF;
-    const f = clamp(factor, 0, 1);
-    const rn = Math.round(r + (255 - r) * f);
-    const gn = Math.round(g + (255 - g) * f);
-    const bn = Math.round(b + (255 - b) * f);
-    return `rgb(${rn},${gn},${bn})`;
+function lightenHexColor(hex, factor) {
+  if (typeof hex !== 'string' || !hex.startsWith('#')) return hex;
+  const norm = hex.length === 4
+    ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
+    : hex;
+  const num = Number.parseInt(norm.slice(1), 16);
+  if (!Number.isFinite(num)) return hex;
+  const r = (num >> 16) & 0xFF;
+  const g = (num >> 8) & 0xFF;
+  const b = num & 0xFF;
+  const f = clamp(factor, 0, 1);
+  const rn = Math.round(r + (255 - r) * f);
+  const gn = Math.round(g + (255 - g) * f);
+  const bn = Math.round(b + (255 - b) * f);
+  return `rgb(${rn},${gn},${bn})`;
+}
+
+const COLOR_CACHE = new Map();
+
+function parseColorToRGB(color) {
+  if (!color) return { r: 0, g: 0, b: 0 };
+  if (COLOR_CACHE.has(color)) return COLOR_CACHE.get(color);
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (typeof color === 'string') {
+    const hexMatch = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hexMatch) {
+      const hex = hexMatch[1];
+      if (hex.length === 3) {
+        r = Number.parseInt(hex[0] + hex[0], 16);
+        g = Number.parseInt(hex[1] + hex[1], 16);
+        b = Number.parseInt(hex[2] + hex[2], 16);
+      } else {
+        r = Number.parseInt(hex.slice(0, 2), 16);
+        g = Number.parseInt(hex.slice(2, 4), 16);
+        b = Number.parseInt(hex.slice(4, 6), 16);
+      }
+    } else {
+      const rgbMatch = color.match(/rgba?\(([^)]+)\)/i);
+      if (rgbMatch) {
+        const parts = rgbMatch[1].split(',').map(part => Number.parseFloat(part.trim()));
+        if (parts.length >= 3) {
+          r = clamp(Math.round(parts[0]), 0, 255);
+          g = clamp(Math.round(parts[1]), 0, 255);
+          b = clamp(Math.round(parts[2]), 0, 255);
+        }
+      }
+    }
   }
+  const parsed = { r, g, b };
+  COLOR_CACHE.set(color, parsed);
+  return parsed;
+}
 
-  function applyInkTexture(imageData, options) {
-    const { config, renderScale, sampleScale, charWidth, seed } = options || {};
-    if (!config || !config.enabled) return;
-    const overall = clamp(getInkEffectFactor(), 0, 1);
-    if (overall <= 0) return;
-    const data = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-    if (!data || !width || !height) return;
+function distanceTransform(mask, width, height, invert = false) {
+  const size = width * height;
+  const dist = new Float32Array(size);
+  const INF = 1e9;
+  for (let i = 0; i < size; i++) {
+    const filled = mask[i] > 0;
+    dist[i] = (!invert && filled) || (invert && !filled) ? INF : 0;
+  }
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      let best = dist[idx];
+      if (best > 0) {
+        if (x > 0) best = Math.min(best, dist[idx - 1] + 1);
+        if (y > 0) {
+          best = Math.min(best, dist[idx - width] + 1);
+          if (x > 0) best = Math.min(best, dist[idx - width - 1] + Math.SQRT2);
+          if (x < width - 1) best = Math.min(best, dist[idx - width + 1] + Math.SQRT2);
+        }
+      }
+      dist[idx] = best;
+    }
+  }
+  for (let y = height - 1; y >= 0; y--) {
+    for (let x = width - 1; x >= 0; x--) {
+      const idx = y * width + x;
+      let best = dist[idx];
+      if (x < width - 1) best = Math.min(best, dist[idx + 1] + 1);
+      if (y < height - 1) {
+        best = Math.min(best, dist[idx + width] + 1);
+        if (x > 0) best = Math.min(best, dist[idx + width - 1] + Math.SQRT2);
+        if (x < width - 1) best = Math.min(best, dist[idx + width + 1] + Math.SQRT2);
+      }
+      dist[idx] = best;
+    }
+  }
+  return dist;
+}
 
-    const dpPerCss = Math.max(1e-6, renderScale * sampleScale);
-    const jitterSeed = (seed ^ (config.jitterSeed || 0)) >>> 0;
-    const jitterAmt = charWidth * 0.35;
-    const jitterX = (hash2(1, 0, jitterSeed) - 0.5) * jitterAmt;
-    const jitterY = (hash2(2, 0, jitterSeed) - 0.5) * jitterAmt;
+function buildDistanceInfo(imageData) {
+  if (!imageData) return null;
+  const { width, height, data } = imageData;
+  const size = width * height;
+  const mask = new Uint8Array(size);
+  for (let i = 0; i < size; i++) {
+    mask[i] = data[i * 4 + 3] > 0 ? 1 : 0;
+  }
+  return {
+    mask,
+    inside: distanceTransform(mask, width, height, false),
+    outside: distanceTransform(mask, width, height, true),
+    width,
+    height,
+  };
+}
 
-    const octaves = Array.isArray(config.noiseOctaves) ? config.noiseOctaves : [];
-    let weightSum = 0;
-    for (let i = 0; i < octaves.length; i++) weightSum += Math.max(0, octaves[i].weight || 0);
-    const baseNoiseStrength = Number.isFinite(config.noiseStrength) ? config.noiseStrength : 0;
-    const noiseStrength = baseNoiseStrength * overall;
-    const baseNoiseFloor = clamp(Number.isFinite(config.noiseFloor) ? config.noiseFloor : 0, 0, 1);
-    const noiseFloor = 1 - (1 - baseNoiseFloor) * overall;
+function applyPowderEffect(imageData, distanceInfo, options) {
+  const { data, width, height } = imageData || {};
+  if (!data || !distanceInfo) return;
+  const strength = clamp(Number(options?.strength) || 0, 0, 2);
+  if (strength <= 0) return;
+  const inside = distanceInfo.inside;
+  const mask = distanceInfo.mask;
+  const renderScale = Math.max(1e-3, options?.renderScale || 1);
+  const charWidth = Math.max(1e-3, options?.charWidth || 1);
+  const baseScale = Math.max(1e-3, charWidth * Math.max(0.05, options?.grainScale || 1));
+  const falloff = Math.max(0.25, options?.edgeFalloff || 1.5);
+  const coherence = clamp(Number(options?.coherence) || 0, 0, 1);
+  const seed = options?.seed >>> 0;
+  const coarseSeed = seed ^ 0xC2B2AE3D;
+  const jitterSeed = seed ^ 0x9E3779B1;
+  const invRender = 1 / renderScale;
+  for (let y = 0; y < height; y++) {
+    const yCss = y * invRender;
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (!mask[idx]) continue;
+      const pixelIndex = idx * 4;
+      const alpha = data[pixelIndex + 3];
+      if (alpha <= 0) continue;
+      const distPx = inside[idx];
+      const distCss = distPx * invRender;
+      if (distCss >= falloff) continue;
+      const edgeWeight = 1 - clamp(distCss / falloff, 0, 1);
+      if (edgeWeight <= 0) continue;
+      const xCss = x * invRender;
+      const noiseA = valueNoise2D(xCss, yCss, baseScale, seed);
+      const noiseB = valueNoise2D(xCss, yCss, baseScale * 0.6, coarseSeed);
+      const granular = noiseA * (1 - coherence) + noiseB * coherence;
+      const jitter = hash2(x, y, jitterSeed);
+      const voidBias = 0.42 - coherence * 0.12;
+      const drop = Math.max(0, granular - voidBias) + 0.15 * (jitter - 0.5);
+      const modulation = clamp(1 - strength * edgeWeight * drop, 0.25, 1);
+      data[pixelIndex + 3] = Math.round(alpha * modulation);
+      if (modulation < 1) {
+        const lighten = (1 - modulation) * 0.22;
+        data[pixelIndex] = Math.round(data[pixelIndex] + (255 - data[pixelIndex]) * lighten);
+        data[pixelIndex + 1] = Math.round(data[pixelIndex + 1] + (255 - data[pixelIndex + 1]) * lighten);
+        data[pixelIndex + 2] = Math.round(data[pixelIndex + 2] + (255 - data[pixelIndex + 2]) * lighten);
+      }
+    }
+  }
+}
 
-    const chipCfg = config.chip || {};
-    const chipDensity = Math.max(0, chipCfg.density || 0) * overall;
-    const chipStrength = Math.max(0, chipCfg.strength || 0) * overall;
-    const chipFeather = Math.max(0.01, chipCfg.feather || 0.45);
-    const chipSeed = (seed ^ (chipCfg.seed || 0)) >>> 0;
+function generateFuzzImageData(distanceInfo, options) {
+  if (!distanceInfo) return null;
+  const strength = clamp(Number(options?.strength) || 0, 0, 2);
+  const cfg = options?.config || {};
+  if (!cfg.enabled || strength <= 0) return null;
+  const width = distanceInfo.width;
+  const height = distanceInfo.height;
+  const mask = distanceInfo.mask;
+  const inside = distanceInfo.inside;
+  const outside = distanceInfo.outside;
+  const renderScale = Math.max(1e-3, options?.renderScale || 1);
+  const invRender = 1 / renderScale;
+  const charWidth = Math.max(1e-3, options?.charWidth || 1);
+  const totalWidth = Math.max(0.05, cfg.fuzzWidthPx || 1.2);
+  const inwardShare = clamp(Number(cfg.fuzzInwardShare) || 0.5, 0, 1);
+  const inwardWidth = totalWidth * inwardShare;
+  const outwardWidth = totalWidth - inwardWidth;
+  const baseOpacity = clamp(Number(cfg.fuzzOpacity) || 0.6, 0, 1) * strength;
+  if (baseOpacity <= 0) return null;
+  const roughness = clamp(Number(cfg.fuzzRoughness) || 0.6, 0, 1);
+  const frequency = Math.max(0.2, Number(cfg.fuzzFrequency) || 1);
+  const baseScale = Math.max(1e-3, charWidth * frequency);
+  const seed = options?.seed >>> 0;
+  const coarseSeed = seed ^ 0x85EBCA77;
+  const jitterSeed = seed ^ 0xA5A5A5A5;
+  const { r, g, b } = options?.color || { r: 0, g: 0, b: 0 };
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const yCss = y * invRender;
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      const pixIdx = idx * 4;
+      const isInside = mask[idx] > 0;
+      const distCss = isInside ? inside[idx] * invRender : outside[idx] * invRender;
+      let band = 0;
+      if (isInside) {
+        if (distCss <= inwardWidth) band = 1 - distCss / Math.max(inwardWidth, 1e-3);
+      } else if (distCss <= outwardWidth) {
+        band = 1 - distCss / Math.max(outwardWidth, 1e-3);
+      }
+      if (band <= 0) continue;
+      const shapedBand = Math.pow(clamp(band, 0, 1), 0.75);
+      const xCss = x * invRender;
+      const coarse = valueNoise2D(xCss, yCss, baseScale * 0.6, coarseSeed);
+      const fine = valueNoise2D(xCss, yCss, baseScale, seed);
+      const jitter = hash2(x, y, jitterSeed);
+      const noise = fine * (1 - roughness) + coarse * roughness;
+      const mod = clamp(0.55 + 0.35 * noise + 0.2 * (jitter - 0.5), 0, 1);
+      const alpha = clamp(baseOpacity * shapedBand * mod, 0, 1);
+      if (alpha <= 0.01) continue;
+      data[pixIdx] = r;
+      data[pixIdx + 1] = g;
+      data[pixIdx + 2] = b;
+      data[pixIdx + 3] = Math.round(alpha * 255);
+    }
+  }
+  return new ImageData(data, width, height);
+}
 
-    const scratchCfg = config.scratch || {};
-    const scratchStrength = Math.max(0, scratchCfg.strength || 0) * overall;
-    const baseScratchThreshold = clamp(Number.isFinite(scratchCfg.threshold) ? scratchCfg.threshold : 0.7, 0, 1 - 1e-3);
-    const scratchThreshold = clamp(baseScratchThreshold + (1 - baseScratchThreshold) * (1 - overall), 0, 1 - 1e-3);
-    const scratchScale = Math.max(1e-3, scratchCfg.scale || 1);
-    const scratchAspect = Math.max(1e-3, scratchCfg.aspect || 0.25);
-    const scratchSeed = (seed ^ (scratchCfg.seed || 0)) >>> 0;
-    const scratchDir = normalizeDirection(scratchCfg.direction);
+function quantizeEffectLevel(value, steps = 4) {
+  const clamped = clamp(Number(value) || 0, 0, 1);
+  return Math.round(clamped * steps);
+}
+
+function applyInkTexture(imageData, options) {
+  const { config, renderScale, sampleScale, charWidth, seed, strength, voidsBias } = options || {};
+  if (!config || !config.enabled) return;
+  const effectStrength = clamp(Number(strength) || 0, 0, 2);
+  if (effectStrength <= 0) return;
+  const data = imageData.data;
+  const width = imageData.width;
+  const height = imageData.height;
+  if (!data || !width || !height) return;
+
+  const dpPerCss = Math.max(1e-6, renderScale * sampleScale);
+  const jitterSeed = (seed ^ (config.jitterSeed || 0)) >>> 0;
+  const jitterAmt = charWidth * 0.35;
+  const jitterX = (hash2(1, 0, jitterSeed) - 0.5) * jitterAmt;
+  const jitterY = (hash2(2, 0, jitterSeed) - 0.5) * jitterAmt;
+
+  const octaves = Array.isArray(config.noiseOctaves) ? config.noiseOctaves : [];
+  let weightSum = 0;
+  for (let i = 0; i < octaves.length; i++) weightSum += Math.max(0, octaves[i].weight || 0);
+  const baseNoiseStrength = Number.isFinite(config.noiseStrength) ? config.noiseStrength : 0;
+  const noiseStrength = baseNoiseStrength * effectStrength;
+  const baseNoiseFloor = clamp(Number.isFinite(config.noiseFloor) ? config.noiseFloor : 0, 0, 1);
+  const noiseFloor = 1 - (1 - baseNoiseFloor) * clamp(effectStrength, 0, 1);
+  const combinedBias = clamp(((Number(config.textureVoidsBias) || 0) + (Number(voidsBias) || 0)) * 0.35, -0.35, 0.35);
+  const biasCenter = 0.5 + combinedBias;
+
+  const chipCfg = config.chip || {};
+  const chipDensity = Math.max(0, chipCfg.density || 0) * effectStrength;
+  const chipStrength = Math.max(0, chipCfg.strength || 0) * effectStrength;
+  const chipFeather = Math.max(0.01, chipCfg.feather || 0.45);
+  const chipSeed = (seed ^ (chipCfg.seed || 0)) >>> 0;
+
+  const scratchCfg = config.scratch || {};
+  const scratchStrength = Math.max(0, scratchCfg.strength || 0) * effectStrength;
+  const baseScratchThreshold = clamp(Number.isFinite(scratchCfg.threshold) ? scratchCfg.threshold : 0.7, 0, 1 - 1e-3);
+  const scratchThreshold = clamp(baseScratchThreshold + (1 - baseScratchThreshold) * (1 - clamp(effectStrength, 0, 1)), 0, 1 - 1e-3);
+  const scratchScale = Math.max(1e-3, scratchCfg.scale || 1);
+  const scratchAspect = Math.max(1e-3, scratchCfg.aspect || 0.25);
+  const scratchSeed = (seed ^ (scratchCfg.seed || 0)) >>> 0;
+  const scratchDir = normalizeDirection(scratchCfg.direction);
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -202,7 +424,7 @@ export function createGlyphAtlas(options) {
           noiseVal = accum / weightSum;
         }
 
-        const mod = clamp(1 - (0.5 - noiseVal) * noiseStrength, noiseFloor, 1);
+        const mod = clamp(1 - (biasCenter - noiseVal) * noiseStrength, noiseFloor, 1);
         a *= mod;
 
         if (chipDensity > 0 && chipStrength > 0) {
@@ -230,27 +452,27 @@ export function createGlyphAtlas(options) {
     }
   }
 
-  function applyEdgeBleed(ctx, options) {
-    const { config, text, x, y, color, baseSeed } = options || {};
-    if (!config || !config.enabled || !text) return;
-    const overall = clamp(getInkEffectFactor(), 0, 1);
-    if (overall <= 0 || !isInkSectionEnabled('bleed')) return;
-    const passes = Array.isArray(config.passes) ? config.passes : [];
-    if (!passes.length) return;
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-over';
-    ctx.lineJoin = 'round';
+function applyEdgeBleed(ctx, options) {
+  const { config, text, x, y, color, baseSeed, strength } = options || {};
+  if (!config || !config.enabled || !text) return;
+  const intensity = clamp(Number(strength) || 0, 0, 1);
+  if (intensity <= 0) return;
+  const passes = Array.isArray(config.passes) ? config.passes : [];
+  if (!passes.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-over';
+  ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     for (let i = 0; i < passes.length; i++) {
       const pass = passes[i];
       const strokes = Math.max(1, pass.strokes | 0);
       const jitterBase = Number.isFinite(pass.jitter) ? pass.jitter : 0;
-      const jitter = jitterBase * overall;
+      const jitter = jitterBase * intensity;
       const jitterYBase = Number.isFinite(pass.jitterY) ? pass.jitterY : jitterBase;
-      const jitterY = jitterYBase * overall;
+      const jitterY = jitterYBase * intensity;
       const width = Math.max(0.01, pass.width || 0.5);
-      const alpha = clamp((pass.alpha ?? 0.12) * overall, 0, 1);
-      const lighten = clamp((pass.lighten ?? 0.4) * overall, 0, 1);
+      const alpha = clamp((pass.alpha ?? 0.12) * intensity, 0, 1);
+      const lighten = clamp((pass.lighten ?? 0.4) * intensity, 0, 1);
       const strokeColor = lightenHexColor(color, lighten);
       ctx.lineWidth = width;
       ctx.strokeStyle = strokeColor;
@@ -279,7 +501,10 @@ export function createGlyphAtlas(options) {
       effectsAllowed = true;
     }
 
-    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}`;
+    const powderLevel = (effectsAllowed && powderEnabled) ? quantizeEffectLevel(Math.min(1, powderStrength)) : 0;
+    const textureLevel = (effectsAllowed && textureEnabled) ? quantizeEffectLevel(Math.min(1, textureStrength)) : 0;
+    const fuzzLevel = (effectsAllowed && fuzzEnabled) ? 1 : 0;
+    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|p${powderLevel}|t${textureLevel}|f${fuzzLevel}`;
     let atlas = atlases.get(key);
     if (atlas) return atlas;
 
@@ -292,6 +517,17 @@ export function createGlyphAtlas(options) {
     const COLORS = colors;
     const INK_TEXTURE = inkTextureConfig();
     const EDGE_BLEED = edgeBleedConfig();
+    const POWDER_CFG = getPowderConfig();
+    const FUZZ_CFG = getFuzzConfig();
+    const textureVoidsBias = clamp(Number((INK_TEXTURE && INK_TEXTURE.textureVoidsBias) || 0) + getTextureVoidsBiasFn(), -1, 1);
+    const powderStrengthBase = getPowderStrengthFn();
+    const textureStrengthBase = getTextureStrengthFn();
+    const fuzzStrengthBase = getFuzzStrengthFn();
+    const bleedStrengthBase = getBleedStrengthFn();
+    const powderStrength = clamp((POWDER_CFG?.powderStrength || 0) * powderStrengthBase, 0, 2);
+    const textureStrength = clamp((INK_TEXTURE?.textureStrength || 1) * textureStrengthBase, 0, 2);
+    const fuzzStrength = clamp(fuzzStrengthBase, 0, 1);
+    const bleedStrength = clamp(bleedStrengthBase, 0, 1);
 
     const ASCII_START = 32;
     const ASCII_END = 126;
@@ -328,15 +564,19 @@ export function createGlyphAtlas(options) {
     const advCache = new Float32Array(ASCII_END + 1);
     const SHIFT_EPS = 0.5;
 
-    const useTexture = INK_TEXTURE.enabled && effectsAllowed;
+    const powderEnabled = effectsAllowed && POWDER_CFG?.enabled !== false && powderStrength > 0;
+    const textureEnabled = INK_TEXTURE?.enabled && effectsAllowed && textureStrength > 0;
+    const fuzzEnabled = effectsAllowed && FUZZ_CFG?.enabled !== false && fuzzStrength > 0;
     const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
-    const textureSupersample = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
+    const textureSupersample = textureEnabled ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
     const sampleScale = Math.max(safariSupersample, textureSupersample);
-    const bleedEnabled = EDGE_BLEED.enabled && effectsAllowed && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
-    const needsPipeline = useTexture || bleedEnabled || sampleScale > 1;
+    const bleedEnabled = EDGE_BLEED.enabled && bleedStrength > 0 && effectsAllowed && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
+    const needsPipeline = textureEnabled || bleedEnabled || sampleScale > 1 || powderEnabled || fuzzEnabled;
 
     let glyphCanvas = null;
     let glyphCtx = null;
+    let fuzzCanvas = null;
+    let fuzzCtx = null;
     if (needsPipeline) {
       glyphCanvas = document.createElement('canvas');
       glyphCanvas.width = Math.max(1, cellW_draw_dp * sampleScale);
@@ -344,8 +584,16 @@ export function createGlyphAtlas(options) {
       glyphCtx = glyphCanvas.getContext('2d', { willReadFrequently: true });
       glyphCtx.imageSmoothingEnabled = false;
     }
+    if (fuzzEnabled) {
+      fuzzCanvas = document.createElement('canvas');
+      fuzzCanvas.width = width_dp;
+      fuzzCanvas.height = height_dp;
+      fuzzCtx = fuzzCanvas.getContext('2d');
+      fuzzCtx.setTransform(1, 0, 0, 1, 0, 0);
+      fuzzCtx.clearRect(0, 0, width_dp, height_dp);
+    }
 
-    const atlasSeed = ((state.altSeed >>> 0) ^ Math.imul((variantIdx | 0) + 1, 0x9E3779B1) ^ Math.imul((ink.charCodeAt(0) || 0) + 0x51, 0x85EBCA77)) >>> 0;
+    const atlasSeed = ((state.altSeed >>> 0) ^ (state.grainSeed >>> 0) ^ Math.imul((variantIdx | 0) + 1, 0x9E3779B1) ^ Math.imul((ink.charCodeAt(0) || 0) + 0x51, 0x85EBCA77)) >>> 0;
 
     let code = ASCII_START;
     for (let row = 0; row < ATLAS_ROWS; row++) {
@@ -383,16 +631,38 @@ export function createGlyphAtlas(options) {
           glyphCtx.fillText(text, localXSnapped, localYSnapped);
           glyphCtx.restore();
 
-          if (useTexture) {
-            const glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
-            applyInkTexture(glyphData, {
+          let hiData = null;
+          if (powderEnabled || textureEnabled || fuzzEnabled) {
+            hiData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
+          }
+          let distanceInfo = null;
+          if ((powderEnabled || fuzzEnabled) && hiData) {
+            distanceInfo = buildDistanceInfo(hiData);
+          }
+          if (powderEnabled && distanceInfo) {
+            applyPowderEffect(hiData, distanceInfo, {
+              strength: powderStrength,
+              grainScale: POWDER_CFG?.powderGrainScale || 1,
+              edgeFalloff: POWDER_CFG?.powderEdgeFalloff || 1.6,
+              coherence: POWDER_CFG?.powderCoherence || 0.5,
+              renderScale: RENDER_SCALE * sampleScale,
+              charWidth: CHAR_W,
+              seed: glyphSeed,
+            });
+          }
+          if (textureEnabled && hiData) {
+            applyInkTexture(hiData, {
               config: INK_TEXTURE,
               renderScale: RENDER_SCALE,
               sampleScale,
               charWidth: CHAR_W,
               seed: glyphSeed,
+              strength: textureStrength,
+              voidsBias: textureVoidsBias,
             });
-            glyphCtx.putImageData(glyphData, 0, 0);
+          }
+          if ((powderEnabled || textureEnabled) && hiData) {
+            glyphCtx.putImageData(hiData, 0, 0);
           }
 
           if (bleedEnabled) {
@@ -408,18 +678,35 @@ export function createGlyphAtlas(options) {
               y: localYSnapped,
               color: COLORS[ink] || '#000',
               baseSeed: glyphSeed,
+              strength: bleedStrength,
             });
             glyphCtx.restore();
           }
 
-          glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
+          const finalHiData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
+          let fuzzImageData = null;
+          if (fuzzEnabled && distanceInfo) {
+            const inkColor = parseColorToRGB(COLORS[ink] || '#000');
+            fuzzImageData = generateFuzzImageData(distanceInfo, {
+              config: FUZZ_CFG,
+              strength: fuzzStrength,
+              renderScale: RENDER_SCALE * sampleScale,
+              charWidth: CHAR_W,
+              seed: glyphSeed,
+              color: inkColor,
+            });
+          }
+
           let finalImageData;
           if (sampleScale === 1) {
-            finalImageData = glyphCtx.getImageData(0, 0, cellW_draw_dp, cellH_draw_dp);
+            finalImageData = finalHiData;
           } else {
-            const hiData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
-            finalImageData = downsampleImageData(hiData, sampleScale, cellW_draw_dp, cellH_draw_dp);
+            finalImageData = downsampleImageData(finalHiData, sampleScale, cellW_draw_dp, cellH_draw_dp);
+            if (fuzzImageData) {
+              fuzzImageData = downsampleImageData(fuzzImageData, sampleScale, cellW_draw_dp, cellH_draw_dp);
+            }
           }
+
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.putImageData(finalImageData, destX_dp, destY_dp);
           ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
@@ -427,6 +714,10 @@ export function createGlyphAtlas(options) {
           ctx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
           ctx.textAlign = 'left';
           ctx.textBaseline = 'alphabetic';
+
+          if (fuzzEnabled && fuzzImageData && fuzzCtx) {
+            fuzzCtx.putImageData(fuzzImageData, destX_dp, destY_dp);
+          }
         } else {
           ctx.save();
           ctx.beginPath();
@@ -446,7 +737,7 @@ export function createGlyphAtlas(options) {
         code++;
       }
     }
-    atlas = { canvas, cellW_css: CELL_W_CSS, cellH_css: CELL_H_CSS, cellW_draw_dp, cellH_draw_dp, originY_css: ORIGIN_Y_CSS, rectDpByCode };
+    atlas = { canvas, fuzzCanvas, cellW_css: CELL_W_CSS, cellH_css: CELL_H_CSS, cellW_draw_dp, cellH_draw_dp, originY_css: ORIGIN_Y_CSS, rectDpByCode };
     atlases.set(key, atlas);
     window.atlasStats.builds++;
     return atlas;
@@ -454,7 +745,7 @@ export function createGlyphAtlas(options) {
 
   function variantIndexForCell(pageIndex, rowMu, col) {
     if (ALT_VARIANTS <= 1) return 0;
-    let h = (state.altSeed >>> 0);
+    let h = ((state.altSeed ^ state.grainSeed) >>> 0);
     h ^= Math.imul((pageIndex + 1) | 0, 0x9E3779B1);
     h ^= Math.imul((rowMu + 0x10001) | 0, 0x85EBCA77);
     h ^= Math.imul((col + 0x4001) | 0, 0xC2B2AE3D);
@@ -463,7 +754,13 @@ export function createGlyphAtlas(options) {
   }
 
   function drawGlyph(ctx, ch, ink, x_css, baselineY_css, layerIndex, totalLayers, pageIndex, rowMu, col, effectsOverride = 'auto') {
-    const atlas = ensureAtlas(ink, variantIndexForCell(pageIndex | 0, rowMu | 0, col | 0), effectsOverride);
+    let overrideMode = effectsOverride;
+    let allowFuzz = true;
+    if (effectsOverride && typeof effectsOverride === 'object') {
+      overrideMode = effectsOverride.mode ?? 'auto';
+      if (effectsOverride.allowFuzz === false) allowFuzz = false;
+    }
+    const atlas = ensureAtlas(ink, variantIndexForCell(pageIndex | 0, rowMu | 0, col | 0), overrideMode);
     const fallback = atlas.rectDpByCode['?'.charCodeAt(0)];
     const rect = atlas.rectDpByCode[ch.charCodeAt(0)] || fallback;
     if (!rect) return;
@@ -476,6 +773,9 @@ export function createGlyphAtlas(options) {
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = finalAlpha;
     ctx.drawImage(atlas.canvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, atlas.cellW_css, atlas.cellH_css);
+    if (allowFuzz && atlas.fuzzCanvas) {
+      ctx.drawImage(atlas.fuzzCanvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, atlas.cellW_css, atlas.cellH_css);
+    }
     window.atlasStats.draws++;
     window.atlasStats.perInk[ink] = (window.atlasStats.perInk[ink] || 0) + 1;
   }
