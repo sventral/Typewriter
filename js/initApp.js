@@ -17,6 +17,7 @@ import {
   getInkEffectFactor,
   isInkSectionEnabled,
   setupInkSettingsPanel,
+  syncInkSettingsUiFromState,
   getPowderEffectStrength,
   getTextureEffectStrength,
   getFuzzEffectStrength,
@@ -884,6 +885,7 @@ async function initialize() {
   bootstrapFirstPage();
   const persistedState = loadPersistedState();
   populateInitialUI(persistedState);
+  syncInkSettingsUiFromState(state);
   const { loaded, savedFont } = persistedState;
   const inkAdjustedByTheme = applyAppearance();
 

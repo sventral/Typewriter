@@ -299,8 +299,8 @@ body[data-page-tone='dark']{
     appearance: none;
     background: transparent;
     cursor: pointer;
-    width: 110px; /* This is the track length */
-    transform: rotate(270deg);
+    width: 100%;
+    transform: none;
   }
   input[type="range"].ink-slider::-webkit-slider-runnable-track {
     background: rgba(120, 120, 128, 0.36);
@@ -330,6 +330,10 @@ body[data-page-tone='dark']{
     border-radius: 50%;
     border: 1px solid rgba(0,0,0,0.1);
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .ink-slider-popup input[type="range"].ink-slider {
+    width: 110px;
+    transform: rotate(270deg);
   }
   .slider-value { font-size: 11px; color: var(--ui-text); text-align: center; }
 
@@ -493,7 +497,18 @@ body[data-page-tone='dark']{
   .ink-section:first-of-type { border-top: none; padding-top: 4px; }
   .ink-section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
   .ink-section-toggle { display: flex; align-items: center; gap: 4px; font-size: 11px; letter-spacing: 0; text-transform: none; opacity: 0.8; }
-  .ink-inline-controls { display: flex; align-items: center; gap: 8px; }
+  .ink-inline-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ink-section .strength-slider { margin-bottom: 12px; }
+  .ink-section .strength-slider .slider-control { flex: 1; }
+  .ink-section .strength-slider label { flex-basis: 120px; }
+  .ink-section .effect-slider { margin-bottom: 10px; }
+  .ink-section .effect-slider label { flex-basis: 140px; }
+  .ink-section .effect-slider .slider-control { flex: 1; }
+  .ink-theme-gate { font-size: 12px; line-height: 1.4; opacity: 0.8; display: flex; flex-direction: column; gap: 4px; }
+  .ink-theme-gate strong { font-weight: 600; }
+  .ink-seed-fields { display: flex; flex-direction: column; gap: 6px; }
+  .ink-seed-field { display: flex; justify-content: space-between; font-family: 'SFMono-Regular', 'SFMono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New'; font-size: 12px; }
+  .ink-seed-field span { font-weight: 600; }
   .ink-inline-controls input[type="number"], .ink-inline-controls input[type="text"] { width: 90px; }
   .ink-section-body .control-row { margin-bottom: 6px; }
   .ink-subgroup { border-left: 2px solid rgba(0,0,0,0.06); padding-left: 10px; margin: 6px 0 10px; }

@@ -1,5 +1,6 @@
 import { clamp } from '../utils/math.js';
 import { sanitizeIntegerField } from '../utils/forms.js';
+import { syncInkSettingsUiFromState } from '../config/inkSettingsPanel.js';
 import {
   DEFAULT_DOCUMENT_TITLE,
   normalizeDocumentTitle,
@@ -222,6 +223,9 @@ export function setupUIBindings(context, controllers) {
     }
     docState.activeId = doc.id;
     populateInitialUI({ loaded: true, documents: docState.documents, activeDocumentId: doc.id });
+    if (typeof syncInkSettingsUiFromState === 'function') {
+      syncInkSettingsUiFromState(state);
+    }
     refreshDocumentEnvironment();
     syncDocumentUi();
     saveStateDebounced();
@@ -668,6 +672,7 @@ export function setupUIBindings(context, controllers) {
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     window.addEventListener('paste', handlePaste, { capture: true });
     app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
+    app.stage.addEventListener('pointerdown', () => { focusStage(); }, { passive: true });
     window.addEventListener('resize', () => {
       positionRulers();
       if (!isZooming()) requestHammerNudge();

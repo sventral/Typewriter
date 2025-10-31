@@ -1,3 +1,5 @@
+import { updateThemeGateIndicator } from './inkSettingsPanel.js';
+
 const DARK_PAGE_HEX = '#1f2024';
 const LIGHT_EFFECT_INKS = ['b', 'r'];
 const DARK_EFFECT_INKS = ['w', 'r'];
@@ -173,6 +175,7 @@ export function createThemeController({
     const preferChanged = state.inkEffectsPreferWhite !== preferWhite;
     state.inkEffectsPreferWhite = preferWhite;
     const bleedAdjusted = syncBleedInksForPageTone(darkPageActive);
+    updateThemeGateIndicator(preferWhite, edgeBleed && edgeBleed.inks);
     const shouldSwapInks = lastDarkPageActive !== null && lastDarkPageActive !== darkPageActive;
     if (shouldSwapInks) swapDocumentInkColors();
     applyInkPaletteForTheme(darkPageActive);

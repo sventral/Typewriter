@@ -53,7 +53,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       })
     : [];
   return {
-    v: 23,
+    v: 24,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -86,6 +86,8 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     pageFillColor: state.pageFillColor,
     inkEffects: {
       overall: clamp(Number(state.inkEffectsOverall ?? 1), 0, 1),
+      interior: clamp(Number(state.inkInteriorStrength ?? 1), 0, 1),
+      edge: clamp(Number(state.inkEdgeStrength ?? 1), 0, 1),
       powder: clamp(Number(state.inkPowderStrength ?? 0), 0, 1),
       texture: clamp(Number(state.inkTextureStrength ?? 1), 0, 1.5),
       textureVoidsBias: clamp(Number(state.inkTextureVoidsBias ?? 0), -1, 1),
@@ -109,7 +111,7 @@ export function deserializeDocumentState(data, context) {
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 23) return false;
+  if (!data || data.v < 2 || data.v > 24) return false;
   state.pages = [];
   if (app.stageInner) {
     app.stageInner.innerHTML = '';
@@ -184,6 +186,8 @@ export function deserializeDocumentState(data, context) {
   const effects = data.inkEffects && typeof data.inkEffects === 'object' ? data.inkEffects : {};
   const normalizedEffects = {
     overall: clamp(Number(effects.overall ?? state.inkEffectsOverall ?? 1), 0, 1),
+    interior: clamp(Number(effects.interior ?? state.inkInteriorStrength ?? 1), 0, 1),
+    edge: clamp(Number(effects.edge ?? state.inkEdgeStrength ?? 1), 0, 1),
     powder: clamp(Number(effects.powder ?? state.inkPowderStrength ?? 0), 0, 1),
     texture: clamp(Number(effects.texture ?? state.inkTextureStrength ?? 1), 0, 1.5),
     textureVoidsBias: clamp(Number(effects.textureVoidsBias ?? state.inkTextureVoidsBias ?? 0), -1, 1),
@@ -224,6 +228,8 @@ export function deserializeDocumentState(data, context) {
       ? data.pageFillColor
       : state.pageFillColor,
     inkEffectsOverall: normalizedEffects.overall,
+    inkInteriorStrength: normalizedEffects.interior,
+    inkEdgeStrength: normalizedEffects.edge,
     inkPowderStrength: normalizedEffects.powder,
     inkTextureStrength: normalizedEffects.texture,
     inkTextureVoidsBias: normalizedEffects.textureVoidsBias,
