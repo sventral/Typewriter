@@ -19,7 +19,7 @@ const SECTION_DEFS = [
     keyOrder: ['inks', 'widthPx', 'inwardShare', 'roughness', 'frequency', 'opacity', 'seed'],
     trigger: 'glyph',
     stateKey: 'edgeFuzzStrength',
-    defaultStrength: 0,
+    defaultStrength: 100,
   },
   {
     id: 'bleed',
@@ -37,7 +37,7 @@ const SECTION_DEFS = [
     keyOrder: ['base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'post_gamma', 'alpha', 'seeds', 'composite_op'],
     trigger: 'grain',
     stateKey: 'grainPct',
-    defaultStrength: 0,
+    defaultStrength: 100,
   }
 ];
 
@@ -1170,11 +1170,11 @@ export function getInkSectionStrength(sectionId) {
     case 'texture':
       return normalizedPercent(getPercentFromState('inkTextureStrength', INK_TEXTURE.enabled === false ? 0 : 100));
     case 'fuzz':
-      return normalizedPercent(getPercentFromState('edgeFuzzStrength', 0));
+      return normalizedPercent(getPercentFromState('edgeFuzzStrength', 100));
     case 'bleed':
       return normalizedPercent(getPercentFromState('edgeBleedStrength', EDGE_BLEED.enabled === false ? 0 : 100));
     case 'grain':
-      return normalizedPercent(getPercentFromState('grainPct', 0));
+      return normalizedPercent(getPercentFromState('grainPct', 100));
     default:
       return 1;
   }
