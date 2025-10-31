@@ -296,6 +296,29 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
+  function reanchorCaretAfterZoomChange() {
+    if (!state.hammerLock) return;
+    const cv = caretViewportPos();
+    if (!cv) return;
+    const { ax, ay } = anchorPx();
+    let dx = ax - cv.x;
+    let dy = ay - cv.y;
+    const pxThreshold = 1 / DPR;
+    if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
+    const usedNative = maybeApplyNativeScroll(dx, dy, pxThreshold);
+    if (usedNative) {
+      const updated = caretViewportPos();
+      if (updated) {
+        dx = ax - updated.x;
+        dy = ay - updated.y;
+        if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
+      }
+    }
+    const scale = cssScaleFactor() || 1;
+    if (!Number.isFinite(scale) || scale <= 0) return;
+    setPaperOffset(state.paperOffset.x + dx / scale, state.paperOffset.y + dy / scale);
+  }
+
   function requestHammerNudge() {
     if (getZooming() || !state.hammerLock) return;
     if (hammerNudgeRAF) return;
@@ -734,6 +757,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     state.zoom = z / 100;
     if (isSafari && !getZooming()) stageLayoutSetSafariZoomMode('steady', { force: true });
     applyZoomCSS();
+    reanchorCaretAfterZoomChange();
     scheduleZoomCrispRedraw();
     updateZoomUIFromState();
     saveStateDebounced();
