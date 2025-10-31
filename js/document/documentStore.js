@@ -1,5 +1,71 @@
 import { clamp } from '../utils/math.js';
 
+const KNOWN_INK_SECTIONS = ['texture', 'fuzz', 'bleed', 'grain'];
+
+function deepCloneStyleValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => deepCloneStyleValue(item));
+  }
+  if (value && typeof value === 'object') {
+    const clone = {};
+    for (const [key, val] of Object.entries(value)) {
+      clone[key] = deepCloneStyleValue(val);
+    }
+    return clone;
+  }
+  return value;
+}
+
+function sanitizeStyleSection(sectionValue) {
+  if (!sectionValue || typeof sectionValue !== 'object') {
+    return { strength: 0, config: null };
+  }
+  const strength = clamp(Number(sectionValue.strength ?? sectionValue.value ?? sectionValue.percent ?? 0), 0, 100);
+  const configSource = sectionValue.config != null
+    ? sectionValue.config
+    : sectionValue.settings != null
+      ? sectionValue.settings
+      : ('strength' in sectionValue ? null : sectionValue);
+  const config = configSource == null ? null : deepCloneStyleValue(configSource);
+  return { strength, config };
+}
+
+function sanitizeSavedInkStyle(style, index = 0) {
+  if (!style || typeof style !== 'object') {
+    return {
+      id: `style-${index}-${Date.now().toString(36)}`,
+      name: `Style ${index + 1}`,
+      overall: 100,
+      sections: {},
+    };
+  }
+  const id = typeof style.id === 'string' && style.id.trim()
+    ? style.id.trim()
+    : `style-${index}-${Date.now().toString(36)}`;
+  const name = typeof style.name === 'string' && style.name.trim()
+    ? style.name.trim().slice(0, 80)
+    : `Style ${index + 1}`;
+  const overall = clamp(Number(style.overall ?? 100), 0, 100);
+  const sections = {};
+  if (style.sections && typeof style.sections === 'object') {
+    for (const [sectionId, sectionValue] of Object.entries(style.sections)) {
+      sections[sectionId] = sanitizeStyleSection(sectionValue);
+    }
+  } else {
+    KNOWN_INK_SECTIONS.forEach(sectionId => {
+      if (sections[sectionId]) return;
+      if (!style[sectionId] || typeof style[sectionId] !== 'object') return;
+      sections[sectionId] = sanitizeStyleSection(style[sectionId]);
+    });
+  }
+  return { id, name, overall, sections };
+}
+
+function sanitizeSavedInkStyles(styles) {
+  if (!Array.isArray(styles)) return [];
+  return styles.map((style, index) => sanitizeSavedInkStyle(style, index));
+}
+
 export const DEFAULT_DOCUMENT_TITLE = 'Untitled Document';
 
 export function normalizeDocumentTitle(title) {
@@ -53,7 +119,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       })
     : [];
   return {
-    v: 23,
+    v: 24,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -88,6 +154,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     themeMode: state.themeMode || 'auto',
     darkPageInDarkMode: !!state.darkPageInDarkMode,
     pageFillColor: state.pageFillColor,
+    savedInkStyles: sanitizeSavedInkStyles(state.savedInkStyles),
     pages,
   };
 }
@@ -105,7 +172,7 @@ export function deserializeDocumentState(data, context) {
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 23) return false;
+  if (!data || data.v < 2 || data.v > 24) return false;
   state.pages = [];
   if (app.stageInner) {
     app.stageInner.innerHTML = '';
@@ -215,6 +282,7 @@ export function deserializeDocumentState(data, context) {
       ? data.pageFillColor
       : state.pageFillColor,
   });
+  state.savedInkStyles = sanitizeSavedInkStyles(data.savedInkStyles);
   if (typeof data.documentId === 'string' && data.documentId.trim()) {
     state.documentId = data.documentId.trim();
   }

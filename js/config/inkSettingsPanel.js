@@ -56,9 +56,119 @@ const panelState = {
   pendingGlyphRAF: 0,
   pendingGrainRAF: 0,
   pendingGlyphOptions: null,
+  styleNameInput: null,
+  saveStyleButton: null,
+  stylesList: null,
+  renameContext: null,
+  lastLoadedStyleId: null,
 };
 
 const HEX_MATCH_RE = /seed|hash/i;
+const STYLE_NAME_MAX_LEN = 60;
+
+function deepCloneValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => deepCloneValue(item));
+  }
+  if (value && typeof value === 'object') {
+    const clone = {};
+    for (const [key, val] of Object.entries(value)) {
+      clone[key] = deepCloneValue(val);
+    }
+    return clone;
+  }
+  return value;
+}
+
+function sanitizeStyleName(name) {
+  if (typeof name !== 'string') return '';
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  return trimmed.slice(0, STYLE_NAME_MAX_LEN);
+}
+
+function generateStyleId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `style-${ts}-${rand}`;
+}
+
+function sanitizeStyleRecord(style, index = 0) {
+  const record = {
+    id: typeof style?.id === 'string' && style.id.trim() ? style.id.trim() : generateStyleId(),
+    name: sanitizeStyleName(style?.name) || `Style ${index + 1}`,
+    overall: clamp(Math.round(Number(style?.overall ?? 100)), 0, 100),
+    sections: {},
+  };
+  SECTION_DEFS.forEach(def => {
+    const rawSection = style?.sections && typeof style.sections === 'object'
+      ? style.sections[def.id]
+      : (style && typeof style === 'object' && typeof style[def.id] === 'object' ? style[def.id] : null);
+    const section = rawSection && typeof rawSection === 'object' ? rawSection : {};
+    const strength = clamp(Math.round(Number(section?.strength ?? def.defaultStrength ?? 0)), 0, 100);
+    const configSource = section.config != null
+      ? section.config
+      : section.settings != null
+        ? section.settings
+        : ('strength' in section ? def.config : section);
+    record.sections[def.id] = {
+      strength,
+      config: deepCloneValue(configSource == null ? def.config : configSource),
+    };
+  });
+  return record;
+}
+
+function getSavedStyles() {
+  const appState = getAppState();
+  if (!appState) return [];
+  if (!Array.isArray(appState.savedInkStyles)) {
+    appState.savedInkStyles = [];
+  }
+  return appState.savedInkStyles;
+}
+
+function setSavedStyles(styles) {
+  if (!panelState.appState) return [];
+  const normalized = Array.isArray(styles)
+    ? styles.map((style, index) => sanitizeStyleRecord(style, index))
+    : [];
+  panelState.appState.savedInkStyles = normalized;
+  return normalized;
+}
+
+function createStyleSnapshot(name, existingId = null) {
+  const base = {
+    id: existingId || generateStyleId(),
+    name,
+    overall: getPercentFromState('effectsOverallStrength', 100),
+    sections: {},
+  };
+  SECTION_DEFS.forEach(def => {
+    base.sections[def.id] = {
+      strength: getPercentFromState(def.stateKey, def.defaultStrength ?? 0),
+      config: deepCloneValue(def.config),
+    };
+  });
+  return sanitizeStyleRecord(base);
+}
+
+function applyConfigToTarget(target, source) {
+  if (!target || typeof target !== 'object') return;
+  const clone = source == null ? null : deepCloneValue(source);
+  if (!clone || typeof clone !== 'object') {
+    return;
+  }
+  Object.keys(target).forEach(key => {
+    if (!(key in clone)) delete target[key];
+  });
+  Object.entries(clone).forEach(([key, value]) => {
+    target[key] = value;
+  });
+}
 
 function isHexField(path) {
   return HEX_MATCH_RE.test(path || '');
@@ -517,6 +627,222 @@ function persistPanelState() {
   }
 }
 
+function cancelRenameStyle(restoreFocus = false) {
+  const ctx = panelState.renameContext;
+  if (!ctx) return;
+  if (ctx.form && ctx.form.parentNode) {
+    ctx.form.remove();
+  }
+  if (ctx.item) {
+    ctx.item.classList.remove('is-renaming');
+  }
+  if (restoreFocus && ctx.trigger && typeof ctx.trigger.focus === 'function') {
+    ctx.trigger.focus();
+  }
+  panelState.renameContext = null;
+}
+
+function renderSavedStylesList(options = {}) {
+  const list = panelState.stylesList;
+  if (!list) return;
+  const { focusId } = options || {};
+  cancelRenameStyle();
+  list.innerHTML = '';
+  const styles = getSavedStyles();
+  if (!styles.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ink-styles-empty';
+    empty.textContent = 'No saved styles yet.';
+    list.appendChild(empty);
+    return;
+  }
+  styles.forEach(style => {
+    if (!style) return;
+    const item = document.createElement('div');
+    item.className = 'ink-style-item';
+    item.dataset.styleId = style.id;
+    if (panelState.lastLoadedStyleId && panelState.lastLoadedStyleId === style.id) {
+      item.classList.add('is-active');
+    }
+
+    const header = document.createElement('div');
+    header.className = 'ink-style-item-header';
+
+    const main = document.createElement('div');
+    main.className = 'ink-style-item-main';
+    const loadBtn = document.createElement('button');
+    loadBtn.type = 'button';
+    loadBtn.className = 'btn btn-small';
+    loadBtn.textContent = 'Load';
+    loadBtn.addEventListener('click', () => applySavedStyle(style.id));
+    const name = document.createElement('div');
+    name.className = 'ink-style-name';
+    name.textContent = style.name;
+    name.title = style.name;
+    main.appendChild(loadBtn);
+    main.appendChild(name);
+
+    const actions = document.createElement('div');
+    actions.className = 'ink-style-actions';
+    const renameBtn = document.createElement('button');
+    renameBtn.type = 'button';
+    renameBtn.className = 'btn-text';
+    renameBtn.textContent = 'Rename';
+    renameBtn.addEventListener('click', () => startRenameStyle(style.id, item, renameBtn));
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn-text danger';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', () => removeSavedStyle(style.id));
+    actions.appendChild(renameBtn);
+    actions.appendChild(deleteBtn);
+
+    header.appendChild(main);
+    header.appendChild(actions);
+    item.appendChild(header);
+    list.appendChild(item);
+
+    if (focusId && focusId === style.id) {
+      requestAnimationFrame(() => loadBtn.focus());
+    }
+  });
+}
+
+function handleSaveStyle(event) {
+  if (event) event.preventDefault();
+  const input = panelState.styleNameInput;
+  if (!input) return;
+  const sanitized = sanitizeStyleName(input.value);
+  if (!sanitized) {
+    input.classList.add('input-error');
+    input.focus();
+    return;
+  }
+  const existingStyles = getSavedStyles();
+  const existingIdx = existingStyles.findIndex(style => style && style.name && style.name.toLowerCase() === sanitized.toLowerCase());
+  const existingId = existingIdx >= 0 ? existingStyles[existingIdx].id : null;
+  const snapshot = createStyleSnapshot(sanitized, existingId);
+  let updated;
+  if (existingIdx >= 0) {
+    updated = existingStyles.slice();
+    updated[existingIdx] = snapshot;
+  } else {
+    updated = [snapshot, ...existingStyles];
+  }
+  setSavedStyles(updated);
+  persistPanelState();
+  renderSavedStylesList({ focusId: snapshot.id });
+  input.value = '';
+  input.classList.remove('input-error');
+}
+
+function removeSavedStyle(styleId) {
+  const styles = getSavedStyles();
+  if (!styles.length) return;
+  const target = styles.find(style => style && style.id === styleId);
+  if (!target) return;
+  let confirmed = true;
+  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    confirmed = window.confirm(`Delete style "${target.name}"?`);
+  }
+  if (!confirmed) return;
+  const updated = styles.filter(style => style && style.id !== styleId);
+  setSavedStyles(updated);
+  if (panelState.lastLoadedStyleId === styleId) {
+    panelState.lastLoadedStyleId = null;
+  }
+  persistPanelState();
+  cancelRenameStyle();
+  renderSavedStylesList();
+}
+
+function startRenameStyle(styleId, item, trigger) {
+  if (!item) return;
+  const styles = getSavedStyles();
+  const style = styles.find(s => s && s.id === styleId);
+  if (!style) return;
+  cancelRenameStyle();
+  item.classList.add('is-renaming');
+  const form = document.createElement('div');
+  form.className = 'ink-style-rename-form';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = style.name;
+  input.maxLength = STYLE_NAME_MAX_LEN;
+  form.appendChild(input);
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn btn-small';
+  saveBtn.textContent = 'Save';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn btn-small';
+  cancelBtn.textContent = 'Cancel';
+  form.appendChild(saveBtn);
+  form.appendChild(cancelBtn);
+  item.appendChild(form);
+  panelState.renameContext = { styleId, item, input, form, trigger };
+  input.focus();
+  input.select();
+  input.addEventListener('input', () => input.classList.remove('input-error'));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitRenameStyle(styleId, input);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelRenameStyle(true);
+    }
+  });
+  saveBtn.addEventListener('click', () => commitRenameStyle(styleId, input));
+  cancelBtn.addEventListener('click', () => cancelRenameStyle(true));
+}
+
+function commitRenameStyle(styleId, input) {
+  if (!input) return;
+  const sanitized = sanitizeStyleName(input.value);
+  if (!sanitized) {
+    input.classList.add('input-error');
+    input.focus();
+    return;
+  }
+  const styles = getSavedStyles();
+  const updated = styles.map(style => {
+    if (!style || style.id !== styleId) return style;
+    return { ...style, name: sanitized };
+  });
+  setSavedStyles(updated);
+  persistPanelState();
+  cancelRenameStyle();
+  renderSavedStylesList({ focusId: styleId });
+}
+
+function applySavedStyle(styleId) {
+  const styles = getSavedStyles();
+  const style = styles.find(s => s && s.id === styleId);
+  if (!style) return;
+  if (Number.isFinite(style.overall)) {
+    setOverallStrength(style.overall);
+  }
+  SECTION_DEFS.forEach(def => {
+    const meta = findMetaById(def.id);
+    if (!meta) return;
+    const section = style.sections?.[def.id];
+    if (section && section.config) {
+      applyConfigToTarget(meta.config, section.config);
+      syncInputs(meta);
+      scheduleRefreshForMeta(meta, { forceRebuild: true });
+    }
+    const strength = Number(section?.strength);
+    if (Number.isFinite(strength)) {
+      applySectionStrength(meta, strength);
+    }
+  });
+  panelState.lastLoadedStyleId = styleId;
+  persistPanelState();
+  renderSavedStylesList();
+}
+
 function scheduleGlyphRefresh(rebuild = true) {
   if (typeof panelState.callbacks.refreshGlyphs !== 'function') return;
   if (panelState.pendingGlyphRAF) {
@@ -779,6 +1105,27 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.overallSlider = document.getElementById('inkEffectsOverallSlider');
   panelState.overallNumberInput = document.getElementById('inkEffectsOverallNumber');
   const copyBtn = document.getElementById('inkSettingsCopyBtn');
+  panelState.styleNameInput = document.getElementById('inkStyleNameInput');
+  panelState.saveStyleButton = document.getElementById('inkStyleSaveBtn');
+  panelState.stylesList = document.getElementById('inkStylesList');
+
+  if (panelState.styleNameInput) {
+    panelState.styleNameInput.addEventListener('input', () => panelState.styleNameInput.classList.remove('input-error'));
+    panelState.styleNameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleSaveStyle();
+      }
+    });
+  }
+  if (panelState.saveStyleButton) {
+    panelState.saveStyleButton.addEventListener('click', handleSaveStyle);
+  }
+
+  if (panelState.appState) {
+    setSavedStyles(getSavedStyles());
+  }
+  renderSavedStylesList();
 
   if (panelState.overallSlider) {
     panelState.overallSlider.addEventListener('input', () => {
@@ -815,4 +1162,8 @@ export function setupInkSettingsPanel(options = {}) {
 
   panelState.initialized = true;
   syncInkStrengthDisplays();
+}
+
+export function refreshSavedInkStylesUI() {
+  renderSavedStylesList();
 }
