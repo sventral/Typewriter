@@ -49,8 +49,6 @@ export function createDomRefs() {
   app.zoomThumb  = document.getElementById('zoomThumb');
   app.zoomIndicator = document.getElementById('zoomIndicator');
 
-  app.fontsBtn = document.getElementById('fontsBtn');
-  app.fontsPanel = document.getElementById('fontsPanel');
   app.fontRadios = () => Array.from(document.querySelectorAll('input[name="fontChoice"]'));
   app.mmLeft   = document.getElementById('mmLeft');
   app.mmRight  = document.getElementById('mmRight');
