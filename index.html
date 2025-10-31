@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.4.7b</div>
+  <div class="app-version">v.4.8b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -108,12 +108,40 @@
   <aside id="inkSettingsPanel" class="side-panel from-right">
     <div class="panel-content ink-settings-content">
       <h3>Ink Settings</h3>
-      <div class="settings-group-new">
-        <div class="control-row ink-overall-row">
-          <label for="inkOverallStrength">Overall Strength (%)</label>
-          <div class="ink-inline-controls">
-            <input type="number" id="inkOverallStrength" min="0" max="100" step="1" value="100" />
-            <button class="btn apply-btn" id="inkOverallApplyBtn">Apply</button>
+      <div class="settings-group-new ink-effects-sliders">
+        <div class="control-row">
+          <label for="inkEffectsOverallSlider">Overall effects strength</label>
+          <div class="slider-control">
+            <input type="range" id="inkEffectsOverallSlider" min="0" max="100" step="1" value="100" class="ink-slider">
+            <span class="slider-value" id="inkEffectsOverallValue">100%</span>
+          </div>
+        </div>
+        <div class="control-row">
+          <label for="inkEffectsPowderSlider">Powder</label>
+          <div class="slider-control">
+            <input type="range" id="inkEffectsPowderSlider" min="0" max="100" step="1" value="0" class="ink-slider">
+            <span class="slider-value" id="inkEffectsPowderValue">0%</span>
+          </div>
+        </div>
+        <div class="control-row">
+          <label for="inkEffectsTextureSlider">Texture</label>
+          <div class="slider-control">
+            <input type="range" id="inkEffectsTextureSlider" min="0" max="100" step="1" value="100" class="ink-slider">
+            <span class="slider-value" id="inkEffectsTextureValue">100%</span>
+          </div>
+        </div>
+        <div class="control-row">
+          <label for="inkEffectsFuzzSlider">Edge fuzz</label>
+          <div class="slider-control">
+            <input type="range" id="inkEffectsFuzzSlider" min="0" max="100" step="1" value="0" class="ink-slider">
+            <span class="slider-value" id="inkEffectsFuzzValue">0%</span>
+          </div>
+        </div>
+        <div class="control-row">
+          <label for="inkEffectsBleedSlider">Bleed</label>
+          <div class="slider-control">
+            <input type="range" id="inkEffectsBleedSlider" min="0" max="100" step="1" value="100" class="ink-slider">
+            <span class="slider-value" id="inkEffectsBleedValue">100%</span>
           </div>
         </div>
       </div>

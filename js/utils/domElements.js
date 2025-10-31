@@ -25,6 +25,16 @@ export function createDomRefs() {
   app.inkWhiteBtn = document.getElementById('inkWhiteBtn');
   app.inkSettingsBtn = document.getElementById('inkSettingsBtn');
   app.inkSettingsPanel = document.getElementById('inkSettingsPanel');
+  app.inkEffectsOverallSlider = document.getElementById('inkEffectsOverallSlider');
+  app.inkEffectsOverallValue = document.getElementById('inkEffectsOverallValue');
+  app.inkEffectsPowderSlider = document.getElementById('inkEffectsPowderSlider');
+  app.inkEffectsPowderValue = document.getElementById('inkEffectsPowderValue');
+  app.inkEffectsTextureSlider = document.getElementById('inkEffectsTextureSlider');
+  app.inkEffectsTextureValue = document.getElementById('inkEffectsTextureValue');
+  app.inkEffectsFuzzSlider = document.getElementById('inkEffectsFuzzSlider');
+  app.inkEffectsFuzzValue = document.getElementById('inkEffectsFuzzValue');
+  app.inkEffectsBleedSlider = document.getElementById('inkEffectsBleedSlider');
+  app.inkEffectsBleedValue = document.getElementById('inkEffectsBleedValue');
   app.toggleMarginsBtn = document.getElementById('toggleMarginsBtn');
   app.cpiSelect = document.getElementById('cpiSelect');
   app.colsPreviewSpan = document.getElementById('colsPreview');

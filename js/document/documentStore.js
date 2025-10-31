@@ -53,7 +53,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       })
     : [];
   return {
-    v: 22,
+    v: 23,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -84,6 +84,14 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     themeMode: state.themeMode || 'auto',
     darkPageInDarkMode: !!state.darkPageInDarkMode,
     pageFillColor: state.pageFillColor,
+    inkEffects: {
+      overall: clamp(Number(state.inkEffectsOverall ?? 1), 0, 1),
+      powder: clamp(Number(state.inkPowderStrength ?? 0), 0, 1),
+      texture: clamp(Number(state.inkTextureStrength ?? 1), 0, 1.5),
+      textureVoidsBias: clamp(Number(state.inkTextureVoidsBias ?? 0), -1, 1),
+      fuzz: clamp(Number(state.inkFuzzStrength ?? 0), 0, 1),
+      bleed: clamp(Number(state.inkBleedStrength ?? 1), 0, 1),
+    },
     pages,
   };
 }
@@ -101,7 +109,7 @@ export function deserializeDocumentState(data, context) {
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 22) return false;
+  if (!data || data.v < 2 || data.v > 23) return false;
   state.pages = [];
   if (app.stageInner) {
     app.stageInner.innerHTML = '';
@@ -173,6 +181,15 @@ export function deserializeDocumentState(data, context) {
   const sanitizedStageHeight = Number.isFinite(storedStageHeight)
     ? clamp(storedStageHeight, 1, 5)
     : state.stageHeightFactor;
+  const effects = data.inkEffects && typeof data.inkEffects === 'object' ? data.inkEffects : {};
+  const normalizedEffects = {
+    overall: clamp(Number(effects.overall ?? state.inkEffectsOverall ?? 1), 0, 1),
+    powder: clamp(Number(effects.powder ?? state.inkPowderStrength ?? 0), 0, 1),
+    texture: clamp(Number(effects.texture ?? state.inkTextureStrength ?? 1), 0, 1.5),
+    textureVoidsBias: clamp(Number(effects.textureVoidsBias ?? state.inkTextureVoidsBias ?? 0), -1, 1),
+    fuzz: clamp(Number(effects.fuzz ?? state.inkFuzzStrength ?? 0), 0, 1),
+    bleed: clamp(Number(effects.bleed ?? state.inkBleedStrength ?? 1), 0, 1),
+  };
   Object.assign(state, {
     marginL: data.margins?.L ?? state.marginL,
     marginR: data.margins?.R ?? state.marginR,
@@ -206,6 +223,12 @@ export function deserializeDocumentState(data, context) {
     pageFillColor: typeof data.pageFillColor === 'string' && data.pageFillColor.trim()
       ? data.pageFillColor
       : state.pageFillColor,
+    inkEffectsOverall: normalizedEffects.overall,
+    inkPowderStrength: normalizedEffects.powder,
+    inkTextureStrength: normalizedEffects.texture,
+    inkTextureVoidsBias: normalizedEffects.textureVoidsBias,
+    inkFuzzStrength: normalizedEffects.fuzz,
+    inkBleedStrength: normalizedEffects.bleed,
   });
   if (typeof data.documentId === 'string' && data.documentId.trim()) {
     state.documentId = data.documentId.trim();

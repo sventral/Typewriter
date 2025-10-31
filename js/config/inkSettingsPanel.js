@@ -1,45 +1,185 @@
-import { EDGE_BLEED, GRAIN_CFG, INK_TEXTURE } from './inkConfig.js';
+import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE, POWDER_EFFECT } from './inkConfig.js';
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
 const SECTION_DEFS = [
   {
+    id: 'powder',
+    label: 'Powder',
+    config: POWDER_EFFECT,
+    keyOrder: ['powderStrength', 'powderGrainScale', 'powderEdgeFalloff', 'powderCoherence'],
+    trigger: 'glyph',
+    supportsToggle: false,
+  },
+  {
     id: 'texture',
     label: 'Texture',
     config: INK_TEXTURE,
-    keyOrder: ['supersample', 'noiseOctaves', 'noiseStrength', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
-    trigger: 'glyph'
+    keyOrder: ['supersample', 'noiseOctaves', 'noiseStrength', 'noiseFloor', 'chip', 'scratch', 'jitterSeed', 'textureStrength', 'textureVoidsBias'],
+    trigger: 'glyph',
+    supportsToggle: false,
+  },
+  {
+    id: 'fuzz',
+    label: 'Edge fuzz',
+    config: EDGE_FUZZ,
+    keyOrder: ['fuzzWidthPx', 'fuzzInwardShare', 'fuzzRoughness', 'fuzzFrequency', 'fuzzOpacity'],
+    trigger: 'glyph',
+    supportsToggle: false,
   },
   {
     id: 'bleed',
     label: 'Bleed',
     config: EDGE_BLEED,
     keyOrder: ['inks', 'passes'],
-    trigger: 'glyph'
+    trigger: 'glyph',
+    supportsToggle: false,
   },
   {
     id: 'grain',
     label: 'Grain',
     config: GRAIN_CFG,
     keyOrder: ['base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'post_gamma', 'alpha', 'seeds', 'composite_op'],
-    trigger: 'grain'
+    trigger: 'grain',
+    supportsToggle: true,
   }
 ];
 
-const state = {
+const panelState = {
   overall: 1,
+  effectStrengths: {
+    powder: 0,
+    texture: 1,
+    fuzz: 0,
+    bleed: 1,
+  },
   sections: {
-    texture: INK_TEXTURE.enabled !== false,
-    bleed: EDGE_BLEED.enabled !== false,
-    grain: GRAIN_CFG.enabled !== false
+    grain: GRAIN_CFG.enabled !== false,
   },
   callbacks: {
     refreshGlyphs: null,
-    refreshGrain: null
+    refreshGrain: null,
+    saveState: null,
   },
   metas: [],
-  initialized: false
+  initialized: false,
+  sliderControls: new Map(),
+  appState: null,
 };
+
+const EFFECT_CONFIG = {
+  powder: { config: POWDER_EFFECT, stateKey: 'inkPowderStrength' },
+  texture: { config: INK_TEXTURE, stateKey: 'inkTextureStrength' },
+  fuzz: { config: EDGE_FUZZ, stateKey: 'inkFuzzStrength' },
+  bleed: { config: EDGE_BLEED, stateKey: 'inkBleedStrength' },
+};
+
+const EFFECT_IDS = Object.keys(EFFECT_CONFIG);
+
+const EFFECT_SLIDER_IDS = {
+  overall: { slider: 'inkEffectsOverallSlider', value: 'inkEffectsOverallValue' },
+  powder: { slider: 'inkEffectsPowderSlider', value: 'inkEffectsPowderValue' },
+  texture: { slider: 'inkEffectsTextureSlider', value: 'inkEffectsTextureValue' },
+  fuzz: { slider: 'inkEffectsFuzzSlider', value: 'inkEffectsFuzzValue' },
+  bleed: { slider: 'inkEffectsBleedSlider', value: 'inkEffectsBleedValue' },
+};
+
+function clamp01(value) {
+  return clamp(Number(value) || 0, 0, 1);
+}
+
+function setPanelStateFromApp(appState) {
+  panelState.appState = appState || null;
+  const src = appState || {};
+  panelState.overall = clamp01(src.inkEffectsOverall ?? panelState.overall ?? 1);
+  panelState.effectStrengths.powder = clamp01(src.inkPowderStrength ?? panelState.effectStrengths.powder);
+  panelState.effectStrengths.texture = clamp01(src.inkTextureStrength ?? panelState.effectStrengths.texture);
+  panelState.effectStrengths.fuzz = clamp01(src.inkFuzzStrength ?? panelState.effectStrengths.fuzz);
+  panelState.effectStrengths.bleed = clamp01(src.inkBleedStrength ?? panelState.effectStrengths.bleed);
+  if (panelState.appState && Number.isFinite(src.inkTextureVoidsBias)) {
+    panelState.appState.inkTextureVoidsBias = clamp(Number(src.inkTextureVoidsBias), -1, 1);
+  }
+  EFFECT_IDS.forEach((id) => {
+    const cfg = EFFECT_CONFIG[id]?.config;
+    if (cfg && typeof cfg === 'object') {
+      cfg.enabled = panelState.effectStrengths[id] > 0;
+    }
+  });
+  panelState.sections.grain = GRAIN_CFG.enabled !== false;
+}
+
+function persistEffectToApp(effectId, normalized) {
+  const map = EFFECT_CONFIG[effectId];
+  if (!map || !panelState.appState) return;
+  const key = map.stateKey;
+  if (key) {
+    panelState.appState[key] = clamp01(normalized);
+  }
+  if (effectId === 'texture' && Number.isFinite(panelState.appState.inkTextureVoidsBias)) {
+    panelState.appState.inkTextureVoidsBias = clamp(Number(panelState.appState.inkTextureVoidsBias), -1, 1);
+  }
+}
+
+function applyEffectStrength(effectId, normalized) {
+  const cfgEntry = EFFECT_CONFIG[effectId];
+  if (!cfgEntry) return;
+  const sanitized = clamp01(normalized);
+  if (panelState.effectStrengths[effectId] === sanitized) return;
+  panelState.effectStrengths[effectId] = sanitized;
+  if (cfgEntry.config) {
+    cfgEntry.config.enabled = sanitized > 0;
+  }
+  persistEffectToApp(effectId, sanitized);
+  if (typeof panelState.callbacks.refreshGlyphs === 'function') {
+    panelState.callbacks.refreshGlyphs();
+  }
+  if (typeof panelState.callbacks.saveState === 'function') {
+    panelState.callbacks.saveState();
+  }
+}
+
+function applyOverallStrength(normalized) {
+  const clamped = clamp01(normalized);
+  if (panelState.overall === clamped) return;
+  panelState.overall = clamped;
+  if (panelState.appState) {
+    panelState.appState.inkEffectsOverall = clamped;
+  }
+  if (typeof panelState.callbacks.refreshGlyphs === 'function') {
+    panelState.callbacks.refreshGlyphs();
+  }
+  if (typeof panelState.callbacks.refreshGrain === 'function') {
+    panelState.callbacks.refreshGrain();
+  }
+  if (typeof panelState.callbacks.saveState === 'function') {
+    panelState.callbacks.saveState();
+  }
+}
+
+function effectStrengthDisplay(effectId) {
+  return Math.round(clamp01(panelState.effectStrengths[effectId] || 0) * 100);
+}
+
+function syncOverallSlider() {
+  const control = panelState.sliderControls.get('overall');
+  if (!control) return;
+  const pct = Math.round(clamp(panelState.overall, 0, 1) * 100);
+  if (control.input) control.input.value = String(pct);
+  if (control.valueEl) control.valueEl.textContent = `${pct}%`;
+}
+
+function syncEffectSlider(effectId) {
+  const control = panelState.sliderControls.get(effectId);
+  if (!control) return;
+  const pct = effectStrengthDisplay(effectId);
+  if (control.input) control.input.value = String(pct);
+  if (control.valueEl) control.valueEl.textContent = `${pct}%`;
+  if (control.input) control.input.disabled = panelState.overall <= 0;
+}
+
+function syncEffectSliders() {
+  EFFECT_IDS.forEach(syncEffectSlider);
+}
 
 const HEX_MATCH_RE = /seed|hash/i;
 
@@ -344,16 +484,19 @@ function buildSection(def, root) {
   title.textContent = def.label;
   header.appendChild(title);
 
-  const toggleLabel = document.createElement('label');
-  toggleLabel.className = 'ink-section-toggle';
-  const toggle = document.createElement('input');
-  toggle.type = 'checkbox';
-  toggle.checked = def.id === 'grain' ? state.sections.grain : !!def.config.enabled;
-  toggleLabel.appendChild(toggle);
-  const toggleText = document.createElement('span');
-  toggleText.textContent = 'On';
-  toggleLabel.appendChild(toggleText);
-  header.appendChild(toggleLabel);
+  let toggle = null;
+  if (def.supportsToggle !== false) {
+    const toggleLabel = document.createElement('label');
+    toggleLabel.className = 'ink-section-toggle';
+    toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.checked = def.id === 'grain' ? panelState.sections.grain : !!def.config.enabled;
+    toggleLabel.appendChild(toggle);
+    const toggleText = document.createElement('span');
+    toggleText.textContent = 'On';
+    toggleLabel.appendChild(toggleText);
+    header.appendChild(toggleLabel);
+  }
 
   sectionEl.appendChild(header);
 
@@ -399,7 +542,7 @@ function buildSection(def, root) {
 
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
-  state.metas.push(meta);
+  panelState.metas.push(meta);
   return meta;
 }
 
@@ -432,18 +575,28 @@ function applySection(meta) {
     const value = parseInputValue(input, path);
     setValueByPath(meta.config, path, value);
   }
-  if (meta.id === 'texture' || meta.id === 'bleed') {
-    if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
+  if (meta.id === 'texture' && panelState.appState) {
+    const bias = Number(INK_TEXTURE.textureVoidsBias ?? panelState.appState.inkTextureVoidsBias ?? 0);
+    panelState.appState.inkTextureVoidsBias = clamp(bias, -1, 1);
+  }
+  if (['powder', 'texture', 'fuzz', 'bleed'].includes(meta.id)) {
+    if (typeof panelState.callbacks.refreshGlyphs === 'function') panelState.callbacks.refreshGlyphs();
+    if (typeof panelState.callbacks.saveState === 'function') panelState.callbacks.saveState();
   }
   if (meta.id === 'grain') {
-    if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
+    if (typeof panelState.callbacks.refreshGrain === 'function') panelState.callbacks.refreshGrain();
+    if (typeof panelState.callbacks.saveState === 'function') panelState.callbacks.saveState();
   }
   syncInputs(meta);
 }
 
 function formatConfigExport() {
   const parts = [
+    `export const POWDER_EFFECT = ${formatValue(POWDER_EFFECT, 0, 'POWDER_EFFECT')};`,
+    '',
     `export const INK_TEXTURE = ${formatValue(INK_TEXTURE, 0, 'INK_TEXTURE')};`,
+    '',
+    `export const EDGE_FUZZ = ${formatValue(EDGE_FUZZ, 0, 'EDGE_FUZZ')};`,
     '',
     `export const EDGE_BLEED = ${formatValue(EDGE_BLEED, 0, 'EDGE_BLEED')};`,
     '',
@@ -495,89 +648,116 @@ function fallbackCopy(text, button) {
 }
 
 export function getInkEffectFactor() {
-  return clamp(state.overall, 0, 1);
+  return clamp(panelState.overall, 0, 1);
+}
+
+export function getPowderEffectStrength() {
+  return clamp(panelState.effectStrengths.powder || 0, 0, 1) * getInkEffectFactor();
+}
+
+export function getTextureEffectStrength() {
+  return clamp01(panelState.effectStrengths.texture || 0) * getInkEffectFactor();
+}
+
+export function getFuzzEffectStrength() {
+  return clamp(panelState.effectStrengths.fuzz || 0, 0, 1) * getInkEffectFactor();
+}
+
+export function getBleedEffectStrength() {
+  return clamp(panelState.effectStrengths.bleed || 0, 0, 1) * getInkEffectFactor();
+}
+
+export function getTextureVoidsBias() {
+  return clamp(Number(panelState.appState?.inkTextureVoidsBias ?? 0), -1, 1);
 }
 
 export function isInkSectionEnabled(sectionId) {
-  if (sectionId === 'grain') return !!state.sections.grain && GRAIN_CFG.enabled !== false;
-  if (sectionId === 'texture') return !!state.sections.texture && INK_TEXTURE.enabled !== false;
-  if (sectionId === 'bleed') return !!state.sections.bleed && EDGE_BLEED.enabled !== false;
-  return true;
+  if (sectionId === 'grain') return !!panelState.sections.grain && GRAIN_CFG.enabled !== false && getInkEffectFactor() > 0;
+  if (sectionId === 'powder') return POWDER_EFFECT.enabled !== false && getPowderEffectStrength() > 0;
+  if (sectionId === 'texture') return INK_TEXTURE.enabled !== false && getTextureEffectStrength() > 0;
+  if (sectionId === 'fuzz') return EDGE_FUZZ.enabled !== false && getFuzzEffectStrength() > 0;
+  if (sectionId === 'bleed') return EDGE_BLEED.enabled !== false && getBleedEffectStrength() > 0;
+  return getInkEffectFactor() > 0;
 }
 
 function setOverallStrength(percent) {
   const pct = clamp(Number(percent) || 0, 0, 100);
-  state.overall = pct / 100;
-  if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-  if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
+  applyOverallStrength(pct / 100);
   return pct;
 }
 
 export function setupInkSettingsPanel(options = {}) {
-  if (state.initialized) return;
+  if (panelState.initialized) return;
   const {
     refreshGlyphs,
-    refreshGrain
+    refreshGrain,
+    saveStateDebounced,
+    state: appState,
   } = options;
-  state.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
-  state.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
+  panelState.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
+  panelState.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
+  panelState.callbacks.saveState = typeof saveStateDebounced === 'function' ? () => saveStateDebounced() : null;
+
+  setPanelStateFromApp(appState);
 
   const sectionsRoot = document.getElementById('inkSettingsSections');
-  const overallInput = document.getElementById('inkOverallStrength');
-  const overallApplyBtn = document.getElementById('inkOverallApplyBtn');
   const copyBtn = document.getElementById('inkSettingsCopyBtn');
   if (!sectionsRoot) return;
 
-  state.sections.texture = INK_TEXTURE.enabled !== false;
-  state.sections.bleed = EDGE_BLEED.enabled !== false;
-  state.sections.grain = GRAIN_CFG.enabled !== false;
+  const registerSlider = (key, onInput) => {
+    const ids = EFFECT_SLIDER_IDS[key];
+    if (!ids) return;
+    const input = document.getElementById(ids.slider);
+    const valueEl = document.getElementById(ids.value);
+    panelState.sliderControls.set(key, { input, valueEl });
+    if (input && typeof onInput === 'function') {
+      input.addEventListener('input', () => {
+        const pct = clamp(Number(input.value) || 0, 0, 100);
+        onInput(pct / 100, pct);
+      });
+    }
+  };
+
+  registerSlider('overall', (normalized, pct) => {
+    applyOverallStrength(normalized);
+    syncOverallSlider();
+    syncEffectSliders();
+  });
+
+  EFFECT_IDS.forEach((effectId) => {
+    registerSlider(effectId, (normalized) => {
+      applyEffectStrength(effectId, normalized);
+      syncEffectSlider(effectId);
+    });
+  });
 
   SECTION_DEFS.forEach(def => {
     const meta = buildSection(def, sectionsRoot);
-    meta.toggle.addEventListener('change', () => {
-      if (meta.id === 'grain') {
-        state.sections.grain = !!meta.toggle.checked;
-        GRAIN_CFG.enabled = state.sections.grain;
-        meta.root.classList.toggle('is-disabled', !state.sections.grain);
-        if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
-      } else if (meta.id === 'texture') {
-        state.sections.texture = !!meta.toggle.checked;
-        INK_TEXTURE.enabled = state.sections.texture;
-        meta.root.classList.toggle('is-disabled', !state.sections.texture);
-        if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-      } else if (meta.id === 'bleed') {
-        state.sections.bleed = !!meta.toggle.checked;
-        EDGE_BLEED.enabled = state.sections.bleed;
-        meta.root.classList.toggle('is-disabled', !state.sections.bleed);
-        if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-      }
-    });
+    if (meta.toggle) {
+      meta.toggle.addEventListener('change', () => {
+        if (meta.id === 'grain') {
+          panelState.sections.grain = !!meta.toggle.checked;
+          GRAIN_CFG.enabled = panelState.sections.grain;
+          meta.root.classList.toggle('is-disabled', !panelState.sections.grain);
+          if (typeof panelState.callbacks.refreshGrain === 'function') panelState.callbacks.refreshGrain();
+          if (typeof panelState.callbacks.saveState === 'function') panelState.callbacks.saveState();
+        }
+      });
+    }
     meta.applyBtn.addEventListener('click', () => applySection(meta));
-    const isEnabled = meta.id === 'grain'
-      ? state.sections.grain
-      : meta.id === 'texture'
-        ? state.sections.texture
-        : meta.id === 'bleed'
-          ? state.sections.bleed
-          : true;
+    const isEnabled = def.id === 'grain'
+      ? panelState.sections.grain
+      : def.config?.enabled !== false;
     meta.root.classList.toggle('is-disabled', !isEnabled);
     syncInputs(meta);
   });
 
-  if (overallInput) {
-    const pct = clamp(Math.round(state.overall * 100), 0, 100);
-    overallInput.value = String(pct);
-  }
-  if (overallApplyBtn && overallInput) {
-    overallApplyBtn.addEventListener('click', () => {
-      const pct = clamp(Number.parseFloat(overallInput.value) || 0, 0, 100);
-      overallInput.value = String(pct);
-      setOverallStrength(pct);
-    });
-  }
+  syncOverallSlider();
+  syncEffectSliders();
+
   if (copyBtn) {
     copyBtn.addEventListener('click', () => copyConfigToClipboard(copyBtn));
   }
 
-  state.initialized = true;
+  panelState.initialized = true;
 }

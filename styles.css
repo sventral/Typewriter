@@ -462,9 +462,13 @@ body[data-page-tone='dark']{
   .side-panel h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; margin: 0 0 8px; }
   .settings-group-new { display: flex; flex-direction: column; gap: 12px; }
   .divider { border: none; height: 1px; background: var(--divider-color); margin: 24px 0; }
-  .control-row { display: flex; justify-content: space-between; align-items: center; }
-  .control-row label { text-align: left; }
-  .control-row span { text-align: left; font-weight: 500; }
+.control-row { display: flex; justify-content: space-between; align-items: center; }
+.control-row label { text-align: left; }
+.control-row span { text-align: left; font-weight: 500; }
+.slider-control { display: flex; align-items: center; gap: 0.75rem; flex: 1; }
+.slider-control input[type="range"] { flex: 1; }
+.ink-effects-sliders .control-row { gap: 1rem; }
+.ink-effects-sliders .slider-value { min-width: 3.5rem; text-align: right; font-variant-numeric: tabular-nums; }
   .side-panel .apply-btn { width: 80px; min-width: 80px; padding: 0 12px; }
   .side-panel input[type="number"], .side-panel select, .input-with-suffix { width: 110px; }
   .side-panel input[type="number"], .side-panel select {

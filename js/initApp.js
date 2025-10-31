@@ -6,14 +6,23 @@ import {
   scheduleMetricsUpdate as scheduleMetricsUpdateForContext,
 } from './config/metrics.js';
 import { createMainState, createEphemeralState } from './state/state.js';
-import { EDGE_BLEED, GRAIN_CFG, INK_TEXTURE } from './config/inkConfig.js';
+import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE, POWDER_EFFECT } from './config/inkConfig.js';
 import { clamp } from './utils/math.js';
 import { sanitizeIntegerField } from './utils/forms.js';
 import { detectSafariEnvironment, createStageLayoutController } from './layout/stageLayout.js';
 import { createLayoutAndZoomController } from './layout/layoutAndZoomController.js';
 import { createGlyphAtlas } from './rendering/glyphAtlas.js';
 import { createPageRenderer } from './rendering/pageRendering.js';
-import { getInkEffectFactor, isInkSectionEnabled, setupInkSettingsPanel } from './config/inkSettingsPanel.js';
+import {
+  getInkEffectFactor,
+  isInkSectionEnabled,
+  setupInkSettingsPanel,
+  getPowderEffectStrength,
+  getTextureEffectStrength,
+  getFuzzEffectStrength,
+  getBleedEffectStrength,
+  getTextureVoidsBias,
+} from './config/inkSettingsPanel.js';
 import { createDocumentEditingController } from './document/documentEditing.js';
 import { createInputController } from './document/inputHandlers.js';
 import { createPageLifecycleController } from './document/pageLifecycle.js';
@@ -368,8 +377,15 @@ const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphA
   safariSupersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD,
   getInkEffectFactor,
   isInkSectionEnabled,
+  getPowderEffectStrength,
+  getTextureEffectStrength,
+  getFuzzEffectStrength,
+  getBleedEffectStrength,
+  getTextureVoidsBias,
   inkTextureConfig: () => INK_TEXTURE,
   edgeBleedConfig: () => EDGE_BLEED,
+  powderConfig: () => POWDER_EFFECT,
+  fuzzConfig: () => EDGE_FUZZ,
   grainConfig: () => GRAIN_CFG,
 });
 
@@ -861,7 +877,9 @@ function toggleRulers(){
 async function initialize() {
   setupInkSettingsPanel({
     refreshGlyphs: refreshGlyphEffects,
-    refreshGrain: refreshGrainEffects
+    refreshGrain: refreshGrainEffects,
+    saveStateDebounced,
+    state,
   });
   bootstrapFirstPage();
   const persistedState = loadPersistedState();
