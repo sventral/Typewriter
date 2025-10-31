@@ -522,7 +522,6 @@ const uiBindings = setupUIBindings(
     applyLineHeight,
     readStagedLH,
     toggleRulers,
-    toggleFontsPanel,
     toggleInkSettingsPanel,
     loadFontAndApply,
     requestHammerNudge,
@@ -644,22 +643,18 @@ function applyLineHeight(){
   focusStage();
 }
 
-function toggleFontsPanel() {
-  const isOpen = app.fontsPanel.classList.toggle('is-open');
-  if (isOpen) {
-    for (const radio of app.fontRadios()) {
-      radio.checked = radio.value === metricsStore.ACTIVE_FONT_NAME;
-    }
-    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
+function syncFontRadiosWithActiveFont() {
+  if (!app.fontRadios) return;
+  const activeFont = metricsStore.ACTIVE_FONT_NAME;
+  for (const radio of app.fontRadios()) {
+    radio.checked = radio.value === activeFont;
   }
 }
 
 function toggleInkSettingsPanel() {
   if (!app.inkSettingsPanel) return;
   const isOpen = app.inkSettingsPanel.classList.toggle('is-open');
-  if (isOpen) {
-    app.fontsPanel.classList.remove('is-open');
-  }
+  if (isOpen) syncFontRadiosWithActiveFont();
 }
 
 function mmX(px){ return (px * 210) / app.PAGE_W; }
@@ -767,6 +762,7 @@ async function loadFontAndApply(requestedFace){
 
   metricsStore.ACTIVE_FONT_NAME = resolvedFace;
   metricsStore.FONT_FAMILY = `${resolvedFace}`;
+  syncFontRadiosWithActiveFont();
   applyMetricsNow(true);
 }
 

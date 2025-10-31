@@ -38,7 +38,6 @@ export function setupUIBindings(context, controllers) {
     applyLineHeight,
     readStagedLH,
     toggleRulers,
-    toggleFontsPanel,
     toggleInkSettingsPanel,
     loadFontAndApply,
     requestHammerNudge,
@@ -501,11 +500,9 @@ export function setupUIBindings(context, controllers) {
   }
 
   function bindDialogToggles() {
-    if (app.fontsBtn) app.fontsBtn.onclick = toggleFontsPanel;
     if (app.inkSettingsBtn) app.inkSettingsBtn.onclick = toggleInkSettingsPanel;
     window.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
-        app.fontsPanel?.classList.remove('is-open');
         if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
       }
     });
