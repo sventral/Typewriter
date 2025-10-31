@@ -613,28 +613,38 @@ body[data-page-tone='dark']{
     gap: 8px;
   }
   .ink-style-item.is-active { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color); }
-  .ink-style-item-header { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
-  .ink-style-item-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
-  .ink-style-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
-  .ink-style-actions { display: flex; gap: 12px; align-items: center; }
-  .ink-style-actions .btn-text { font-size: 12px; padding: 0; background: none; border: none; color: var(--accent-color); cursor: pointer; font: inherit; }
-  .ink-style-actions .btn-text.danger { color: var(--danger-color, #c24141); }
-  .ink-style-actions .btn-text:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
-  .ink-style-rename-form { display: flex; gap: 6px; align-items: center; }
-  .ink-style-rename-form input[type="text"] {
-    flex: 1 1 auto;
-    min-width: 0;
-    height: 26px;
+  .ink-style-name-row { display: flex; align-items: center; min-width: 0; }
+  .ink-style-name-input {
+    background: none;
+    border: 1px solid transparent;
     border-radius: 6px;
-    border: 1px solid var(--control-border);
-    padding: 0 8px;
-    background: var(--control-bg);
     color: var(--ui-text);
     font-size: 13px;
+    font-weight: 600;
+    width: 100%;
+    min-width: 0;
+    padding: 2px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .ink-style-item.is-renaming .ink-style-item-header { display: none; }
-  .ink-style-rename-form .btn { padding: 0 10px; height: 26px; }
-  .ink-style-rename-form input.input-error { border-color: var(--danger-border, #c24141); }
+  .ink-style-name-input:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 1px;
+  }
+  .ink-style-name-input.input-error { border-color: var(--danger-border, #c24141); }
+  .ink-style-actions-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .ink-style-actions-row .btn-text {
+    font-size: 12px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--accent-color);
+    cursor: pointer;
+    font: inherit;
+  }
+  .ink-style-actions-row .btn-text.danger { color: var(--danger-color, #c24141); }
+  .ink-style-actions-row .btn-text:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
   .input-with-suffix { position: relative; display: flex; }
   .input-with-suffix input { width: 100%; }
   .input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }

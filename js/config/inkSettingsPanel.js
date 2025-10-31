@@ -59,7 +59,6 @@ const panelState = {
   styleNameInput: null,
   saveStyleButton: null,
   stylesList: null,
-  renameContext: null,
   lastLoadedStyleId: null,
   exportButton: null,
   importButton: null,
@@ -910,26 +909,68 @@ function applyConfigToTarget(target, source) {
   });
 }
 
-function cancelRenameStyle(restoreFocus = false) {
-  const ctx = panelState.renameContext;
-  if (!ctx) return;
-  if (ctx.form && ctx.form.parentNode) {
-    ctx.form.remove();
+function revertInlineStyleNameInput(input) {
+  if (!input) return;
+  const original = typeof input.dataset.originalName === 'string' ? input.dataset.originalName : '';
+  input.value = original;
+  input.title = original;
+  input.classList.remove('input-error');
+}
+
+function commitInlineStyleName(styleId, input) {
+  if (!input) return;
+  const original = typeof input.dataset.originalName === 'string' ? input.dataset.originalName : '';
+  const sanitized = sanitizeStyleName(input.value);
+  if (!sanitized) {
+    revertInlineStyleNameInput(input);
+    input.classList.add('input-error');
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+    return;
   }
-  if (ctx.item) {
-    ctx.item.classList.remove('is-renaming');
+  if (sanitized === original) {
+    input.value = sanitized;
+    input.title = sanitized;
+    input.classList.remove('input-error');
+    return;
   }
-  if (restoreFocus && ctx.trigger && typeof ctx.trigger.focus === 'function') {
-    ctx.trigger.focus();
+  const styles = getSavedStyles();
+  if (!Array.isArray(styles) || !styles.length) {
+    input.dataset.originalName = sanitized;
+    input.value = sanitized;
+    input.title = sanitized;
+    input.classList.remove('input-error');
+    return;
   }
-  panelState.renameContext = null;
+  const index = styles.findIndex(style => style && style.id === styleId);
+  if (index < 0) {
+    input.dataset.originalName = sanitized;
+    input.value = sanitized;
+    input.title = sanitized;
+    input.classList.remove('input-error');
+    return;
+  }
+  const updated = styles.slice();
+  const next = { ...updated[index], name: sanitized };
+  updated[index] = next;
+  setSavedStyles(updated);
+  persistPanelState();
+  input.dataset.originalName = sanitized;
+  input.value = sanitized;
+  input.title = sanitized;
+  input.classList.remove('input-error');
+  if (panelState.lastLoadedStyleId === styleId && panelState.styleNameInput) {
+    panelState.styleNameInput.value = sanitized;
+    panelState.styleNameInput.classList.remove('input-error');
+  }
 }
 
 function renderSavedStylesList(options = {}) {
   const list = panelState.stylesList;
   if (!list) return;
   const { focusId } = options || {};
-  cancelRenameStyle();
   list.innerHTML = '';
   let styles = [];
   try {
@@ -956,48 +997,56 @@ function renderSavedStylesList(options = {}) {
       item.classList.add('is-active');
     }
 
-    const header = document.createElement('div');
-    header.className = 'ink-style-item-header';
+    const nameRow = document.createElement('div');
+    nameRow.className = 'ink-style-name-row';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'ink-style-name-input';
+    nameInput.value = style.name;
+    nameInput.title = style.name;
+    nameInput.maxLength = STYLE_NAME_MAX_LEN;
+    nameInput.dataset.originalName = style.name;
+    nameInput.addEventListener('input', () => {
+      nameInput.classList.remove('input-error');
+      nameInput.title = nameInput.value;
+    });
+    nameInput.addEventListener('blur', () => commitInlineStyleName(style.id, nameInput));
+    nameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        nameInput.blur();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        revertInlineStyleNameInput(nameInput);
+        nameInput.select();
+      }
+    });
+    nameRow.appendChild(nameInput);
 
-    const main = document.createElement('div');
-    main.className = 'ink-style-item-main';
+    const actionsRow = document.createElement('div');
+    actionsRow.className = 'ink-style-actions-row';
     const loadBtn = document.createElement('button');
     loadBtn.type = 'button';
     loadBtn.className = 'btn btn-small';
     loadBtn.textContent = 'Load';
     loadBtn.addEventListener('click', () => applySavedStyle(style.id));
-    const name = document.createElement('div');
-    name.className = 'ink-style-name';
-    name.textContent = style.name;
-    name.title = style.name;
-    main.appendChild(loadBtn);
-    main.appendChild(name);
-
-    const actions = document.createElement('div');
-    actions.className = 'ink-style-actions';
     const updateBtn = document.createElement('button');
     updateBtn.type = 'button';
     updateBtn.className = 'btn-text';
     updateBtn.textContent = 'Update';
     updateBtn.title = 'Update this style with the current settings';
     updateBtn.addEventListener('click', () => updateSavedStyle(style.id));
-    const renameBtn = document.createElement('button');
-    renameBtn.type = 'button';
-    renameBtn.className = 'btn-text';
-    renameBtn.textContent = 'Rename';
-    renameBtn.addEventListener('click', () => startRenameStyle(style.id, item, renameBtn));
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'btn-text danger';
     deleteBtn.textContent = 'Delete';
     deleteBtn.addEventListener('click', () => removeSavedStyle(style.id));
-    actions.appendChild(updateBtn);
-    actions.appendChild(renameBtn);
-    actions.appendChild(deleteBtn);
+    actionsRow.appendChild(loadBtn);
+    actionsRow.appendChild(updateBtn);
+    actionsRow.appendChild(deleteBtn);
 
-    header.appendChild(main);
-    header.appendChild(actions);
-    item.appendChild(header);
+    item.appendChild(nameRow);
+    item.appendChild(actionsRow);
     list.appendChild(item);
 
     if (focusId && focusId === style.id) {
@@ -1078,69 +1127,7 @@ function removeSavedStyle(styleId) {
     panelState.lastLoadedStyleId = null;
   }
   persistPanelState();
-  cancelRenameStyle();
   renderSavedStylesList();
-}
-
-function startRenameStyle(styleId, item, trigger) {
-  if (!item) return;
-  const styles = getSavedStyles();
-  const style = styles.find(s => s && s.id === styleId);
-  if (!style) return;
-  cancelRenameStyle();
-  item.classList.add('is-renaming');
-  const form = document.createElement('div');
-  form.className = 'ink-style-rename-form';
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.value = style.name;
-  input.maxLength = STYLE_NAME_MAX_LEN;
-  form.appendChild(input);
-  const saveBtn = document.createElement('button');
-  saveBtn.type = 'button';
-  saveBtn.className = 'btn btn-small';
-  saveBtn.textContent = 'Save';
-  const cancelBtn = document.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn btn-small';
-  cancelBtn.textContent = 'Cancel';
-  form.appendChild(saveBtn);
-  form.appendChild(cancelBtn);
-  item.appendChild(form);
-  panelState.renameContext = { styleId, item, input, form, trigger };
-  input.focus();
-  input.select();
-  input.addEventListener('input', () => input.classList.remove('input-error'));
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      commitRenameStyle(styleId, input);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      cancelRenameStyle(true);
-    }
-  });
-  saveBtn.addEventListener('click', () => commitRenameStyle(styleId, input));
-  cancelBtn.addEventListener('click', () => cancelRenameStyle(true));
-}
-
-function commitRenameStyle(styleId, input) {
-  if (!input) return;
-  const sanitized = sanitizeStyleName(input.value);
-  if (!sanitized) {
-    input.classList.add('input-error');
-    input.focus();
-    return;
-  }
-  const styles = getSavedStyles();
-  const updated = styles.map(style => {
-    if (!style || style.id !== styleId) return style;
-    return { ...style, name: sanitized };
-  });
-  setSavedStyles(updated);
-  persistPanelState();
-  cancelRenameStyle();
-  renderSavedStylesList({ focusId: styleId });
 }
 
 function applySavedStyle(styleId) {
