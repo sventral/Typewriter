@@ -874,6 +874,7 @@ export function setupUIBindings(context, controllers) {
       state.wordWrap = true;
       applyDefaultMargins();
     }
+    refreshSavedInkStylesUI();
     syncInkStrengthDisplays();
     refreshSavedInkStylesUI();
   }
