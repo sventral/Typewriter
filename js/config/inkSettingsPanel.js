@@ -52,7 +52,6 @@ const panelState = {
   initialized: false,
   saveState: null,
   overallSlider: null,
-  overallValueEl: null,
   overallNumberInput: null,
   pendingGlyphRAF: 0,
   pendingGrainRAF: 0,
@@ -719,9 +718,6 @@ function syncOverallStrengthUI() {
   if (panelState.overallNumberInput && panelState.overallNumberInput.value !== String(pct)) {
     panelState.overallNumberInput.value = String(pct);
   }
-  if (panelState.overallValueEl) {
-    panelState.overallValueEl.textContent = `${pct}%`;
-  }
 }
 
 function setOverallStrength(percent) {
@@ -784,7 +780,6 @@ export function setupInkSettingsPanel(options = {}) {
 
   const sectionsRoot = document.getElementById('inkSettingsSections');
   panelState.overallSlider = document.getElementById('inkEffectsOverallSlider');
-  panelState.overallValueEl = document.getElementById('inkEffectsOverallValue');
   panelState.overallNumberInput = document.getElementById('inkEffectsOverallNumber');
   const copyBtn = document.getElementById('inkSettingsCopyBtn');
 
