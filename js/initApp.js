@@ -523,7 +523,6 @@ const uiBindings = setupUIBindings(
     readStagedLH,
     toggleRulers,
     toggleFontsPanel,
-    toggleSettingsPanel,
     toggleInkSettingsPanel,
     loadFontAndApply,
     requestHammerNudge,
@@ -651,15 +650,6 @@ function toggleFontsPanel() {
     for (const radio of app.fontRadios()) {
       radio.checked = radio.value === metricsStore.ACTIVE_FONT_NAME;
     }
-    app.settingsPanel.classList.remove('is-open');
-    if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
-  }
-}
-
-function toggleSettingsPanel() {
-  const isOpen = app.settingsPanel.classList.toggle('is-open');
-  if (isOpen) {
-    app.fontsPanel.classList.remove('is-open');
     if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
   }
 }
@@ -669,7 +659,6 @@ function toggleInkSettingsPanel() {
   const isOpen = app.inkSettingsPanel.classList.toggle('is-open');
   if (isOpen) {
     app.fontsPanel.classList.remove('is-open');
-    app.settingsPanel.classList.remove('is-open');
   }
 }
 

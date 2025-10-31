@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.5.9b</div>
+  <div class="app-version">v.6.0b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -46,7 +46,6 @@
 
   <div class="toolbar">
     <div class="toolbar-left">
-      <button class="btn" id="settingsBtnNew">Settings</button>
       <div class="doc-controls" id="docControls">
         <button class="btn icon-only" id="docMenuBtn" aria-haspopup="true" aria-expanded="false" title="Documents" aria-label="Documents">
           <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
@@ -72,7 +71,7 @@
       <button class="btn" id="exportTxtBtn">Export</button>
     </div>
     <div class="toolbar-right">
-      <button class="btn" id="inkSettingsBtn">Ink settings</button>
+      <button class="btn" id="inkSettingsBtn">Settings</button>
       <button class="btn" id="toggleMarginsBtn" title="Toggle rulers">Margins</button>
       <button class="btn" id="fontsBtn">Fonts</button>
       <div class="ink-control-group">
@@ -107,145 +106,133 @@
 
   <aside id="inkSettingsPanel" class="side-panel from-right">
     <div class="panel-content ink-settings-content">
-      <h3>Ink Settings</h3>
-      <div class="settings-group-new">
-        <div class="ink-overall-row">
-          <div class="ink-overall-topline">
-            <div class="ink-overall-heading">
-              <span class="ink-section-toggle-icon ink-overall-spacer" aria-hidden="true"></span>
-              <label for="inkEffectsOverallSlider" class="ink-section-title">Overall</label>
+      <details class="settings-section" id="typographySettings">
+        <summary>Typography</summary>
+        <div class="settings-section-content">
+          <div class="settings-group-new">
+            <div class="control-row">
+              <label for="cpiSelect">CPI</label>
+              <select id="cpiSelect">
+                <option value="10">10</option>
+                <option value="12">12</option>
+              </select>
             </div>
-            <div class="ink-overall-topline-right"></div>
-          </div>
-          <div class="ink-overall-controls">
-            <input type="range" id="inkEffectsOverallSlider" min="0" max="100" step="1" value="100" />
-            <input type="number" id="inkEffectsOverallNumber" min="0" max="100" step="1" value="100" aria-label="Overall strength" />
-          </div>
-        </div>
-      </div>
-      <hr class="divider ink-settings-divider" />
-      <div id="inkSettingsSections"></div>
-      <section class="ink-styles-section" aria-labelledby="inkStylesHeader">
-        <h4 id="inkStylesHeader">Saved styles</h4>
-        <div class="ink-style-save-row">
-          <input type="text" id="inkStyleNameInput" placeholder="Name this style" aria-label="Name this ink style" />
-          <button class="btn" id="inkStyleSaveBtn" type="button">Save current</button>
-        </div>
-        <div class="ink-style-io-row">
-          <button class="btn" id="inkStyleExportBtn" type="button">Export current</button>
-          <input type="file" id="inkStyleImportInput" accept="application/json" hidden />
-          <button class="btn" id="inkStyleImportBtn" type="button">Import</button>
-        </div>
-        <div id="inkStylesList" class="ink-styles-list" aria-live="polite" aria-atomic="false"></div>
-      </section>
-    </div>
-  </aside>
-
-  <aside id="settingsPanel" class="side-panel from-left">
-    <div class="panel-content">
-      <h3>Ink Effects</h3>
-      <div class="settings-group-new">
-        <div class="control-row">
-          <label for="grainPct">Grain</label>
-          <input type="number" id="grainPct" min="0" max="100" step="1" value="0" title="Grain strength (0–100)">
-        </div>
-      </div>
-      <hr class="divider">
-      <h3>Typography</h3>
-      <div class="settings-group-new">
-        <div class="control-row">
-          <label for="cpiSelect">CPI</label>
-          <select id="cpiSelect">
-            <option value="10">10</option>
-            <option value="12">12</option>
-          </select>
-        </div>
-        <div class="control-row">
-          <label>Columns</label>
-          <span id="colsPreview">Columns: 82.68</span>
-        </div>
-        <div class="control-row">
-          <label for="sizeInput">Size</label>
-          <div class="input-with-suffix">
-            <input id="sizeInput" type="number" step="1" min="1" max="150" inputmode="numeric" pattern="[0-9]*" value="84" />
-            <span>%</span>
+            <div class="control-row">
+              <label>Columns</label>
+              <span id="colsPreview">Columns: 82.68</span>
+            </div>
+            <div class="control-row">
+              <label for="sizeInput">Size</label>
+              <div class="input-with-suffix">
+                <input id="sizeInput" type="number" step="1" min="1" max="150" inputmode="numeric" pattern="[0-9]*" value="84" />
+                <span>%</span>
+              </div>
+            </div>
+            <div class="control-row">
+              <div></div>
+              <button class="btn apply-btn" id="applyBtn" title="Apply CPI &amp; size">Apply</button>
+            </div>
+            <div class="control-row">
+              <label for="lhInput">Line Height</label>
+              <input id="lhInput" type="number" step="0.5" min="1" max="3" value="1" />
+            </div>
+            <div class="control-row">
+              <div></div>
+              <button class="btn apply-btn" id="applyLHBtn" title="Apply line height">Apply</button>
+            </div>
           </div>
         </div>
-        <div class="control-row">
-          <div></div>
-          <button class="btn apply-btn" id="applyBtn" title="Apply CPI & size">Apply</button>
+      </details>
+      <details class="settings-section" id="marginSettings">
+        <summary>Margins</summary>
+        <div class="settings-section-content">
+          <div class="settings-group-new">
+            <div class="control-row">
+              <label for="mmLeft">Left (mm)</label>
+              <input id="mmLeft" type="number" step="1" min="0" value="20" />
+            </div>
+            <div class="control-row">
+              <label for="mmRight">Right (mm)</label>
+              <input id="mmRight" type="number" step="1" min="0" value="20" />
+            </div>
+            <div class="control-row">
+              <label for="mmTop">Top (mm)</label>
+              <input id="mmTop" type="number" step="1" min="0" value="20" />
+            </div>
+            <div class="control-row">
+              <label for="mmBottom">Bottom (mm)</label>
+              <input id="mmBottom" type="number" step="1" min="0" value="20" />
+            </div>
+            <div class="control-row">
+              <label for="showMarginBoxCb">Margin Box</label>
+              <input id="showMarginBoxCb" type="checkbox" />
+            </div>
+            <div class="control-row">
+              <label for="wordWrapCb">Word Wrap</label>
+              <input id="wordWrapCb" type="checkbox" checked />
+            </div>
+          </div>
         </div>
-        <div class="control-row">
-          <label for="lhInput">Line Height</label>
-          <input id="lhInput" type="number" step="0.5" min="1" max="3" value="1" />
+      </details>
+      <details class="settings-section" id="inkStylesSettings">
+        <summary>Ink styles</summary>
+        <div class="settings-section-content">
+          <div class="settings-group-new">
+            <div class="ink-overall-row">
+              <div class="ink-overall-topline">
+                <div class="ink-overall-heading">
+                  <span class="ink-section-toggle-icon ink-overall-spacer" aria-hidden="true"></span>
+                  <label for="inkEffectsOverallSlider" class="ink-section-title">Overall</label>
+                </div>
+                <div class="ink-overall-topline-right"></div>
+              </div>
+              <div class="ink-overall-controls">
+                <input type="range" id="inkEffectsOverallSlider" min="0" max="100" step="1" value="100" />
+                <input type="number" id="inkEffectsOverallNumber" min="0" max="100" step="1" value="100" aria-label="Overall strength" />
+              </div>
+            </div>
+          </div>
+          <div id="inkSettingsSections"></div>
+          <section class="ink-styles-section" aria-labelledby="inkStylesHeader">
+            <h4 id="inkStylesHeader">Saved ink styles</h4>
+            <div class="ink-style-save-row">
+              <input type="text" id="inkStyleNameInput" placeholder="Name this style" aria-label="Name this ink style" />
+              <button class="btn" id="inkStyleSaveBtn" type="button">Save current</button>
+            </div>
+            <div class="ink-style-io-row">
+              <button class="btn" id="inkStyleExportBtn" type="button">Export current</button>
+              <input type="file" id="inkStyleImportInput" accept="application/json" hidden />
+              <button class="btn" id="inkStyleImportBtn" type="button">Import</button>
+            </div>
+            <div id="inkStylesList" class="ink-styles-list" aria-live="polite" aria-atomic="false"></div>
+          </section>
         </div>
-        <div class="control-row">
-          <div></div>
-          <button class="btn apply-btn" id="applyLHBtn" title="Apply line height">Apply</button>
+      </details>
+      <details class="settings-section" id="appearanceSettings">
+        <summary>Appearance</summary>
+        <div class="settings-section-content">
+          <div class="settings-group-new appearance-group">
+            <div class="appearance-options">
+              <label>
+                <input type="radio" name="appearanceMode" id="appearanceAuto" value="auto" checked />
+                <span>Automatic</span>
+              </label>
+              <label>
+                <input type="radio" name="appearanceMode" id="appearanceLight" value="light" />
+                <span>Light</span>
+              </label>
+              <label>
+                <input type="radio" name="appearanceMode" id="appearanceDark" value="dark" />
+                <span>Dark</span>
+              </label>
+            </div>
+            <label class="appearance-dark-toggle">
+              <input type="checkbox" id="darkPageToggle" />
+              <span>Dark page while in dark mode</span>
+            </label>
+          </div>
         </div>
-      </div>
-      <hr class="divider">
-      <h3>Stage Bounds</h3>
-      <div class="settings-group-new">
-        <div class="control-row">
-          <label for="stageWidthPct">Horizontal (%)</label>
-          <input id="stageWidthPct" type="number" min="100" max="500" step="10" value="200" title="Stage width as % of page width" />
-        </div>
-        <div class="control-row">
-          <label for="stageHeightPct">Vertical (%)</label>
-          <input id="stageHeightPct" type="number" min="100" max="500" step="10" value="120" title="Stage height as % of page height" />
-        </div>
-      </div>
-      <hr class="divider">
-      <h3>Margins</h3>
-      <div class="settings-group-new">
-        <div class="control-row">
-          <label for="mmLeft">Left (mm)</label>
-          <input id="mmLeft" type="number" step="1" min="0" value="20" />
-        </div>
-        <div class="control-row">
-          <label for="mmRight">Right (mm)</label>
-          <input id="mmRight" type="number" step="1" min="0" value="20" />
-        </div>
-        <div class="control-row">
-          <label for="mmTop">Top (mm)</label>
-          <input id="mmTop" type="number" step="1" min="0" value="20" />
-        </div>
-        <div class="control-row">
-          <label for="mmBottom">Bottom (mm)</label>
-          <input id="mmBottom" type="number" step="1" min="0" value="20" />
-        </div>
-        <div class="control-row">
-          <label for="showMarginBoxCb">Margin Box</label>
-          <input id="showMarginBoxCb" type="checkbox" />
-        </div>
-        <div class="control-row">
-          <label for="wordWrapCb">Word Wrap</label>
-          <input id="wordWrapCb" type="checkbox" checked />
-        </div>
-      </div>
-      <hr class="divider">
-      <h3>Appearance</h3>
-      <div class="settings-group-new appearance-group">
-        <div class="appearance-options">
-          <label>
-            <input type="radio" name="appearanceMode" id="appearanceAuto" value="auto" checked />
-            <span>Automatic</span>
-          </label>
-          <label>
-            <input type="radio" name="appearanceMode" id="appearanceLight" value="light" />
-            <span>Light</span>
-          </label>
-          <label>
-            <input type="radio" name="appearanceMode" id="appearanceDark" value="dark" />
-            <span>Dark</span>
-          </label>
-        </div>
-        <label class="appearance-dark-toggle">
-          <input type="checkbox" id="darkPageToggle" />
-          <span>Dark page while in dark mode</span>
-        </label>
-      </div>
+      </details>
     </div>
   </aside>
 
