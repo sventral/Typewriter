@@ -52,7 +52,7 @@ const panelState = {
   initialized: false,
   saveState: null,
   overallSlider: null,
-  overallValueEl: null,
+  overallNumberInput: null,
   pendingGlyphRAF: 0,
   pendingGrainRAF: 0,
   pendingGlyphOptions: null,
@@ -374,18 +374,48 @@ function buildObjectControls(meta, container, obj, path, label) {
   container.appendChild(group);
 }
 
+function setSectionCollapsed(meta, collapsed) {
+  if (!meta) return;
+  const isCollapsed = !!collapsed;
+  meta.isCollapsed = isCollapsed;
+  if (meta.root) {
+    meta.root.classList.toggle('is-collapsed', isCollapsed);
+  }
+  if (meta.body) {
+    meta.body.hidden = isCollapsed;
+  }
+  if (meta.toggleButton) {
+    meta.toggleButton.setAttribute('aria-expanded', String(!isCollapsed));
+  }
+}
+
 function buildSection(def, root) {
   const sectionEl = document.createElement('section');
   sectionEl.className = 'ink-section';
 
   const header = document.createElement('div');
   header.className = 'ink-section-header';
-  const title = document.createElement('h4');
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'ink-section-toggle';
+  toggleBtn.setAttribute('aria-expanded', 'false');
+  const icon = document.createElement('span');
+  icon.className = 'ink-section-toggle-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '▸';
+  toggleBtn.appendChild(icon);
+  const title = document.createElement('span');
+  title.className = 'ink-section-title';
   title.textContent = def.label;
-  header.appendChild(title);
+  toggleBtn.appendChild(title);
+
+  const topLine = document.createElement('div');
+  topLine.className = 'ink-section-topline';
+  topLine.appendChild(toggleBtn);
+  header.appendChild(topLine);
 
   const strengthWrap = document.createElement('div');
-  strengthWrap.className = 'ink-strength-control';
+  strengthWrap.className = 'ink-section-controls';
   const slider = document.createElement('input');
   slider.type = 'range';
   slider.min = '0';
@@ -394,15 +424,23 @@ function buildSection(def, root) {
   const startPercent = getPercentFromState(def.stateKey, def.defaultStrength ?? 0);
   slider.value = String(startPercent);
   strengthWrap.appendChild(slider);
-  const valueEl = document.createElement('span');
-  valueEl.className = 'ink-strength-value';
-  strengthWrap.appendChild(valueEl);
+  const numberInput = document.createElement('input');
+  numberInput.type = 'number';
+  numberInput.min = '0';
+  numberInput.max = '100';
+  numberInput.step = '1';
+  numberInput.value = String(startPercent);
+  numberInput.setAttribute('aria-label', `${def.label} strength`);
+  strengthWrap.appendChild(numberInput);
   header.appendChild(strengthWrap);
 
   sectionEl.appendChild(header);
 
   const body = document.createElement('div');
   body.className = 'ink-section-body';
+  const bodyId = `inkSection-${def.id}`;
+  body.id = bodyId;
+  toggleBtn.setAttribute('aria-controls', bodyId);
   const meta = {
     id: def.id,
     config: def.config,
@@ -411,7 +449,9 @@ function buildSection(def, root) {
     root: sectionEl,
     inputs: new Map(),
     slider,
-    sliderValueEl: valueEl,
+    numberInput,
+    body,
+    toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
     applyBtn: null,
   };
@@ -448,11 +488,26 @@ function buildSection(def, root) {
   root.appendChild(sectionEl);
   panelState.metas.push(meta);
 
+  toggleBtn.addEventListener('click', () => {
+    setSectionCollapsed(meta, !meta.isCollapsed);
+  });
   slider.addEventListener('input', () => {
     applySectionStrength(meta, Number.parseFloat(slider.value) || 0);
   });
+  numberInput.addEventListener('input', () => {
+    const raw = Number.parseFloat(numberInput.value);
+    if (!Number.isFinite(raw)) return;
+    applySectionStrength(meta, raw);
+  });
+  numberInput.addEventListener('blur', () => {
+    if (numberInput.value !== '') return;
+    const fallback = meta.defaultStrength ?? 0;
+    const pct = getPercentFromState(meta.stateKey, fallback);
+    applySectionStrength(meta, pct, { silent: true });
+  });
 
-  applySectionStrength(meta, startPercent, { silent: true, syncSlider: false });
+  setSectionCollapsed(meta, true);
+  applySectionStrength(meta, startPercent, { silent: true, syncSlider: false, syncNumber: false });
   return meta;
 }
 
@@ -516,8 +571,8 @@ function applySectionStrength(meta, percent, options = {}) {
   if (options.syncSlider !== false && meta.slider && meta.slider.value !== String(pct)) {
     meta.slider.value = String(pct);
   }
-  if (meta.sliderValueEl) {
-    meta.sliderValueEl.textContent = `${pct}%`;
+  if (options.syncNumber !== false && meta.numberInput && meta.numberInput.value !== String(pct)) {
+    meta.numberInput.value = String(pct);
   }
   if (meta.root) {
     meta.root.classList.toggle('is-disabled', pct <= 0);
@@ -657,13 +712,13 @@ function syncOverallStrengthUI() {
   if (panelState.overallSlider && panelState.overallSlider.value !== String(pct)) {
     panelState.overallSlider.value = String(pct);
   }
-  if (panelState.overallValueEl) {
-    panelState.overallValueEl.textContent = `${pct}%`;
+  if (panelState.overallNumberInput && panelState.overallNumberInput.value !== String(pct)) {
+    panelState.overallNumberInput.value = String(pct);
   }
 }
 
 function setOverallStrength(percent) {
-  const pct = clamp(Number(percent) || 0, 0, 100);
+  const pct = clamp(Math.round(Number(percent) || 0), 0, 100);
   setPercentOnState('effectsOverallStrength', pct);
   syncOverallStrengthUI();
   scheduleGlyphRefresh();
@@ -722,13 +777,24 @@ export function setupInkSettingsPanel(options = {}) {
 
   const sectionsRoot = document.getElementById('inkSettingsSections');
   panelState.overallSlider = document.getElementById('inkEffectsOverallSlider');
-  panelState.overallValueEl = document.getElementById('inkEffectsOverallValue');
+  panelState.overallNumberInput = document.getElementById('inkEffectsOverallNumber');
   const copyBtn = document.getElementById('inkSettingsCopyBtn');
 
   if (panelState.overallSlider) {
     panelState.overallSlider.addEventListener('input', () => {
       const pct = clamp(Number.parseFloat(panelState.overallSlider.value) || 0, 0, 100);
       setOverallStrength(pct);
+    });
+  }
+  if (panelState.overallNumberInput) {
+    panelState.overallNumberInput.addEventListener('input', () => {
+      const raw = Number.parseFloat(panelState.overallNumberInput.value);
+      if (!Number.isFinite(raw)) return;
+      setOverallStrength(raw);
+    });
+    panelState.overallNumberInput.addEventListener('blur', () => {
+      if (panelState.overallNumberInput.value !== '') return;
+      syncOverallStrengthUI();
     });
   }
   syncOverallStrengthUI();
