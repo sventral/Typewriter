@@ -50,7 +50,7 @@ export function exactFontString(sizePx, face) {
 }
 
 export function calibrateMonospaceFont(targetPitchPx, face, inkWidthPct) {
-  const pct = (typeof inkWidthPct === 'number' && isFinite(inkWidthPct)) ? inkWidthPct : 84;
+  const pct = (typeof inkWidthPct === 'number' && isFinite(inkWidthPct)) ? inkWidthPct : 95;
   const targetInkPx = Math.max(0.25, targetPitchPx * (pct / 100));
   const BASE = 200;
   const TEST = 'MW@#%&()[]{}|/\\abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';

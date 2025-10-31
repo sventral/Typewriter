@@ -144,8 +144,8 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
     inkTextureStrength: clamp(Number(state.inkTextureStrength ?? 100), 0, 100),
     edgeBleedStrength: clamp(Number(state.edgeBleedStrength ?? 100), 0, 100),
-    edgeFuzzStrength: clamp(Number(state.edgeFuzzStrength ?? 0), 0, 100),
-    grainPct: state.grainPct,
+    edgeFuzzStrength: clamp(Number(state.edgeFuzzStrength ?? 100), 0, 100),
+    grainPct: clamp(Number(state.grainPct ?? 100), 0, 100),
     grainSeed: state.grainSeed >>> 0,
     altSeed: state.altSeed >>> 0,
     wordWrap: state.wordWrap,
@@ -266,7 +266,7 @@ export function deserializeDocumentState(data, context) {
   const storedInkWidth = Number(data.inkWidthPct);
   const sanitizedInkWidth = Number.isFinite(storedInkWidth)
     ? clamp(Math.round(storedInkWidth), 1, 150)
-    : 84;
+    : 95;
   const storedStageWidth = Number(data.stageWidthFactor);
   const storedStageHeight = Number(data.stageHeightFactor);
   const sanitizedStageWidth = Number.isFinite(storedStageWidth)
@@ -292,13 +292,13 @@ export function deserializeDocumentState(data, context) {
     inkOpacity,
     lineHeightFactor: [1, 1.5, 2, 2.5, 3].includes(data.lineHeightFactor)
       ? data.lineHeightFactor
-      : 1,
+      : 1.5,
     zoom: typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4 ? data.zoom : 1.0,
     effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
     inkTextureStrength: clamp(Number(data.inkTextureStrength ?? state.inkTextureStrength ?? 100), 0, 100),
     edgeBleedStrength: clamp(Number(data.edgeBleedStrength ?? state.edgeBleedStrength ?? 100), 0, 100),
-    edgeFuzzStrength: clamp(Number(data.edgeFuzzStrength ?? state.edgeFuzzStrength ?? 0), 0, 100),
-    grainPct: clamp(Number(data.grainPct ?? 0), 0, 100),
+    edgeFuzzStrength: clamp(Number(data.edgeFuzzStrength ?? state.edgeFuzzStrength ?? 100), 0, 100),
+    grainPct: clamp(Number(data.grainPct ?? state.grainPct ?? 100), 0, 100),
     grainSeed: (data.grainSeed >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
     altSeed:
       (data.altSeed >>> 0) || (((data.grainSeed >>> 0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),

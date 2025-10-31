@@ -45,6 +45,7 @@ export function setupUIBindings(context, controllers) {
     setDrag,
     getSaveTimer,
     setSaveTimer,
+    gridDiv,
   } = context;
 
   const {
@@ -590,7 +591,7 @@ export function setupUIBindings(context, controllers) {
         sanitizeIntegerField(app.sizeInput, { min: 1, max: 150, allowEmpty: true });
       });
       app.sizeInput.addEventListener('change', () => {
-        sanitizeIntegerField(app.sizeInput, { min: 1, max: 150, allowEmpty: false, fallbackValue: state.inkWidthPct || 84 });
+        sanitizeIntegerField(app.sizeInput, { min: 1, max: 150, allowEmpty: false, fallbackValue: state.inkWidthPct || 95 });
         focusStage();
       });
       const applyOnEnter = (e) => {
@@ -842,7 +843,7 @@ export function setupUIBindings(context, controllers) {
     if (app.grainInput) app.grainInput.value = String(state.grainPct);
     if (app.cpiSelect) app.cpiSelect.value = String(state.cpi || 10);
     updateColsPreviewUI();
-    if (app.sizeInput) app.sizeInput.value = String(clamp(Math.round(state.inkWidthPct ?? 84), 1, 150));
+    if (app.sizeInput) app.sizeInput.value = String(clamp(Math.round(state.inkWidthPct ?? 95), 1, 150));
     if (app.lhInput) app.lhInput.value = String(state.lineHeightFactor);
     if (app.showMarginBoxCb) app.showMarginBoxCb.checked = !!state.showMarginBox;
     if (app.wordWrapCb) app.wordWrapCb.checked = !!state.wordWrap;
@@ -861,9 +862,13 @@ export function setupUIBindings(context, controllers) {
     if (!loaded) {
       state.cpi = 10;
       state.colsAcross = computeColsFromCpi(10).cols2;
-      state.inkWidthPct = 84;
+      state.inkWidthPct = 95;
+      state.lineHeightFactor = 1.5;
+      const baseGridDiv = Number.isFinite(gridDiv) ? gridDiv : 8;
+      state.lineStepMu = Math.round(state.lineHeightFactor * baseGridDiv);
       state.inkOpacity = { b: 100, r: 100, w: 100 };
-      state.grainPct = 0;
+      state.edgeFuzzStrength = 100;
+      state.grainPct = 100;
       state.grainSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
       state.altSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
       state.wordWrap = true;

@@ -518,6 +518,7 @@ const uiBindings = setupUIBindings(
     setZoomPercent,
     applyDefaultMargins,
     computeColsFromCpi,
+    gridDiv: GRID_DIV,
     applySubmittedChanges,
     applyLineHeight,
     readStagedLH,
@@ -569,7 +570,7 @@ function readStagedCpi(){
 }
 
 function readStagedSize(){
-  const fallback = Number.isFinite(state.inkWidthPct) ? clamp(Math.round(state.inkWidthPct), 1, 150) : 84;
+  const fallback = Number.isFinite(state.inkWidthPct) ? clamp(Math.round(state.inkWidthPct), 1, 150) : 95;
   const val = sanitizeIntegerField(app.sizeInput, { min:1, max:150, allowEmpty:false, fallbackValue: fallback });
   return (typeof val === 'number' && Number.isFinite(val)) ? val : fallback;
 }
@@ -834,7 +835,7 @@ function primeInitialMetrics(){
 }
 
 function applyDefaultMargins() {
-  const mmw = app.PAGE_W / 210, mmh = app.PAGE_H / 297, mW = 20 * mmw, mH = 20 * mmh;
+  const mmw = app.PAGE_W / 210, mmh = app.PAGE_H / 297, mW = 25 * mmw, mH = 25 * mmh;
   state.marginL = mW; state.marginR = app.PAGE_W - mW;
   state.marginTop = mH; state.marginBottom = mH;
 }
