@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.6.0b</div>
+  <div class="app-version">v.6.1b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -73,7 +73,6 @@
     <div class="toolbar-right">
       <button class="btn" id="inkSettingsBtn">Settings</button>
       <button class="btn" id="toggleMarginsBtn" title="Toggle rulers">Margins</button>
-      <button class="btn" id="fontsBtn">Fonts</button>
       <div class="ink-control-group">
         <button class="btn" id="inkBlackBtn" title="Black Ink. Long-press for transparency."><span class="sw black"></span></button>
         <div class="ink-slider-popup" id="inkBlackSliderPopup">
@@ -107,7 +106,10 @@
   <aside id="inkSettingsPanel" class="side-panel from-right">
     <div class="panel-content ink-settings-content">
       <details class="settings-section" id="typographySettings">
-        <summary>Typography</summary>
+        <summary>
+          <span class="settings-toggle-icon" aria-hidden="true"></span>
+          <span class="settings-summary-label">Typography</span>
+        </summary>
         <div class="settings-section-content">
           <div class="settings-group-new">
             <div class="control-row">
@@ -143,8 +145,77 @@
           </div>
         </div>
       </details>
+      <details class="settings-section" id="fontsSettings">
+        <summary>
+          <span class="settings-toggle-icon" aria-hidden="true"></span>
+          <span class="settings-summary-label">Fonts</span>
+        </summary>
+        <div class="settings-section-content">
+          <div class="settings-group-new fonts-settings-group">
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="TT2020Base" />
+                <span class="font-name">TT2020 Base</span>
+              </div>
+              <span class="font-sample" style='font-family:"TT2020Base", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="TT2020StyleB" />
+                <span class="font-name">TT2020 Style B</span>
+              </div>
+              <span class="font-sample" style='font-family:"TT2020StyleB", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="TT2020StyleD" />
+                <span class="font-name">TT2020 Style D</span>
+              </div>
+              <span class="font-sample" style='font-family:"TT2020StyleD", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="TT2020StyleE" checked />
+                <span class="font-name">TT2020 Style E</span>
+              </div>
+              <span class="font-sample" style='font-family:"TT2020StyleE", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="TT2020StyleF" />
+                <span class="font-name">TT2020 Style F</span>
+              </div>
+              <span class="font-sample" style='font-family:"TT2020StyleF", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="TT2020StyleG" />
+                <span class="font-name">TT2020 Style G</span>
+              </div>
+              <span class="font-sample" style='font-family:"TT2020StyleG", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Courier New" />
+                <span class="font-name">Courier New</span>
+              </div>
+              <span class="font-sample" style='font-family:"Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Courier" />
+                <span class="font-name">Courier</span>
+              </div>
+              <span class="font-sample" style='font-family:Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+          </div>
+        </div>
+      </details>
       <details class="settings-section" id="marginSettings">
-        <summary>Margins</summary>
+        <summary>
+          <span class="settings-toggle-icon" aria-hidden="true"></span>
+          <span class="settings-summary-label">Margins</span>
+        </summary>
         <div class="settings-section-content">
           <div class="settings-group-new">
             <div class="control-row">
@@ -175,7 +246,10 @@
         </div>
       </details>
       <details class="settings-section" id="inkStylesSettings">
-        <summary>Ink styles</summary>
+        <summary>
+          <span class="settings-toggle-icon" aria-hidden="true"></span>
+          <span class="settings-summary-label">Ink styles</span>
+        </summary>
         <div class="settings-section-content">
           <div class="settings-group-new">
             <div class="ink-overall-row">
@@ -209,7 +283,10 @@
         </div>
       </details>
       <details class="settings-section" id="appearanceSettings">
-        <summary>Appearance</summary>
+        <summary>
+          <span class="settings-toggle-icon" aria-hidden="true"></span>
+          <span class="settings-summary-label">Appearance</span>
+        </summary>
         <div class="settings-section-content">
           <div class="settings-group-new appearance-group">
             <div class="appearance-options">
@@ -233,70 +310,6 @@
           </div>
         </div>
       </details>
-    </div>
-  </aside>
-
-  <aside id="fontsPanel" class="side-panel from-right">
-    <div class="panel-content">
-      <h3>Fonts</h3>
-      <div class="settings-group-new">
-        <label class="font-option">
-          <div class="font-option-header">
-            <input type="radio" name="fontChoice" value="TT2020Base" />
-            <span class="font-name">TT2020 Base</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020Base", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
-            <input type="radio" name="fontChoice" value="TT2020StyleB" />
-            <span class="font-name">TT2020 Style B</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020StyleB", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
-            <input type="radio" name="fontChoice" value="TT2020StyleD" />
-            <span class="font-name">TT2020 Style D</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020StyleD", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
-            <input type="radio" name="fontChoice" value="TT2020StyleE" checked />
-            <span class="font-name">TT2020 Style E</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020StyleE", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
-            <input type="radio" name="fontChoice" value="TT2020StyleF" />
-            <span class="font-name">TT2020 Style F</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020StyleF", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
-            <input type="radio" name="fontChoice" value="TT2020StyleG" />
-            <span class="font-name">TT2020 Style G</span>
-          </div>
-          <span class="font-sample" style='font-family:"TT2020StyleG", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
-            <input type="radio" name="fontChoice" value="Courier New" />
-            <span class="font-name">Courier New</span>
-          </div>
-          <span class="font-sample" style='font-family:"Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-        <label class="font-option">
-          <div class="font-option-header">
-            <input type="radio" name="fontChoice" value="Courier" />
-            <span class="font-name">Courier</span>
-          </div>
-          <span class="font-sample" style='font-family:Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
-        </label>
-      </div>
     </div>
   </aside>
 
