@@ -23,10 +23,10 @@ export const INK_TEXTURE = {
 export const EDGE_FUZZ = {
   enabled: true,
   inks: ['b', 'r'],
-  widthPx: 2.4,
-  inwardShare: 0.35,
-  roughness: 0.85,
-  frequency: 4.2,
+  widthPx: 1.64,
+  inwardShare: 0.55,
+  roughness: 2.85,
+  frequency: 0.2,
   opacity: 0.38,
   seed: 0x7F4A7C15,
 };
@@ -35,20 +35,20 @@ export const EDGE_BLEED = {
   enabled: true,
   inks: ['b', 'r'],
   passes: [
-    { width: 0.65, alpha: 0.18, jitter: 0.42, jitterY: 0.26, lighten: 0.38, strokes: 2, seed: 0x13579BDF },
-    { width: 1.1, alpha: 0.12, jitter: 0.75, jitterY: 0.45, lighten: 0.52, strokes: 1, seed: 0x2468ACE1 }
+    { width: 0.25, alpha: 0.18, jitter: 0.22, jitterY: 0.26, lighten: 0.08, strokes: 1, seed: 324508639 },
+    { width: 0.21, alpha: 0.12, jitter: 0.75, jitterY: 0.45, lighten: 0.952, strokes: 1, seed: 610839777 }
   ]
 };
 
 export const GRAIN_CFG = {
   enabled: true,
-  base_scale_from_char_w: 0.3,
+  base_scale_from_char_w: 0.64,
   octave_rel_scales: [0.9, 1.5, 2.3, 3.8],
   octave_weights: [0.42, 0.1, 0.23, 0.15],
-  pixel_hash_weight: 0.05,
+  pixel_hash_weight: 0,
   post_gamma: 0.9,
   alpha: { max: 0.45, mix_pow: 0.7, low_pow: 0.4, min: 0.0 },
-  seeds: { octave: [0xA5A5A5A5, 0x5EEDFACE, 0x13579BDF], hash: 0x5F356495 },
+  seeds: { octave: [2779096485, 1592654542, 324508639], hash: 1597334677 },
   composite_op: 'destination-out'
 };
 
