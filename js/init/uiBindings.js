@@ -39,7 +39,6 @@ export function setupUIBindings(context, controllers) {
     readStagedLH,
     toggleRulers,
     toggleFontsPanel,
-    toggleSettingsPanel,
     toggleInkSettingsPanel,
     loadFontAndApply,
     requestHammerNudge,
@@ -485,6 +484,7 @@ export function setupUIBindings(context, controllers) {
   }
 
   function bindGrainInput() {
+    if (!app.grainInput) return;
     app.grainInput.addEventListener('input', () => {
       const v = clamp(parseInt(app.grainInput.value || '0', 10), 0, 100);
       app.grainInput.value = String(v);
@@ -501,13 +501,11 @@ export function setupUIBindings(context, controllers) {
   }
 
   function bindDialogToggles() {
-    app.fontsBtn.onclick = toggleFontsPanel;
-    app.settingsBtnNew.onclick = toggleSettingsPanel;
+    if (app.fontsBtn) app.fontsBtn.onclick = toggleFontsPanel;
     if (app.inkSettingsBtn) app.inkSettingsBtn.onclick = toggleInkSettingsPanel;
     window.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
-        app.fontsPanel.classList.remove('is-open');
-        app.settingsPanel.classList.remove('is-open');
+        app.fontsPanel?.classList.remove('is-open');
         if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
       }
     });
