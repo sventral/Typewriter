@@ -408,10 +408,14 @@ function buildSection(def, root) {
   title.className = 'ink-section-title';
   title.textContent = def.label;
   toggleBtn.appendChild(title);
-  header.appendChild(toggleBtn);
+
+  const topLine = document.createElement('div');
+  topLine.className = 'ink-section-topline';
+  topLine.appendChild(toggleBtn);
+  header.appendChild(topLine);
 
   const strengthWrap = document.createElement('div');
-  strengthWrap.className = 'ink-strength-control';
+  strengthWrap.className = 'ink-section-controls';
   const slider = document.createElement('input');
   slider.type = 'range';
   slider.min = '0';
@@ -428,9 +432,6 @@ function buildSection(def, root) {
   numberInput.value = String(startPercent);
   numberInput.setAttribute('aria-label', `${def.label} strength`);
   strengthWrap.appendChild(numberInput);
-  const valueEl = document.createElement('span');
-  valueEl.className = 'ink-strength-value';
-  strengthWrap.appendChild(valueEl);
   header.appendChild(strengthWrap);
 
   sectionEl.appendChild(header);
@@ -448,7 +449,6 @@ function buildSection(def, root) {
     root: sectionEl,
     inputs: new Map(),
     slider,
-    sliderValueEl: valueEl,
     numberInput,
     body,
     toggleButton: toggleBtn,
@@ -573,9 +573,6 @@ function applySectionStrength(meta, percent, options = {}) {
   }
   if (options.syncNumber !== false && meta.numberInput && meta.numberInput.value !== String(pct)) {
     meta.numberInput.value = String(pct);
-  }
-  if (meta.sliderValueEl) {
-    meta.sliderValueEl.textContent = `${pct}%`;
   }
   if (meta.root) {
     meta.root.classList.toggle('is-disabled', pct <= 0);
