@@ -191,6 +191,7 @@ export function deserializeDocumentState(data, context) {
     }
     const mb = document.createElement('div');
     mb.className = 'margin-box';
+    mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
     pageEl.appendChild(cv);
     pageEl.appendChild(mb);
     wrap.appendChild(pageEl);
@@ -219,6 +220,36 @@ export function deserializeDocumentState(data, context) {
       }
     }
   });
+
+  if (!state.pages.length) {
+    const wrap = document.createElement('div');
+    wrap.className = 'page-wrap';
+    wrap.dataset.page = '0';
+    const pageEl = document.createElement('div');
+    pageEl.className = 'page';
+    pageEl.style.height = app.PAGE_H + 'px';
+    const cv = document.createElement('canvas');
+    if (typeof prepareCanvas === 'function') {
+      prepareCanvas(cv);
+    }
+    const mb = document.createElement('div');
+    mb.className = 'margin-box';
+    mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
+    pageEl.appendChild(cv);
+    pageEl.appendChild(mb);
+    wrap.appendChild(pageEl);
+    app.stageInner.appendChild(wrap);
+    app.firstPageWrap = wrap;
+    app.firstPage = pageEl;
+    app.marginBox = mb;
+    const page = typeof makePageRecord === 'function'
+      ? makePageRecord(0, wrap, pageEl, cv, mb)
+      : null;
+    if (page) {
+      page.canvas.style.visibility = 'hidden';
+      state.pages.push(page);
+    }
+  }
 
   let inferredCols = data.colsAcross;
   const cpiVal = data.cpi ?? null;
