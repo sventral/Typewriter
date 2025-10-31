@@ -53,7 +53,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       })
     : [];
   return {
-    v: 22,
+    v: 23,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -75,6 +75,10 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     inkOpacity: state.inkOpacity,
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
+    effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
+    inkTextureStrength: clamp(Number(state.inkTextureStrength ?? 100), 0, 100),
+    edgeBleedStrength: clamp(Number(state.edgeBleedStrength ?? 100), 0, 100),
+    edgeFuzzStrength: clamp(Number(state.edgeFuzzStrength ?? 0), 0, 100),
     grainPct: state.grainPct,
     grainSeed: state.grainSeed >>> 0,
     altSeed: state.altSeed >>> 0,
@@ -101,7 +105,7 @@ export function deserializeDocumentState(data, context) {
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 22) return false;
+  if (!data || data.v < 2 || data.v > 23) return false;
   state.pages = [];
   if (app.stageInner) {
     app.stageInner.innerHTML = '';
@@ -192,6 +196,10 @@ export function deserializeDocumentState(data, context) {
       ? data.lineHeightFactor
       : 1,
     zoom: typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4 ? data.zoom : 1.0,
+    effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
+    inkTextureStrength: clamp(Number(data.inkTextureStrength ?? state.inkTextureStrength ?? 100), 0, 100),
+    edgeBleedStrength: clamp(Number(data.edgeBleedStrength ?? state.edgeBleedStrength ?? 100), 0, 100),
+    edgeFuzzStrength: clamp(Number(data.edgeFuzzStrength ?? state.edgeFuzzStrength ?? 0), 0, 100),
     grainPct: clamp(Number(data.grainPct ?? 0), 0, 100),
     grainSeed: (data.grainSeed >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
     altSeed:

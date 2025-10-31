@@ -20,6 +20,17 @@ export const INK_TEXTURE = {
   jitterSeed: 0x8BADF00D
 };
 
+export const EDGE_FUZZ = {
+  enabled: true,
+  inks: ['b', 'r'],
+  widthPx: 2.4,
+  inwardShare: 0.35,
+  roughness: 0.85,
+  frequency: 4.2,
+  opacity: 0.38,
+  seed: 0x7F4A7C15,
+};
+
 export const EDGE_BLEED = {
   enabled: true,
   inks: ['b', 'r'],
@@ -30,6 +41,7 @@ export const EDGE_BLEED = {
 };
 
 export const GRAIN_CFG = {
+  enabled: true,
   base_scale_from_char_w: 0.3,
   octave_rel_scales: [0.9, 1.5, 2.3, 3.8],
   octave_weights: [0.42, 0.1, 0.23, 0.15],
