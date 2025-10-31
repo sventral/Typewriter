@@ -488,9 +488,13 @@ body[data-page-tone='dark']{
   .ink-section { padding: 12px 0; border-top: 1px solid rgba(0,0,0,0.08); }
   .ink-section:first-of-type { border-top: none; padding-top: 4px; }
   .ink-section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-  .ink-section-toggle { display: flex; align-items: center; gap: 4px; font-size: 11px; letter-spacing: 0; text-transform: none; opacity: 0.8; }
+  .ink-strength-control { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .ink-strength-control input[type="range"] { width: 140px; }
+  .ink-strength-value { font-size: 12px; font-weight: 600; min-width: 44px; text-align: right; }
   .ink-inline-controls { display: flex; align-items: center; gap: 8px; }
   .ink-inline-controls input[type="number"], .ink-inline-controls input[type="text"] { width: 90px; }
+  .ink-inline-controls input[type="range"] { width: 180px; }
+  .ink-overall-row .ink-inline-controls { margin-left: auto; }
   .ink-section-body .control-row { margin-bottom: 6px; }
   .ink-subgroup { border-left: 2px solid rgba(0,0,0,0.06); padding-left: 10px; margin: 6px 0 10px; }
   .ink-subheading { font-size: 11px; font-weight: 600; opacity: 0.65; margin: 8px 0 6px; text-transform: uppercase; }

@@ -1,4 +1,4 @@
-import { EDGE_BLEED, GRAIN_CFG, INK_TEXTURE } from './inkConfig.js';
+import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE } from './inkConfig.js';
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
@@ -8,43 +8,83 @@ const SECTION_DEFS = [
     label: 'Texture',
     config: INK_TEXTURE,
     keyOrder: ['supersample', 'noiseOctaves', 'noiseStrength', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
-    trigger: 'glyph'
+    trigger: 'glyph',
+    stateKey: 'inkTextureStrength',
+    defaultStrength: INK_TEXTURE.enabled === false ? 0 : 100,
+  },
+  {
+    id: 'fuzz',
+    label: 'Edge Fuzz',
+    config: EDGE_FUZZ,
+    keyOrder: ['inks', 'widthPx', 'inwardShare', 'roughness', 'frequency', 'opacity', 'seed'],
+    trigger: 'glyph',
+    stateKey: 'edgeFuzzStrength',
+    defaultStrength: 0,
   },
   {
     id: 'bleed',
     label: 'Bleed',
     config: EDGE_BLEED,
     keyOrder: ['inks', 'passes'],
-    trigger: 'glyph'
+    trigger: 'glyph',
+    stateKey: 'edgeBleedStrength',
+    defaultStrength: EDGE_BLEED.enabled === false ? 0 : 100,
   },
   {
     id: 'grain',
     label: 'Grain',
     config: GRAIN_CFG,
     keyOrder: ['base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'post_gamma', 'alpha', 'seeds', 'composite_op'],
-    trigger: 'grain'
+    trigger: 'grain',
+    stateKey: 'grainPct',
+    defaultStrength: 0,
   }
 ];
 
-const state = {
-  overall: 1,
-  sections: {
-    texture: INK_TEXTURE.enabled !== false,
-    bleed: EDGE_BLEED.enabled !== false,
-    grain: GRAIN_CFG.enabled !== false
-  },
+const panelState = {
+  appState: null,
+  app: null,
   callbacks: {
     refreshGlyphs: null,
-    refreshGrain: null
+    refreshGrain: null,
   },
   metas: [],
-  initialized: false
+  initialized: false,
+  saveState: null,
+  overallSlider: null,
+  overallValueEl: null,
+  pendingGlyphRAF: 0,
+  pendingGrainRAF: 0,
+  pendingGlyphOptions: null,
 };
 
 const HEX_MATCH_RE = /seed|hash/i;
 
 function isHexField(path) {
   return HEX_MATCH_RE.test(path || '');
+}
+
+function getAppState() {
+  return panelState.appState;
+}
+
+function getPercentFromState(key, fallback = 0) {
+  const appState = getAppState();
+  if (!appState || !(key in appState)) {
+    return clamp(Number.isFinite(fallback) ? fallback : 0, 0, 100);
+  }
+  const raw = Number(appState[key]);
+  return clamp(Number.isFinite(raw) ? raw : (Number.isFinite(fallback) ? fallback : 0), 0, 100);
+}
+
+function setPercentOnState(key, value) {
+  const appState = getAppState();
+  if (!appState) return;
+  appState[key] = clamp(Number(value) || 0, 0, 100);
+}
+
+function normalizedPercent(value) {
+  return clamp((Number(value) || 0) / 100, 0, 1);
 }
 
 function toHex(value) {
@@ -344,16 +384,20 @@ function buildSection(def, root) {
   title.textContent = def.label;
   header.appendChild(title);
 
-  const toggleLabel = document.createElement('label');
-  toggleLabel.className = 'ink-section-toggle';
-  const toggle = document.createElement('input');
-  toggle.type = 'checkbox';
-  toggle.checked = def.id === 'grain' ? state.sections.grain : !!def.config.enabled;
-  toggleLabel.appendChild(toggle);
-  const toggleText = document.createElement('span');
-  toggleText.textContent = 'On';
-  toggleLabel.appendChild(toggleText);
-  header.appendChild(toggleLabel);
+  const strengthWrap = document.createElement('div');
+  strengthWrap.className = 'ink-strength-control';
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '100';
+  slider.step = '1';
+  const startPercent = getPercentFromState(def.stateKey, def.defaultStrength ?? 0);
+  slider.value = String(startPercent);
+  strengthWrap.appendChild(slider);
+  const valueEl = document.createElement('span');
+  valueEl.className = 'ink-strength-value';
+  strengthWrap.appendChild(valueEl);
+  header.appendChild(strengthWrap);
 
   sectionEl.appendChild(header);
 
@@ -363,10 +407,13 @@ function buildSection(def, root) {
     id: def.id,
     config: def.config,
     trigger: def.trigger,
+    stateKey: def.stateKey,
     root: sectionEl,
     inputs: new Map(),
-    toggle,
-    applyBtn: null
+    slider,
+    sliderValueEl: valueEl,
+    defaultStrength: def.defaultStrength ?? 0,
+    applyBtn: null,
   };
 
   def.keyOrder.forEach(key => {
@@ -399,8 +446,92 @@ function buildSection(def, root) {
 
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
-  state.metas.push(meta);
+  panelState.metas.push(meta);
+
+  slider.addEventListener('input', () => {
+    applySectionStrength(meta, Number.parseFloat(slider.value) || 0);
+  });
+
+  applySectionStrength(meta, startPercent, { silent: true, syncSlider: false });
   return meta;
+}
+
+function persistPanelState() {
+  if (typeof panelState.saveState === 'function') {
+    panelState.saveState();
+  }
+}
+
+function scheduleGlyphRefresh(rebuild = true) {
+  if (typeof panelState.callbacks.refreshGlyphs !== 'function') return;
+  if (panelState.pendingGlyphRAF) {
+    if (rebuild && panelState.pendingGlyphOptions && panelState.pendingGlyphOptions.rebuild === false) {
+      panelState.pendingGlyphOptions.rebuild = true;
+    }
+    return;
+  }
+  panelState.pendingGlyphOptions = { rebuild: rebuild !== false };
+  panelState.pendingGlyphRAF = requestAnimationFrame(() => {
+    const opts = panelState.pendingGlyphOptions || { rebuild: rebuild !== false };
+    panelState.pendingGlyphRAF = 0;
+    panelState.pendingGlyphOptions = null;
+    panelState.callbacks.refreshGlyphs(opts);
+  });
+}
+
+function scheduleGrainRefresh() {
+  if (panelState.pendingGrainRAF || typeof panelState.callbacks.refreshGrain !== 'function') return;
+  panelState.pendingGrainRAF = requestAnimationFrame(() => {
+    panelState.pendingGrainRAF = 0;
+    panelState.callbacks.refreshGrain();
+  });
+}
+
+function scheduleRefreshForMeta(meta, options = {}) {
+  if (!meta) return;
+  if (meta.trigger === 'glyph') {
+    const needsFullRebuild = options.forceRebuild === true
+      ? true
+      : options.forceRebuild === false
+        ? false
+        : meta.id !== 'fuzz';
+    scheduleGlyphRefresh(needsFullRebuild);
+  } else if (meta.trigger === 'grain') {
+    scheduleGrainRefresh();
+  }
+}
+
+function syncGrainInputField(pct) {
+  const app = panelState.app;
+  if (!app || !app.grainInput) return;
+  const normalized = clamp(Math.round(pct), 0, 100);
+  if (app.grainInput.value !== String(normalized)) {
+    app.grainInput.value = String(normalized);
+  }
+}
+
+function applySectionStrength(meta, percent, options = {}) {
+  if (!meta) return;
+  const pct = clamp(Math.round(Number(percent) || 0), 0, 100);
+  if (options.syncSlider !== false && meta.slider && meta.slider.value !== String(pct)) {
+    meta.slider.value = String(pct);
+  }
+  if (meta.sliderValueEl) {
+    meta.sliderValueEl.textContent = `${pct}%`;
+  }
+  if (meta.root) {
+    meta.root.classList.toggle('is-disabled', pct <= 0);
+  }
+  if (options.silent) return;
+  setPercentOnState(meta.stateKey, pct);
+  if (meta.config && typeof meta.config === 'object') {
+    meta.config.enabled = pct > 0;
+  }
+  if (meta.id === 'grain') {
+    syncGrainInputField(pct);
+  }
+  scheduleRefreshForMeta(meta);
+  persistPanelState();
 }
 
 function syncInputs(meta) {
@@ -432,18 +563,16 @@ function applySection(meta) {
     const value = parseInputValue(input, path);
     setValueByPath(meta.config, path, value);
   }
-  if (meta.id === 'texture' || meta.id === 'bleed') {
-    if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-  }
-  if (meta.id === 'grain') {
-    if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
-  }
+  scheduleRefreshForMeta(meta, { forceRebuild: true });
+  persistPanelState();
   syncInputs(meta);
 }
 
 function formatConfigExport() {
   const parts = [
     `export const INK_TEXTURE = ${formatValue(INK_TEXTURE, 0, 'INK_TEXTURE')};`,
+    '',
+    `export const EDGE_FUZZ = ${formatValue(EDGE_FUZZ, 0, 'EDGE_FUZZ')};`,
     '',
     `export const EDGE_BLEED = ${formatValue(EDGE_BLEED, 0, 'EDGE_BLEED')};`,
     '',
@@ -495,89 +624,129 @@ function fallbackCopy(text, button) {
 }
 
 export function getInkEffectFactor() {
-  return clamp(state.overall, 0, 1);
+  const pct = getPercentFromState('effectsOverallStrength', 100);
+  return normalizedPercent(pct);
+}
+
+export function getInkSectionStrength(sectionId) {
+  switch (sectionId) {
+    case 'texture':
+      return normalizedPercent(getPercentFromState('inkTextureStrength', INK_TEXTURE.enabled === false ? 0 : 100));
+    case 'fuzz':
+      return normalizedPercent(getPercentFromState('edgeFuzzStrength', 0));
+    case 'bleed':
+      return normalizedPercent(getPercentFromState('edgeBleedStrength', EDGE_BLEED.enabled === false ? 0 : 100));
+    case 'grain':
+      return normalizedPercent(getPercentFromState('grainPct', 0));
+    default:
+      return 1;
+  }
 }
 
 export function isInkSectionEnabled(sectionId) {
-  if (sectionId === 'grain') return !!state.sections.grain && GRAIN_CFG.enabled !== false;
-  if (sectionId === 'texture') return !!state.sections.texture && INK_TEXTURE.enabled !== false;
-  if (sectionId === 'bleed') return !!state.sections.bleed && EDGE_BLEED.enabled !== false;
-  return true;
+  const strength = getInkSectionStrength(sectionId);
+  if (sectionId === 'grain') return strength > 0 && GRAIN_CFG.enabled !== false;
+  if (sectionId === 'texture') return strength > 0 && INK_TEXTURE.enabled !== false;
+  if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
+  if (sectionId === 'bleed') return strength > 0 && EDGE_BLEED.enabled !== false;
+  return strength > 0;
+}
+
+function syncOverallStrengthUI() {
+  const pct = getPercentFromState('effectsOverallStrength', 100);
+  if (panelState.overallSlider && panelState.overallSlider.value !== String(pct)) {
+    panelState.overallSlider.value = String(pct);
+  }
+  if (panelState.overallValueEl) {
+    panelState.overallValueEl.textContent = `${pct}%`;
+  }
 }
 
 function setOverallStrength(percent) {
   const pct = clamp(Number(percent) || 0, 0, 100);
-  state.overall = pct / 100;
-  if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-  if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
+  setPercentOnState('effectsOverallStrength', pct);
+  syncOverallStrengthUI();
+  scheduleGlyphRefresh();
+  scheduleGrainRefresh();
+  persistPanelState();
   return pct;
 }
 
+function findMetaById(sectionId) {
+  if (!sectionId) return null;
+  return panelState.metas.find(meta => meta && meta.id === sectionId) || null;
+}
+
+export function syncInkStrengthDisplays(sectionId) {
+  if (!panelState.initialized) return;
+  if (!sectionId) {
+    syncOverallStrengthUI();
+    panelState.metas.forEach(meta => {
+      if (!meta) return;
+      const fallback = meta.defaultStrength ?? 0;
+      const pct = getPercentFromState(meta.stateKey, fallback);
+      applySectionStrength(meta, pct, { silent: true });
+    });
+    return;
+  }
+  if (sectionId === 'overall') {
+    syncOverallStrengthUI();
+    return;
+  }
+  const meta = findMetaById(sectionId);
+  if (!meta) return;
+  const fallback = meta.defaultStrength ?? 0;
+  const pct = getPercentFromState(meta.stateKey, fallback);
+  applySectionStrength(meta, pct, { silent: true });
+}
+
 export function setupInkSettingsPanel(options = {}) {
-  if (state.initialized) return;
+  if (panelState.initialized) return;
   const {
+    state,
+    app,
     refreshGlyphs,
-    refreshGrain
-  } = options;
-  state.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
-  state.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
+    refreshGrain,
+    saveState,
+  } = options || {};
+
+  if (state && typeof state === 'object') {
+    panelState.appState = state;
+  }
+  if (app && typeof app === 'object') {
+    panelState.app = app;
+  }
+  panelState.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
+  panelState.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
+  panelState.saveState = typeof saveState === 'function' ? saveState : null;
 
   const sectionsRoot = document.getElementById('inkSettingsSections');
-  const overallInput = document.getElementById('inkOverallStrength');
-  const overallApplyBtn = document.getElementById('inkOverallApplyBtn');
+  panelState.overallSlider = document.getElementById('inkEffectsOverallSlider');
+  panelState.overallValueEl = document.getElementById('inkEffectsOverallValue');
   const copyBtn = document.getElementById('inkSettingsCopyBtn');
-  if (!sectionsRoot) return;
 
-  state.sections.texture = INK_TEXTURE.enabled !== false;
-  state.sections.bleed = EDGE_BLEED.enabled !== false;
-  state.sections.grain = GRAIN_CFG.enabled !== false;
-
-  SECTION_DEFS.forEach(def => {
-    const meta = buildSection(def, sectionsRoot);
-    meta.toggle.addEventListener('change', () => {
-      if (meta.id === 'grain') {
-        state.sections.grain = !!meta.toggle.checked;
-        GRAIN_CFG.enabled = state.sections.grain;
-        meta.root.classList.toggle('is-disabled', !state.sections.grain);
-        if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
-      } else if (meta.id === 'texture') {
-        state.sections.texture = !!meta.toggle.checked;
-        INK_TEXTURE.enabled = state.sections.texture;
-        meta.root.classList.toggle('is-disabled', !state.sections.texture);
-        if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-      } else if (meta.id === 'bleed') {
-        state.sections.bleed = !!meta.toggle.checked;
-        EDGE_BLEED.enabled = state.sections.bleed;
-        meta.root.classList.toggle('is-disabled', !state.sections.bleed);
-        if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-      }
-    });
-    meta.applyBtn.addEventListener('click', () => applySection(meta));
-    const isEnabled = meta.id === 'grain'
-      ? state.sections.grain
-      : meta.id === 'texture'
-        ? state.sections.texture
-        : meta.id === 'bleed'
-          ? state.sections.bleed
-          : true;
-    meta.root.classList.toggle('is-disabled', !isEnabled);
-    syncInputs(meta);
-  });
-
-  if (overallInput) {
-    const pct = clamp(Math.round(state.overall * 100), 0, 100);
-    overallInput.value = String(pct);
-  }
-  if (overallApplyBtn && overallInput) {
-    overallApplyBtn.addEventListener('click', () => {
-      const pct = clamp(Number.parseFloat(overallInput.value) || 0, 0, 100);
-      overallInput.value = String(pct);
+  if (panelState.overallSlider) {
+    panelState.overallSlider.addEventListener('input', () => {
+      const pct = clamp(Number.parseFloat(panelState.overallSlider.value) || 0, 0, 100);
       setOverallStrength(pct);
     });
   }
+  syncOverallStrengthUI();
+
+  if (sectionsRoot) {
+    SECTION_DEFS.forEach(def => {
+      const meta = buildSection(def, sectionsRoot);
+      if (meta.applyBtn) {
+        meta.applyBtn.addEventListener('click', () => applySection(meta));
+      }
+      syncInputs(meta);
+    });
+  }
+
   if (copyBtn) {
     copyBtn.addEventListener('click', () => copyConfigToClipboard(copyBtn));
   }
 
-  state.initialized = true;
+  panelState.initialized = true;
+  syncInkStrengthDisplays();
 }
