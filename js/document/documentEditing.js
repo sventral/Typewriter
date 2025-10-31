@@ -566,6 +566,7 @@ export function createDocumentEditingController(context) {
     }
     state.documentId = resolvedId;
     state.documentTitle = normalizeDocumentTitle(documentTitle ?? state.documentTitle);
+    state.savedInkStyles = [];
     beginBatch();
     state.paperOffset = { x: 0, y: 0 };
     setPaperOffset(0, 0);
@@ -573,6 +574,7 @@ export function createDocumentEditingController(context) {
     state.caret = { page: 0, rowMu: 0, col: 0 };
     state.grainSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
     state.altSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
+    state.savedInkStyles = [];
     app.stageInner.innerHTML = '';
     const wrap = document.createElement('div');
     wrap.className = 'page-wrap';

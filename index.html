@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.5.4b</div>
+  <div class="app-version">v.5.9b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -125,10 +125,19 @@
       </div>
       <hr class="divider ink-settings-divider" />
       <div id="inkSettingsSections"></div>
-      <div class="control-row ink-copy-row">
-        <div></div>
-        <button class="btn apply-btn" id="inkSettingsCopyBtn">Copy</button>
-      </div>
+      <section class="ink-styles-section" aria-labelledby="inkStylesHeader">
+        <h4 id="inkStylesHeader">Saved styles</h4>
+        <div class="ink-style-save-row">
+          <input type="text" id="inkStyleNameInput" placeholder="Name this style" aria-label="Name this ink style" />
+          <button class="btn" id="inkStyleSaveBtn" type="button">Save current</button>
+        </div>
+        <div class="ink-style-io-row">
+          <button class="btn" id="inkStyleExportBtn" type="button">Export current</button>
+          <input type="file" id="inkStyleImportInput" accept="application/json" hidden />
+          <button class="btn" id="inkStyleImportBtn" type="button">Import</button>
+        </div>
+        <div id="inkStylesList" class="ink-styles-list" aria-live="polite" aria-atomic="false"></div>
+      </section>
     </div>
   </aside>
 

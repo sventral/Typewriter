@@ -56,9 +56,338 @@ const panelState = {
   pendingGlyphRAF: 0,
   pendingGrainRAF: 0,
   pendingGlyphOptions: null,
+  styleNameInput: null,
+  saveStyleButton: null,
+  stylesList: null,
+  renameContext: null,
+  lastLoadedStyleId: null,
+  exportButton: null,
+  importButton: null,
+  importInput: null,
 };
 
 const HEX_MATCH_RE = /seed|hash/i;
+const STYLE_NAME_MAX_LEN = 60;
+const STYLE_EXPORT_VERSION = 1;
+
+function deepCloneValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => deepCloneValue(item));
+  }
+  if (value instanceof Set) {
+    return Array.from(value, item => deepCloneValue(item));
+  }
+  if (value instanceof Map) {
+    const clone = {};
+    for (const [key, val] of value.entries()) {
+      clone[key] = deepCloneValue(val);
+    }
+    return clone;
+  }
+  if (value && typeof value === 'object') {
+    const clone = {};
+    for (const [key, val] of Object.entries(value)) {
+      clone[key] = deepCloneValue(val);
+    }
+    return clone;
+  }
+  return value;
+}
+
+function sanitizeStyleName(name) {
+  if (typeof name !== 'string') return '';
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  return trimmed.slice(0, STYLE_NAME_MAX_LEN);
+}
+
+function ensureUniqueStyleName(name, existingStyles, excludeId = null) {
+  const base = sanitizeStyleName(name) || 'Imported style';
+  const lowerExisting = new Set(
+    (existingStyles || [])
+      .filter(style => style && style.id !== excludeId && typeof style.name === 'string')
+      .map(style => style.name.toLowerCase())
+  );
+  if (!lowerExisting.has(base.toLowerCase())) {
+    return base;
+  }
+  let counter = 2;
+  let candidate = '';
+  do {
+    candidate = `${base} (${counter})`;
+    counter += 1;
+  } while (lowerExisting.has(candidate.toLowerCase()));
+  return candidate;
+}
+
+function generateStyleId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `style-${ts}-${rand}`;
+}
+
+function normalizeStyleRecord(style, index = 0) {
+  try {
+    const record = {
+      id: typeof style?.id === 'string' && style.id.trim() ? style.id.trim() : generateStyleId(),
+      name: sanitizeStyleName(style?.name) || `Style ${index + 1}`,
+      overall: clamp(Math.round(Number(style?.overall ?? 100)), 0, 100),
+      sections: {},
+    };
+    SECTION_DEFS.forEach(def => {
+      const rawSection = style?.sections && typeof style.sections === 'object'
+        ? style.sections[def.id]
+        : (style && typeof style === 'object' && typeof style[def.id] === 'object' ? style[def.id] : null);
+      const section = rawSection && typeof rawSection === 'object' ? rawSection : {};
+      const strength = clamp(Math.round(Number(section?.strength ?? def.defaultStrength ?? 0)), 0, 100);
+      const configSource = section.config != null
+        ? section.config
+        : section.settings != null
+          ? section.settings
+          : ('strength' in section ? def.config : section);
+      record.sections[def.id] = {
+        strength,
+        config: deepCloneValue(configSource == null ? def.config : configSource),
+      };
+    });
+    return record;
+  } catch (error) {
+    if (typeof console !== 'undefined' && typeof console.error === 'function') {
+      console.error('Failed to normalize ink style.', error);
+    }
+    return null;
+  }
+}
+
+function createDefaultStyleRecord(index = 0) {
+  const record = {
+    id: generateStyleId(),
+    name: `Style ${index + 1}`,
+    overall: 100,
+    sections: {},
+  };
+  SECTION_DEFS.forEach(def => {
+    record.sections[def.id] = {
+      strength: def.defaultStrength ?? 0,
+      config: deepCloneValue(def.config),
+    };
+  });
+  return record;
+}
+
+function getSavedStyles() {
+  const appState = getAppState();
+  if (!appState) return [];
+  if (!Array.isArray(appState.savedInkStyles)) {
+    appState.savedInkStyles = [];
+  }
+  return appState.savedInkStyles;
+}
+
+function setSavedStyles(styles) {
+  const appState = getAppState();
+  if (!appState) return [];
+  const normalized = [];
+  if (Array.isArray(styles)) {
+    styles.forEach((style, index) => {
+      const record = normalizeStyleRecord(style, index);
+      if (record) normalized.push(record);
+    });
+  }
+  appState.savedInkStyles = normalized;
+  return normalized;
+}
+
+function createStyleSnapshot(name, existingId = null) {
+  const base = {
+    id: existingId || generateStyleId(),
+    name,
+    overall: getPercentFromState('effectsOverallStrength', 100),
+    sections: {},
+  };
+  SECTION_DEFS.forEach(def => {
+    const meta = findMetaById(def.id);
+    const configSource = meta && meta.config ? meta.config : def.config;
+    base.sections[def.id] = {
+      strength: getPercentFromState(def.stateKey, def.defaultStrength ?? 0),
+      config: deepCloneValue(configSource),
+    };
+  });
+  return normalizeStyleRecord(base);
+}
+
+function getCurrentStyleName() {
+  const input = panelState.styleNameInput;
+  const fromInput = input ? sanitizeStyleName(input.value) : '';
+  if (fromInput) return fromInput;
+  const styles = getSavedStyles();
+  if (panelState.lastLoadedStyleId && Array.isArray(styles)) {
+    const match = styles.find(style => style && style.id === panelState.lastLoadedStyleId);
+    if (match && match.name) {
+      return sanitizeStyleName(match.name);
+    }
+  }
+  return 'Current style';
+}
+
+function makeExportFileName(style) {
+  const rawName = sanitizeStyleName(style?.name) || 'Ink style';
+  const safe = rawName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const base = safe || 'ink-style';
+  return `${base}.ink-style.json`;
+}
+
+function buildExportPayload(style) {
+  return {
+    version: STYLE_EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    style: normalizeStyleRecord(style || {}) || createDefaultStyleRecord(0),
+  };
+}
+
+function triggerDownload(text, filename) {
+  if (
+    typeof document === 'undefined'
+    || typeof document.createElement !== 'function'
+    || typeof Blob === 'undefined'
+    || typeof URL === 'undefined'
+    || typeof URL.createObjectURL !== 'function'
+  ) {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Export is not supported in this environment.');
+    }
+    return;
+  }
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportStyleToFile(style) {
+  if (!style) return;
+  const payload = buildExportPayload(style);
+  const text = JSON.stringify(payload, null, 2);
+  const filename = makeExportFileName(style);
+  triggerDownload(text, filename);
+}
+
+function exportCurrentStyle() {
+  const snapshot = createStyleSnapshot(getCurrentStyleName());
+  if (!snapshot) {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Could not export the current style.');
+    }
+    return;
+  }
+  exportStyleToFile(snapshot);
+}
+
+function extractStyleFromPayload(payload) {
+  if (!payload) return null;
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const extracted = extractStyleFromPayload(item);
+      if (extracted) return extracted;
+    }
+    return null;
+  }
+  if (typeof payload !== 'object') return null;
+  if (payload.style && typeof payload.style === 'object') {
+    return payload.style;
+  }
+  if (payload.data && typeof payload.data === 'object') {
+    const nested = extractStyleFromPayload(payload.data);
+    if (nested) return nested;
+  }
+  if (payload.sections && typeof payload.sections === 'object') {
+    return payload;
+  }
+  return null;
+}
+
+function normalizeImportedStyle(rawStyle) {
+  const existing = getSavedStyles();
+  const baseIndex = Array.isArray(existing) ? existing.length : 0;
+  let sanitized = normalizeStyleRecord(rawStyle, baseIndex);
+  const usedFallback = !sanitized;
+  if (!sanitized) {
+    sanitized = createDefaultStyleRecord(baseIndex);
+  }
+  if (existing && existing.some(style => style && style.id === sanitized.id)) {
+    sanitized.id = generateStyleId();
+  }
+  sanitized.name = ensureUniqueStyleName(usedFallback ? 'Imported style' : sanitized.name, existing);
+  return sanitized;
+}
+
+function notifyImportError() {
+  if (typeof console !== 'undefined' && typeof console.error === 'function') {
+    console.error('Failed to import ink style: file was not in the expected format.');
+  }
+  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert('Could not import ink style. Please choose a valid file.');
+  }
+}
+
+function handleImportStyleContent(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    notifyImportError();
+    return;
+  }
+  const rawStyle = extractStyleFromPayload(data);
+  if (!rawStyle) {
+    notifyImportError();
+    return;
+  }
+  const normalized = normalizeImportedStyle(rawStyle);
+  const styles = getSavedStyles();
+  const updated = [normalized, ...(Array.isArray(styles) ? styles : [])];
+  setSavedStyles(updated);
+  persistPanelState();
+  renderSavedStylesList({ focusId: normalized.id });
+}
+
+function handleImportInputChange(event) {
+  const input = event?.target;
+  if (!input || !input.files || !input.files.length) return;
+  const file = input.files[0];
+  const resetInput = () => {
+    input.value = '';
+  };
+  if (typeof FileReader === 'undefined') {
+    notifyImportError();
+    resetInput();
+    return;
+  }
+  const reader = new FileReader();
+  reader.addEventListener('load', () => {
+    try {
+      handleImportStyleContent(reader.result);
+    } finally {
+      resetInput();
+    }
+  });
+  reader.addEventListener('error', () => {
+    notifyImportError();
+    resetInput();
+  });
+  reader.readAsText(file);
+}
 
 function isHexField(path) {
   return HEX_MATCH_RE.test(path || '');
@@ -109,39 +438,6 @@ function parseHex(value) {
   return Number.isFinite(parsed) ? (parsed >>> 0) : 0;
 }
 
-function formatNumber(value, path) {
-  if (isHexField(path)) return toHex(value);
-  if (Number.isInteger(value)) return String(value);
-  return String(value);
-}
-
-function formatString(value) {
-  return `'${String(value).replace(/'/g, "\\'")}'`;
-}
-
-function formatValue(value, indent, path) {
-  if (Array.isArray(value)) return formatArray(value, indent, path);
-  if (value && typeof value === 'object') return formatObject(value, indent, path);
-  if (typeof value === 'string') return formatString(value);
-  if (typeof value === 'number') return formatNumber(value, path);
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  return 'null';
-}
-
-function formatArray(arr, indent, path) {
-  if (arr.length === 0) return '[]';
-  const indentStr = '  '.repeat(indent);
-  const nextIndent = indent + 1;
-  const nextIndentStr = '  '.repeat(nextIndent);
-  const isPrimitive = arr.every(v => !(v && typeof v === 'object'));
-  if (isPrimitive) {
-    const items = arr.map((v, idx) => formatValue(v, nextIndent, `${path}[${idx}]`));
-    return `[${items.join(', ')}]`;
-  }
-  const lines = arr.map((item, idx) => `${nextIndentStr}${formatValue(item, nextIndent, `${path}[${idx}]`)}`);
-  return `[\n${lines.join(',\n')}\n${indentStr}]`;
-}
-
 function getObjectKeys(path, obj) {
   if (!obj) return [];
   switch (path) {
@@ -162,23 +458,6 @@ function getObjectKeys(path, obj) {
     default:
       return Object.keys(obj);
   }
-}
-
-function formatObject(obj, indent, path) {
-  const keys = getObjectKeys(path, obj);
-  const indentStr = '  '.repeat(indent);
-  const nextIndent = indent + 1;
-  const nextIndentStr = '  '.repeat(nextIndent);
-  const entries = keys.map(key => {
-    const nextPath = path && path.endsWith('[]') ? `${path.slice(0, -2)}.${key}` : (path ? `${path}.${key}` : key);
-    const val = obj[key];
-    return `${nextIndentStr}${key}: ${formatValue(val, nextIndent, nextPath)}`;
-  });
-  const singleLine = entries.length && entries.every(line => !line.includes('\n'));
-  if (singleLine && entries.length <= 3) {
-    return `{ ${entries.map(line => line.trim()).join(', ')} }`;
-  }
-  return `{\n${entries.join(',\n')}\n${indentStr}}`;
 }
 
 function buildControlRow(labelText, input) {
@@ -623,59 +902,275 @@ function applySection(meta) {
   syncInputs(meta);
 }
 
-function formatConfigExport() {
-  const parts = [
-    `export const INK_TEXTURE = ${formatValue(INK_TEXTURE, 0, 'INK_TEXTURE')};`,
-    '',
-    `export const EDGE_FUZZ = ${formatValue(EDGE_FUZZ, 0, 'EDGE_FUZZ')};`,
-    '',
-    `export const EDGE_BLEED = ${formatValue(EDGE_BLEED, 0, 'EDGE_BLEED')};`,
-    '',
-    `export const GRAIN_CFG = ${formatValue(GRAIN_CFG, 0, 'GRAIN_CFG')};`
-  ];
-  return `${parts.join('\n')}\n`;
+function applyConfigToTarget(target, source) {
+  if (!target || typeof target !== 'object') return;
+  if (!source || typeof source !== 'object') return;
+  Object.keys(source).forEach(key => {
+    target[key] = deepCloneValue(source[key]);
+  });
 }
 
-function copyConfigToClipboard(button) {
-  const text = formatConfigExport();
-  const done = () => {
-    if (!button) return;
-    const original = button.textContent;
-    button.textContent = 'Copied!';
-    button.disabled = true;
-    setTimeout(() => {
-      button.textContent = original;
-      button.disabled = false;
-    }, 1200);
-  };
-  if (navigator?.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, button));
-  } else {
-    fallbackCopy(text, button);
+function cancelRenameStyle(restoreFocus = false) {
+  const ctx = panelState.renameContext;
+  if (!ctx) return;
+  if (ctx.form && ctx.form.parentNode) {
+    ctx.form.remove();
   }
+  if (ctx.item) {
+    ctx.item.classList.remove('is-renaming');
+  }
+  if (restoreFocus && ctx.trigger && typeof ctx.trigger.focus === 'function') {
+    ctx.trigger.focus();
+  }
+  panelState.renameContext = null;
 }
 
-function fallbackCopy(text, button) {
+function renderSavedStylesList(options = {}) {
+  const list = panelState.stylesList;
+  if (!list) return;
+  const { focusId } = options || {};
+  cancelRenameStyle();
+  list.innerHTML = '';
+  let styles = [];
   try {
-    const temp = document.createElement('textarea');
-    temp.value = text;
-    temp.setAttribute('readonly', '');
-    temp.style.position = 'absolute';
-    temp.style.left = '-9999px';
-    document.body.appendChild(temp);
-    temp.select();
-    document.execCommand('copy');
-    temp.remove();
-    if (button) {
-      const original = button.textContent;
-      button.textContent = 'Copied!';
-      button.disabled = true;
-      setTimeout(() => {
-        button.textContent = original;
-        button.disabled = false;
-      }, 1200);
+    styles = getSavedStyles();
+  } catch (error) {
+    if (typeof console !== 'undefined' && typeof console.error === 'function') {
+      console.error('Failed to read saved ink styles.', error);
     }
-  } catch {}
+    styles = [];
+  }
+  if (!styles.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ink-styles-empty';
+    empty.textContent = 'No saved styles yet.';
+    list.appendChild(empty);
+    return;
+  }
+  styles.forEach(style => {
+    if (!style) return;
+    const item = document.createElement('div');
+    item.className = 'ink-style-item';
+    item.dataset.styleId = style.id;
+    if (panelState.lastLoadedStyleId && panelState.lastLoadedStyleId === style.id) {
+      item.classList.add('is-active');
+    }
+
+    const header = document.createElement('div');
+    header.className = 'ink-style-item-header';
+
+    const main = document.createElement('div');
+    main.className = 'ink-style-item-main';
+    const loadBtn = document.createElement('button');
+    loadBtn.type = 'button';
+    loadBtn.className = 'btn btn-small';
+    loadBtn.textContent = 'Load';
+    loadBtn.addEventListener('click', () => applySavedStyle(style.id));
+    const name = document.createElement('div');
+    name.className = 'ink-style-name';
+    name.textContent = style.name;
+    name.title = style.name;
+    main.appendChild(loadBtn);
+    main.appendChild(name);
+
+    const actions = document.createElement('div');
+    actions.className = 'ink-style-actions';
+    const updateBtn = document.createElement('button');
+    updateBtn.type = 'button';
+    updateBtn.className = 'btn-text';
+    updateBtn.textContent = 'Update';
+    updateBtn.title = 'Update this style with the current settings';
+    updateBtn.addEventListener('click', () => updateSavedStyle(style.id));
+    const renameBtn = document.createElement('button');
+    renameBtn.type = 'button';
+    renameBtn.className = 'btn-text';
+    renameBtn.textContent = 'Rename';
+    renameBtn.addEventListener('click', () => startRenameStyle(style.id, item, renameBtn));
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn-text danger';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', () => removeSavedStyle(style.id));
+    actions.appendChild(updateBtn);
+    actions.appendChild(renameBtn);
+    actions.appendChild(deleteBtn);
+
+    header.appendChild(main);
+    header.appendChild(actions);
+    item.appendChild(header);
+    list.appendChild(item);
+
+    if (focusId && focusId === style.id) {
+      requestAnimationFrame(() => loadBtn.focus());
+    }
+  });
+}
+
+function handleSaveStyle(event) {
+  if (event) event.preventDefault();
+  const input = panelState.styleNameInput;
+  if (!input) return;
+  const sanitized = sanitizeStyleName(input.value);
+  if (!sanitized) {
+    input.classList.add('input-error');
+    input.focus();
+    return;
+  }
+  const existingStyles = getSavedStyles();
+  const existingIdx = existingStyles.findIndex(style => style && style.name && style.name.toLowerCase() === sanitized.toLowerCase());
+  const existingId = existingIdx >= 0 ? existingStyles[existingIdx].id : null;
+  const snapshot = createStyleSnapshot(sanitized, existingId);
+  if (!snapshot) {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Could not save ink style. Please try again.');
+    }
+    return;
+  }
+  let updated;
+  if (existingIdx >= 0) {
+    updated = existingStyles.slice();
+    updated[existingIdx] = snapshot;
+  } else {
+    updated = [snapshot, ...existingStyles];
+  }
+  setSavedStyles(updated);
+  persistPanelState();
+  renderSavedStylesList({ focusId: snapshot.id });
+  input.value = '';
+  input.classList.remove('input-error');
+}
+
+function updateSavedStyle(styleId) {
+  if (!styleId) return;
+  const styles = getSavedStyles();
+  if (!Array.isArray(styles) || !styles.length) return;
+  const index = styles.findIndex(style => style && style.id === styleId);
+  if (index < 0) return;
+  const target = styles[index];
+  const preservedName = sanitizeStyleName(target?.name) || 'Updated style';
+  const snapshot = createStyleSnapshot(preservedName, styleId);
+  if (!snapshot) {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Could not update this style. Please try again.');
+    }
+    return;
+  }
+  const updated = styles.slice();
+  updated[index] = { ...snapshot, id: styleId, name: preservedName };
+  setSavedStyles(updated);
+  persistPanelState();
+  renderSavedStylesList({ focusId: styleId });
+}
+
+function removeSavedStyle(styleId) {
+  const styles = getSavedStyles();
+  if (!styles.length) return;
+  const target = styles.find(style => style && style.id === styleId);
+  if (!target) return;
+  let confirmed = true;
+  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    confirmed = window.confirm(`Delete style "${target.name}"?`);
+  }
+  if (!confirmed) return;
+  const updated = styles.filter(style => style && style.id !== styleId);
+  setSavedStyles(updated);
+  if (panelState.lastLoadedStyleId === styleId) {
+    panelState.lastLoadedStyleId = null;
+  }
+  persistPanelState();
+  cancelRenameStyle();
+  renderSavedStylesList();
+}
+
+function startRenameStyle(styleId, item, trigger) {
+  if (!item) return;
+  const styles = getSavedStyles();
+  const style = styles.find(s => s && s.id === styleId);
+  if (!style) return;
+  cancelRenameStyle();
+  item.classList.add('is-renaming');
+  const form = document.createElement('div');
+  form.className = 'ink-style-rename-form';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = style.name;
+  input.maxLength = STYLE_NAME_MAX_LEN;
+  form.appendChild(input);
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn btn-small';
+  saveBtn.textContent = 'Save';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn btn-small';
+  cancelBtn.textContent = 'Cancel';
+  form.appendChild(saveBtn);
+  form.appendChild(cancelBtn);
+  item.appendChild(form);
+  panelState.renameContext = { styleId, item, input, form, trigger };
+  input.focus();
+  input.select();
+  input.addEventListener('input', () => input.classList.remove('input-error'));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitRenameStyle(styleId, input);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelRenameStyle(true);
+    }
+  });
+  saveBtn.addEventListener('click', () => commitRenameStyle(styleId, input));
+  cancelBtn.addEventListener('click', () => cancelRenameStyle(true));
+}
+
+function commitRenameStyle(styleId, input) {
+  if (!input) return;
+  const sanitized = sanitizeStyleName(input.value);
+  if (!sanitized) {
+    input.classList.add('input-error');
+    input.focus();
+    return;
+  }
+  const styles = getSavedStyles();
+  const updated = styles.map(style => {
+    if (!style || style.id !== styleId) return style;
+    return { ...style, name: sanitized };
+  });
+  setSavedStyles(updated);
+  persistPanelState();
+  cancelRenameStyle();
+  renderSavedStylesList({ focusId: styleId });
+}
+
+function applySavedStyle(styleId) {
+  const styles = getSavedStyles();
+  const style = styles.find(s => s && s.id === styleId);
+  if (!style) return;
+  if (Number.isFinite(style.overall)) {
+    setOverallStrength(style.overall);
+  }
+  SECTION_DEFS.forEach(def => {
+    const meta = findMetaById(def.id);
+    if (!meta) return;
+    const section = style.sections && style.sections[def.id];
+    if (section && section.config) {
+      applyConfigToTarget(meta.config, section.config);
+      syncInputs(meta);
+      scheduleRefreshForMeta(meta, { forceRebuild: true });
+    }
+    const strength = Number(section && section.strength);
+    if (Number.isFinite(strength)) {
+      applySectionStrength(meta, strength);
+    }
+  });
+  panelState.lastLoadedStyleId = styleId;
+  if (panelState.styleNameInput) {
+    panelState.styleNameInput.value = style.name;
+    panelState.styleNameInput.classList.remove('input-error');
+  }
+  persistPanelState();
+  renderSavedStylesList();
 }
 
 export function getInkEffectFactor() {
@@ -778,7 +1273,38 @@ export function setupInkSettingsPanel(options = {}) {
   const sectionsRoot = document.getElementById('inkSettingsSections');
   panelState.overallSlider = document.getElementById('inkEffectsOverallSlider');
   panelState.overallNumberInput = document.getElementById('inkEffectsOverallNumber');
-  const copyBtn = document.getElementById('inkSettingsCopyBtn');
+  panelState.styleNameInput = document.getElementById('inkStyleNameInput');
+  panelState.saveStyleButton = document.getElementById('inkStyleSaveBtn');
+  panelState.stylesList = document.getElementById('inkStylesList');
+  panelState.exportButton = document.getElementById('inkStyleExportBtn');
+  panelState.importButton = document.getElementById('inkStyleImportBtn');
+  panelState.importInput = document.getElementById('inkStyleImportInput');
+
+  if (panelState.styleNameInput) {
+    panelState.styleNameInput.addEventListener('input', () => panelState.styleNameInput.classList.remove('input-error'));
+    panelState.styleNameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleSaveStyle();
+      }
+    });
+  }
+  if (panelState.saveStyleButton) {
+    panelState.saveStyleButton.addEventListener('click', handleSaveStyle);
+  }
+  if (panelState.exportButton) {
+    panelState.exportButton.addEventListener('click', exportCurrentStyle);
+  }
+  if (panelState.importButton && panelState.importInput) {
+    panelState.importButton.addEventListener('click', () => panelState.importInput.click());
+    panelState.importInput.addEventListener('change', handleImportInputChange);
+  }
+
+  if (panelState.appState) {
+    setSavedStyles(getSavedStyles());
+  }
+  panelState.lastLoadedStyleId = null;
+  renderSavedStylesList();
 
   if (panelState.overallSlider) {
     panelState.overallSlider.addEventListener('input', () => {
@@ -809,10 +1335,10 @@ export function setupInkSettingsPanel(options = {}) {
     });
   }
 
-  if (copyBtn) {
-    copyBtn.addEventListener('click', () => copyConfigToClipboard(copyBtn));
-  }
-
   panelState.initialized = true;
   syncInkStrengthDisplays();
+}
+
+export function refreshSavedInkStylesUI() {
+  renderSavedStylesList();
 }
