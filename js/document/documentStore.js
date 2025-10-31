@@ -2,14 +2,14 @@ import { clamp } from '../utils/math.js';
 
 const KNOWN_INK_SECTIONS = ['texture', 'fuzz', 'bleed', 'grain'];
 
-function deepCloneStyleValue(value) {
+function cloneInkStyleValue(value) {
   if (Array.isArray(value)) {
-    return value.map(item => deepCloneStyleValue(item));
+    return value.map(item => cloneInkStyleValue(item));
   }
   if (value && typeof value === 'object') {
     const clone = {};
-    for (const [key, val] of Object.entries(value)) {
-      clone[key] = deepCloneStyleValue(val);
+    for (const key of Object.keys(value)) {
+      clone[key] = cloneInkStyleValue(value[key]);
     }
     return clone;
   }
@@ -26,7 +26,7 @@ function sanitizeStyleSection(sectionValue) {
     : sectionValue.settings != null
       ? sectionValue.settings
       : ('strength' in sectionValue ? null : sectionValue);
-  const config = configSource == null ? null : deepCloneStyleValue(configSource);
+  const config = configSource == null ? null : cloneInkStyleValue(configSource);
   return { strength, config };
 }
 
