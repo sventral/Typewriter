@@ -532,10 +532,11 @@ body[data-page-tone='dark']{
   .ink-section.is-disabled { opacity: 0.55; }
   .ink-section-apply-row .btn { margin-left: 12px; }
   .ink-seed-input { font-family: 'SFMono-Regular', 'SFMono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; }
-  .ink-copy-row { margin-top: 16px; }
   .ink-styles-section { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
   .ink-style-save-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .ink-style-save-row input[type="text"] { width: 100%; }
+  .ink-style-io-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ink-style-io-row .btn { flex: 1 1 140px; }
   .ink-styles-list { display: flex; flex-direction: column; gap: 8px; }
   .ink-styles-empty { font-size: 12px; opacity: 0.65; padding: 12px; border: 1px dashed var(--panel-border); border-radius: 8px; text-align: center; }
   .ink-style-item { border: 1px solid var(--panel-border); border-radius: 8px; padding: 10px 12px; background: var(--panel-item-bg); display: flex; flex-direction: column; gap: 10px; }

@@ -59,12 +59,16 @@ const panelState = {
   styleNameInput: null,
   saveStyleButton: null,
   stylesList: null,
+  exportButton: null,
+  importButton: null,
+  importInput: null,
   renameContext: null,
   lastLoadedStyleId: null,
 };
 
 const HEX_MATCH_RE = /seed|hash/i;
 const STYLE_NAME_MAX_LEN = 60;
+const STYLE_EXPORT_VERSION = 1;
 
 function deepCloneValue(value) {
   if (Array.isArray(value)) {
@@ -85,6 +89,25 @@ function sanitizeStyleName(name) {
   const trimmed = name.trim();
   if (!trimmed) return '';
   return trimmed.slice(0, STYLE_NAME_MAX_LEN);
+}
+
+function ensureUniqueStyleName(name, existingStyles, excludeId = null) {
+  const base = sanitizeStyleName(name) || 'Imported style';
+  const lowerExisting = new Set(
+    (existingStyles || [])
+      .filter(style => style && style.id !== excludeId && typeof style.name === 'string')
+      .map(style => style.name.toLowerCase())
+  );
+  if (!lowerExisting.has(base.toLowerCase())) {
+    return base;
+  }
+  let counter = 2;
+  let candidate = '';
+  do {
+    candidate = `${base} (${counter})`;
+    counter += 1;
+  } while (lowerExisting.has(candidate.toLowerCase()));
+  return candidate;
 }
 
 function generateStyleId() {
@@ -148,12 +171,174 @@ function createStyleSnapshot(name, existingId = null) {
     sections: {},
   };
   SECTION_DEFS.forEach(def => {
+    const meta = findMetaById(def.id);
+    const configSource = meta?.config ? meta.config : def.config;
     base.sections[def.id] = {
       strength: getPercentFromState(def.stateKey, def.defaultStrength ?? 0),
-      config: deepCloneValue(def.config),
+      config: deepCloneValue(configSource),
     };
   });
   return sanitizeStyleRecord(base);
+}
+
+function getCurrentStyleName() {
+  const input = panelState.styleNameInput;
+  const fromInput = input ? sanitizeStyleName(input.value) : '';
+  if (fromInput) return fromInput;
+  const styles = getSavedStyles();
+  if (panelState.lastLoadedStyleId && Array.isArray(styles)) {
+    const match = styles.find(style => style && style.id === panelState.lastLoadedStyleId);
+    if (match && match.name) {
+      return sanitizeStyleName(match.name);
+    }
+  }
+  return 'Current style';
+}
+
+function makeExportFileName(style) {
+  const rawName = sanitizeStyleName(style?.name) || 'Ink style';
+  const safe = rawName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const base = safe || 'ink-style';
+  return `${base}.ink-style.json`;
+}
+
+function buildExportPayload(style) {
+  return {
+    version: STYLE_EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    style: sanitizeStyleRecord(style),
+  };
+}
+
+function triggerDownload(text, filename) {
+  if (
+    typeof document === 'undefined'
+    || typeof document.createElement !== 'function'
+    || typeof Blob === 'undefined'
+    || typeof URL === 'undefined'
+    || typeof URL.createObjectURL !== 'function'
+  ) {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Export is not supported in this environment.');
+    }
+    return;
+  }
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportStyleToFile(style) {
+  if (!style) return;
+  const payload = buildExportPayload(style);
+  const text = JSON.stringify(payload, null, 2);
+  const filename = makeExportFileName(style);
+  triggerDownload(text, filename);
+}
+
+function exportCurrentStyle() {
+  const name = getCurrentStyleName();
+  const snapshot = createStyleSnapshot(name);
+  exportStyleToFile(snapshot);
+}
+
+function extractStyleFromPayload(payload) {
+  if (!payload) return null;
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const extracted = extractStyleFromPayload(item);
+      if (extracted) return extracted;
+    }
+    return null;
+  }
+  if (typeof payload !== 'object') return null;
+  if (payload.style && typeof payload.style === 'object') {
+    return payload.style;
+  }
+  if (payload.data && typeof payload.data === 'object') {
+    const nested = extractStyleFromPayload(payload.data);
+    if (nested) return nested;
+  }
+  if (payload.sections && typeof payload.sections === 'object') {
+    return payload;
+  }
+  return null;
+}
+
+function normalizeImportedStyle(rawStyle) {
+  const existing = getSavedStyles();
+  const sanitized = sanitizeStyleRecord(rawStyle, Array.isArray(existing) ? existing.length : 0);
+  if (existing && existing.some(style => style && style.id === sanitized.id)) {
+    sanitized.id = generateStyleId();
+  }
+  sanitized.name = ensureUniqueStyleName(sanitized.name, existing);
+  return sanitized;
+}
+
+function notifyImportError() {
+  if (typeof console !== 'undefined' && typeof console.error === 'function') {
+    console.error('Failed to import ink style: file was not in the expected format.');
+  }
+  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert('Could not import ink style. Please choose a valid file.');
+  }
+}
+
+function handleImportStyleContent(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    notifyImportError();
+    return;
+  }
+  const rawStyle = extractStyleFromPayload(data);
+  if (!rawStyle) {
+    notifyImportError();
+    return;
+  }
+  const normalized = normalizeImportedStyle(rawStyle);
+  const styles = getSavedStyles();
+  const updated = [normalized, ...(Array.isArray(styles) ? styles : [])];
+  setSavedStyles(updated);
+  persistPanelState();
+  renderSavedStylesList({ focusId: normalized.id });
+}
+
+function handleImportInputChange(event) {
+  const input = event?.target;
+  if (!input || !input.files || !input.files.length) return;
+  const file = input.files[0];
+  const resetInput = () => {
+    input.value = '';
+  };
+  if (typeof FileReader === 'undefined') {
+    notifyImportError();
+    resetInput();
+    return;
+  }
+  const reader = new FileReader();
+  reader.addEventListener('load', () => {
+    try {
+      handleImportStyleContent(reader.result);
+    } finally {
+      resetInput();
+    }
+  });
+  reader.addEventListener('error', () => {
+    notifyImportError();
+    resetInput();
+  });
+  reader.readAsText(file);
 }
 
 function applyConfigToTarget(target, source) {
@@ -217,78 +402,6 @@ function parseHex(value) {
   }
   const parsed = Number.parseInt(trimmed, 10);
   return Number.isFinite(parsed) ? (parsed >>> 0) : 0;
-}
-
-function formatNumber(value, path) {
-  if (isHexField(path)) return toHex(value);
-  if (Number.isInteger(value)) return String(value);
-  return String(value);
-}
-
-function formatString(value) {
-  return `'${String(value).replace(/'/g, "\\'")}'`;
-}
-
-function formatValue(value, indent, path) {
-  if (Array.isArray(value)) return formatArray(value, indent, path);
-  if (value && typeof value === 'object') return formatObject(value, indent, path);
-  if (typeof value === 'string') return formatString(value);
-  if (typeof value === 'number') return formatNumber(value, path);
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  return 'null';
-}
-
-function formatArray(arr, indent, path) {
-  if (arr.length === 0) return '[]';
-  const indentStr = '  '.repeat(indent);
-  const nextIndent = indent + 1;
-  const nextIndentStr = '  '.repeat(nextIndent);
-  const isPrimitive = arr.every(v => !(v && typeof v === 'object'));
-  if (isPrimitive) {
-    const items = arr.map((v, idx) => formatValue(v, nextIndent, `${path}[${idx}]`));
-    return `[${items.join(', ')}]`;
-  }
-  const lines = arr.map((item, idx) => `${nextIndentStr}${formatValue(item, nextIndent, `${path}[${idx}]`)}`);
-  return `[\n${lines.join(',\n')}\n${indentStr}]`;
-}
-
-function getObjectKeys(path, obj) {
-  if (!obj) return [];
-  switch (path) {
-    case 'chip':
-      return ['density', 'strength', 'feather', 'seed'];
-    case 'scratch':
-      return ['direction', 'scale', 'aspect', 'threshold', 'strength', 'seed'];
-    case 'scratch.direction':
-      return ['x', 'y'];
-    case 'alpha':
-      return ['max', 'mix_pow', 'low_pow', 'min'];
-    case 'seeds':
-      return ['octave', 'hash'];
-    case 'passes[]':
-      return ['width', 'alpha', 'jitter', 'jitterY', 'lighten', 'strokes', 'seed'];
-    case 'noiseOctaves[]':
-      return ['scale', 'weight', 'seed'];
-    default:
-      return Object.keys(obj);
-  }
-}
-
-function formatObject(obj, indent, path) {
-  const keys = getObjectKeys(path, obj);
-  const indentStr = '  '.repeat(indent);
-  const nextIndent = indent + 1;
-  const nextIndentStr = '  '.repeat(nextIndent);
-  const entries = keys.map(key => {
-    const nextPath = path && path.endsWith('[]') ? `${path.slice(0, -2)}.${key}` : (path ? `${path}.${key}` : key);
-    const val = obj[key];
-    return `${nextIndentStr}${key}: ${formatValue(val, nextIndent, nextPath)}`;
-  });
-  const singleLine = entries.length && entries.every(line => !line.includes('\n'));
-  if (singleLine && entries.length <= 3) {
-    return `{ ${entries.map(line => line.trim()).join(', ')} }`;
-  }
-  return `{\n${entries.join(',\n')}\n${indentStr}}`;
 }
 
 function buildControlRow(labelText, input) {
@@ -684,6 +797,12 @@ function renderSavedStylesList(options = {}) {
 
     const actions = document.createElement('div');
     actions.className = 'ink-style-actions';
+    const updateBtn = document.createElement('button');
+    updateBtn.type = 'button';
+    updateBtn.className = 'btn-text';
+    updateBtn.textContent = 'Update';
+    updateBtn.title = 'Update this style with the current settings';
+    updateBtn.addEventListener('click', () => updateSavedStyle(style.id));
     const renameBtn = document.createElement('button');
     renameBtn.type = 'button';
     renameBtn.className = 'btn-text';
@@ -694,6 +813,7 @@ function renderSavedStylesList(options = {}) {
     deleteBtn.className = 'btn-text danger';
     deleteBtn.textContent = 'Delete';
     deleteBtn.addEventListener('click', () => removeSavedStyle(style.id));
+    actions.appendChild(updateBtn);
     actions.appendChild(renameBtn);
     actions.appendChild(deleteBtn);
 
@@ -734,6 +854,22 @@ function handleSaveStyle(event) {
   renderSavedStylesList({ focusId: snapshot.id });
   input.value = '';
   input.classList.remove('input-error');
+}
+
+function updateSavedStyle(styleId) {
+  if (!styleId) return;
+  const styles = getSavedStyles();
+  if (!Array.isArray(styles) || !styles.length) return;
+  const index = styles.findIndex(style => style && style.id === styleId);
+  if (index < 0) return;
+  const target = styles[index];
+  const preservedName = sanitizeStyleName(target?.name) || 'Updated style';
+  const snapshot = createStyleSnapshot(preservedName, styleId);
+  const updated = styles.slice();
+  updated[index] = { ...snapshot, id: styleId, name: preservedName };
+  setSavedStyles(updated);
+  persistPanelState();
+  renderSavedStylesList({ focusId: styleId });
 }
 
 function removeSavedStyle(styleId) {
@@ -949,61 +1085,6 @@ function applySection(meta) {
   syncInputs(meta);
 }
 
-function formatConfigExport() {
-  const parts = [
-    `export const INK_TEXTURE = ${formatValue(INK_TEXTURE, 0, 'INK_TEXTURE')};`,
-    '',
-    `export const EDGE_FUZZ = ${formatValue(EDGE_FUZZ, 0, 'EDGE_FUZZ')};`,
-    '',
-    `export const EDGE_BLEED = ${formatValue(EDGE_BLEED, 0, 'EDGE_BLEED')};`,
-    '',
-    `export const GRAIN_CFG = ${formatValue(GRAIN_CFG, 0, 'GRAIN_CFG')};`
-  ];
-  return `${parts.join('\n')}\n`;
-}
-
-function copyConfigToClipboard(button) {
-  const text = formatConfigExport();
-  const done = () => {
-    if (!button) return;
-    const original = button.textContent;
-    button.textContent = 'Copied!';
-    button.disabled = true;
-    setTimeout(() => {
-      button.textContent = original;
-      button.disabled = false;
-    }, 1200);
-  };
-  if (navigator?.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, button));
-  } else {
-    fallbackCopy(text, button);
-  }
-}
-
-function fallbackCopy(text, button) {
-  try {
-    const temp = document.createElement('textarea');
-    temp.value = text;
-    temp.setAttribute('readonly', '');
-    temp.style.position = 'absolute';
-    temp.style.left = '-9999px';
-    document.body.appendChild(temp);
-    temp.select();
-    document.execCommand('copy');
-    temp.remove();
-    if (button) {
-      const original = button.textContent;
-      button.textContent = 'Copied!';
-      button.disabled = true;
-      setTimeout(() => {
-        button.textContent = original;
-        button.disabled = false;
-      }, 1200);
-    }
-  } catch {}
-}
-
 export function getInkEffectFactor() {
   const pct = getPercentFromState('effectsOverallStrength', 100);
   return normalizedPercent(pct);
@@ -1104,10 +1185,12 @@ export function setupInkSettingsPanel(options = {}) {
   const sectionsRoot = document.getElementById('inkSettingsSections');
   panelState.overallSlider = document.getElementById('inkEffectsOverallSlider');
   panelState.overallNumberInput = document.getElementById('inkEffectsOverallNumber');
-  const copyBtn = document.getElementById('inkSettingsCopyBtn');
   panelState.styleNameInput = document.getElementById('inkStyleNameInput');
   panelState.saveStyleButton = document.getElementById('inkStyleSaveBtn');
   panelState.stylesList = document.getElementById('inkStylesList');
+  panelState.exportButton = document.getElementById('inkStyleExportBtn');
+  panelState.importButton = document.getElementById('inkStyleImportBtn');
+  panelState.importInput = document.getElementById('inkStyleImportInput');
 
   if (panelState.styleNameInput) {
     panelState.styleNameInput.addEventListener('input', () => panelState.styleNameInput.classList.remove('input-error'));
@@ -1120,6 +1203,13 @@ export function setupInkSettingsPanel(options = {}) {
   }
   if (panelState.saveStyleButton) {
     panelState.saveStyleButton.addEventListener('click', handleSaveStyle);
+  }
+  if (panelState.exportButton) {
+    panelState.exportButton.addEventListener('click', exportCurrentStyle);
+  }
+  if (panelState.importButton && panelState.importInput) {
+    panelState.importButton.addEventListener('click', () => panelState.importInput.click());
+    panelState.importInput.addEventListener('change', handleImportInputChange);
   }
 
   if (panelState.appState) {
@@ -1154,10 +1244,6 @@ export function setupInkSettingsPanel(options = {}) {
       }
       syncInputs(meta);
     });
-  }
-
-  if (copyBtn) {
-    copyBtn.addEventListener('click', () => copyConfigToClipboard(copyBtn));
   }
 
   panelState.initialized = true;
