@@ -15,6 +15,11 @@ export function createDomRefs() {
   app.guideH = document.getElementById('guideH');
   app.newDocBtn = document.getElementById('newDocBtn');
   app.exportBtn = document.getElementById('exportTxtBtn');
+  app.docMenuBtn = document.getElementById('docMenuBtn');
+  app.docMenuPopup = document.getElementById('docMenuPopup');
+  app.docMenuList = document.getElementById('docMenuList');
+  app.docTitleInput = document.getElementById('docTitleInput');
+  app.deleteDocBtn = document.getElementById('deleteDocBtn');
   app.inkBlackBtn = document.getElementById('inkBlackBtn');
   app.inkRedBtn = document.getElementById('inkRedBtn');
   app.inkWhiteBtn = document.getElementById('inkWhiteBtn');
@@ -27,8 +32,19 @@ export function createDomRefs() {
   app.applyBtn  = document.getElementById('applyBtn');
   app.lhInput = document.getElementById('lhInput');
   app.applyLHBtn = document.getElementById('applyLHBtn');
+  app.glyphJitterToggle = document.getElementById('glyphJitterToggle');
+  app.glyphJitterAmountMin = document.getElementById('glyphJitterAmountMin');
+  app.glyphJitterAmountMax = document.getElementById('glyphJitterAmountMax');
+  app.glyphJitterFrequencyMin = document.getElementById('glyphJitterFrequencyMin');
+  app.glyphJitterFrequencyMax = document.getElementById('glyphJitterFrequencyMax');
+  app.shuffleGlyphJitterSeedBtn = document.getElementById('shuffleGlyphJitterSeedBtn');
   app.showMarginBoxCb = document.getElementById('showMarginBoxCb');
   app.wordWrapCb = document.getElementById('wordWrapCb');
+  app.appearanceAuto = document.getElementById('appearanceAuto');
+  app.appearanceLight = document.getElementById('appearanceLight');
+  app.appearanceDark = document.getElementById('appearanceDark');
+  app.darkPageToggle = document.getElementById('darkPageToggle');
+  app.appearanceRadios = () => Array.from(document.querySelectorAll('input[name="appearanceMode"]'));
   app.grainInput = document.getElementById('grainPct');
   app.stageWidthPct = document.getElementById('stageWidthPct');
   app.stageHeightPct = document.getElementById('stageHeightPct');
@@ -39,10 +55,6 @@ export function createDomRefs() {
   app.zoomThumb  = document.getElementById('zoomThumb');
   app.zoomIndicator = document.getElementById('zoomIndicator');
 
-  app.fontsBtn = document.getElementById('fontsBtn');
-  app.fontsPanel = document.getElementById('fontsPanel');
-  app.settingsBtnNew = document.getElementById('settingsBtnNew');
-  app.settingsPanel = document.getElementById('settingsPanel');
   app.fontRadios = () => Array.from(document.querySelectorAll('input[name="fontChoice"]'));
   app.mmLeft   = document.getElementById('mmLeft');
   app.mmRight  = document.getElementById('mmRight');

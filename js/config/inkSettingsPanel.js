@@ -1,4 +1,4 @@
-import { EDGE_BLEED, GRAIN_CFG, INK_TEXTURE } from './inkConfig.js';
+import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE } from './inkConfig.js';
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
@@ -8,43 +8,411 @@ const SECTION_DEFS = [
     label: 'Texture',
     config: INK_TEXTURE,
     keyOrder: ['supersample', 'noiseOctaves', 'noiseStrength', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
-    trigger: 'glyph'
+    trigger: 'glyph',
+    stateKey: 'inkTextureStrength',
+    defaultStrength: INK_TEXTURE.enabled === false ? 0 : 100,
+  },
+  {
+    id: 'fuzz',
+    label: 'Edge Fuzz',
+    config: EDGE_FUZZ,
+    keyOrder: ['inks', 'widthPx', 'inwardShare', 'roughness', 'frequency', 'opacity', 'seed'],
+    trigger: 'glyph',
+    stateKey: 'edgeFuzzStrength',
+    defaultStrength: 100,
   },
   {
     id: 'bleed',
     label: 'Bleed',
     config: EDGE_BLEED,
     keyOrder: ['inks', 'passes'],
-    trigger: 'glyph'
+    trigger: 'glyph',
+    stateKey: 'edgeBleedStrength',
+    defaultStrength: EDGE_BLEED.enabled === false ? 0 : 100,
   },
   {
     id: 'grain',
     label: 'Grain',
     config: GRAIN_CFG,
     keyOrder: ['base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'post_gamma', 'alpha', 'seeds', 'composite_op'],
-    trigger: 'grain'
+    trigger: 'grain',
+    stateKey: 'grainPct',
+    defaultStrength: 100,
   }
 ];
 
-const state = {
-  overall: 1,
-  sections: {
-    texture: INK_TEXTURE.enabled !== false,
-    bleed: EDGE_BLEED.enabled !== false,
-    grain: GRAIN_CFG.enabled !== false
-  },
+const panelState = {
+  appState: null,
+  app: null,
   callbacks: {
     refreshGlyphs: null,
-    refreshGrain: null
+    refreshGrain: null,
   },
   metas: [],
-  initialized: false
+  initialized: false,
+  saveState: null,
+  overallSlider: null,
+  overallNumberInput: null,
+  pendingGlyphRAF: 0,
+  pendingGrainRAF: 0,
+  pendingGlyphOptions: null,
+  styleNameInput: null,
+  saveStyleButton: null,
+  stylesList: null,
+  lastLoadedStyleId: null,
+  exportButton: null,
+  importButton: null,
+  importInput: null,
 };
 
 const HEX_MATCH_RE = /seed|hash/i;
+const STYLE_NAME_MAX_LEN = 60;
+const STYLE_EXPORT_VERSION = 1;
+
+function deepCloneValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => deepCloneValue(item));
+  }
+  if (value instanceof Set) {
+    return Array.from(value, item => deepCloneValue(item));
+  }
+  if (value instanceof Map) {
+    const clone = {};
+    for (const [key, val] of value.entries()) {
+      clone[key] = deepCloneValue(val);
+    }
+    return clone;
+  }
+  if (value && typeof value === 'object') {
+    const clone = {};
+    for (const [key, val] of Object.entries(value)) {
+      clone[key] = deepCloneValue(val);
+    }
+    return clone;
+  }
+  return value;
+}
+
+function sanitizeStyleName(name) {
+  if (typeof name !== 'string') return '';
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  return trimmed.slice(0, STYLE_NAME_MAX_LEN);
+}
+
+function ensureUniqueStyleName(name, existingStyles, excludeId = null) {
+  const base = sanitizeStyleName(name) || 'Imported style';
+  const lowerExisting = new Set(
+    (existingStyles || [])
+      .filter(style => style && style.id !== excludeId && typeof style.name === 'string')
+      .map(style => style.name.toLowerCase())
+  );
+  if (!lowerExisting.has(base.toLowerCase())) {
+    return base;
+  }
+  let counter = 2;
+  let candidate = '';
+  do {
+    candidate = `${base} (${counter})`;
+    counter += 1;
+  } while (lowerExisting.has(candidate.toLowerCase()));
+  return candidate;
+}
+
+function generateStyleId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `style-${ts}-${rand}`;
+}
+
+function normalizeStyleRecord(style, index = 0) {
+  try {
+    const record = {
+      id: typeof style?.id === 'string' && style.id.trim() ? style.id.trim() : generateStyleId(),
+      name: sanitizeStyleName(style?.name) || `Style ${index + 1}`,
+      overall: clamp(Math.round(Number(style?.overall ?? 100)), 0, 100),
+      sections: {},
+    };
+    SECTION_DEFS.forEach(def => {
+      const rawSection = style?.sections && typeof style.sections === 'object'
+        ? style.sections[def.id]
+        : (style && typeof style === 'object' && typeof style[def.id] === 'object' ? style[def.id] : null);
+      const section = rawSection && typeof rawSection === 'object' ? rawSection : {};
+      const strength = clamp(Math.round(Number(section?.strength ?? def.defaultStrength ?? 0)), 0, 100);
+      const configSource = section.config != null
+        ? section.config
+        : section.settings != null
+          ? section.settings
+          : ('strength' in section ? def.config : section);
+      record.sections[def.id] = {
+        strength,
+        config: deepCloneValue(configSource == null ? def.config : configSource),
+      };
+    });
+    return record;
+  } catch (error) {
+    if (typeof console !== 'undefined' && typeof console.error === 'function') {
+      console.error('Failed to normalize ink style.', error);
+    }
+    return null;
+  }
+}
+
+function createDefaultStyleRecord(index = 0) {
+  const record = {
+    id: generateStyleId(),
+    name: `Style ${index + 1}`,
+    overall: 100,
+    sections: {},
+  };
+  SECTION_DEFS.forEach(def => {
+    record.sections[def.id] = {
+      strength: def.defaultStrength ?? 0,
+      config: deepCloneValue(def.config),
+    };
+  });
+  return record;
+}
+
+function getSavedStyles() {
+  const appState = getAppState();
+  if (!appState) return [];
+  if (!Array.isArray(appState.savedInkStyles)) {
+    appState.savedInkStyles = [];
+  }
+  return appState.savedInkStyles;
+}
+
+function setSavedStyles(styles) {
+  const appState = getAppState();
+  if (!appState) return [];
+  const normalized = [];
+  if (Array.isArray(styles)) {
+    styles.forEach((style, index) => {
+      const record = normalizeStyleRecord(style, index);
+      if (record) normalized.push(record);
+    });
+  }
+  appState.savedInkStyles = normalized;
+  return normalized;
+}
+
+function createStyleSnapshot(name, existingId = null) {
+  const base = {
+    id: existingId || generateStyleId(),
+    name,
+    overall: getPercentFromState('effectsOverallStrength', 100),
+    sections: {},
+  };
+  SECTION_DEFS.forEach(def => {
+    const meta = findMetaById(def.id);
+    const configSource = meta && meta.config ? meta.config : def.config;
+    base.sections[def.id] = {
+      strength: getPercentFromState(def.stateKey, def.defaultStrength ?? 0),
+      config: deepCloneValue(configSource),
+    };
+  });
+  return normalizeStyleRecord(base);
+}
+
+function getCurrentStyleName() {
+  const input = panelState.styleNameInput;
+  const fromInput = input ? sanitizeStyleName(input.value) : '';
+  if (fromInput) return fromInput;
+  const styles = getSavedStyles();
+  if (panelState.lastLoadedStyleId && Array.isArray(styles)) {
+    const match = styles.find(style => style && style.id === panelState.lastLoadedStyleId);
+    if (match && match.name) {
+      return sanitizeStyleName(match.name);
+    }
+  }
+  return 'Current style';
+}
+
+function makeExportFileName(style) {
+  const rawName = sanitizeStyleName(style?.name) || 'Ink style';
+  const safe = rawName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const base = safe || 'ink-style';
+  return `${base}.ink-style.json`;
+}
+
+function buildExportPayload(style) {
+  return {
+    version: STYLE_EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    style: normalizeStyleRecord(style || {}) || createDefaultStyleRecord(0),
+  };
+}
+
+function triggerDownload(text, filename) {
+  if (
+    typeof document === 'undefined'
+    || typeof document.createElement !== 'function'
+    || typeof Blob === 'undefined'
+    || typeof URL === 'undefined'
+    || typeof URL.createObjectURL !== 'function'
+  ) {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Export is not supported in this environment.');
+    }
+    return;
+  }
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportStyleToFile(style) {
+  if (!style) return;
+  const payload = buildExportPayload(style);
+  const text = JSON.stringify(payload, null, 2);
+  const filename = makeExportFileName(style);
+  triggerDownload(text, filename);
+}
+
+function exportCurrentStyle() {
+  const snapshot = createStyleSnapshot(getCurrentStyleName());
+  if (!snapshot) {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Could not export the current style.');
+    }
+    return;
+  }
+  exportStyleToFile(snapshot);
+}
+
+function extractStyleFromPayload(payload) {
+  if (!payload) return null;
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const extracted = extractStyleFromPayload(item);
+      if (extracted) return extracted;
+    }
+    return null;
+  }
+  if (typeof payload !== 'object') return null;
+  if (payload.style && typeof payload.style === 'object') {
+    return payload.style;
+  }
+  if (payload.data && typeof payload.data === 'object') {
+    const nested = extractStyleFromPayload(payload.data);
+    if (nested) return nested;
+  }
+  if (payload.sections && typeof payload.sections === 'object') {
+    return payload;
+  }
+  return null;
+}
+
+function normalizeImportedStyle(rawStyle) {
+  const existing = getSavedStyles();
+  const baseIndex = Array.isArray(existing) ? existing.length : 0;
+  let sanitized = normalizeStyleRecord(rawStyle, baseIndex);
+  const usedFallback = !sanitized;
+  if (!sanitized) {
+    sanitized = createDefaultStyleRecord(baseIndex);
+  }
+  if (existing && existing.some(style => style && style.id === sanitized.id)) {
+    sanitized.id = generateStyleId();
+  }
+  sanitized.name = ensureUniqueStyleName(usedFallback ? 'Imported style' : sanitized.name, existing);
+  return sanitized;
+}
+
+function notifyImportError() {
+  if (typeof console !== 'undefined' && typeof console.error === 'function') {
+    console.error('Failed to import ink style: file was not in the expected format.');
+  }
+  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert('Could not import ink style. Please choose a valid file.');
+  }
+}
+
+function handleImportStyleContent(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    notifyImportError();
+    return;
+  }
+  const rawStyle = extractStyleFromPayload(data);
+  if (!rawStyle) {
+    notifyImportError();
+    return;
+  }
+  const normalized = normalizeImportedStyle(rawStyle);
+  const styles = getSavedStyles();
+  const updated = [normalized, ...(Array.isArray(styles) ? styles : [])];
+  setSavedStyles(updated);
+  persistPanelState();
+  renderSavedStylesList({ focusId: normalized.id });
+}
+
+function handleImportInputChange(event) {
+  const input = event?.target;
+  if (!input || !input.files || !input.files.length) return;
+  const file = input.files[0];
+  const resetInput = () => {
+    input.value = '';
+  };
+  if (typeof FileReader === 'undefined') {
+    notifyImportError();
+    resetInput();
+    return;
+  }
+  const reader = new FileReader();
+  reader.addEventListener('load', () => {
+    try {
+      handleImportStyleContent(reader.result);
+    } finally {
+      resetInput();
+    }
+  });
+  reader.addEventListener('error', () => {
+    notifyImportError();
+    resetInput();
+  });
+  reader.readAsText(file);
+}
 
 function isHexField(path) {
   return HEX_MATCH_RE.test(path || '');
+}
+
+function getAppState() {
+  return panelState.appState;
+}
+
+function getPercentFromState(key, fallback = 0) {
+  const appState = getAppState();
+  if (!appState || !(key in appState)) {
+    return clamp(Number.isFinite(fallback) ? fallback : 0, 0, 100);
+  }
+  const raw = Number(appState[key]);
+  return clamp(Number.isFinite(raw) ? raw : (Number.isFinite(fallback) ? fallback : 0), 0, 100);
+}
+
+function setPercentOnState(key, value) {
+  const appState = getAppState();
+  if (!appState) return;
+  appState[key] = clamp(Number(value) || 0, 0, 100);
+}
+
+function normalizedPercent(value) {
+  return clamp((Number(value) || 0) / 100, 0, 1);
 }
 
 function toHex(value) {
@@ -69,39 +437,6 @@ function parseHex(value) {
   return Number.isFinite(parsed) ? (parsed >>> 0) : 0;
 }
 
-function formatNumber(value, path) {
-  if (isHexField(path)) return toHex(value);
-  if (Number.isInteger(value)) return String(value);
-  return String(value);
-}
-
-function formatString(value) {
-  return `'${String(value).replace(/'/g, "\\'")}'`;
-}
-
-function formatValue(value, indent, path) {
-  if (Array.isArray(value)) return formatArray(value, indent, path);
-  if (value && typeof value === 'object') return formatObject(value, indent, path);
-  if (typeof value === 'string') return formatString(value);
-  if (typeof value === 'number') return formatNumber(value, path);
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  return 'null';
-}
-
-function formatArray(arr, indent, path) {
-  if (arr.length === 0) return '[]';
-  const indentStr = '  '.repeat(indent);
-  const nextIndent = indent + 1;
-  const nextIndentStr = '  '.repeat(nextIndent);
-  const isPrimitive = arr.every(v => !(v && typeof v === 'object'));
-  if (isPrimitive) {
-    const items = arr.map((v, idx) => formatValue(v, nextIndent, `${path}[${idx}]`));
-    return `[${items.join(', ')}]`;
-  }
-  const lines = arr.map((item, idx) => `${nextIndentStr}${formatValue(item, nextIndent, `${path}[${idx}]`)}`);
-  return `[\n${lines.join(',\n')}\n${indentStr}]`;
-}
-
 function getObjectKeys(path, obj) {
   if (!obj) return [];
   switch (path) {
@@ -122,23 +457,6 @@ function getObjectKeys(path, obj) {
     default:
       return Object.keys(obj);
   }
-}
-
-function formatObject(obj, indent, path) {
-  const keys = getObjectKeys(path, obj);
-  const indentStr = '  '.repeat(indent);
-  const nextIndent = indent + 1;
-  const nextIndentStr = '  '.repeat(nextIndent);
-  const entries = keys.map(key => {
-    const nextPath = path && path.endsWith('[]') ? `${path.slice(0, -2)}.${key}` : (path ? `${path}.${key}` : key);
-    const val = obj[key];
-    return `${nextIndentStr}${key}: ${formatValue(val, nextIndent, nextPath)}`;
-  });
-  const singleLine = entries.length && entries.every(line => !line.includes('\n'));
-  if (singleLine && entries.length <= 3) {
-    return `{ ${entries.map(line => line.trim()).join(', ')} }`;
-  }
-  return `{\n${entries.join(',\n')}\n${indentStr}}`;
 }
 
 function buildControlRow(labelText, input) {
@@ -334,39 +652,86 @@ function buildObjectControls(meta, container, obj, path, label) {
   container.appendChild(group);
 }
 
+function setSectionCollapsed(meta, collapsed) {
+  if (!meta) return;
+  const isCollapsed = !!collapsed;
+  meta.isCollapsed = isCollapsed;
+  if (meta.root) {
+    meta.root.classList.toggle('is-collapsed', isCollapsed);
+  }
+  if (meta.body) {
+    meta.body.hidden = isCollapsed;
+  }
+  if (meta.toggleButton) {
+    meta.toggleButton.setAttribute('aria-expanded', String(!isCollapsed));
+  }
+}
+
 function buildSection(def, root) {
   const sectionEl = document.createElement('section');
   sectionEl.className = 'ink-section';
 
   const header = document.createElement('div');
   header.className = 'ink-section-header';
-  const title = document.createElement('h4');
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'ink-section-toggle';
+  toggleBtn.setAttribute('aria-expanded', 'false');
+  const icon = document.createElement('span');
+  icon.className = 'ink-section-toggle-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '▸';
+  toggleBtn.appendChild(icon);
+  const title = document.createElement('span');
+  title.className = 'ink-section-title';
   title.textContent = def.label;
-  header.appendChild(title);
+  toggleBtn.appendChild(title);
 
-  const toggleLabel = document.createElement('label');
-  toggleLabel.className = 'ink-section-toggle';
-  const toggle = document.createElement('input');
-  toggle.type = 'checkbox';
-  toggle.checked = def.id === 'grain' ? state.sections.grain : !!def.config.enabled;
-  toggleLabel.appendChild(toggle);
-  const toggleText = document.createElement('span');
-  toggleText.textContent = 'On';
-  toggleLabel.appendChild(toggleText);
-  header.appendChild(toggleLabel);
+  const topLine = document.createElement('div');
+  topLine.className = 'ink-section-topline';
+  topLine.appendChild(toggleBtn);
+  header.appendChild(topLine);
+
+  const strengthWrap = document.createElement('div');
+  strengthWrap.className = 'ink-section-controls';
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '100';
+  slider.step = '1';
+  const startPercent = getPercentFromState(def.stateKey, def.defaultStrength ?? 0);
+  slider.value = String(startPercent);
+  strengthWrap.appendChild(slider);
+  const numberInput = document.createElement('input');
+  numberInput.type = 'number';
+  numberInput.min = '0';
+  numberInput.max = '100';
+  numberInput.step = '1';
+  numberInput.value = String(startPercent);
+  numberInput.setAttribute('aria-label', `${def.label} strength`);
+  strengthWrap.appendChild(numberInput);
+  header.appendChild(strengthWrap);
 
   sectionEl.appendChild(header);
 
   const body = document.createElement('div');
   body.className = 'ink-section-body';
+  const bodyId = `inkSection-${def.id}`;
+  body.id = bodyId;
+  toggleBtn.setAttribute('aria-controls', bodyId);
   const meta = {
     id: def.id,
     config: def.config,
     trigger: def.trigger,
+    stateKey: def.stateKey,
     root: sectionEl,
     inputs: new Map(),
-    toggle,
-    applyBtn: null
+    slider,
+    numberInput,
+    body,
+    toggleButton: toggleBtn,
+    defaultStrength: def.defaultStrength ?? 0,
+    applyBtn: null,
   };
 
   def.keyOrder.forEach(key => {
@@ -399,8 +764,107 @@ function buildSection(def, root) {
 
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
-  state.metas.push(meta);
+  panelState.metas.push(meta);
+
+  toggleBtn.addEventListener('click', () => {
+    setSectionCollapsed(meta, !meta.isCollapsed);
+  });
+  slider.addEventListener('input', () => {
+    applySectionStrength(meta, Number.parseFloat(slider.value) || 0);
+  });
+  numberInput.addEventListener('input', () => {
+    const raw = Number.parseFloat(numberInput.value);
+    if (!Number.isFinite(raw)) return;
+    applySectionStrength(meta, raw);
+  });
+  numberInput.addEventListener('blur', () => {
+    if (numberInput.value !== '') return;
+    const fallback = meta.defaultStrength ?? 0;
+    const pct = getPercentFromState(meta.stateKey, fallback);
+    applySectionStrength(meta, pct, { silent: true });
+  });
+
+  setSectionCollapsed(meta, true);
+  applySectionStrength(meta, startPercent, { silent: true, syncSlider: false, syncNumber: false });
   return meta;
+}
+
+function persistPanelState() {
+  if (typeof panelState.saveState === 'function') {
+    panelState.saveState();
+  }
+}
+
+function scheduleGlyphRefresh(rebuild = true) {
+  if (typeof panelState.callbacks.refreshGlyphs !== 'function') return;
+  if (panelState.pendingGlyphRAF) {
+    if (rebuild && panelState.pendingGlyphOptions && panelState.pendingGlyphOptions.rebuild === false) {
+      panelState.pendingGlyphOptions.rebuild = true;
+    }
+    return;
+  }
+  panelState.pendingGlyphOptions = { rebuild: rebuild !== false };
+  panelState.pendingGlyphRAF = requestAnimationFrame(() => {
+    const opts = panelState.pendingGlyphOptions || { rebuild: rebuild !== false };
+    panelState.pendingGlyphRAF = 0;
+    panelState.pendingGlyphOptions = null;
+    panelState.callbacks.refreshGlyphs(opts);
+  });
+}
+
+function scheduleGrainRefresh() {
+  if (panelState.pendingGrainRAF || typeof panelState.callbacks.refreshGrain !== 'function') return;
+  panelState.pendingGrainRAF = requestAnimationFrame(() => {
+    panelState.pendingGrainRAF = 0;
+    panelState.callbacks.refreshGrain();
+  });
+}
+
+function scheduleRefreshForMeta(meta, options = {}) {
+  if (!meta) return;
+  if (meta.trigger === 'glyph') {
+    const needsFullRebuild = options.forceRebuild === true
+      ? true
+      : options.forceRebuild === false
+        ? false
+        : meta.id !== 'fuzz';
+    scheduleGlyphRefresh(needsFullRebuild);
+  } else if (meta.trigger === 'grain') {
+    scheduleGrainRefresh();
+  }
+}
+
+function syncGrainInputField(pct) {
+  const app = panelState.app;
+  if (!app || !app.grainInput) return;
+  const normalized = clamp(Math.round(pct), 0, 100);
+  if (app.grainInput.value !== String(normalized)) {
+    app.grainInput.value = String(normalized);
+  }
+}
+
+function applySectionStrength(meta, percent, options = {}) {
+  if (!meta) return;
+  const pct = clamp(Math.round(Number(percent) || 0), 0, 100);
+  if (options.syncSlider !== false && meta.slider && meta.slider.value !== String(pct)) {
+    meta.slider.value = String(pct);
+  }
+  if (options.syncNumber !== false && meta.numberInput && meta.numberInput.value !== String(pct)) {
+    meta.numberInput.value = String(pct);
+  }
+  if (meta.root) {
+    meta.root.classList.toggle('is-disabled', pct <= 0);
+  }
+  if (options.silent) return;
+  setPercentOnState(meta.stateKey, pct);
+  if (meta.config && typeof meta.config === 'object') {
+    meta.config.enabled = pct > 0;
+  }
+  if (meta.id === 'grain') {
+    syncGrainInputField(pct);
+  }
+  scheduleRefreshForMeta(meta);
+  persistPanelState();
 }
 
 function syncInputs(meta) {
@@ -432,152 +896,436 @@ function applySection(meta) {
     const value = parseInputValue(input, path);
     setValueByPath(meta.config, path, value);
   }
-  if (meta.id === 'texture' || meta.id === 'bleed') {
-    if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-  }
-  if (meta.id === 'grain') {
-    if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
-  }
+  scheduleRefreshForMeta(meta, { forceRebuild: true });
+  persistPanelState();
   syncInputs(meta);
 }
 
-function formatConfigExport() {
-  const parts = [
-    `export const INK_TEXTURE = ${formatValue(INK_TEXTURE, 0, 'INK_TEXTURE')};`,
-    '',
-    `export const EDGE_BLEED = ${formatValue(EDGE_BLEED, 0, 'EDGE_BLEED')};`,
-    '',
-    `export const GRAIN_CFG = ${formatValue(GRAIN_CFG, 0, 'GRAIN_CFG')};`
-  ];
-  return `${parts.join('\n')}\n`;
+function applyConfigToTarget(target, source) {
+  if (!target || typeof target !== 'object') return;
+  if (!source || typeof source !== 'object') return;
+  Object.keys(source).forEach(key => {
+    target[key] = deepCloneValue(source[key]);
+  });
 }
 
-function copyConfigToClipboard(button) {
-  const text = formatConfigExport();
-  const done = () => {
-    if (!button) return;
-    const original = button.textContent;
-    button.textContent = 'Copied!';
-    button.disabled = true;
-    setTimeout(() => {
-      button.textContent = original;
-      button.disabled = false;
-    }, 1200);
-  };
-  if (navigator?.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, button));
-  } else {
-    fallbackCopy(text, button);
+function revertInlineStyleNameInput(input) {
+  if (!input) return;
+  const original = typeof input.dataset.originalName === 'string' ? input.dataset.originalName : '';
+  input.value = original;
+  input.title = original;
+  input.classList.remove('input-error');
+}
+
+function commitInlineStyleName(styleId, input) {
+  if (!input) return;
+  const original = typeof input.dataset.originalName === 'string' ? input.dataset.originalName : '';
+  const sanitized = sanitizeStyleName(input.value);
+  if (!sanitized) {
+    revertInlineStyleNameInput(input);
+    input.classList.add('input-error');
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+    return;
+  }
+  if (sanitized === original) {
+    input.value = sanitized;
+    input.title = sanitized;
+    input.classList.remove('input-error');
+    return;
+  }
+  const styles = getSavedStyles();
+  if (!Array.isArray(styles) || !styles.length) {
+    input.dataset.originalName = sanitized;
+    input.value = sanitized;
+    input.title = sanitized;
+    input.classList.remove('input-error');
+    return;
+  }
+  const index = styles.findIndex(style => style && style.id === styleId);
+  if (index < 0) {
+    input.dataset.originalName = sanitized;
+    input.value = sanitized;
+    input.title = sanitized;
+    input.classList.remove('input-error');
+    return;
+  }
+  const updated = styles.slice();
+  const next = { ...updated[index], name: sanitized };
+  updated[index] = next;
+  setSavedStyles(updated);
+  persistPanelState();
+  input.dataset.originalName = sanitized;
+  input.value = sanitized;
+  input.title = sanitized;
+  input.classList.remove('input-error');
+  if (panelState.lastLoadedStyleId === styleId && panelState.styleNameInput) {
+    panelState.styleNameInput.value = sanitized;
+    panelState.styleNameInput.classList.remove('input-error');
   }
 }
 
-function fallbackCopy(text, button) {
+function renderSavedStylesList(options = {}) {
+  const list = panelState.stylesList;
+  if (!list) return;
+  const { focusId } = options || {};
+  list.innerHTML = '';
+  let styles = [];
   try {
-    const temp = document.createElement('textarea');
-    temp.value = text;
-    temp.setAttribute('readonly', '');
-    temp.style.position = 'absolute';
-    temp.style.left = '-9999px';
-    document.body.appendChild(temp);
-    temp.select();
-    document.execCommand('copy');
-    temp.remove();
-    if (button) {
-      const original = button.textContent;
-      button.textContent = 'Copied!';
-      button.disabled = true;
-      setTimeout(() => {
-        button.textContent = original;
-        button.disabled = false;
-      }, 1200);
+    styles = getSavedStyles();
+  } catch (error) {
+    if (typeof console !== 'undefined' && typeof console.error === 'function') {
+      console.error('Failed to read saved ink styles.', error);
     }
-  } catch {}
+    styles = [];
+  }
+  if (!styles.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ink-styles-empty';
+    empty.textContent = 'No saved styles yet.';
+    list.appendChild(empty);
+    return;
+  }
+  styles.forEach(style => {
+    if (!style) return;
+    const item = document.createElement('div');
+    item.className = 'ink-style-item';
+    item.dataset.styleId = style.id;
+    if (panelState.lastLoadedStyleId && panelState.lastLoadedStyleId === style.id) {
+      item.classList.add('is-active');
+    }
+
+    const nameRow = document.createElement('div');
+    nameRow.className = 'ink-style-name-row';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'ink-style-name-input';
+    nameInput.value = style.name;
+    nameInput.title = style.name;
+    nameInput.maxLength = STYLE_NAME_MAX_LEN;
+    nameInput.dataset.originalName = style.name;
+    nameInput.addEventListener('input', () => {
+      nameInput.classList.remove('input-error');
+      nameInput.title = nameInput.value;
+    });
+    nameInput.addEventListener('blur', () => commitInlineStyleName(style.id, nameInput));
+    nameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        nameInput.blur();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        revertInlineStyleNameInput(nameInput);
+        nameInput.select();
+      }
+    });
+    nameRow.appendChild(nameInput);
+
+    const actionsRow = document.createElement('div');
+    actionsRow.className = 'ink-style-actions-row';
+    const loadBtn = document.createElement('button');
+    loadBtn.type = 'button';
+    loadBtn.className = 'btn btn-small';
+    loadBtn.textContent = 'Load';
+    loadBtn.addEventListener('click', () => applySavedStyle(style.id));
+    const updateBtn = document.createElement('button');
+    updateBtn.type = 'button';
+    updateBtn.className = 'btn-text';
+    updateBtn.textContent = 'Update';
+    updateBtn.title = 'Update this style with the current settings';
+    updateBtn.addEventListener('click', () => updateSavedStyle(style.id));
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn-text danger';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', () => removeSavedStyle(style.id));
+    actionsRow.appendChild(loadBtn);
+    actionsRow.appendChild(updateBtn);
+    actionsRow.appendChild(deleteBtn);
+
+    item.appendChild(nameRow);
+    item.appendChild(actionsRow);
+    list.appendChild(item);
+
+    if (focusId && focusId === style.id) {
+      requestAnimationFrame(() => loadBtn.focus());
+    }
+  });
+}
+
+function handleSaveStyle(event) {
+  if (event) event.preventDefault();
+  const input = panelState.styleNameInput;
+  if (!input) return;
+  const sanitized = sanitizeStyleName(input.value);
+  if (!sanitized) {
+    input.classList.add('input-error');
+    input.focus();
+    return;
+  }
+  const existingStyles = getSavedStyles();
+  const existingIdx = existingStyles.findIndex(style => style && style.name && style.name.toLowerCase() === sanitized.toLowerCase());
+  const existingId = existingIdx >= 0 ? existingStyles[existingIdx].id : null;
+  const snapshot = createStyleSnapshot(sanitized, existingId);
+  if (!snapshot) {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Could not save ink style. Please try again.');
+    }
+    return;
+  }
+  let updated;
+  if (existingIdx >= 0) {
+    updated = existingStyles.slice();
+    updated[existingIdx] = snapshot;
+  } else {
+    updated = [snapshot, ...existingStyles];
+  }
+  setSavedStyles(updated);
+  persistPanelState();
+  renderSavedStylesList({ focusId: snapshot.id });
+  input.value = '';
+  input.classList.remove('input-error');
+}
+
+function updateSavedStyle(styleId) {
+  if (!styleId) return;
+  const styles = getSavedStyles();
+  if (!Array.isArray(styles) || !styles.length) return;
+  const index = styles.findIndex(style => style && style.id === styleId);
+  if (index < 0) return;
+  const target = styles[index];
+  const preservedName = sanitizeStyleName(target?.name) || 'Updated style';
+  const snapshot = createStyleSnapshot(preservedName, styleId);
+  if (!snapshot) {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('Could not update this style. Please try again.');
+    }
+    return;
+  }
+  const updated = styles.slice();
+  updated[index] = { ...snapshot, id: styleId, name: preservedName };
+  setSavedStyles(updated);
+  persistPanelState();
+  renderSavedStylesList({ focusId: styleId });
+}
+
+function removeSavedStyle(styleId) {
+  const styles = getSavedStyles();
+  if (!styles.length) return;
+  const target = styles.find(style => style && style.id === styleId);
+  if (!target) return;
+  let confirmed = true;
+  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    confirmed = window.confirm(`Delete style "${target.name}"?`);
+  }
+  if (!confirmed) return;
+  const updated = styles.filter(style => style && style.id !== styleId);
+  setSavedStyles(updated);
+  if (panelState.lastLoadedStyleId === styleId) {
+    panelState.lastLoadedStyleId = null;
+  }
+  persistPanelState();
+  renderSavedStylesList();
+}
+
+function applySavedStyle(styleId) {
+  const styles = getSavedStyles();
+  const style = styles.find(s => s && s.id === styleId);
+  if (!style) return;
+  if (Number.isFinite(style.overall)) {
+    setOverallStrength(style.overall);
+  }
+  SECTION_DEFS.forEach(def => {
+    const meta = findMetaById(def.id);
+    if (!meta) return;
+    const section = style.sections && style.sections[def.id];
+    if (section && section.config) {
+      applyConfigToTarget(meta.config, section.config);
+      syncInputs(meta);
+      scheduleRefreshForMeta(meta, { forceRebuild: true });
+    }
+    const strength = Number(section && section.strength);
+    if (Number.isFinite(strength)) {
+      applySectionStrength(meta, strength);
+    }
+  });
+  panelState.lastLoadedStyleId = styleId;
+  if (panelState.styleNameInput) {
+    panelState.styleNameInput.value = style.name;
+    panelState.styleNameInput.classList.remove('input-error');
+  }
+  persistPanelState();
+  renderSavedStylesList();
 }
 
 export function getInkEffectFactor() {
-  return clamp(state.overall, 0, 1);
+  const pct = getPercentFromState('effectsOverallStrength', 100);
+  return normalizedPercent(pct);
+}
+
+export function getInkSectionStrength(sectionId) {
+  switch (sectionId) {
+    case 'texture':
+      return normalizedPercent(getPercentFromState('inkTextureStrength', INK_TEXTURE.enabled === false ? 0 : 100));
+    case 'fuzz':
+      return normalizedPercent(getPercentFromState('edgeFuzzStrength', 100));
+    case 'bleed':
+      return normalizedPercent(getPercentFromState('edgeBleedStrength', EDGE_BLEED.enabled === false ? 0 : 100));
+    case 'grain':
+      return normalizedPercent(getPercentFromState('grainPct', 100));
+    default:
+      return 1;
+  }
 }
 
 export function isInkSectionEnabled(sectionId) {
-  if (sectionId === 'grain') return !!state.sections.grain && GRAIN_CFG.enabled !== false;
-  if (sectionId === 'texture') return !!state.sections.texture && INK_TEXTURE.enabled !== false;
-  if (sectionId === 'bleed') return !!state.sections.bleed && EDGE_BLEED.enabled !== false;
-  return true;
+  const strength = getInkSectionStrength(sectionId);
+  if (sectionId === 'grain') return strength > 0 && GRAIN_CFG.enabled !== false;
+  if (sectionId === 'texture') return strength > 0 && INK_TEXTURE.enabled !== false;
+  if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
+  if (sectionId === 'bleed') return strength > 0 && EDGE_BLEED.enabled !== false;
+  return strength > 0;
+}
+
+function syncOverallStrengthUI() {
+  const pct = getPercentFromState('effectsOverallStrength', 100);
+  if (panelState.overallSlider && panelState.overallSlider.value !== String(pct)) {
+    panelState.overallSlider.value = String(pct);
+  }
+  if (panelState.overallNumberInput && panelState.overallNumberInput.value !== String(pct)) {
+    panelState.overallNumberInput.value = String(pct);
+  }
 }
 
 function setOverallStrength(percent) {
-  const pct = clamp(Number(percent) || 0, 0, 100);
-  state.overall = pct / 100;
-  if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-  if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
+  const pct = clamp(Math.round(Number(percent) || 0), 0, 100);
+  setPercentOnState('effectsOverallStrength', pct);
+  syncOverallStrengthUI();
+  scheduleGlyphRefresh();
+  scheduleGrainRefresh();
+  persistPanelState();
   return pct;
 }
 
+function findMetaById(sectionId) {
+  if (!sectionId) return null;
+  return panelState.metas.find(meta => meta && meta.id === sectionId) || null;
+}
+
+export function syncInkStrengthDisplays(sectionId) {
+  if (!panelState.initialized) return;
+  if (!sectionId) {
+    syncOverallStrengthUI();
+    panelState.metas.forEach(meta => {
+      if (!meta) return;
+      const fallback = meta.defaultStrength ?? 0;
+      const pct = getPercentFromState(meta.stateKey, fallback);
+      applySectionStrength(meta, pct, { silent: true });
+    });
+    return;
+  }
+  if (sectionId === 'overall') {
+    syncOverallStrengthUI();
+    return;
+  }
+  const meta = findMetaById(sectionId);
+  if (!meta) return;
+  const fallback = meta.defaultStrength ?? 0;
+  const pct = getPercentFromState(meta.stateKey, fallback);
+  applySectionStrength(meta, pct, { silent: true });
+}
+
 export function setupInkSettingsPanel(options = {}) {
-  if (state.initialized) return;
+  if (panelState.initialized) return;
   const {
+    state,
+    app,
     refreshGlyphs,
-    refreshGrain
-  } = options;
-  state.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
-  state.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
+    refreshGrain,
+    saveState,
+  } = options || {};
+
+  if (state && typeof state === 'object') {
+    panelState.appState = state;
+  }
+  if (app && typeof app === 'object') {
+    panelState.app = app;
+  }
+  panelState.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
+  panelState.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
+  panelState.saveState = typeof saveState === 'function' ? saveState : null;
 
   const sectionsRoot = document.getElementById('inkSettingsSections');
-  const overallInput = document.getElementById('inkOverallStrength');
-  const overallApplyBtn = document.getElementById('inkOverallApplyBtn');
-  const copyBtn = document.getElementById('inkSettingsCopyBtn');
-  if (!sectionsRoot) return;
+  panelState.overallSlider = document.getElementById('inkEffectsOverallSlider');
+  panelState.overallNumberInput = document.getElementById('inkEffectsOverallNumber');
+  panelState.styleNameInput = document.getElementById('inkStyleNameInput');
+  panelState.saveStyleButton = document.getElementById('inkStyleSaveBtn');
+  panelState.stylesList = document.getElementById('inkStylesList');
+  panelState.exportButton = document.getElementById('inkStyleExportBtn');
+  panelState.importButton = document.getElementById('inkStyleImportBtn');
+  panelState.importInput = document.getElementById('inkStyleImportInput');
 
-  state.sections.texture = INK_TEXTURE.enabled !== false;
-  state.sections.bleed = EDGE_BLEED.enabled !== false;
-  state.sections.grain = GRAIN_CFG.enabled !== false;
-
-  SECTION_DEFS.forEach(def => {
-    const meta = buildSection(def, sectionsRoot);
-    meta.toggle.addEventListener('change', () => {
-      if (meta.id === 'grain') {
-        state.sections.grain = !!meta.toggle.checked;
-        GRAIN_CFG.enabled = state.sections.grain;
-        meta.root.classList.toggle('is-disabled', !state.sections.grain);
-        if (typeof state.callbacks.refreshGrain === 'function') state.callbacks.refreshGrain();
-      } else if (meta.id === 'texture') {
-        state.sections.texture = !!meta.toggle.checked;
-        INK_TEXTURE.enabled = state.sections.texture;
-        meta.root.classList.toggle('is-disabled', !state.sections.texture);
-        if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
-      } else if (meta.id === 'bleed') {
-        state.sections.bleed = !!meta.toggle.checked;
-        EDGE_BLEED.enabled = state.sections.bleed;
-        meta.root.classList.toggle('is-disabled', !state.sections.bleed);
-        if (typeof state.callbacks.refreshGlyphs === 'function') state.callbacks.refreshGlyphs();
+  if (panelState.styleNameInput) {
+    panelState.styleNameInput.addEventListener('input', () => panelState.styleNameInput.classList.remove('input-error'));
+    panelState.styleNameInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleSaveStyle();
       }
     });
-    meta.applyBtn.addEventListener('click', () => applySection(meta));
-    const isEnabled = meta.id === 'grain'
-      ? state.sections.grain
-      : meta.id === 'texture'
-        ? state.sections.texture
-        : meta.id === 'bleed'
-          ? state.sections.bleed
-          : true;
-    meta.root.classList.toggle('is-disabled', !isEnabled);
-    syncInputs(meta);
-  });
-
-  if (overallInput) {
-    const pct = clamp(Math.round(state.overall * 100), 0, 100);
-    overallInput.value = String(pct);
   }
-  if (overallApplyBtn && overallInput) {
-    overallApplyBtn.addEventListener('click', () => {
-      const pct = clamp(Number.parseFloat(overallInput.value) || 0, 0, 100);
-      overallInput.value = String(pct);
+  if (panelState.saveStyleButton) {
+    panelState.saveStyleButton.addEventListener('click', handleSaveStyle);
+  }
+  if (panelState.exportButton) {
+    panelState.exportButton.addEventListener('click', exportCurrentStyle);
+  }
+  if (panelState.importButton && panelState.importInput) {
+    panelState.importButton.addEventListener('click', () => panelState.importInput.click());
+    panelState.importInput.addEventListener('change', handleImportInputChange);
+  }
+
+  if (panelState.appState) {
+    setSavedStyles(getSavedStyles());
+  }
+  panelState.lastLoadedStyleId = null;
+  renderSavedStylesList();
+
+  if (panelState.overallSlider) {
+    panelState.overallSlider.addEventListener('input', () => {
+      const pct = clamp(Number.parseFloat(panelState.overallSlider.value) || 0, 0, 100);
       setOverallStrength(pct);
     });
   }
-  if (copyBtn) {
-    copyBtn.addEventListener('click', () => copyConfigToClipboard(copyBtn));
+  if (panelState.overallNumberInput) {
+    panelState.overallNumberInput.addEventListener('input', () => {
+      const raw = Number.parseFloat(panelState.overallNumberInput.value);
+      if (!Number.isFinite(raw)) return;
+      setOverallStrength(raw);
+    });
+    panelState.overallNumberInput.addEventListener('blur', () => {
+      if (panelState.overallNumberInput.value !== '') return;
+      syncOverallStrengthUI();
+    });
+  }
+  syncOverallStrengthUI();
+
+  if (sectionsRoot) {
+    SECTION_DEFS.forEach(def => {
+      const meta = buildSection(def, sectionsRoot);
+      if (meta.applyBtn) {
+        meta.applyBtn.addEventListener('click', () => applySection(meta));
+      }
+      syncInputs(meta);
+    });
   }
 
-  state.initialized = true;
+  panelState.initialized = true;
+  syncInkStrengthDisplays();
+}
+
+export function refreshSavedInkStylesUI() {
+  renderSavedStylesList();
 }
