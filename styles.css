@@ -647,16 +647,24 @@ body[data-page-tone='dark']{
   .ink-style-actions-row .btn-text:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
   .input-with-suffix { position: relative; display: flex; }
   .input-with-suffix input { width: 100%; }
+  #typographySettings {
+    --typography-number-width: 64px;
+  }
+  #typographySettings .control-row .input-with-suffix { width: var(--typography-number-width); }
+  #typographySettings .control-row input[type="number"],
+  #typographySettings .control-row select { width: var(--typography-number-width); }
   .input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }
   .range-input-pair {
+    --range-input-width: var(--typography-number-width, 84px);
     display: grid;
-    grid-template-columns: minmax(0, 84px) auto minmax(0, 84px) auto;
+    grid-template-columns: minmax(0, var(--range-input-width)) auto minmax(0, var(--range-input-width)) auto;
     align-items: center;
     column-gap: 6px;
   }
   .range-input-pair input {
     width: 100%;
     text-align: right;
+    padding-right: 6px;
   }
   .range-input-pair .range-separator,
   .range-input-pair .range-suffix {
