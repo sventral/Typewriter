@@ -18,6 +18,7 @@ export function createPageRenderer(options) {
     lifecycle,
     getCurrentBounds,
     getBatchDepth,
+    getInkSectionOrder,
   } = options || {};
 
   const app = explicitApp || context?.app;
@@ -38,6 +39,31 @@ export function createPageRenderer(options) {
   const getGridHeightFn = ensureMetricGetter(getGridHeight, 'GRID_H');
   const getRenderScaleFn = ensureMetricGetter(getRenderScale, 'RENDER_SCALE');
   const { touchPage } = lifecycle;
+  const getInkSectionOrderFn = typeof getInkSectionOrder === 'function'
+    ? getInkSectionOrder
+    : (() => ['fill', 'texture', 'fuzz', 'bleed', 'grain']);
+
+  const GLYPH_SECTION_IDS = ['fill', 'texture', 'fuzz', 'bleed'];
+
+  function getGrainPlacement() {
+    const order = getInkSectionOrderFn();
+    if (!Array.isArray(order)) {
+      return { before: false, after: true };
+    }
+    const grainIndex = order.indexOf('grain');
+    if (grainIndex === -1) {
+      return { before: false, after: false };
+    }
+    const glyphIndices = order
+      .map((id, idx) => (GLYPH_SECTION_IDS.includes(id) ? idx : -1))
+      .filter(idx => idx !== -1);
+    if (!glyphIndices.length) {
+      return { before: false, after: true };
+    }
+    const firstGlyphIndex = Math.min(...glyphIndices);
+    const before = grainIndex <= firstGlyphIndex;
+    return { before, after: !before };
+  }
 
   function computeEffectOverrides(stack) {
     if (!Array.isArray(stack) || stack.length < 2) return null;
@@ -132,12 +158,16 @@ export function createPageRenderer(options) {
     const { backCtx } = page;
     const gridHeight = getGridHeightFn();
     const charWidth = getCharWidthFn();
+    const grainPlacement = getGrainPlacement();
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
     backCtx.globalAlpha = 1;
     backCtx.fillStyle = state.pageFillColor || '#ffffff';
     backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
     backCtx.restore();
+    if (grainPlacement.before && state.grainPct > 0) {
+      applyGrainOverlayOnRegion(page, 0, app.PAGE_H);
+    }
     for (const [rowMu, rowMap] of page.grid) {
       if (!rowMap) continue;
       const baseline = rowMu * gridHeight;
@@ -147,7 +177,7 @@ export function createPageRenderer(options) {
       }
     }
     page.ctx.drawImage(page.backCanvas, 0, 0, page.backCanvas.width, page.backCanvas.height, 0, 0, app.PAGE_W, app.PAGE_H);
-    if (state.grainPct > 0) {
+    if (grainPlacement.after && state.grainPct > 0) {
       applyGrainOverlayOnRegion(page, 0, app.PAGE_H);
     }
   }
@@ -158,6 +188,7 @@ export function createPageRenderer(options) {
     const desc = getDescFn();
     const charWidth = getCharWidthFn();
     const gridHeight = getGridHeightFn();
+    const grainPlacement = getGrainPlacement();
 
     const BLEED_TOP_CSS = Math.ceil(asc + 2);
     const BLEED_BOTTOM_CSS = Math.ceil(desc + 2);
@@ -210,9 +241,15 @@ export function createPageRenderer(options) {
     const dy = bandTopCss;
     const dw = app.PAGE_W;
     const dh = bandHCss;
+    if (grainPlacement.before && state.grainPct > 0) {
+      applyGrainOverlayOnRegion(page, bandTopCss, bandHCss);
+    }
+
     ctx.drawImage(page.backCanvas, sx, sy, sw, sh, dx, dy, dw, dh);
 
-    if (state.grainPct > 0) applyGrainOverlayOnRegion(page, bandTopCss, bandHCss);
+    if (grainPlacement.after && state.grainPct > 0) {
+      applyGrainOverlayOnRegion(page, bandTopCss, bandHCss);
+    }
   }
 
   function paintPage(page) {

@@ -25,6 +25,27 @@ const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
 
 const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain'];
 
+function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
+  const base = Array.isArray(order) ? order : [];
+  const seen = new Set();
+  const normalized = [];
+  base.forEach(id => {
+    if (typeof id !== 'string') return;
+    const trimmed = id.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    if (!KNOWN_INK_SECTIONS.includes(trimmed)) return;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  });
+  (Array.isArray(fallback) ? fallback : KNOWN_INK_SECTIONS).forEach(id => {
+    if (!KNOWN_INK_SECTIONS.includes(id)) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    normalized.push(id);
+  });
+  return normalized;
+}
+
 function cloneInkStyleValue(value) {
   if (Array.isArray(value)) {
     return value.map(item => cloneInkStyleValue(item));
@@ -81,7 +102,8 @@ function sanitizeSavedInkStyle(style, index = 0) {
       sections[sectionId] = sanitizeStyleSection(style[sectionId]);
     });
   }
-  return { id, name, overall, sections };
+  const sectionOrder = normalizeInkSectionOrder(style.sectionOrder);
+  return { id, name, overall, sections, sectionOrder };
 }
 
 function sanitizeSavedInkStyles(styles) {
@@ -194,6 +216,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     ),
     grainSeed: state.grainSeed >>> 0,
     altSeed: state.altSeed >>> 0,
+    inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
     wordWrap: state.wordWrap,
     stageWidthFactor: state.stageWidthFactor,
     stageHeightFactor: state.stageHeightFactor,
@@ -414,6 +437,7 @@ export function deserializeDocumentState(data, context) {
     glyphJitterSeed: sanitizedJitterSeed,
   });
   state.savedInkStyles = sanitizeSavedInkStyles(data.savedInkStyles);
+  state.inkSectionOrder = normalizeInkSectionOrder(data.inkSectionOrder, state.inkSectionOrder);
   if (typeof data.documentId === 'string' && data.documentId.trim()) {
     state.documentId = data.documentId.trim();
   }
