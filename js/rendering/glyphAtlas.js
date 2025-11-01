@@ -603,41 +603,103 @@ export function createGlyphAtlas(options) {
   }
 
   function applyEdgeBleed(ctx, options) {
-    const { config, text, x, y, color, baseSeed, overallStrength, sectionStrength } = options || {};
-    if (!config || !config.enabled || !text) return;
+    const {
+      config,
+      color,
+      baseSeed,
+      overallStrength,
+      sectionStrength,
+      renderScale,
+      sampleScale,
+      charWidth,
+      getDistanceMaps,
+    } = options || {};
+    if (!config || !config.enabled) return;
     const overall = clamp(Number.isFinite(overallStrength) ? overallStrength : getInkEffectFactor(), 0, 1);
     const section = clamp(Number.isFinite(sectionStrength) ? sectionStrength : getInkSectionStrengthFn('bleed'), 0, 1);
     const combined = clamp(overall * section, 0, 1);
     if (combined <= 0 || !isInkSectionEnabled('bleed')) return;
-    const passes = Array.isArray(config.passes) ? config.passes : [];
-    if (!passes.length) return;
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-over';
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    for (let i = 0; i < passes.length; i++) {
-      const pass = passes[i];
-      const strokes = Math.max(1, pass.strokes | 0);
-      const jitterBase = Number.isFinite(pass.jitter) ? pass.jitter : 0;
-      const jitter = jitterBase * combined;
-      const jitterYBase = Number.isFinite(pass.jitterY) ? pass.jitterY : jitterBase;
-      const jitterY = jitterYBase * combined;
-      const width = Math.max(0.01, pass.width || 0.5);
-      const alpha = clamp((pass.alpha ?? 0.12) * combined, 0, 1);
-      const lighten = clamp((pass.lighten ?? 0.4) * combined, 0, 1);
-      const strokeColor = lightenHexColor(color, lighten);
-      ctx.lineWidth = width;
-      ctx.strokeStyle = strokeColor;
-      for (let s = 0; s < strokes; s++) {
-        const localSeed = (baseSeed ^ Math.imul((i + 1) * 0x45D9F3B, (s + 1))) ^ (pass.seed || 0);
-        const ox = (hash2((s + 1) * 17, (i + 3) * 131, localSeed) - 0.5) * jitter;
-        const oy = (hash2((s + 4) * 23, (i + 5) * 151, localSeed ^ 0x9E3779B1) - 0.5) * jitterY;
-        const alphaJitter = alpha * (0.75 + 0.25 * hash2((s + 7) * 29, (i + 11) * 37, localSeed ^ 0xA5A5A5A5));
-        ctx.globalAlpha = clamp(alphaJitter, 0, 1);
-        ctx.strokeText(text, x + ox, y + oy);
+
+    const widthCss = Math.max(0, Number(config.widthPx) || 0);
+    if (widthCss <= 0) return;
+    const dpPerCss = Math.max(1e-6, (Number(renderScale) || 1) * (Number(sampleScale) || 1));
+    const bleedWidthDp = widthCss * dpPerCss;
+    if (bleedWidthDp <= 1e-3) return;
+
+    const provider = typeof getDistanceMaps === 'function' ? getDistanceMaps : null;
+    const maps = provider ? provider() : null;
+    if (!maps || !maps.distToInk || !maps.outsideMask) return;
+    const { width, height, distToInk, outsideMask } = maps;
+    if (!width || !height) return;
+
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    if (!data || data.length !== width * height * 4) return;
+
+    const feather = Math.max(0.01, Number(config.feather) || 1);
+    const baseIntensity = clamp(Number.isFinite(config.intensity) ? config.intensity : 0.22, 0, 1) * combined;
+    if (baseIntensity <= 0) return;
+    const lightnessShift = clamp(Number(config.lightnessShift) || 0, 0, 1) * combined;
+    const noiseRoughness = Math.max(0, Number(config.noiseRoughness) || 0);
+    const noiseSeed = (baseSeed ^ (config.seed || 0)) >>> 0;
+    const bleedColor = lightnessShift > 0 ? lightenHexColor(color, lightnessShift) : color;
+    const bleedRgb = parseColorToRgb(bleedColor);
+
+    const widthCssScaled = bleedWidthDp / dpPerCss;
+    const charMetric = Number.isFinite(charWidth) && charWidth > 0 ? charWidth : widthCssScaled || 1;
+    const coarseScaleCss = Math.max(0.05, (charMetric * 0.55) + (widthCssScaled * 0.75));
+    const jitterSpanCss = widthCssScaled * 0.35;
+    const jitterX = (hash2(17, 41, noiseSeed) - 0.5) * jitterSpanCss;
+    const jitterY = (hash2(29, 11, noiseSeed ^ 0x9E3779B1) - 0.5) * jitterSpanCss;
+
+    for (let y = 0; y < height; y++) {
+      const yCss = (y / dpPerCss) + jitterY;
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        if (outsideMask[idx] !== 1) continue;
+        const dist = distToInk[idx];
+        if (!Number.isFinite(dist) || dist <= 0 || dist > bleedWidthDp + 1) continue;
+        let coverage = 1 - clamp(dist / Math.max(bleedWidthDp, 1e-3), 0, 1);
+        if (coverage <= 0) continue;
+        if (feather !== 1) {
+          coverage = Math.pow(coverage, feather);
+        }
+
+        const xCss = (x / dpPerCss) + jitterX;
+        const coarseNoise = valueNoise2D(xCss, yCss, coarseScaleCss, noiseSeed);
+        const fineNoise = hash2(x, y, noiseSeed ^ 0xA5A5A5A5);
+        const combinedNoise = (coarseNoise - 0.5) * 0.7 + (fineNoise - 0.5) * 0.3;
+        const noiseMod = clamp(1 + combinedNoise * noiseRoughness, 0, 2);
+
+        const srcAlpha = clamp(baseIntensity * coverage * noiseMod, 0, 1);
+        if (srcAlpha <= 0) continue;
+
+        const baseIdx = idx * 4;
+        const destAlpha = data[baseIdx + 3] / 255;
+        const outAlpha = destAlpha + srcAlpha * (1 - destAlpha);
+        if (outAlpha <= 1e-6) continue;
+        const invOutAlpha = 1 / outAlpha;
+
+        const destR = data[baseIdx] / 255;
+        const destG = data[baseIdx + 1] / 255;
+        const destB = data[baseIdx + 2] / 255;
+
+        const srcR = bleedRgb.r / 255;
+        const srcG = bleedRgb.g / 255;
+        const srcB = bleedRgb.b / 255;
+
+        const outR = (destR * destAlpha + srcR * srcAlpha * (1 - destAlpha)) * invOutAlpha;
+        const outG = (destG * destAlpha + srcG * srcAlpha * (1 - destAlpha)) * invOutAlpha;
+        const outB = (destB * destAlpha + srcB * srcAlpha * (1 - destAlpha)) * invOutAlpha;
+
+        data[baseIdx] = clamp(Math.round(outR * 255), 0, 255);
+        data[baseIdx + 1] = clamp(Math.round(outG * 255), 0, 255);
+        data[baseIdx + 2] = clamp(Math.round(outB * 255), 0, 255);
+        data[baseIdx + 3] = clamp(Math.round(outAlpha * 255), 0, 255);
       }
     }
-    ctx.restore();
+
+    ctx.putImageData(imageData, 0, 0);
   }
 
   function ensureAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
@@ -776,7 +838,7 @@ export function createGlyphAtlas(options) {
           glyphCtx.restore();
 
           let glyphData = null;
-          if (useTexture || fuzzEnabled) {
+          if (useTexture || fuzzEnabled || bleedEnabled) {
             glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
           }
           const distanceProvider = glyphData ? createDistanceMapProvider(glyphData) : null;
@@ -809,23 +871,17 @@ export function createGlyphAtlas(options) {
           }
 
           if (bleedEnabled) {
-            glyphCtx.save();
-            glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
-            glyphCtx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
-            glyphCtx.textAlign = 'left';
-            glyphCtx.textBaseline = 'alphabetic';
             applyEdgeBleed(glyphCtx, {
               config: EDGE_BLEED,
-              text,
-              x: localXSnapped,
-              y: localYSnapped,
               color: COLORS[ink] || '#000',
               baseSeed: glyphSeed,
               overallStrength,
               sectionStrength: bleedSectionStrength,
+              renderScale: RENDER_SCALE,
+              sampleScale,
+              charWidth: CHAR_W,
               getDistanceMaps: distanceProvider,
             });
-            glyphCtx.restore();
           }
 
           glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
