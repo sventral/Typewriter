@@ -119,6 +119,33 @@ const SECTION_DEFS = [
   }
 ];
 
+const DEFAULT_SECTION_ORDER = SECTION_DEFS.map(def => def.id);
+const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
+  acc[def.id] = def;
+  return acc;
+}, {});
+
+function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
+  const base = Array.isArray(order) ? order : [];
+  const seen = new Set();
+  const normalized = [];
+  base.forEach(id => {
+    if (typeof id !== 'string') return;
+    const trimmed = id.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    if (!Object.prototype.hasOwnProperty.call(SECTION_DEF_MAP, trimmed)) return;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  });
+  (Array.isArray(fallback) ? fallback : DEFAULT_SECTION_ORDER).forEach(id => {
+    if (!Object.prototype.hasOwnProperty.call(SECTION_DEF_MAP, id)) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    normalized.push(id);
+  });
+  return normalized;
+}
+
 function clampFillPercent(value, limits) {
   const raw = Number(value);
   const min = limits?.min ?? 0;
@@ -206,6 +233,9 @@ const panelState = {
   exportButton: null,
   importButton: null,
   importInput: null,
+  sectionsRoot: null,
+  sectionOrder: DEFAULT_SECTION_ORDER.slice(),
+  dragState: null,
 };
 
 const HEX_MATCH_RE = /seed|hash/i;
@@ -280,6 +310,7 @@ function normalizeStyleRecord(style, index = 0) {
       centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
       edgeThin: EDGE_THIN_LIMITS.defaultPct,
       sections: {},
+      sectionOrder: normalizeSectionOrder(style?.sectionOrder),
     };
     SECTION_DEFS.forEach(def => {
       const rawSection = style?.sections && typeof style.sections === 'object'
@@ -341,6 +372,7 @@ function createDefaultStyleRecord(index = 0) {
     centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
     edgeThin: EDGE_THIN_LIMITS.defaultPct,
     sections: {},
+    sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   };
   SECTION_DEFS.forEach(def => {
     record.sections[def.id] = {
@@ -383,6 +415,9 @@ function createStyleSnapshot(name, existingId = null) {
     centerThicken: getCenterThickenPercent(),
     edgeThin: getEdgeThinPercent(),
     sections: {},
+    sectionOrder: Array.isArray(panelState.sectionOrder)
+      ? panelState.sectionOrder.slice()
+      : DEFAULT_SECTION_ORDER.slice(),
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
@@ -571,6 +606,180 @@ function isHexField(path) {
 
 function getAppState() {
   return panelState.appState;
+}
+
+function getSectionOrderFromState() {
+  const appState = getAppState();
+  if (!appState) return DEFAULT_SECTION_ORDER.slice();
+  return normalizeSectionOrder(appState.inkSectionOrder);
+}
+
+function setSectionOrderOnState(order) {
+  const appState = getAppState();
+  if (!appState) return;
+  appState.inkSectionOrder = normalizeSectionOrder(order);
+}
+
+function arraysEqual(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function reorderMetas(order) {
+  if (!Array.isArray(panelState.metas) || !Array.isArray(order)) return;
+  panelState.metas.sort((a, b) => {
+    const aIdx = order.indexOf(a?.id);
+    const bIdx = order.indexOf(b?.id);
+    return (aIdx === -1 ? Number.MAX_SAFE_INTEGER : aIdx)
+      - (bIdx === -1 ? Number.MAX_SAFE_INTEGER : bIdx);
+  });
+}
+
+function updateSectionsDomOrder(order) {
+  const root = panelState.sectionsRoot;
+  if (!root || typeof root.appendChild !== 'function') return;
+  if (!Array.isArray(order)) return;
+  order.forEach(id => {
+    const meta = findMetaById(id);
+    if (!meta || !meta.root || meta.root.parentNode !== root) return;
+    root.appendChild(meta.root);
+  });
+}
+
+function applySectionOrder(order, options = {}) {
+  const normalized = normalizeSectionOrder(order);
+  const current = panelState.sectionOrder || DEFAULT_SECTION_ORDER;
+  if (arraysEqual(normalized, current)) {
+    if (options.syncDom) {
+      updateSectionsDomOrder(normalized);
+    }
+    return;
+  }
+  panelState.sectionOrder = normalized.slice();
+  if (!options.skipStateUpdate) {
+    setSectionOrderOnState(panelState.sectionOrder);
+    persistPanelState();
+  }
+  reorderMetas(panelState.sectionOrder);
+  updateSectionsDomOrder(panelState.sectionOrder);
+  if (options.silent !== true) {
+    scheduleGlyphRefresh(true);
+    scheduleGrainRefresh();
+  }
+}
+
+function clearDragIndicators() {
+  const root = panelState.sectionsRoot;
+  if (!root) return;
+  root.querySelectorAll('.ink-section').forEach(section => {
+    section.classList.remove('is-drop-before', 'is-drop-after');
+  });
+}
+
+function endSectionDrag() {
+  if (panelState.dragState && panelState.dragState.element) {
+    panelState.dragState.element.classList.remove('is-dragging');
+  }
+  panelState.dragState = null;
+  clearDragIndicators();
+}
+
+function startSectionDrag(event, meta) {
+  if (!meta || !meta.root) return;
+  if (event?.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    try {
+      event.dataTransfer.setData('text/plain', meta.id || '');
+    } catch (err) {
+      // Ignore failures from browsers that disallow setData during dragstart.
+    }
+  }
+  panelState.dragState = { id: meta.id, element: meta.root };
+  meta.root.classList.add('is-dragging');
+}
+
+function handleSectionDragOver(event, meta) {
+  if (!panelState.dragState || !meta || !meta.root || panelState.dragState.id === meta.id) return;
+  event.preventDefault();
+  if (event?.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move';
+  }
+  const rect = meta.root.getBoundingClientRect();
+  const midpoint = rect.top + rect.height / 2;
+  const position = (event.clientY || 0) <= midpoint ? 'before' : 'after';
+  meta.root.classList.toggle('is-drop-before', position === 'before');
+  meta.root.classList.toggle('is-drop-after', position === 'after');
+}
+
+function handleSectionDrop(event, meta) {
+  if (!panelState.dragState || !meta || !meta.root) return;
+  event.preventDefault();
+  const draggingId = panelState.dragState.id;
+  if (!draggingId || draggingId === meta.id) {
+    endSectionDrag();
+    return;
+  }
+  const order = Array.isArray(panelState.sectionOrder)
+    ? panelState.sectionOrder.slice()
+    : DEFAULT_SECTION_ORDER.slice();
+  const fromIndex = order.indexOf(draggingId);
+  const targetIndexRaw = order.indexOf(meta.id);
+  if (fromIndex === -1 || targetIndexRaw === -1) {
+    endSectionDrag();
+    return;
+  }
+  order.splice(fromIndex, 1);
+  const rect = meta.root.getBoundingClientRect();
+  const midpoint = rect.top + rect.height / 2;
+  const insertAfter = (event.clientY || 0) > midpoint;
+  const targetIndex = order.indexOf(meta.id);
+  const insertIndex = insertAfter ? targetIndex + 1 : targetIndex;
+  order.splice(insertIndex, 0, draggingId);
+  applySectionOrder(order);
+  endSectionDrag();
+}
+
+function handleSectionsRootDragOver(event) {
+  if (!panelState.dragState) return;
+  const root = panelState.sectionsRoot;
+  if (!root) return;
+  if (event.target && event.target.closest('.ink-section')) {
+    return;
+  }
+  event.preventDefault();
+  if (event?.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move';
+  }
+  clearDragIndicators();
+}
+
+function handleSectionsRootDrop(event) {
+  if (!panelState.dragState) return;
+  const root = panelState.sectionsRoot;
+  if (!root) return;
+  if (event.target && event.target.closest('.ink-section')) {
+    return;
+  }
+  event.preventDefault();
+  const draggingId = panelState.dragState.id;
+  if (!draggingId) {
+    endSectionDrag();
+    return;
+  }
+  const order = Array.isArray(panelState.sectionOrder)
+    ? panelState.sectionOrder.slice()
+    : DEFAULT_SECTION_ORDER.slice();
+  const fromIndex = order.indexOf(draggingId);
+  if (fromIndex !== -1) {
+    order.splice(fromIndex, 1);
+    order.push(draggingId);
+    applySectionOrder(order);
+  }
+  endSectionDrag();
 }
 
 function getPercentFromState(key, fallback = 0) {
@@ -1001,6 +1210,7 @@ function setSectionCollapsed(meta, collapsed) {
 function buildSection(def, root) {
   const sectionEl = document.createElement('section');
   sectionEl.className = 'ink-section';
+  sectionEl.dataset.sectionId = def.id;
 
   const header = document.createElement('div');
   header.className = 'ink-section-header';
@@ -1020,6 +1230,13 @@ function buildSection(def, root) {
 
   const topLine = document.createElement('div');
   topLine.className = 'ink-section-topline';
+  const dragHandle = document.createElement('button');
+  dragHandle.type = 'button';
+  dragHandle.className = 'ink-section-drag-handle';
+  dragHandle.setAttribute('aria-label', `Reorder ${def.label}`);
+  dragHandle.innerHTML = '<span aria-hidden="true">⋮⋮</span>';
+  dragHandle.draggable = true;
+  topLine.appendChild(dragHandle);
   topLine.appendChild(toggleBtn);
   header.appendChild(topLine);
 
@@ -1063,6 +1280,18 @@ function buildSection(def, root) {
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
   };
+
+  const dragStartHandler = event => startSectionDrag(event, meta);
+  dragHandle.addEventListener('dragstart', dragStartHandler);
+  dragHandle.addEventListener('dragend', endSectionDrag);
+  dragHandle.addEventListener('dragover', event => handleSectionDragOver(event, meta));
+  dragHandle.addEventListener('drop', event => handleSectionDrop(event, meta));
+  sectionEl.addEventListener('dragover', event => handleSectionDragOver(event, meta));
+  sectionEl.addEventListener('dragleave', () => {
+    sectionEl.classList.remove('is-drop-before', 'is-drop-after');
+  });
+  sectionEl.addEventListener('drop', event => handleSectionDrop(event, meta));
+  sectionEl.addEventListener('dragend', endSectionDrag);
 
   def.keyOrder.forEach(entry => {
     let path = null;
@@ -1503,6 +1732,9 @@ function applySavedStyle(styleId) {
   const styles = getSavedStyles();
   const style = styles.find(s => s && s.id === styleId);
   if (!style) return;
+  if (Array.isArray(style.sectionOrder) && style.sectionOrder.length) {
+    applySectionOrder(style.sectionOrder);
+  }
   if (Number.isFinite(style.overall)) {
     setOverallStrength(style.overall);
   }
@@ -1612,6 +1844,13 @@ export function isInkSectionEnabled(sectionId) {
   if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
   if (sectionId === 'bleed') return strength > 0 && EDGE_BLEED.enabled !== false;
   return strength > 0;
+}
+
+export function getInkSectionOrder() {
+  if (Array.isArray(panelState.sectionOrder) && panelState.sectionOrder.length) {
+    return panelState.sectionOrder.slice();
+  }
+  return normalizeSectionOrder(getSectionOrderFromState());
 }
 
 function syncOverallStrengthUI() {
@@ -1747,6 +1986,15 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.exportButton = document.getElementById('inkStyleExportBtn');
   panelState.importButton = document.getElementById('inkStyleImportBtn');
   panelState.importInput = document.getElementById('inkStyleImportInput');
+  panelState.sectionsRoot = sectionsRoot;
+
+  if (sectionsRoot) {
+    sectionsRoot.addEventListener('dragover', handleSectionsRootDragOver);
+    sectionsRoot.addEventListener('drop', handleSectionsRootDrop);
+  }
+
+  panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
+  setSectionOrderOnState(panelState.sectionOrder);
 
   syncFillConfigValues();
 
@@ -1796,10 +2044,26 @@ export function setupInkSettingsPanel(options = {}) {
   syncOverallStrengthUI();
 
   if (sectionsRoot) {
-    SECTION_DEFS.forEach(def => {
+    panelState.metas = [];
+    const seen = new Set();
+    panelState.sectionOrder.forEach(id => {
+      const def = SECTION_DEF_MAP[id];
+      if (!def) return;
       const meta = buildSection(def, sectionsRoot);
-      syncInputs(meta);
+      if (meta) {
+        seen.add(def.id);
+        syncInputs(meta);
+      }
     });
+    SECTION_DEFS.forEach(def => {
+      if (seen.has(def.id)) return;
+      const meta = buildSection(def, sectionsRoot);
+      if (meta) {
+        panelState.sectionOrder.push(def.id);
+        syncInputs(meta);
+      }
+    });
+    applySectionOrder(panelState.sectionOrder, { skipStateUpdate: true, syncDom: true, silent: true });
   }
 
   panelState.initialized = true;
