@@ -2,6 +2,11 @@ import { clamp } from '../utils/math.js';
 
 const DEFAULT_HASH_WEIGHT = 0;
 
+export const INK_INTENSITY = {
+  centerThicken: { defaultPct: 100, minPct: 0, maxPct: 200 },
+  edgeThin: { defaultPct: 100, minPct: 0, maxPct: 200 },
+};
+
 const sanitizeSeed = (value, fallback) => (Number.isFinite(value) ? (value >>> 0) : (fallback >>> 0));
 
 const mergeDirection = (incoming, fallback) => {
