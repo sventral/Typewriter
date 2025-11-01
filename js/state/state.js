@@ -1,4 +1,4 @@
-import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitter.js';
+import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitterConfig.js';
 
 export function createMainState(app, gridDiv = 8) {
   return {

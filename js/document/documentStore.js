@@ -5,7 +5,7 @@ import {
   normalizeGlyphJitterFrequency,
   normalizeGlyphJitterSeed,
   cloneGlyphJitterRange,
-} from '../config/glyphJitter.js';
+} from '../config/glyphJitterConfig.js';
 
 const KNOWN_INK_SECTIONS = ['texture', 'fuzz', 'bleed', 'grain'];
 
