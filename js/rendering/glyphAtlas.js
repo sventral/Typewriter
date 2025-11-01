@@ -51,6 +51,8 @@ export function createGlyphAtlas(options) {
   const getEdgeThinFactorFn = typeof getEdgeThinFactorOpt === 'function' ? getEdgeThinFactorOpt : (() => 1);
   const ALT_VARIANTS = 9;
   const atlases = new Map();
+  const grainBaseCache = new Map();
+  const grainPageCache = new Map();
   window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
 
   function rebuildAllAtlases() {
@@ -86,6 +88,114 @@ export function createGlyphAtlas(options) {
     const nx0 = n00 + (n10 - n00) * sx;
     const nx1 = n01 + (n11 - n01) * sx;
     return nx0 + (nx1 - n00) * sy;
+  }
+
+  function tileableValueNoise2D(x, y, scale, seed, periodX, periodY) {
+    if (!(periodX > 0) || !(periodY > 0)) {
+      return valueNoise2D(x, y, scale, seed);
+    }
+    const wrapX = x - periodX;
+    const wrapY = y - periodY;
+    const blendX = clamp(x / periodX, 0, 1);
+    const blendY = clamp(y / periodY, 0, 1);
+    const n00 = valueNoise2D(x, y, scale, seed);
+    const n10 = valueNoise2D(wrapX, y, scale, seed);
+    const n01 = valueNoise2D(x, wrapY, scale, seed);
+    const n11 = valueNoise2D(wrapX, wrapY, scale, seed);
+    const nx0 = n00 + (n10 - n00) * blendX;
+    const nx1 = n01 + (n11 - n01) * blendX;
+    return nx0 + (nx1 - nx0) * blendY;
+  }
+
+  function tileableHash2(x, y, seed, periodX, periodY) {
+    if (!(periodX > 0) || !(periodY > 0)) {
+      return hash2(Math.floor(x), Math.floor(y), seed);
+    }
+    const wrapX = x - periodX;
+    const wrapY = y - periodY;
+    const blendX = clamp(x / periodX, 0, 1);
+    const blendY = clamp(y / periodY, 0, 1);
+    const h00 = hash2(Math.floor(x), Math.floor(y), seed);
+    const h10 = hash2(Math.floor(wrapX), Math.floor(y), seed);
+    const h01 = hash2(Math.floor(x), Math.floor(wrapY), seed);
+    const h11 = hash2(Math.floor(wrapX), Math.floor(wrapY), seed);
+    const hx0 = h00 + (h10 - h00) * blendX;
+    const hx1 = h01 + (h11 - h01) * blendX;
+    return hx0 + (hx1 - hx0) * blendY;
+  }
+
+  function buildGrainBaseCanvas({
+    width,
+    height,
+    oversample,
+    seed,
+    sArr,
+    wArr,
+    wHash,
+    gamma,
+    hashSeed,
+    tilePeriodX = 0,
+    tilePeriodY = 0,
+    octSeeds = [],
+  }) {
+    const hiW = Math.max(1, Math.round(width * oversample));
+    const hiH = Math.max(1, Math.round(height * oversample));
+    const tileable = tilePeriodX > 0 && tilePeriodY > 0;
+    const imageData = new ImageData(hiW, hiH);
+    const data = imageData.data;
+    const totalOctaves = Array.isArray(sArr) ? sArr.length : 0;
+    let idx = 0;
+    for (let y = 0; y < hiH; y++) {
+      const sampleY = y / oversample;
+      for (let x = 0; x < hiW; x++) {
+        const sampleX = x / oversample;
+        let v = 0;
+        for (let i = 0; i < totalOctaves; i++) {
+          const weight = Number.isFinite(wArr[i]) ? wArr[i] : 0;
+          if (weight === 0) continue;
+          const scale = Math.max(1e-3, sArr[i] || 1);
+          const octaveSeed = (octSeeds[i] ?? octSeeds[octSeeds.length - 1] ?? 0) >>> 0;
+          const noiseSeed = (seed ^ octaveSeed) >>> 0;
+          const noise = tileable
+            ? tileableValueNoise2D(sampleX, sampleY, scale, noiseSeed, tilePeriodX, tilePeriodY)
+            : valueNoise2D(sampleX, sampleY, scale, noiseSeed);
+          v += weight * noise;
+        }
+        if (wHash > 0) {
+          const hashContribution = tileable
+            ? tileableHash2(sampleX, sampleY, (seed ^ hashSeed) >>> 0, tilePeriodX, tilePeriodY)
+            : hash2(x, y, (seed ^ hashSeed) >>> 0);
+          v += wHash * hashContribution;
+        }
+        v = clamp(v, 0, 1);
+        if (gamma !== 1) {
+          v = Math.pow(v, gamma);
+        }
+        const alpha = Math.round(v * 255);
+        data[idx] = 0;
+        data[idx + 1] = 0;
+        data[idx + 2] = 0;
+        data[idx + 3] = alpha;
+        idx += 4;
+      }
+    }
+    let finalData = imageData;
+    if (oversample > 1) {
+      finalData = downsampleImageData(imageData, oversample, width, height);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.putImageData(finalData, 0, 0);
+    return canvas;
+  }
+
+  function randomOffset(seed, size, salt) {
+    if (!(size > 0)) return 0;
+    const mix = ((seed >>> 0) ^ (salt >>> 0)) >>> 0;
+    const h = hash2(mix & 0xFFFF, (mix >>> 16) & 0xFFFF, mix ^ 0x9E3779B1);
+    return Math.floor(h * size) % size;
   }
 
   function normalizeDirection(dir) {
@@ -954,44 +1064,141 @@ export function createGlyphAtlas(options) {
 
   function ensureGrain(page) {
     const cfg = grainConfig();
-    if (!cfg.enabled || !isInkSectionEnabled('grain')) return;
+    if (!cfg || cfg.enabled === false || !isInkSectionEnabled('grain')) return;
     const W = app.PAGE_W | 0;
     const H = app.PAGE_H | 0;
-    if (page.grainCanvas && page.grainForSize.w === W && page.grainForSize.h === H) return;
-    const seed = (state.grainSeed ^ ((page.index + 1) * 0x9E3779B1)) >>> 0;
-    const cnv = document.createElement('canvas');
-    cnv.width = W;
-    cnv.height = H;
-    const ctx = cnv.getContext('2d');
-    const img = ctx.createImageData(W, H);
-    const data = img.data;
+    if (!(W > 0) || !(H > 0)) return;
+
+    const oversample = Math.max(1, Math.round(Number.isFinite(cfg.oversample) ? cfg.oversample : 2));
+    const scaleControl = Number.isFinite(cfg.scale) ? clamp(cfg.scale, 0.1, 8) : 1;
+    const gamma = Number.isFinite(cfg.gamma)
+      ? Math.max(0.01, cfg.gamma)
+      : Number.isFinite(cfg.post_gamma)
+        ? Math.max(0.01, cfg.post_gamma)
+        : 1;
+    const wHash = clamp(cfg.pixel_hash_weight ?? 0.10, 0, 1);
+
     const CHAR_W = getCharWidth();
-    const sBase = Math.max(1, CHAR_W * (cfg.base_scale_from_char_w || 0.05));
-    const rels = cfg.octave_rel_scales || [0.8, 1.2, 0.5];
-    const wgts = cfg.octave_weights || [0.42, 0.33, 0.15];
-    const octSeeds = (cfg.seeds && cfg.seeds.octave) || [0xA5A5A5A5, 0x5EEDFACE, 0x13579BDF];
-    const sArr = rels.map(r => Math.max(1, sBase * r));
-    const wArr = wgts.slice(0, sArr.length);
-    const wHash = cfg.pixel_hash_weight ?? 0.10;
-    const postGamma = cfg.post_gamma || 1.0;
+    const sBase = Math.max(1, CHAR_W * (cfg.base_scale_from_char_w || 0.05)) * scaleControl;
+    const rels = Array.isArray(cfg.octave_rel_scales) && cfg.octave_rel_scales.length
+      ? cfg.octave_rel_scales
+      : [0.8, 1.2, 0.5];
+    const wgts = Array.isArray(cfg.octave_weights) && cfg.octave_weights.length
+      ? cfg.octave_weights
+      : [0.42, 0.33, 0.15];
+    const octSeedsRaw = (cfg.seeds && cfg.seeds.octave) || [0xA5A5A5A5, 0x5EEDFACE, 0x13579BDF];
     const hashSeed = (cfg.seeds && cfg.seeds.hash) || 0x5F356495;
-    let p = 0;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        let v = 0;
-        for (let i = 0; i < sArr.length; i++) {
-          v += (wArr[i] || 0) * valueNoise2D(x, y, sArr[i], seed ^ (octSeeds[i] || 0));
-        }
-        v += wHash * hash2(x, y, seed ^ hashSeed);
-        v = Math.min(1, Math.max(0, v));
-        if (postGamma !== 1) v = Math.pow(v, postGamma);
-        data[p + 3] = (v * 255) | 0;
-        p += 4;
+    const sArr = rels.map(r => Math.max(1, sBase * r));
+    const wArr = sArr.map((_, i) => Number.isFinite(wgts[i]) ? wgts[i] : 0);
+    const octSeeds = sArr.map((_, i) => (octSeedsRaw[i] ?? octSeedsRaw[octSeedsRaw.length - 1] ?? 0) >>> 0);
+
+    const tileCfg = cfg.tile && typeof cfg.tile === 'object' ? cfg.tile : null;
+    const tileEnabled = !!(tileCfg && tileCfg.enabled);
+    const tileSizeRaw = Number(tileCfg?.size);
+    const tileSize = tileEnabled
+      ? Math.max(32, Math.min(2048, Number.isFinite(tileSizeRaw) ? Math.round(tileSizeRaw) : 512))
+      : 0;
+    const reuseTile = tileEnabled ? tileCfg.reuse !== false : false;
+    const sharedSeed = Number.isFinite(state.grainSeed) ? state.grainSeed >>> 0 : 0;
+    const pageSeed = (state.grainSeed ^ ((page.index + 1) * 0x9E3779B1)) >>> 0;
+    const baseTileSeed = tileEnabled
+      ? (reuseTile ? (Number.isFinite(tileCfg?.seed) ? tileCfg.seed >>> 0 : sharedSeed) : pageSeed)
+      : pageSeed;
+
+    const baseKeyParts = [
+      oversample,
+      sArr.map(v => v.toFixed(4)).join(','),
+      wArr.map(v => v.toFixed(4)).join(','),
+      wHash.toFixed(4),
+      gamma.toFixed(4),
+      hashSeed >>> 0,
+      octSeeds.map(n => n.toString(16)).join(','),
+    ];
+
+    if (tileEnabled) {
+      const tileKey = ['tile', tileSize, ...baseKeyParts, baseTileSeed >>> 0].join('|');
+      const offsetX = randomOffset(pageSeed, tileSize, 0xA53A5A5A);
+      const offsetY = randomOffset(pageSeed ^ 0x5A5A5A5A, tileSize, 0xC1A551C5);
+      const finalKey = ['tilePage', W, H, tileKey, offsetX, offsetY].join('|');
+      if (page.grainCanvas && page.grainForSize && page.grainForSize.key === finalKey) return;
+
+      let tileEntry = grainBaseCache.get(tileKey);
+      if (!tileEntry) {
+        const tileCanvas = buildGrainBaseCanvas({
+          width: tileSize,
+          height: tileSize,
+          oversample,
+          seed: baseTileSeed >>> 0,
+          sArr,
+          wArr,
+          wHash,
+          gamma,
+          hashSeed: hashSeed >>> 0,
+          tilePeriodX: tileSize,
+          tilePeriodY: tileSize,
+          octSeeds,
+        });
+        tileEntry = { canvas: tileCanvas };
+        grainBaseCache.set(tileKey, tileEntry);
       }
+
+      const finalKeyExists = grainPageCache.get(finalKey);
+      if (!finalKeyExists) {
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = W;
+        finalCanvas.height = H;
+        const finalCtx = finalCanvas.getContext('2d');
+        finalCtx.imageSmoothingEnabled = true;
+        const pattern = finalCtx.createPattern(tileEntry.canvas, 'repeat');
+        if (pattern) {
+          finalCtx.save();
+          finalCtx.translate(-offsetX, -offsetY);
+          finalCtx.fillStyle = pattern;
+          finalCtx.fillRect(offsetX, offsetY, W + tileSize, H + tileSize);
+          finalCtx.restore();
+        } else {
+          for (let ty = -offsetY; ty < H + tileSize; ty += tileSize) {
+            for (let tx = -offsetX; tx < W + tileSize; tx += tileSize) {
+              finalCtx.drawImage(tileEntry.canvas, tx, ty);
+            }
+          }
+        }
+        grainPageCache.set(finalKey, { canvas: finalCanvas });
+      }
+
+      const cachedPage = grainPageCache.get(finalKey);
+      page.grainCanvas = cachedPage.canvas;
+      page.grainForSize = { w: W, h: H, key: finalKey };
+      return;
     }
-    ctx.putImageData(img, 0, 0);
-    page.grainCanvas = cnv;
-    page.grainForSize = { w: W, h: H };
+
+    const finalKey = ['page', W, H, ...baseKeyParts, pageSeed >>> 0].join('|');
+    if (page.grainCanvas && page.grainForSize && page.grainForSize.key === finalKey) return;
+    if (!grainPageCache.has(finalKey)) {
+      const canvas = buildGrainBaseCanvas({
+        width: W,
+        height: H,
+        oversample,
+        seed: pageSeed >>> 0,
+        sArr,
+        wArr,
+        wHash,
+        gamma,
+        hashSeed: hashSeed >>> 0,
+        tilePeriodX: 0,
+        tilePeriodY: 0,
+        octSeeds,
+      });
+      grainPageCache.set(finalKey, { canvas });
+    }
+    const cached = grainPageCache.get(finalKey);
+    page.grainCanvas = cached.canvas;
+    page.grainForSize = { w: W, h: H, key: finalKey };
+  }
+
+  function invalidateGrainCache() {
+    grainBaseCache.clear();
+    grainPageCache.clear();
   }
 
   function grainAlpha() {
@@ -1021,21 +1228,29 @@ export function createGlyphAtlas(options) {
     const sy = Math.max(0, Math.floor(y_css));
     const sh = Math.max(0, Math.min(app.PAGE_H - sy, Math.ceil(h_css)));
     if (sh <= 0) return;
+    const cfg = grainConfig();
+    const blendMode = (cfg && (cfg.blend_mode || cfg.composite_op)) || 'destination-out';
+    const baseOpacity = clamp(Number.isFinite(cfg?.opacity) ? cfg.opacity : 1, 0, 1);
+    const finalAlpha = clamp(a * baseOpacity, 0, 1);
+    if (finalAlpha <= 0) return;
     ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.globalAlpha = a;
+    ctx.imageSmoothingEnabled = true;
+    ctx.globalCompositeOperation = blendMode;
+    ctx.globalAlpha = finalAlpha;
     ctx.drawImage(page.grainCanvas, 0, sy, app.PAGE_W, sh, 0, sy, app.PAGE_W, sh);
-    ctx.globalCompositeOperation = 'destination-over';
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, sy, app.PAGE_W, sh);
+    if (blendMode === 'destination-out') {
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, sy, app.PAGE_W, sh);
+    }
     ctx.restore();
   }
 
   if (context?.setCallback) {
     context.setCallback('rebuildAllAtlases', rebuildAllAtlases);
+    context.setCallback('invalidateGrainCache', invalidateGrainCache);
   }
 
-  return { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion };
+  return { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion, invalidateGrainCache };
 }

@@ -14,6 +14,7 @@ export function createPageRenderer(options) {
     rebuildAllAtlases,
     drawGlyph,
     applyGrainOverlayOnRegion,
+    invalidateGrainCache,
     lifecycle,
     getCurrentBounds,
     getBatchDepth,
@@ -93,10 +94,13 @@ export function createPageRenderer(options) {
   }
 
   function refreshGrainEffects() {
+    if (typeof invalidateGrainCache === 'function') {
+      invalidateGrainCache();
+    }
     for (const page of state.pages) {
       if (!page) continue;
       page.grainCanvas = null;
-      page.grainForSize = { w: 0, h: 0 };
+      page.grainForSize = { w: 0, h: 0, key: null };
       page.dirtyAll = true;
       if (page.active) schedulePaint(page);
     }

@@ -220,6 +220,11 @@ export const EDGE_BLEED = normalizeEdgeBleedConfig(EDGE_BLEED_DEFAULTS);
 
 export const GRAIN_CFG = {
   enabled: false,
+  scale: 1,
+  gamma: 0.9,
+  opacity: 1,
+  blend_mode: 'destination-out',
+  tile: { enabled: false, size: 512, reuse: true, seed: 0x5A5A5A5A },
   base_scale_from_char_w: 0.194,
   octave_rel_scales: [0.29, 1.5, 2.3, 3.8],
   octave_weights: [0.22, 0.061, 0.23, 0.25],

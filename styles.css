@@ -577,6 +577,15 @@ body[data-page-tone='dark']{
   .ink-overall-spacer { width: 16px; display: inline-flex; flex: 0 0 16px; visibility: hidden; }
   .ink-settings-divider { margin: 16px 0; }
   .ink-section-body .control-row { margin-bottom: 6px; }
+  .ink-section-body .control-row input[type="range"] {
+    flex: 1;
+    margin: 0 8px;
+  }
+  .ink-section-body .control-row .ink-control-value {
+    min-width: 56px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
   .ink-subgroup { border-left: 2px solid rgba(0,0,0,0.06); padding-left: 10px; margin: 6px 0 10px; }
   .ink-subheading { font-size: 11px; font-weight: 600; opacity: 0.65; margin: 8px 0 6px; text-transform: uppercase; }
   .ink-array-item { border: 1px solid rgba(0,0,0,0.08); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
