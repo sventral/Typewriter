@@ -17,14 +17,19 @@ export function detectSafariEnvironment() {
   return { isSafari, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD };
 }
 
-export function createStageLayoutController({
-  app,
-  state,
-  isSafari,
-  renderMargins,
-  updateStageEnvironment,
-  updateCaretPosition,
-}) {
+export function createStageLayoutController(options) {
+  const {
+    context,
+    app: explicitApp,
+    state: explicitState,
+    isSafari,
+    renderMargins,
+    updateStageEnvironment,
+    updateCaretPosition,
+  } = options || {};
+
+  const app = explicitApp || context?.app;
+  const state = explicitState || context?.state || {};
   const STAGE_WIDTH_MIN = 1.0;
   const STAGE_WIDTH_MAX = 5.0;
   const STAGE_HEIGHT_MIN = 1.0;

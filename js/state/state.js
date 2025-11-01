@@ -1,7 +1,11 @@
+import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitterConfig.js';
+
 export function createMainState(app, gridDiv = 8) {
   return {
     pages: [],
     caret: { page:0, rowMu:0, col:0 },
+    documentId: null,
+    documentTitle: 'Untitled Document',
     marginL: 0, marginR: app.PAGE_W, marginTop: 0, marginBottom: 0,
     ink: 'b',
     showRulers: true,
@@ -13,15 +17,28 @@ export function createMainState(app, gridDiv = 8) {
     stageHeightFactor: 1.2,
     cpi: 10,
     colsAcross: 82.68,
-    inkWidthPct: 84,
+    inkWidthPct: 95,
     inkOpacity: { b: 100, r: 100, w: 100 },
-    lineHeightFactor: 1.0,
-    lineStepMu: gridDiv,
+    lineHeightFactor: 1.5,
+    lineStepMu: Math.round(gridDiv * 1.5),
     zoom: 1.0,
-    grainPct: 0,
+    effectsOverallStrength: 100,
+    inkTextureStrength: 100,
+    edgeBleedStrength: 100,
+    edgeFuzzStrength: 100,
+    grainPct: 100,
     grainSeed: 0xC0FFEE,
     altSeed: 0x51F15EED,
+    glyphJitterEnabled: GLYPH_JITTER_DEFAULTS.enabled,
+    glyphJitterAmountPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.amountPct),
+    glyphJitterFrequencyPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.frequencyPct),
+    glyphJitterSeed: GLYPH_JITTER_DEFAULTS.seed >>> 0,
     wordWrap: true,
+    themeMode: 'auto',
+    darkPageInDarkMode: false,
+    pageFillColor: '#ffffff',
+    inkEffectsPreferWhite: false,
+    savedInkStyles: [],
   };
 }
 
@@ -45,5 +62,6 @@ export function createEphemeralState() {
     pendingFullRebuild: false,
     virtRAF: 0,
     fontLoadSeq: 0,
+    primedMetricsAreFallback: false,
   };
 }

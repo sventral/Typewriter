@@ -1,28 +1,16 @@
 {
   "name": "typewriter",
-  "version": "1.7",
-  "description": "Browser-based typewriter simulator rendered entirely on the client via ES modules.",
+  "version": "1.9.0",
+  "description": "Single-page typewriter simulator that runs entirely in the browser.",
   "main": "js/main.js",
   "type": "module",
   "scripts": {
-    "start": "TODO",
-    "build": "TODO",
-    "dev": "TODO",
-    "test": "TODO"
+    "start": "node scripts/serve.js",
+    "build": "echo \"Static site – nothing to build.\"",
+    "test": "echo \"No automated tests are configured yet.\""
   },
   "dependencies": {},
   "devDependencies": {},
-  "author": "TODO",
-  "license": "TODO",
-  "repository": {
-    "type": "TODO",
-    "url": "TODO"
-  },
-  "bugs": {
-    "url": "TODO"
-  },
-  "homepage": "TODO",
-  "engines": {
-    "node": "TODO"
-  }
+  "author": "",
+  "license": "UNLICENSED"
 }

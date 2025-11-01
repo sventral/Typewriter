@@ -1,24 +1,49 @@
 import { clamp } from '../utils/math.js';
 
-export function createGlyphAtlas({
-  app,
-  state,
-  colors,
-  getFontSize,
-  getActiveFontName,
-  getAsc,
-  getDesc,
-  getCharWidth,
-  getRenderScale,
-  getStateZoom,
-  isSafari,
-  safariSupersampleThreshold,
-  getInkEffectFactor,
-  isInkSectionEnabled,
-  inkTextureConfig,
-  edgeBleedConfig,
-  grainConfig,
-}) {
+export function createGlyphAtlas(options) {
+  const {
+    context,
+    app: explicitApp,
+    state: explicitState,
+    colors,
+    getFontSize,
+    getActiveFontName,
+    getAsc,
+    getDesc,
+    getCharWidth,
+    getRenderScale,
+    getStateZoom,
+    isSafari,
+    safariSupersampleThreshold,
+    getInkEffectFactor,
+    getInkSectionStrength,
+    isInkSectionEnabled,
+    inkTextureConfig,
+    edgeFuzzConfig,
+    edgeBleedConfig,
+    grainConfig,
+  } = options || {};
+
+  const app = explicitApp || context?.app;
+  const state = explicitState || context?.state || {};
+  const metrics = context?.scalars;
+
+  const ensureMetricGetter = (fn, key) => {
+    if (typeof fn === 'function') return fn;
+    if (metrics && key in metrics) {
+      return () => metrics[key];
+    }
+    return () => undefined;
+  };
+
+  const getFontSizeFn = ensureMetricGetter(getFontSize, 'FONT_SIZE');
+  const getActiveFontNameFn = ensureMetricGetter(getActiveFontName, 'ACTIVE_FONT_NAME');
+  const getAscFn = ensureMetricGetter(getAsc, 'ASC');
+  const getDescFn = ensureMetricGetter(getDesc, 'DESC');
+  const getCharWidthFn = ensureMetricGetter(getCharWidth, 'CHAR_W');
+  const getRenderScaleFn = ensureMetricGetter(getRenderScale, 'RENDER_SCALE');
+  const getStateZoomFn = typeof getStateZoom === 'function' ? getStateZoom : (() => state.zoom);
+  const getInkSectionStrengthFn = typeof getInkSectionStrength === 'function' ? getInkSectionStrength : (() => 1);
   const ALT_VARIANTS = 9;
   const atlases = new Map();
   window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
@@ -118,11 +143,186 @@ export function createGlyphAtlas({
     return `rgb(${rn},${gn},${bn})`;
   }
 
-  function applyInkTexture(imageData, options) {
-    const { config, renderScale, sampleScale, charWidth, seed } = options || {};
+  function parseColorToRgb(color) {
+    if (typeof color !== 'string') return { r: 0, g: 0, b: 0 };
+    const trimmed = color.trim();
+    if (trimmed.startsWith('#')) {
+      const hex = trimmed.length === 4
+        ? `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`
+        : trimmed;
+      const num = Number.parseInt(hex.slice(1), 16);
+      if (Number.isFinite(num)) {
+        return {
+          r: (num >> 16) & 0xFF,
+          g: (num >> 8) & 0xFF,
+          b: num & 0xFF,
+        };
+      }
+    }
+    const rgbMatch = trimmed.match(/rgb\s*\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
+    if (rgbMatch) {
+      return {
+        r: clamp(Number(rgbMatch[1]) || 0, 0, 255),
+        g: clamp(Number(rgbMatch[2]) || 0, 0, 255),
+        b: clamp(Number(rgbMatch[3]) || 0, 0, 255),
+      };
+    }
+    return { r: 0, g: 0, b: 0 };
+  }
+
+  function computeDistanceMap(width, height, zeroMask) {
+    const size = width * height;
+    const dist = new Float32Array(size);
+    const INF = 1e9;
+    for (let i = 0; i < size; i++) {
+      dist[i] = zeroMask[i] ? 0 : INF;
+    }
+    const SQRT2 = Math.SQRT2;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        if (zeroMask[idx]) continue;
+        let best = dist[idx];
+        if (x > 0) best = Math.min(best, dist[idx - 1] + 1);
+        if (y > 0) best = Math.min(best, dist[idx - width] + 1);
+        if (x > 0 && y > 0) best = Math.min(best, dist[idx - width - 1] + SQRT2);
+        if (x < width - 1 && y > 0) best = Math.min(best, dist[idx - width + 1] + SQRT2);
+        dist[idx] = best;
+      }
+    }
+    for (let y = height - 1; y >= 0; y--) {
+      for (let x = width - 1; x >= 0; x--) {
+        const idx = y * width + x;
+        if (zeroMask[idx]) continue;
+        let best = dist[idx];
+        if (x < width - 1) best = Math.min(best, dist[idx + 1] + 1);
+        if (y < height - 1) best = Math.min(best, dist[idx + width] + 1);
+        if (x < width - 1 && y < height - 1) best = Math.min(best, dist[idx + width + 1] + SQRT2);
+        if (x > 0 && y < height - 1) best = Math.min(best, dist[idx + width - 1] + SQRT2);
+        dist[idx] = best;
+      }
+    }
+    return dist;
+  }
+
+  function applyEdgeFuzz(imageData, options) {
+    const {
+      config,
+      renderScale,
+      sampleScale,
+      color,
+      baseSeed,
+      overallStrength,
+      sectionStrength,
+    } = options || {};
     if (!config || !config.enabled) return;
-    const overall = clamp(getInkEffectFactor(), 0, 1);
-    if (overall <= 0) return;
+    const combinedStrength = clamp((overallStrength || 0) * (sectionStrength || 0), 0, 1);
+    if (combinedStrength <= 0) return;
+
+    const totalBandCss = Math.max(0, Number(config.widthPx) || 0);
+    if (totalBandCss <= 0) return;
+    const dpPerCss = Math.max(1e-6, renderScale * sampleScale);
+    const totalBandDp = totalBandCss * dpPerCss;
+    if (totalBandDp <= 0) return;
+    const inwardShare = clamp(Number(config.inwardShare ?? 0.5), 0, 1);
+    const inwardDp = totalBandDp * inwardShare;
+    const outwardDp = totalBandDp - inwardDp;
+    if (inwardDp <= 0 && outwardDp <= 0) return;
+
+    const width = imageData.width | 0;
+    const height = imageData.height | 0;
+    if (width <= 0 || height <= 0) return;
+    const data = imageData.data;
+    if (!data || data.length !== width * height * 4) return;
+
+    const size = width * height;
+    const insideMask = new Uint8Array(size);
+    const outsideMask = new Uint8Array(size);
+    let insideCount = 0;
+    for (let i = 0; i < size; i++) {
+      const alpha = data[i * 4 + 3];
+      if (alpha > 0) {
+        insideMask[i] = 1;
+        insideCount++;
+      } else {
+        outsideMask[i] = 1;
+      }
+    }
+    if (insideCount === 0) return;
+
+    const distToInk = computeDistanceMap(width, height, insideMask);
+    const distToVoid = computeDistanceMap(width, height, outsideMask);
+    const rgb = parseColorToRgb(color);
+    const baseOpacity = clamp(Number(config.opacity ?? 0.3), 0, 1) * combinedStrength;
+    if (baseOpacity <= 0) return;
+    const roughness = clamp(Number(config.roughness ?? 0.6), 0, 2);
+    const frequencyCss = Math.max(1e-3, Number(config.frequency ?? 4));
+    const noiseSeed = (baseSeed ^ (config.seed || 0)) >>> 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        const inside = insideMask[idx] === 1;
+        let coverage = 0;
+        if (inside) {
+          if (inwardDp <= 0) continue;
+          const dist = distToVoid[idx];
+          if (dist > inwardDp + 0.001) continue;
+          coverage = 1 - clamp(dist / Math.max(inwardDp, 1e-3), 0, 1);
+        } else {
+          if (outwardDp <= 0) continue;
+          const dist = distToInk[idx];
+          if (dist <= 0) {
+            coverage = 1;
+          } else if (dist > outwardDp + 0.001) {
+            continue;
+          } else {
+            coverage = 1 - clamp(dist / Math.max(outwardDp, 1e-3), 0, 1);
+          }
+        }
+        if (coverage <= 0) continue;
+
+        const xCss = x / dpPerCss;
+        const yCss = y / dpPerCss;
+        const coarseNoise = valueNoise2D(xCss, yCss, frequencyCss, noiseSeed);
+        const speckleNoise = hash2(x, y, noiseSeed ^ 0x9E3779B1);
+        const combinedNoise = (coarseNoise - 0.5) * 0.7 + (speckleNoise - 0.5) * 0.3;
+        const jitter = clamp(1 + combinedNoise * roughness, 0, 2);
+        const overlayAlpha = clamp(baseOpacity * coverage * jitter, 0, 1);
+        if (overlayAlpha <= 0) continue;
+
+        const baseIdx = idx * 4;
+        const baseAlpha = data[baseIdx + 3] / 255;
+        const outA = overlayAlpha + baseAlpha * (1 - overlayAlpha);
+        const overlayR = rgb.r / 255;
+        const overlayG = rgb.g / 255;
+        const overlayB = rgb.b / 255;
+        const baseR = data[baseIdx] / 255;
+        const baseG = data[baseIdx + 1] / 255;
+        const baseB = data[baseIdx + 2] / 255;
+        let outR = overlayR * overlayAlpha + baseR * baseAlpha * (1 - overlayAlpha);
+        let outG = overlayG * overlayAlpha + baseG * baseAlpha * (1 - overlayAlpha);
+        let outB = overlayB * overlayAlpha + baseB * baseAlpha * (1 - overlayAlpha);
+        if (outA > 1e-5) {
+          outR /= outA;
+          outG /= outA;
+          outB /= outA;
+        }
+        data[baseIdx] = clamp(Math.round(outR * 255), 0, 255);
+        data[baseIdx + 1] = clamp(Math.round(outG * 255), 0, 255);
+        data[baseIdx + 2] = clamp(Math.round(outB * 255), 0, 255);
+        data[baseIdx + 3] = clamp(Math.round(outA * 255), 0, 255);
+      }
+    }
+  }
+
+  function applyInkTexture(imageData, options) {
+    const { config, renderScale, sampleScale, charWidth, seed, overallStrength, sectionStrength } = options || {};
+    if (!config || !config.enabled) return;
+    const overall = clamp(Number.isFinite(overallStrength) ? overallStrength : getInkEffectFactor(), 0, 1);
+    const section = clamp(Number.isFinite(sectionStrength) ? sectionStrength : getInkSectionStrengthFn('texture'), 0, 1);
+    const combined = clamp(overall * section, 0, 1);
+    if (combined <= 0) return;
     const data = imageData.data;
     const width = imageData.width;
     const height = imageData.height;
@@ -138,20 +338,20 @@ export function createGlyphAtlas({
     let weightSum = 0;
     for (let i = 0; i < octaves.length; i++) weightSum += Math.max(0, octaves[i].weight || 0);
     const baseNoiseStrength = Number.isFinite(config.noiseStrength) ? config.noiseStrength : 0;
-    const noiseStrength = baseNoiseStrength * overall;
+    const noiseStrength = baseNoiseStrength * combined;
     const baseNoiseFloor = clamp(Number.isFinite(config.noiseFloor) ? config.noiseFloor : 0, 0, 1);
-    const noiseFloor = 1 - (1 - baseNoiseFloor) * overall;
+    const noiseFloor = 1 - (1 - baseNoiseFloor) * combined;
 
     const chipCfg = config.chip || {};
-    const chipDensity = Math.max(0, chipCfg.density || 0) * overall;
-    const chipStrength = Math.max(0, chipCfg.strength || 0) * overall;
+    const chipDensity = Math.max(0, chipCfg.density || 0) * combined;
+    const chipStrength = Math.max(0, chipCfg.strength || 0) * combined;
     const chipFeather = Math.max(0.01, chipCfg.feather || 0.45);
     const chipSeed = (seed ^ (chipCfg.seed || 0)) >>> 0;
 
     const scratchCfg = config.scratch || {};
-    const scratchStrength = Math.max(0, scratchCfg.strength || 0) * overall;
+    const scratchStrength = Math.max(0, scratchCfg.strength || 0) * combined;
     const baseScratchThreshold = clamp(Number.isFinite(scratchCfg.threshold) ? scratchCfg.threshold : 0.7, 0, 1 - 1e-3);
-    const scratchThreshold = clamp(baseScratchThreshold + (1 - baseScratchThreshold) * (1 - overall), 0, 1 - 1e-3);
+    const scratchThreshold = clamp(baseScratchThreshold + (1 - baseScratchThreshold) * (1 - combined), 0, 1 - 1e-3);
     const scratchScale = Math.max(1e-3, scratchCfg.scale || 1);
     const scratchAspect = Math.max(1e-3, scratchCfg.aspect || 0.25);
     const scratchSeed = (seed ^ (scratchCfg.seed || 0)) >>> 0;
@@ -209,10 +409,12 @@ export function createGlyphAtlas({
   }
 
   function applyEdgeBleed(ctx, options) {
-    const { config, text, x, y, color, baseSeed } = options || {};
+    const { config, text, x, y, color, baseSeed, overallStrength, sectionStrength } = options || {};
     if (!config || !config.enabled || !text) return;
-    const overall = clamp(getInkEffectFactor(), 0, 1);
-    if (overall <= 0 || !isInkSectionEnabled('bleed')) return;
+    const overall = clamp(Number.isFinite(overallStrength) ? overallStrength : getInkEffectFactor(), 0, 1);
+    const section = clamp(Number.isFinite(sectionStrength) ? sectionStrength : getInkSectionStrengthFn('bleed'), 0, 1);
+    const combined = clamp(overall * section, 0, 1);
+    if (combined <= 0 || !isInkSectionEnabled('bleed')) return;
     const passes = Array.isArray(config.passes) ? config.passes : [];
     if (!passes.length) return;
     ctx.save();
@@ -223,12 +425,12 @@ export function createGlyphAtlas({
       const pass = passes[i];
       const strokes = Math.max(1, pass.strokes | 0);
       const jitterBase = Number.isFinite(pass.jitter) ? pass.jitter : 0;
-      const jitter = jitterBase * overall;
+      const jitter = jitterBase * combined;
       const jitterYBase = Number.isFinite(pass.jitterY) ? pass.jitterY : jitterBase;
-      const jitterY = jitterYBase * overall;
+      const jitterY = jitterYBase * combined;
       const width = Math.max(0.01, pass.width || 0.5);
-      const alpha = clamp((pass.alpha ?? 0.12) * overall, 0, 1);
-      const lighten = clamp((pass.lighten ?? 0.4) * overall, 0, 1);
+      const alpha = clamp((pass.alpha ?? 0.12) * combined, 0, 1);
+      const lighten = clamp((pass.lighten ?? 0.4) * combined, 0, 1);
       const strokeColor = lightenHexColor(color, lighten);
       ctx.lineWidth = width;
       ctx.strokeStyle = strokeColor;
@@ -244,19 +446,39 @@ export function createGlyphAtlas({
     ctx.restore();
   }
 
-  function ensureAtlas(ink, variantIdx = 0) {
-    const key = `${ink}|v${variantIdx | 0}`;
+  function ensureAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
+    const preferWhiteEffects = !!state.inkEffectsPreferWhite;
+    let effectsAllowed =
+      ink === 'w' ? preferWhiteEffects :
+      ink === 'b' ? !preferWhiteEffects :
+      true;
+
+    if (effectOverride === 'disabled') {
+      effectsAllowed = false;
+    } else if (effectOverride === 'enabled') {
+      effectsAllowed = true;
+    }
+
+    const overallStrength = clamp(getInkEffectFactor(), 0, 1);
+    const textureSectionStrength = clamp(getInkSectionStrengthFn('texture'), 0, 1);
+    const fuzzSectionStrength = clamp(getInkSectionStrengthFn('fuzz'), 0, 1);
+    const bleedSectionStrength = clamp(getInkSectionStrengthFn('bleed'), 0, 1);
+    const fuzzKey = (effectsAllowed && fuzzSectionStrength > 0 && isInkSectionEnabled('fuzz'))
+      ? Math.round(fuzzSectionStrength * 100)
+      : 0;
+    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|fz${fuzzKey}`;
     let atlas = atlases.get(key);
     if (atlas) return atlas;
 
-    const ASC = getAsc();
-    const DESC = getDesc();
-    const CHAR_W = getCharWidth();
-    const FONT_SIZE = getFontSize();
-    const ACTIVE_FONT_NAME = getActiveFontName();
-    const RENDER_SCALE = getRenderScale();
+    const ASC = getAscFn();
+    const DESC = getDescFn();
+    const CHAR_W = getCharWidthFn();
+    const FONT_SIZE = getFontSizeFn();
+    const ACTIVE_FONT_NAME = getActiveFontNameFn();
+    const RENDER_SCALE = getRenderScaleFn();
     const COLORS = colors;
     const INK_TEXTURE = inkTextureConfig();
+    const EDGE_FUZZ = edgeFuzzConfig ? edgeFuzzConfig() : {};
     const EDGE_BLEED = edgeBleedConfig();
 
     const ASCII_START = 32;
@@ -294,12 +516,22 @@ export function createGlyphAtlas({
     const advCache = new Float32Array(ASCII_END + 1);
     const SHIFT_EPS = 0.5;
 
-    const useTexture = (ink !== 'w') && INK_TEXTURE.enabled;
-    const safariSupersample = (isSafari && getStateZoom() >= safariSupersampleThreshold) ? 2 : 1;
+    const textureAllowed = INK_TEXTURE.enabled && effectsAllowed && textureSectionStrength > 0 && isInkSectionEnabled('texture');
+    const useTexture = textureAllowed;
+    const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
     const textureSupersample = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
     const sampleScale = Math.max(safariSupersample, textureSupersample);
-    const bleedEnabled = (ink !== 'w') && EDGE_BLEED.enabled && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
-    const needsPipeline = useTexture || bleedEnabled || sampleScale > 1;
+    const bleedEnabled = EDGE_BLEED.enabled
+      && effectsAllowed
+      && bleedSectionStrength > 0
+      && isInkSectionEnabled('bleed')
+      && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
+    const fuzzEnabled = EDGE_FUZZ.enabled
+      && effectsAllowed
+      && fuzzSectionStrength > 0
+      && isInkSectionEnabled('fuzz')
+      && (!Array.isArray(EDGE_FUZZ.inks) || EDGE_FUZZ.inks.includes(ink));
+    const needsPipeline = useTexture || bleedEnabled || fuzzEnabled || sampleScale > 1;
 
     let glyphCanvas = null;
     let glyphCtx = null;
@@ -349,15 +581,33 @@ export function createGlyphAtlas({
           glyphCtx.fillText(text, localXSnapped, localYSnapped);
           glyphCtx.restore();
 
-          if (useTexture) {
-            const glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
+          let glyphData = null;
+          if (useTexture || fuzzEnabled) {
+            glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
+          }
+          if (useTexture && glyphData) {
             applyInkTexture(glyphData, {
               config: INK_TEXTURE,
               renderScale: RENDER_SCALE,
               sampleScale,
               charWidth: CHAR_W,
               seed: glyphSeed,
+              overallStrength,
+              sectionStrength: textureSectionStrength,
             });
+          }
+          if (fuzzEnabled && glyphData) {
+            applyEdgeFuzz(glyphData, {
+              config: EDGE_FUZZ,
+              renderScale: RENDER_SCALE,
+              sampleScale,
+              color: COLORS[ink] || '#000',
+              baseSeed: glyphSeed,
+              overallStrength,
+              sectionStrength: fuzzSectionStrength,
+            });
+          }
+          if (glyphData) {
             glyphCtx.putImageData(glyphData, 0, 0);
           }
 
@@ -374,6 +624,8 @@ export function createGlyphAtlas({
               y: localYSnapped,
               color: COLORS[ink] || '#000',
               baseSeed: glyphSeed,
+              overallStrength,
+              sectionStrength: bleedSectionStrength,
             });
             glyphCtx.restore();
           }
@@ -428,8 +680,8 @@ export function createGlyphAtlas({
     return (h >>> 0) % ALT_VARIANTS;
   }
 
-  function drawGlyph(ctx, ch, ink, x_css, baselineY_css, layerIndex, totalLayers, pageIndex, rowMu, col) {
-    const atlas = ensureAtlas(ink, variantIndexForCell(pageIndex | 0, rowMu | 0, col | 0));
+  function drawGlyph(ctx, ch, ink, x_css, baselineY_css, layerIndex, totalLayers, pageIndex, rowMu, col, effectsOverride = 'auto') {
+    const atlas = ensureAtlas(ink, variantIndexForCell(pageIndex | 0, rowMu | 0, col | 0), effectsOverride);
     const fallback = atlas.rectDpByCode['?'.charCodeAt(0)];
     const rect = atlas.rectDpByCode[ch.charCodeAt(0)] || fallback;
     if (!rect) return;
@@ -494,8 +746,9 @@ export function createGlyphAtlas({
     if (!cfg.enabled) return 0;
     const overall = clamp(getInkEffectFactor(), 0, 1);
     if (overall <= 0) return 0;
-    const s = clamp((state.grainPct || 0) / 100, 0, 1);
-    if (s <= 0) return 0;
+    const section = clamp(getInkSectionStrengthFn('grain'), 0, 1);
+    if (section <= 0) return 0;
+    const s = section;
     const mixPow = clamp(cfg.alpha?.mix_pow ?? 0.45, 0, 1);
     const lowPow = Math.max(0.01, cfg.alpha?.low_pow ?? 0.55);
     const eased = mixPow * Math.pow(s, lowPow) + (1 - mixPow) * s;
@@ -524,6 +777,10 @@ export function createGlyphAtlas({
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, sy, app.PAGE_W, sh);
     ctx.restore();
+  }
+
+  if (context?.setCallback) {
+    context.setCallback('rebuildAllAtlases', rebuildAllAtlases);
   }
 
   return { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion };
