@@ -108,6 +108,9 @@ export function setupUIBindings(context, controllers) {
     ].forEach((el) => {
       if (el) el.disabled = disabled;
     });
+    if (app.shuffleGlyphJitterSeedBtn) {
+      app.shuffleGlyphJitterSeedBtn.disabled = disabled;
+    }
   }
 
   const docUpdatedFormatter = (() => {
@@ -699,25 +702,14 @@ export function setupUIBindings(context, controllers) {
       return sanitized;
     };
 
-    const randomizeGlyphJitterSeed = () => {
-      state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
-    };
-
-    const commitGlyphJitterChanges = () => {
-      saveStateDebounced();
-      markGlyphJitterDirty();
-      focusStage();
-    };
-
     if (app.glyphJitterToggle) {
       app.glyphJitterToggle.checked = !!state.glyphJitterEnabled;
       app.glyphJitterToggle.addEventListener('change', () => {
         state.glyphJitterEnabled = !!app.glyphJitterToggle.checked;
         setGlyphJitterInputsDisabled(!state.glyphJitterEnabled);
-        if (state.glyphJitterEnabled) {
-          randomizeGlyphJitterSeed();
-        }
-        commitGlyphJitterChanges();
+        saveStateDebounced();
+        markGlyphJitterDirty();
+        focusStage();
       });
     }
 
@@ -725,8 +717,9 @@ export function setupUIBindings(context, controllers) {
       if (!input) return;
       input.addEventListener('change', () => {
         sanitizeAmountInputs();
-        randomizeGlyphJitterSeed();
-        commitGlyphJitterChanges();
+        saveStateDebounced();
+        markGlyphJitterDirty();
+        focusStage();
       });
       input.addEventListener('blur', () => { sanitizeAmountInputs(); });
     });
@@ -735,11 +728,22 @@ export function setupUIBindings(context, controllers) {
       if (!input) return;
       input.addEventListener('change', () => {
         sanitizeFrequencyInputs();
-        randomizeGlyphJitterSeed();
-        commitGlyphJitterChanges();
+        saveStateDebounced();
+        markGlyphJitterDirty();
+        focusStage();
       });
       input.addEventListener('blur', () => { sanitizeFrequencyInputs(); });
     });
+
+    if (app.shuffleGlyphJitterSeedBtn) {
+      app.shuffleGlyphJitterSeedBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
+        saveStateDebounced();
+        markGlyphJitterDirty();
+        focusStage();
+      });
+    }
 
     if (state.glyphJitterAmountPct) sanitizeAmountInputs();
     if (state.glyphJitterFrequencyPct) sanitizeFrequencyInputs();
