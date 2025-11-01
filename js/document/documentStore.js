@@ -23,7 +23,7 @@ const resolveIntensityBounds = (key) => {
 const CENTER_THICKEN_BOUNDS = resolveIntensityBounds('centerThicken');
 const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
 
-const KNOWN_INK_SECTIONS = ['texture', 'fuzz', 'bleed', 'grain'];
+const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain'];
 
 function cloneInkStyleValue(value) {
   if (Array.isArray(value)) {
@@ -169,6 +169,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
+    inkFillStrength: clamp(Number(state.inkFillStrength ?? 100), 0, 100),
     centerThickenPct: clamp(
       Number(state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
       CENTER_THICKEN_BOUNDS.min,
@@ -355,6 +356,11 @@ export function deserializeDocumentState(data, context) {
       : 1.5,
     zoom: typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4 ? data.zoom : 1.0,
     effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
+    inkFillStrength: clamp(
+      Number(data.inkFillStrength ?? state.inkFillStrength ?? 100),
+      0,
+      100,
+    ),
     centerThickenPct: clamp(
       Number(data.centerThickenPct ?? state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
       CENTER_THICKEN_BOUNDS.min,
