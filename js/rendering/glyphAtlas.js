@@ -20,6 +20,7 @@ export function createGlyphAtlas(options) {
     getEdgeThinFactor: getEdgeThinFactorOpt,
     getInkEffectFactor,
     getInkSectionStrength,
+    getInkSectionOrder,
     isInkSectionEnabled,
     inkTextureConfig,
     edgeFuzzConfig,
@@ -47,6 +48,9 @@ export function createGlyphAtlas(options) {
   const getRenderScaleFn = ensureMetricGetter(getRenderScale, 'RENDER_SCALE');
   const getStateZoomFn = typeof getStateZoom === 'function' ? getStateZoom : (() => state.zoom);
   const getInkSectionStrengthFn = typeof getInkSectionStrength === 'function' ? getInkSectionStrength : (() => 1);
+  const getInkSectionOrderFn = typeof getInkSectionOrder === 'function'
+    ? getInkSectionOrder
+    : (() => ['fill', 'texture', 'fuzz', 'bleed', 'grain']);
   const getCenterThickenFactorFn = typeof getCenterThickenFactorOpt === 'function' ? getCenterThickenFactorOpt : (() => 1);
   const getEdgeThinFactorFn = typeof getEdgeThinFactorOpt === 'function' ? getEdgeThinFactorOpt : (() => 1);
   const ALT_VARIANTS = 9;
@@ -375,6 +379,28 @@ export function createGlyphAtlas(options) {
     };
   }
 
+  const GLYPH_PIPELINE_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed'];
+
+  function normalizePipelineOrder(order) {
+    const base = Array.isArray(order) ? order : [];
+    const seen = new Set();
+    const normalized = [];
+    base.forEach(id => {
+      if (typeof id !== 'string') return;
+      const trimmed = id.trim();
+      if (!trimmed || seen.has(trimmed)) return;
+      if (!GLYPH_PIPELINE_SECTIONS.includes(trimmed)) return;
+      seen.add(trimmed);
+      normalized.push(trimmed);
+    });
+    GLYPH_PIPELINE_SECTIONS.forEach(id => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      normalized.push(id);
+    });
+    return normalized;
+  }
+
   function generateNoiseField(width, height, dpPerCss, jitterX, jitterY, charWidth, noiseCfg, smoothing) {
     if (!noiseCfg || typeof noiseCfg !== 'object') return null;
     const scaleBase = Number.isFinite(noiseCfg.scale) ? noiseCfg.scale : 1;
@@ -451,6 +477,54 @@ export function createGlyphAtlas(options) {
     return raw;
   }
 
+  function applyFillAdjustments(imageData, options) {
+    const {
+      overallStrength,
+      sectionStrength,
+      getDistanceMaps,
+    } = options || {};
+    if (!imageData) return;
+    const overall = clamp(Number.isFinite(overallStrength) ? overallStrength : getInkEffectFactor(), 0, 1);
+    const section = clamp(Number.isFinite(sectionStrength) ? sectionStrength : getInkSectionStrengthFn('fill'), 0, 1);
+    const combined = clamp(overall * section, 0, 1);
+    if (combined <= 0 || !isInkSectionEnabled('fill')) return;
+
+    const centerThickenRaw = Number(getCenterThickenFactorFn());
+    const edgeThinRaw = Number(getEdgeThinFactorFn());
+    const centerThickenFactor = clamp(Number.isFinite(centerThickenRaw) ? centerThickenRaw : 1, 0, 2);
+    const edgeThinFactor = clamp(Number.isFinite(edgeThinRaw) ? edgeThinRaw : 1, 0, 2);
+    const centerThickenDelta = (centerThickenFactor - 1) * combined;
+    const edgeThinDelta = (edgeThinFactor - 1) * combined;
+    if (Math.abs(centerThickenDelta) <= 1e-6 && Math.abs(edgeThinDelta) <= 1e-6) return;
+
+    const provider = typeof getDistanceMaps === 'function' ? getDistanceMaps : null;
+    const maps = provider ? provider() : computeDistanceMaps(imageData);
+    if (!maps || !maps.insideMask || !maps.distToVoid || !maps.maxInsideDist) return;
+
+    const data = imageData.data;
+    if (!data) return;
+    const { insideMask, distToVoid, maxInsideDist } = maps;
+    const total = insideMask.length | 0;
+    for (let i = 0; i < total; i++) {
+      if (insideMask[i] !== 1) continue;
+      const baseIdx = i * 4;
+      const alpha = data[baseIdx + 3];
+      if (alpha <= 0) continue;
+      const norm = clamp(distToVoid[i] / maxInsideDist, 0, 1);
+      let modifier = 1;
+      if (centerThickenDelta !== 0) {
+        modifier *= clamp(1 + centerThickenDelta * norm, 0, 2);
+      }
+      if (edgeThinDelta !== 0) {
+        const edgeWeight = 1 - norm;
+        modifier *= clamp(1 - edgeThinDelta * edgeWeight, 0, 2);
+      }
+      if (modifier === 1) continue;
+      const nextAlpha = clamp((alpha / 255) * modifier, 0, 1);
+      data[baseIdx + 3] = Math.round(nextAlpha * 255);
+    }
+  }
+
   function applyEdgeFuzz(imageData, options) {
     const {
       config,
@@ -464,13 +538,6 @@ export function createGlyphAtlas(options) {
     if (!config || !config.enabled) return;
     const combinedStrength = clamp((overallStrength || 0) * (sectionStrength || 0), 0, 1);
     if (combinedStrength <= 0) return;
-
-    const centerThickenRaw = Number(getCenterThickenFactorFn());
-    const edgeThinRaw = Number(getEdgeThinFactorFn());
-    const centerThickenFactor = clamp(Number.isFinite(centerThickenRaw) ? centerThickenRaw : 1, 0, 2);
-    const edgeThinFactor = clamp(Number.isFinite(edgeThinRaw) ? edgeThinRaw : 1, 0, 2);
-    const centerThickenDelta = (centerThickenFactor - 1) * combinedStrength;
-    const edgeThinDelta = (edgeThinFactor - 1) * combinedStrength;
 
     const totalBandCss = Math.max(0, Number(config.widthPx) || 0);
     if (totalBandCss <= 0) return;
@@ -522,23 +589,6 @@ export function createGlyphAtlas(options) {
         }
         if (coverage <= 0) continue;
 
-        if (centerThickenDelta !== 0 && inside) {
-          const normInside = clamp(distToVoid[idx] / maps.maxInsideDist, 0, 1);
-          coverage *= clamp(1 + centerThickenDelta * normInside, 0, 2);
-        }
-        if (edgeThinDelta !== 0) {
-          let edgeWeight;
-          if (inside) {
-            const normInside = clamp(distToVoid[idx] / maps.maxInsideDist, 0, 1);
-            edgeWeight = 1 - normInside;
-          } else if (outwardDp > 0) {
-            const normOutside = clamp(distToInk[idx] / Math.max(outwardDp, 1e-3), 0, 1);
-            edgeWeight = 1 - normOutside;
-          } else {
-            edgeWeight = 1;
-          }
-          coverage *= clamp(1 - edgeThinDelta * edgeWeight, 0, 2);
-        }
         coverage = clamp(coverage, 0, 1);
 
         const xCss = x / dpPerCss;
@@ -585,13 +635,6 @@ export function createGlyphAtlas(options) {
     const combined = clamp(overall * section, 0, 1);
     if (combined <= 0) return;
 
-    const centerThickenRaw = Number(getCenterThickenFactorFn());
-    const edgeThinRaw = Number(getEdgeThinFactorFn());
-    const centerThickenFactor = clamp(Number.isFinite(centerThickenRaw) ? centerThickenRaw : 1, 0, 2);
-    const edgeThinFactor = clamp(Number.isFinite(edgeThinRaw) ? edgeThinRaw : 1, 0, 2);
-    const centerThickenDelta = (centerThickenFactor - 1) * combined;
-    const edgeThinDelta = (edgeThinFactor - 1) * combined;
-
     const data = imageData.data;
     const width = imageData.width | 0;
     const height = imageData.height | 0;
@@ -622,10 +665,9 @@ export function createGlyphAtlas(options) {
 
     const needsBias = Math.abs(centerEdgeBias) > 1e-3;
     const getDistanceMaps = options && typeof options.getDistanceMaps === 'function' ? options.getDistanceMaps : null;
-    const needsDistanceMaps = needsBias || Math.abs(centerThickenDelta) > 1e-6 || Math.abs(edgeThinDelta) > 1e-6;
+    const needsDistanceMaps = needsBias;
     const maps = needsDistanceMaps && getDistanceMaps ? getDistanceMaps() : (needsBias ? getDistanceMaps?.() : null);
     const biasAvailable = !!(maps && maps.distToVoid && maps.maxInsideDist > 1e-6);
-    const hasCenterEdgeTweaks = !!(maps && maps.insideMask && (Math.abs(centerThickenDelta) > 1e-6 || Math.abs(edgeThinDelta) > 1e-6));
     const biasUpperClamp = centerEdgeBias < 0 ? 1 + Math.min(0.3, -centerEdgeBias * 0.35) : 1;
 
     const chipCfg = normalizedConfig.chip || {};
@@ -667,21 +709,6 @@ export function createGlyphAtlas(options) {
           if (offset !== 0 || noiseFloor < 1 || biasUpperClamp > 1) {
             const mod = clamp(1 - offset, noiseFloor, biasUpperClamp);
             a *= mod;
-          }
-        }
-
-        if (hasCenterEdgeTweaks && maps.insideMask[pixelIdx]) {
-          const norm = clamp(maps.distToVoid[pixelIdx] / maps.maxInsideDist, 0, 1);
-          let modifier = 1;
-          if (centerThickenDelta !== 0) {
-            modifier *= clamp(1 + centerThickenDelta * norm, 0, 2);
-          }
-          if (edgeThinDelta !== 0) {
-            const edgeWeight = 1 - norm;
-            modifier *= clamp(1 - edgeThinDelta * edgeWeight, 0, 2);
-          }
-          if (modifier !== 1) {
-            a *= modifier;
           }
         }
 
@@ -826,13 +853,19 @@ export function createGlyphAtlas(options) {
     }
 
     const overallStrength = clamp(getInkEffectFactor(), 0, 1);
+    const fillSectionStrength = clamp(getInkSectionStrengthFn('fill'), 0, 1);
     const textureSectionStrength = clamp(getInkSectionStrengthFn('texture'), 0, 1);
     const fuzzSectionStrength = clamp(getInkSectionStrengthFn('fuzz'), 0, 1);
     const bleedSectionStrength = clamp(getInkSectionStrengthFn('bleed'), 0, 1);
+    const rawOrder = normalizePipelineOrder(getInkSectionOrderFn());
     const fuzzKey = (effectsAllowed && fuzzSectionStrength > 0 && isInkSectionEnabled('fuzz'))
       ? Math.round(fuzzSectionStrength * 100)
       : 0;
-    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|fz${fuzzKey}`;
+    const fillKey = (effectsAllowed && fillSectionStrength > 0 && isInkSectionEnabled('fill'))
+      ? Math.round(fillSectionStrength * 100)
+      : 0;
+    const orderKey = rawOrder.join('-');
+    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|fz${fuzzKey}|fl${fillKey}|ord${orderKey}`;
     let atlas = atlases.get(key);
     if (atlas) return atlas;
 
@@ -887,6 +920,9 @@ export function createGlyphAtlas(options) {
     const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
     const textureSupersample = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
     const sampleScale = Math.max(safariSupersample, textureSupersample);
+    const fillEnabled = effectsAllowed
+      && fillSectionStrength > 0
+      && isInkSectionEnabled('fill');
     const bleedEnabled = EDGE_BLEED.enabled
       && effectsAllowed
       && bleedSectionStrength > 0
@@ -897,7 +933,15 @@ export function createGlyphAtlas(options) {
       && fuzzSectionStrength > 0
       && isInkSectionEnabled('fuzz')
       && (!Array.isArray(EDGE_FUZZ.inks) || EDGE_FUZZ.inks.includes(ink));
-    const needsPipeline = useTexture || bleedEnabled || fuzzEnabled || sampleScale > 1;
+    const pipelineOrder = rawOrder;
+    const pipelineStages = [];
+    pipelineOrder.forEach(id => {
+      if (id === 'fill' && fillEnabled) pipelineStages.push('fill');
+      else if (id === 'texture' && useTexture) pipelineStages.push('texture');
+      else if (id === 'fuzz' && fuzzEnabled) pipelineStages.push('fuzz');
+      else if (id === 'bleed' && bleedEnabled) pipelineStages.push('bleed');
+    });
+    const needsPipeline = useTexture || bleedEnabled || fuzzEnabled || fillEnabled || sampleScale > 1;
 
     let glyphCanvas = null;
     let glyphCtx = null;
@@ -948,50 +992,95 @@ export function createGlyphAtlas(options) {
           glyphCtx.restore();
 
           let glyphData = null;
-          if (useTexture || fuzzEnabled || bleedEnabled) {
-            glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
+          let glyphDataDirty = false;
+          const glyphWidth = glyphCanvas.width;
+          const glyphHeight = glyphCanvas.height;
+          if (needsPipeline) {
+            glyphData = glyphCtx.getImageData(0, 0, glyphWidth, glyphHeight);
           }
           const distanceProvider = glyphData ? createDistanceMapProvider(glyphData) : null;
-          if (useTexture && glyphData) {
-            applyInkTexture(glyphData, {
-              config: INK_TEXTURE,
-              renderScale: RENDER_SCALE,
-              sampleScale,
-              charWidth: CHAR_W,
-              seed: glyphSeed,
-              overallStrength,
-              sectionStrength: textureSectionStrength,
-              getDistanceMaps: distanceProvider,
-            });
-          }
-          if (fuzzEnabled && glyphData) {
-            applyEdgeFuzz(glyphData, {
-              config: EDGE_FUZZ,
-              renderScale: RENDER_SCALE,
-              sampleScale,
-              color: COLORS[ink] || '#000',
-              baseSeed: glyphSeed,
-              overallStrength,
-              sectionStrength: fuzzSectionStrength,
-              getDistanceMaps: distanceProvider,
-            });
-          }
-          if (glyphData) {
-            glyphCtx.putImageData(glyphData, 0, 0);
+
+          const hasGlyphStageAfter = index => {
+            for (let i = index + 1; i < pipelineStages.length; i++) {
+              const stage = pipelineStages[i];
+              if (stage === 'texture' || stage === 'fuzz' || stage === 'fill') {
+                return true;
+              }
+            }
+            return false;
+          };
+
+          for (let i = 0; i < pipelineStages.length; i++) {
+            const stage = pipelineStages[i];
+            if (stage === 'fill') {
+              if (glyphData) {
+                applyFillAdjustments(glyphData, {
+                  overallStrength,
+                  sectionStrength: fillSectionStrength,
+                  getDistanceMaps: distanceProvider,
+                });
+                glyphDataDirty = true;
+              }
+              continue;
+            }
+            if (stage === 'texture') {
+              if (glyphData) {
+                applyInkTexture(glyphData, {
+                  config: INK_TEXTURE,
+                  renderScale: RENDER_SCALE,
+                  sampleScale,
+                  charWidth: CHAR_W,
+                  seed: glyphSeed,
+                  overallStrength,
+                  sectionStrength: textureSectionStrength,
+                  getDistanceMaps: distanceProvider,
+                });
+                glyphDataDirty = true;
+              }
+              continue;
+            }
+            if (stage === 'fuzz') {
+              if (glyphData) {
+                applyEdgeFuzz(glyphData, {
+                  config: EDGE_FUZZ,
+                  renderScale: RENDER_SCALE,
+                  sampleScale,
+                  color: COLORS[ink] || '#000',
+                  baseSeed: glyphSeed,
+                  overallStrength,
+                  sectionStrength: fuzzSectionStrength,
+                  getDistanceMaps: distanceProvider,
+                });
+                glyphDataDirty = true;
+              }
+              continue;
+            }
+            if (stage === 'bleed') {
+              if (glyphData && glyphDataDirty) {
+                glyphCtx.putImageData(glyphData, 0, 0);
+                glyphDataDirty = false;
+              }
+              applyEdgeBleed(glyphCtx, {
+                config: EDGE_BLEED,
+                color: COLORS[ink] || '#000',
+                baseSeed: glyphSeed,
+                overallStrength,
+                sectionStrength: bleedSectionStrength,
+                renderScale: RENDER_SCALE,
+                sampleScale,
+                charWidth: CHAR_W,
+                getDistanceMaps: distanceProvider,
+              });
+              if (glyphData && hasGlyphStageAfter(i)) {
+                glyphData = glyphCtx.getImageData(0, 0, glyphWidth, glyphHeight);
+                glyphDataDirty = false;
+              }
+            }
           }
 
-          if (bleedEnabled) {
-            applyEdgeBleed(glyphCtx, {
-              config: EDGE_BLEED,
-              color: COLORS[ink] || '#000',
-              baseSeed: glyphSeed,
-              overallStrength,
-              sectionStrength: bleedSectionStrength,
-              renderScale: RENDER_SCALE,
-              sampleScale,
-              charWidth: CHAR_W,
-              getDistanceMaps: distanceProvider,
-            });
+          if (glyphData && glyphDataDirty) {
+            glyphCtx.putImageData(glyphData, 0, 0);
+            glyphDataDirty = false;
           }
 
           glyphCtx.setTransform(1, 0, 0, 1, 0, 0);

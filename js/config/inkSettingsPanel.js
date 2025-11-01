@@ -119,6 +119,33 @@ const SECTION_DEFS = [
   }
 ];
 
+const DEFAULT_SECTION_ORDER = SECTION_DEFS.map(def => def.id);
+const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
+  acc[def.id] = def;
+  return acc;
+}, {});
+
+function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
+  const base = Array.isArray(order) ? order : [];
+  const seen = new Set();
+  const normalized = [];
+  base.forEach(id => {
+    if (typeof id !== 'string') return;
+    const trimmed = id.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    if (!Object.prototype.hasOwnProperty.call(SECTION_DEF_MAP, trimmed)) return;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  });
+  (Array.isArray(fallback) ? fallback : DEFAULT_SECTION_ORDER).forEach(id => {
+    if (!Object.prototype.hasOwnProperty.call(SECTION_DEF_MAP, id)) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    normalized.push(id);
+  });
+  return normalized;
+}
+
 function clampFillPercent(value, limits) {
   const raw = Number(value);
   const min = limits?.min ?? 0;
@@ -206,6 +233,9 @@ const panelState = {
   exportButton: null,
   importButton: null,
   importInput: null,
+  sectionsRoot: null,
+  sectionOrder: DEFAULT_SECTION_ORDER.slice(),
+  dragState: null,
 };
 
 const HEX_MATCH_RE = /seed|hash/i;
@@ -280,6 +310,7 @@ function normalizeStyleRecord(style, index = 0) {
       centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
       edgeThin: EDGE_THIN_LIMITS.defaultPct,
       sections: {},
+      sectionOrder: normalizeSectionOrder(style?.sectionOrder),
     };
     SECTION_DEFS.forEach(def => {
       const rawSection = style?.sections && typeof style.sections === 'object'
@@ -341,6 +372,7 @@ function createDefaultStyleRecord(index = 0) {
     centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
     edgeThin: EDGE_THIN_LIMITS.defaultPct,
     sections: {},
+    sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   };
   SECTION_DEFS.forEach(def => {
     record.sections[def.id] = {
@@ -383,6 +415,9 @@ function createStyleSnapshot(name, existingId = null) {
     centerThicken: getCenterThickenPercent(),
     edgeThin: getEdgeThinPercent(),
     sections: {},
+    sectionOrder: Array.isArray(panelState.sectionOrder)
+      ? panelState.sectionOrder.slice()
+      : DEFAULT_SECTION_ORDER.slice(),
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
@@ -571,6 +606,259 @@ function isHexField(path) {
 
 function getAppState() {
   return panelState.appState;
+}
+
+function getSectionOrderFromState() {
+  const appState = getAppState();
+  if (!appState) return DEFAULT_SECTION_ORDER.slice();
+  return normalizeSectionOrder(appState.inkSectionOrder);
+}
+
+function setSectionOrderOnState(order) {
+  const appState = getAppState();
+  if (!appState) return;
+  appState.inkSectionOrder = normalizeSectionOrder(order);
+}
+
+function arraysEqual(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function reorderMetas(order) {
+  if (!Array.isArray(panelState.metas) || !Array.isArray(order)) return;
+  panelState.metas.sort((a, b) => {
+    const aIdx = order.indexOf(a?.id);
+    const bIdx = order.indexOf(b?.id);
+    return (aIdx === -1 ? Number.MAX_SAFE_INTEGER : aIdx)
+      - (bIdx === -1 ? Number.MAX_SAFE_INTEGER : bIdx);
+  });
+}
+
+function updateSectionsDomOrder(order) {
+  const root = panelState.sectionsRoot;
+  if (!root || typeof root.appendChild !== 'function') return;
+  if (!Array.isArray(order)) return;
+  order.forEach(id => {
+    const meta = findMetaById(id);
+    if (!meta || !meta.root || meta.root.parentNode !== root) return;
+    root.appendChild(meta.root);
+  });
+}
+
+function applySectionOrder(order, options = {}) {
+  const normalized = normalizeSectionOrder(order);
+  const current = panelState.sectionOrder || DEFAULT_SECTION_ORDER;
+  if (arraysEqual(normalized, current)) {
+    if (options.syncDom) {
+      updateSectionsDomOrder(normalized);
+    }
+    return;
+  }
+  panelState.sectionOrder = normalized.slice();
+  if (!options.skipStateUpdate) {
+    setSectionOrderOnState(panelState.sectionOrder);
+    persistPanelState();
+  }
+  reorderMetas(panelState.sectionOrder);
+  updateSectionsDomOrder(panelState.sectionOrder);
+  if (options.silent !== true) {
+    scheduleGlyphRefresh(true);
+    scheduleGrainRefresh();
+  }
+}
+
+function clearDragIndicators() {
+  const root = panelState.sectionsRoot;
+  if (!root) return;
+  root.querySelectorAll('.ink-section').forEach(section => {
+    section.classList.remove('is-drop-before', 'is-drop-after');
+  });
+  root.classList.remove('is-drop-end');
+}
+
+function endSectionDrag() {
+  if (panelState.dragState?.cleanup) {
+    try {
+      panelState.dragState.cleanup();
+    } catch (err) {
+      // noop
+    }
+  }
+  if (panelState.dragState && panelState.dragState.element) {
+    panelState.dragState.element.classList.remove('is-dragging');
+  }
+  panelState.dragState = null;
+  clearDragIndicators();
+}
+
+function commitPointerSectionDrop() {
+  const dragState = panelState.dragState;
+  if (!dragState || dragState.mode !== 'pointer') return;
+  const draggingId = dragState.id;
+  if (!draggingId || typeof dragState.dropIndex !== 'number') return;
+  const order = Array.isArray(panelState.sectionOrder)
+    ? panelState.sectionOrder.slice()
+    : DEFAULT_SECTION_ORDER.slice();
+  const fromIndex = order.indexOf(draggingId);
+  if (fromIndex === -1) return;
+  order.splice(fromIndex, 1);
+  let insertIndex = dragState.dropIndex;
+  if (!Number.isFinite(insertIndex)) {
+    insertIndex = order.length;
+  }
+  insertIndex = Math.max(0, Math.min(order.length, Math.round(insertIndex)));
+  order.splice(insertIndex, 0, draggingId);
+  applySectionOrder(order);
+}
+
+function updatePointerDropTarget(clientX, clientY) {
+  const dragState = panelState.dragState;
+  if (!dragState || dragState.mode !== 'pointer') return;
+  const root = panelState.sectionsRoot;
+  if (!root) return;
+
+  clearDragIndicators();
+
+  const rootRect = root.getBoundingClientRect();
+  const insideHorizontal = clientX >= rootRect.left && clientX <= rootRect.right;
+  if (!insideHorizontal) {
+    dragState.dropTargetId = null;
+    dragState.dropPosition = null;
+    dragState.dropToEnd = false;
+    dragState.dropIndex = null;
+    return;
+  }
+
+  const metas = Array.isArray(panelState.sectionOrder)
+    ? panelState.sectionOrder
+        .map(id => findMetaById(id))
+        .filter(meta => meta && meta.root && meta.id !== dragState.id)
+    : [];
+
+  if (!metas.length) {
+    root.classList.add('is-drop-end');
+    dragState.dropTargetId = null;
+    dragState.dropPosition = null;
+    dragState.dropToEnd = true;
+    dragState.dropIndex = 0;
+    return;
+  }
+
+  let dropIndex = metas.length;
+  if (clientY <= rootRect.top) {
+    dropIndex = 0;
+  } else if (clientY >= rootRect.bottom) {
+    dropIndex = metas.length;
+  } else {
+    for (let i = 0; i < metas.length; i++) {
+      const meta = metas[i];
+      const rect = meta.root.getBoundingClientRect();
+      const midpoint = rect.top + rect.height / 2;
+      if (clientY < midpoint) {
+        dropIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (dropIndex >= metas.length) {
+    const lastMeta = metas[metas.length - 1];
+    if (lastMeta?.root) {
+      lastMeta.root.classList.add('is-drop-after');
+    }
+    root.classList.add('is-drop-end');
+    dragState.dropTargetId = lastMeta?.id || null;
+    dragState.dropPosition = lastMeta ? 'after' : null;
+    dragState.dropToEnd = true;
+    dragState.dropIndex = metas.length;
+    return;
+  }
+
+  const targetMeta = metas[dropIndex];
+  if (targetMeta?.root) {
+    targetMeta.root.classList.add('is-drop-before');
+  }
+  dragState.dropTargetId = targetMeta?.id || null;
+  dragState.dropPosition = targetMeta ? 'before' : null;
+  dragState.dropToEnd = false;
+  dragState.dropIndex = dropIndex;
+}
+
+function startPointerSectionDrag(event, meta) {
+  if (!meta || !meta.root) return;
+  if (event?.button !== undefined && event.button !== 0) return;
+  if (typeof event?.pointerId !== 'number') return;
+  const handle = event.currentTarget;
+  if (!handle) return;
+
+  event.preventDefault();
+
+  if (panelState.dragState) {
+    endSectionDrag();
+  }
+
+  const moveHandler = moveEvent => {
+    if (!panelState.dragState || panelState.dragState.pointerId !== moveEvent.pointerId) return;
+    moveEvent.preventDefault();
+    updatePointerDropTarget(moveEvent.clientX, moveEvent.clientY);
+  };
+
+  const upHandler = upEvent => {
+    if (!panelState.dragState || panelState.dragState.pointerId !== upEvent.pointerId) return;
+    upEvent.preventDefault();
+    commitPointerSectionDrop();
+    endSectionDrag();
+  };
+
+  const cancelHandler = cancelEvent => {
+    if (!panelState.dragState || panelState.dragState.pointerId !== cancelEvent.pointerId) return;
+    cancelEvent.preventDefault();
+    endSectionDrag();
+  };
+
+  panelState.dragState = {
+    id: meta.id,
+    element: meta.root,
+    mode: 'pointer',
+    pointerId: event.pointerId,
+    dropTargetId: null,
+    dropPosition: null,
+    dropToEnd: false,
+    dropIndex: null,
+    cleanup: () => {
+      handle.removeEventListener('pointermove', moveHandler);
+      handle.removeEventListener('pointerup', upHandler);
+      handle.removeEventListener('pointercancel', cancelHandler);
+      if (typeof handle.releasePointerCapture === 'function') {
+        try {
+          handle.releasePointerCapture(event.pointerId);
+        } catch (err) {
+          // noop
+        }
+      }
+    },
+  };
+
+  meta.root.classList.add('is-dragging');
+
+  if (typeof handle.setPointerCapture === 'function') {
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch (err) {
+      // noop
+    }
+  }
+
+  handle.addEventListener('pointermove', moveHandler);
+  handle.addEventListener('pointerup', upHandler);
+  handle.addEventListener('pointercancel', cancelHandler);
+
+  updatePointerDropTarget(event.clientX, event.clientY);
 }
 
 function getPercentFromState(key, fallback = 0) {
@@ -1001,6 +1289,7 @@ function setSectionCollapsed(meta, collapsed) {
 function buildSection(def, root) {
   const sectionEl = document.createElement('section');
   sectionEl.className = 'ink-section';
+  sectionEl.dataset.sectionId = def.id;
 
   const header = document.createElement('div');
   header.className = 'ink-section-header';
@@ -1020,6 +1309,12 @@ function buildSection(def, root) {
 
   const topLine = document.createElement('div');
   topLine.className = 'ink-section-topline';
+  const dragHandle = document.createElement('button');
+  dragHandle.type = 'button';
+  dragHandle.className = 'ink-section-drag-handle';
+  dragHandle.setAttribute('aria-label', `Reorder ${def.label}`);
+  dragHandle.innerHTML = '<span aria-hidden="true">⋮⋮</span>';
+  topLine.appendChild(dragHandle);
   topLine.appendChild(toggleBtn);
   header.appendChild(topLine);
 
@@ -1063,6 +1358,8 @@ function buildSection(def, root) {
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
   };
+
+  dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
 
   def.keyOrder.forEach(entry => {
     let path = null;
@@ -1503,6 +1800,9 @@ function applySavedStyle(styleId) {
   const styles = getSavedStyles();
   const style = styles.find(s => s && s.id === styleId);
   if (!style) return;
+  if (Array.isArray(style.sectionOrder) && style.sectionOrder.length) {
+    applySectionOrder(style.sectionOrder);
+  }
   if (Number.isFinite(style.overall)) {
     setOverallStrength(style.overall);
   }
@@ -1612,6 +1912,13 @@ export function isInkSectionEnabled(sectionId) {
   if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
   if (sectionId === 'bleed') return strength > 0 && EDGE_BLEED.enabled !== false;
   return strength > 0;
+}
+
+export function getInkSectionOrder() {
+  if (Array.isArray(panelState.sectionOrder) && panelState.sectionOrder.length) {
+    return panelState.sectionOrder.slice();
+  }
+  return normalizeSectionOrder(getSectionOrderFromState());
 }
 
 function syncOverallStrengthUI() {
@@ -1747,6 +2054,10 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.exportButton = document.getElementById('inkStyleExportBtn');
   panelState.importButton = document.getElementById('inkStyleImportBtn');
   panelState.importInput = document.getElementById('inkStyleImportInput');
+  panelState.sectionsRoot = sectionsRoot;
+
+  panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
+  setSectionOrderOnState(panelState.sectionOrder);
 
   syncFillConfigValues();
 
@@ -1796,10 +2107,26 @@ export function setupInkSettingsPanel(options = {}) {
   syncOverallStrengthUI();
 
   if (sectionsRoot) {
-    SECTION_DEFS.forEach(def => {
+    panelState.metas = [];
+    const seen = new Set();
+    panelState.sectionOrder.forEach(id => {
+      const def = SECTION_DEF_MAP[id];
+      if (!def) return;
       const meta = buildSection(def, sectionsRoot);
-      syncInputs(meta);
+      if (meta) {
+        seen.add(def.id);
+        syncInputs(meta);
+      }
     });
+    SECTION_DEFS.forEach(def => {
+      if (seen.has(def.id)) return;
+      const meta = buildSection(def, sectionsRoot);
+      if (meta) {
+        panelState.sectionOrder.push(def.id);
+        syncInputs(meta);
+      }
+    });
+    applySectionOrder(panelState.sectionOrder, { skipStateUpdate: true, syncDom: true, silent: true });
   }
 
   panelState.initialized = true;
