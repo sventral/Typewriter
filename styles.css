@@ -551,7 +551,7 @@ body[data-page-tone='dark']{
     flex-direction: column;
     gap: 16px;
   }
-  .ink-section { padding: 12px 0; border-top: 1px solid rgba(0,0,0,0.08); }
+  .ink-section { position: relative; padding: 12px 0; border-top: 1px solid rgba(0,0,0,0.08); }
   .ink-section:first-of-type { border-top: none; padding-top: 4px; }
   .ink-section-header { display: grid; grid-template-columns: var(--ink-heading-width) minmax(0, 1fr); column-gap: 12px; row-gap: 6px; margin-bottom: 8px; }
   .ink-section-topline { grid-column: 1 / span 2; display: flex; }
@@ -591,6 +591,15 @@ body[data-page-tone='dark']{
   .ink-array-item { border: 1px solid rgba(0,0,0,0.08); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
   .ink-array-title { font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 6px; text-transform: uppercase; }
   .ink-section.is-disabled { opacity: 0.55; }
+  .ink-section.is-dragging { opacity: 0.7; }
+  .ink-section-drag-handle { display: inline-flex; align-items: center; justify-content: center; padding: 0 4px; margin-right: 8px; background: none; border: none; color: inherit; cursor: grab; }
+  .ink-section-drag-handle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
+  .ink-section.is-dragging .ink-section-drag-handle { cursor: grabbing; }
+  .ink-section-drag-icon { font-size: 14px; letter-spacing: -2px; line-height: 1; }
+  .ink-section-drop-before::before,
+  .ink-section-drop-after::after { content: ''; position: absolute; left: 0; right: 0; border-top: 2px solid var(--accent-color); }
+  .ink-section-drop-before::before { top: 0; }
+  .ink-section-drop-after::after { bottom: 0; }
   .ink-section-apply-row .btn { margin-left: 12px; }
   .ink-seed-input { font-family: 'SFMono-Regular', 'SFMono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; }
   .ink-styles-section { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; }

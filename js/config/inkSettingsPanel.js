@@ -119,6 +119,42 @@ const SECTION_DEFS = [
   }
 ];
 
+const SECTION_DEF_BY_ID = new Map(SECTION_DEFS.map(def => [def.id, def]));
+const DEFAULT_SECTION_ORDER = SECTION_DEFS.map(def => def.id);
+
+function normalizeSectionId(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return null;
+  return SECTION_DEF_BY_ID.has(trimmed) ? trimmed : null;
+}
+
+function sanitizeSectionOrder(order) {
+  const seen = new Set();
+  const sanitized = [];
+  if (Array.isArray(order)) {
+    order.forEach((value) => {
+      const normalized = normalizeSectionId(value);
+      if (normalized && !seen.has(normalized)) {
+        sanitized.push(normalized);
+        seen.add(normalized);
+      }
+    });
+  }
+  DEFAULT_SECTION_ORDER.forEach((id) => {
+    if (!seen.has(id)) {
+      sanitized.push(id);
+      seen.add(id);
+    }
+  });
+  return sanitized;
+}
+
+function getSectionDefsInOrder(order) {
+  const sanitized = sanitizeSectionOrder(order);
+  return sanitized.map(id => SECTION_DEF_BY_ID.get(id)).filter(Boolean);
+}
+
 function clampFillPercent(value, limits) {
   const raw = Number(value);
   const min = limits?.min ?? 0;
@@ -192,6 +228,10 @@ const panelState = {
     refreshGrain: null,
   },
   metas: [],
+  sectionsRoot: null,
+  sectionOrder: DEFAULT_SECTION_ORDER.slice(),
+  dragState: null,
+  dragListenersAttached: false,
   initialized: false,
   saveState: null,
   overallSlider: null,
@@ -211,6 +251,243 @@ const panelState = {
 const HEX_MATCH_RE = /seed|hash/i;
 const STYLE_NAME_MAX_LEN = 60;
 const STYLE_EXPORT_VERSION = 2;
+
+function getStoredSectionOrder() {
+  const appState = getAppState();
+  const stored = appState && Array.isArray(appState.inkSectionOrder)
+    ? appState.inkSectionOrder
+    : null;
+  const sanitized = sanitizeSectionOrder(stored);
+  if (appState) {
+    appState.inkSectionOrder = sanitized.slice();
+  }
+  return sanitized;
+}
+
+function applySectionOrderToDom(order) {
+  const root = panelState.sectionsRoot;
+  if (!root) return;
+  const metas = Array.isArray(panelState.metas) ? panelState.metas : [];
+  const metaById = new Map(metas.filter(Boolean).map(meta => [meta.id, meta]));
+  order.forEach((id) => {
+    const meta = metaById.get(id);
+    if (meta && meta.root && meta.root.parentElement === root) {
+      root.appendChild(meta.root);
+    }
+  });
+}
+
+function setSectionOrder(order, options = {}) {
+  const { silent = false, skipDom = false } = options || {};
+  const sanitized = sanitizeSectionOrder(order);
+  panelState.sectionOrder = sanitized;
+  const appState = getAppState();
+  if (appState) {
+    appState.inkSectionOrder = sanitized.slice();
+  }
+  if (Array.isArray(panelState.metas)) {
+    const orderIndex = new Map(sanitized.map((id, index) => [id, index]));
+    panelState.metas.sort((a, b) => {
+      const aid = a?.id;
+      const bid = b?.id;
+      const ai = orderIndex.has(aid) ? orderIndex.get(aid) : Number.MAX_SAFE_INTEGER;
+      const bi = orderIndex.has(bid) ? orderIndex.get(bid) : Number.MAX_SAFE_INTEGER;
+      return ai - bi;
+    });
+  }
+  if (!skipDom) {
+    applySectionOrderToDom(sanitized);
+  }
+  if (!silent) {
+    persistPanelState();
+  }
+  return sanitized;
+}
+
+function getInkSectionOrderInternal() {
+  return sanitizeSectionOrder(panelState.sectionOrder);
+}
+
+function clearDragIndicator() {
+  const dragState = panelState.dragState;
+  if (!dragState || !dragState.indicator) return;
+  const { element } = dragState.indicator;
+  if (element) {
+    element.classList.remove('ink-section-drop-before', 'ink-section-drop-after');
+  }
+  dragState.indicator = null;
+}
+
+function updateDragIndicator(element, position) {
+  const dragState = panelState.dragState;
+  if (!dragState) return;
+  if (dragState.indicator?.element !== element || dragState.indicator?.position !== position) {
+    clearDragIndicator();
+    if (element && position) {
+      element.classList.add(position === 'after' ? 'ink-section-drop-after' : 'ink-section-drop-before');
+      dragState.indicator = { element, position };
+    }
+  }
+}
+
+function finalizeSectionDrag({ commit = false } = {}) {
+  const dragState = panelState.dragState;
+  if (!dragState) return;
+  if (dragState.meta?.root) {
+    dragState.meta.root.classList.remove('is-dragging');
+  }
+  if (dragState.meta?.dragHandle) {
+    dragState.meta.dragHandle.setAttribute('aria-grabbed', 'false');
+    if (commit) {
+      requestAnimationFrame(() => {
+        if (dragState.meta?.dragHandle) {
+          dragState.meta.dragHandle.focus();
+        }
+      });
+    }
+  }
+  clearDragIndicator();
+  panelState.dragState = null;
+}
+
+function startSectionDrag(meta, event) {
+  if (!meta || !meta.root) return;
+  panelState.dragState = {
+    meta,
+    indicator: null,
+  };
+  meta.root.classList.add('is-dragging');
+  if (meta.dragHandle) {
+    meta.dragHandle.setAttribute('aria-grabbed', 'true');
+  }
+  if (event?.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    try {
+      event.dataTransfer.setData('text/plain', meta.id || '');
+    } catch (err) {
+      // ignore browsers that disallow setting data
+    }
+  }
+}
+
+function handleSectionsDragOver(event) {
+  const dragState = panelState.dragState;
+  if (!dragState || !dragState.meta?.root) return;
+  const root = panelState.sectionsRoot;
+  if (!root) return;
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move';
+  }
+  const target = event.target instanceof Element ? event.target.closest('.ink-section') : null;
+  if (!target || target === dragState.meta.root || !root.contains(target)) {
+    updateDragIndicator(null, null);
+    return;
+  }
+  const rect = target.getBoundingClientRect();
+  const before = (event.clientY - rect.top) < rect.height / 2;
+  updateDragIndicator(target, before ? 'before' : 'after');
+}
+
+function handleSectionsDrop(event) {
+  const dragState = panelState.dragState;
+  if (!dragState || !dragState.meta?.root) return;
+  const root = panelState.sectionsRoot;
+  if (!root) return;
+  event.preventDefault();
+  const indicator = dragState.indicator;
+  let referenceNode = null;
+  if (indicator && indicator.element && indicator.element !== dragState.meta.root) {
+    referenceNode = indicator.position === 'after'
+      ? indicator.element.nextSibling
+      : indicator.element;
+  }
+  root.insertBefore(dragState.meta.root, referenceNode);
+  const newOrder = Array.from(root.querySelectorAll('.ink-section'))
+    .map(el => el.dataset.sectionId)
+    .filter(Boolean);
+  setSectionOrder(newOrder, { skipDom: true });
+  finalizeSectionDrag({ commit: true });
+}
+
+function handleSectionsDragLeave(event) {
+  const root = panelState.sectionsRoot;
+  if (!root) return;
+  if (!event.relatedTarget || !root.contains(event.relatedTarget)) {
+    updateDragIndicator(null, null);
+  }
+}
+
+function moveSectionToIndex(sectionId, index) {
+  const order = getInkSectionOrderInternal();
+  const current = order.indexOf(sectionId);
+  if (current < 0) return false;
+  const clamped = clamp(Math.round(index), 0, Math.max(order.length - 1, 0));
+  if (clamped === current) return false;
+  order.splice(current, 1);
+  order.splice(clamped, 0, sectionId);
+  setSectionOrder(order);
+  const meta = findMetaById(sectionId);
+  if (meta?.dragHandle) {
+    meta.dragHandle.focus();
+  }
+  return true;
+}
+
+function moveSectionByDelta(sectionId, delta) {
+  if (!Number.isFinite(delta) || delta === 0) return false;
+  const order = getInkSectionOrderInternal();
+  const current = order.indexOf(sectionId);
+  if (current < 0) return false;
+  return moveSectionToIndex(sectionId, current + delta);
+}
+
+function handleDragHandleKeyDown(meta, event) {
+  if (!meta) return;
+  switch (event.key) {
+    case 'ArrowUp':
+    case 'ArrowLeft':
+      event.preventDefault();
+      moveSectionByDelta(meta.id, -1);
+      break;
+    case 'ArrowDown':
+    case 'ArrowRight':
+      event.preventDefault();
+      moveSectionByDelta(meta.id, 1);
+      break;
+    case 'Home':
+      event.preventDefault();
+      moveSectionToIndex(meta.id, 0);
+      break;
+    case 'End':
+      event.preventDefault();
+      moveSectionToIndex(meta.id, getInkSectionOrderInternal().length - 1);
+      break;
+    default:
+      break;
+  }
+}
+
+function setupSectionDragHandle(meta) {
+  const handle = meta?.dragHandle;
+  if (!handle) return;
+  handle.draggable = true;
+  handle.setAttribute('aria-grabbed', 'false');
+  handle.addEventListener('dragstart', (event) => {
+    startSectionDrag(meta, event);
+    event.stopPropagation();
+  });
+  handle.addEventListener('dragend', () => finalizeSectionDrag());
+  handle.addEventListener('keydown', (event) => handleDragHandleKeyDown(meta, event));
+}
+
+function ensureSectionsRootListeners(root) {
+  if (!root || panelState.dragListenersAttached) return;
+  root.addEventListener('dragover', handleSectionsDragOver);
+  root.addEventListener('drop', handleSectionsDrop);
+  root.addEventListener('dragleave', handleSectionsDragLeave);
+  panelState.dragListenersAttached = true;
+}
 
 function deepCloneValue(value) {
   if (Array.isArray(value)) {
@@ -967,6 +1244,7 @@ function setSectionCollapsed(meta, collapsed) {
 function buildSection(def, root) {
   const sectionEl = document.createElement('section');
   sectionEl.className = 'ink-section';
+  sectionEl.dataset.sectionId = def.id;
 
   const header = document.createElement('div');
   header.className = 'ink-section-header';
@@ -986,6 +1264,16 @@ function buildSection(def, root) {
 
   const topLine = document.createElement('div');
   topLine.className = 'ink-section-topline';
+  const dragHandle = document.createElement('button');
+  dragHandle.type = 'button';
+  dragHandle.className = 'ink-section-drag-handle';
+  dragHandle.setAttribute('aria-label', `Reorder ${def.label} section`);
+  const dragIcon = document.createElement('span');
+  dragIcon.className = 'ink-section-drag-icon';
+  dragIcon.setAttribute('aria-hidden', 'true');
+  dragIcon.textContent = '⋮⋮';
+  dragHandle.appendChild(dragIcon);
+  topLine.appendChild(dragHandle);
   topLine.appendChild(toggleBtn);
   header.appendChild(topLine);
 
@@ -1029,6 +1317,7 @@ function buildSection(def, root) {
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
     applyBtn: null,
+    dragHandle,
   };
 
   def.keyOrder.forEach(entry => {
@@ -1073,6 +1362,7 @@ function buildSection(def, root) {
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
   panelState.metas.push(meta);
+  setupSectionDragHandle(meta);
 
   toggleBtn.addEventListener('click', () => {
     setSectionCollapsed(meta, !meta.isCollapsed);
@@ -1524,6 +1814,10 @@ export function getInkEffectFactor() {
   return normalizedPercent(pct);
 }
 
+export function getInkSectionOrder() {
+  return getInkSectionOrderInternal();
+}
+
 function getFillStrengthPercent() {
   return getPercentFromState('inkFillStrength', 100);
 }
@@ -1714,8 +2008,11 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
   panelState.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
   panelState.saveState = typeof saveState === 'function' ? saveState : null;
+  panelState.sectionOrder = getStoredSectionOrder();
 
   const sectionsRoot = document.getElementById('inkSettingsSections');
+  panelState.sectionsRoot = sectionsRoot || null;
+  panelState.dragListenersAttached = false;
   panelState.overallSlider = document.getElementById('inkEffectsOverallSlider');
   panelState.overallNumberInput = document.getElementById('inkEffectsOverallNumber');
   panelState.styleNameInput = document.getElementById('inkStyleNameInput');
@@ -1773,13 +2070,18 @@ export function setupInkSettingsPanel(options = {}) {
   syncOverallStrengthUI();
 
   if (sectionsRoot) {
-    SECTION_DEFS.forEach(def => {
+    sectionsRoot.innerHTML = '';
+    panelState.metas = [];
+    const orderedDefs = getSectionDefsInOrder(panelState.sectionOrder);
+    orderedDefs.forEach(def => {
       const meta = buildSection(def, sectionsRoot);
       if (meta.applyBtn) {
         meta.applyBtn.addEventListener('click', () => applySection(meta));
       }
       syncInputs(meta);
     });
+    applySectionOrderToDom(panelState.sectionOrder);
+    ensureSectionsRootListeners(sectionsRoot);
   }
 
   panelState.initialized = true;

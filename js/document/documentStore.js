@@ -25,6 +25,34 @@ const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
 
 const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain'];
 
+function normalizeInkSectionId(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return null;
+  return KNOWN_INK_SECTIONS.includes(trimmed) ? trimmed : null;
+}
+
+function sanitizeInkSectionOrder(order) {
+  const seen = new Set();
+  const sanitized = [];
+  if (Array.isArray(order)) {
+    order.forEach((value) => {
+      const normalized = normalizeInkSectionId(value);
+      if (normalized && !seen.has(normalized)) {
+        sanitized.push(normalized);
+        seen.add(normalized);
+      }
+    });
+  }
+  KNOWN_INK_SECTIONS.forEach((sectionId) => {
+    if (!seen.has(sectionId)) {
+      sanitized.push(sectionId);
+      seen.add(sectionId);
+    }
+  });
+  return sanitized;
+}
+
 function cloneInkStyleValue(value) {
   if (Array.isArray(value)) {
     return value.map(item => cloneInkStyleValue(item));
@@ -169,6 +197,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
+    inkSectionOrder: sanitizeInkSectionOrder(state.inkSectionOrder),
     inkFillStrength: clamp(Number(state.inkFillStrength ?? 100), 0, 100),
     centerThickenPct: clamp(
       Number(state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
@@ -394,6 +423,7 @@ export function deserializeDocumentState(data, context) {
     grainSeed: (data.grainSeed >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
     altSeed:
       (data.altSeed >>> 0) || (((data.grainSeed >>> 0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
+    inkSectionOrder: sanitizeInkSectionOrder(data.inkSectionOrder ?? state.inkSectionOrder),
     wordWrap: data.wordWrap !== false,
     stageWidthFactor: sanitizedStageWidth,
     stageHeightFactor: sanitizedStageHeight,
