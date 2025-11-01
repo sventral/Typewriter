@@ -645,42 +645,71 @@ body[data-page-tone='dark']{
   }
   .ink-style-actions-row .btn-text.danger { color: var(--danger-color, #c24141); }
   .ink-style-actions-row .btn-text:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
-  .input-with-suffix { position: relative; display: flex; }
+  .input-with-suffix { position: relative; display: block; }
   .input-with-suffix input { width: 100%; }
+  .input-with-suffix span {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    pointer-events: none;
+    opacity: 0.55;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
   #typographySettings {
-    --typography-number-width: 104px;
-    --typography-suffix-offset: 28px;
-    --typography-suffix-padding: calc(var(--typography-suffix-offset) + 18px);
+    --typography-number-width: 128px;
+    --typography-spinner-width: 26px;
+    --typography-suffix-gap: 6px;
+    --typography-suffix-width: 16px;
+    --typography-suffix-offset: calc(var(--typography-spinner-width) + var(--typography-suffix-gap));
+    --typography-suffix-padding: calc(var(--typography-suffix-offset) + var(--typography-suffix-width));
   }
-  #typographySettings .control-row .input-with-suffix { width: var(--typography-number-width); }
+  #typographySettings .control-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 16px;
+  }
+  #typographySettings .control-row > span { text-align: right; }
+  #typographySettings .control-row label {
+    margin-right: 0;
+  }
+  #typographySettings .control-row > :last-child {
+    justify-self: end;
+  }
+  #typographySettings .control-row .input-with-suffix,
   #typographySettings .control-row input[type="number"],
-  #typographySettings .control-row select { width: var(--typography-number-width); }
-  .input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }
-  #typographySettings .percent-suffix span { right: var(--typography-suffix-offset); }
-  #typographySettings .percent-suffix input {
-    padding-right: var(--typography-suffix-padding);
-    text-align: right;
+  #typographySettings .control-row select {
+    width: var(--typography-number-width);
   }
-  .range-input-pair {
-    --range-input-width: var(--typography-number-width, 84px);
+  #typographySettings .control-row input[type="number"] {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  #typographySettings .control-row input[type="checkbox"] {
+    justify-self: end;
+  }
+  #typographySettings .percent-suffix span {
+    right: calc(var(--typography-spinner-width) + var(--typography-suffix-gap));
+  }
+  #typographySettings .percent-suffix input { padding-right: var(--typography-suffix-padding); }
+  #typographySettings .range-input-pair {
+    --range-input-width: var(--typography-number-width);
     display: grid;
     grid-template-columns: minmax(0, var(--range-input-width)) auto minmax(0, var(--range-input-width));
     align-items: center;
-    column-gap: 6px;
+    column-gap: 8px;
   }
-  .range-input-pair .input-with-suffix {
+  #typographySettings .range-input-pair .input-with-suffix {
     width: var(--range-input-width);
   }
-  .range-input-pair .input-with-suffix input {
-    text-align: right;
-    padding-right: var(--typography-suffix-padding);
-  }
-  .range-input-pair .range-separator {
-    font-weight: 400;
-    opacity: 0.6;
-  }
-  .range-input-pair .range-separator {
+  #typographySettings .range-input-pair .input-with-suffix input { padding-right: var(--typography-suffix-padding); }
+  #typographySettings .range-input-pair .range-separator {
+    font-weight: 500;
+    opacity: 0.55;
     justify-self: center;
+    text-align: center;
   }
 
   .fonts-settings-group { gap: 8px; }
