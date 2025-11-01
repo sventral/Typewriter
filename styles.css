@@ -657,17 +657,18 @@ body[data-page-tone='dark']{
   .range-input-pair {
     --range-input-width: var(--typography-number-width, 84px);
     display: grid;
-    grid-template-columns: minmax(0, var(--range-input-width)) auto minmax(0, var(--range-input-width)) auto;
+    grid-template-columns: minmax(0, var(--range-input-width)) auto minmax(0, var(--range-input-width));
     align-items: center;
     column-gap: 6px;
   }
-  .range-input-pair input {
-    width: 100%;
-    text-align: right;
-    padding-right: 6px;
+  .range-input-pair .input-with-suffix {
+    width: var(--range-input-width);
   }
-  .range-input-pair .range-separator,
-  .range-input-pair .range-suffix {
+  .range-input-pair .input-with-suffix input {
+    text-align: right;
+    padding-right: 18px;
+  }
+  .range-input-pair .range-separator {
     font-weight: 400;
     opacity: 0.6;
   }
