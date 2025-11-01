@@ -13,7 +13,14 @@ import { detectSafariEnvironment, createStageLayoutController } from './layout/s
 import { createLayoutAndZoomController } from './layout/layoutAndZoomController.js';
 import { createGlyphAtlas } from './rendering/glyphAtlas.js';
 import { createPageRenderer } from './rendering/pageRendering.js';
-import { getInkEffectFactor, getInkSectionStrength, isInkSectionEnabled, setupInkSettingsPanel } from './config/inkSettingsPanel.js';
+import {
+  getCenterThickenFactor,
+  getEdgeThinFactor,
+  getInkEffectFactor,
+  getInkSectionStrength,
+  isInkSectionEnabled,
+  setupInkSettingsPanel,
+} from './config/inkSettingsPanel.js';
 import { createDocumentEditingController } from './document/documentEditing.js';
 import { createInputController } from './document/inputHandlers.js';
 import { createPageLifecycleController } from './document/pageLifecycle.js';
@@ -366,6 +373,8 @@ const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphA
   getStateZoom: () => state.zoom,
   isSafari: IS_SAFARI,
   safariSupersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD,
+  getCenterThickenFactor,
+  getEdgeThinFactor,
   getInkEffectFactor,
   getInkSectionStrength,
   isInkSectionEnabled,
