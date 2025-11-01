@@ -648,6 +648,9 @@ body[data-page-tone='dark']{
   .input-with-suffix { position: relative; display: flex; }
   .input-with-suffix input { width: 100%; }
   .input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }
+  #typographySettings .range-input-pair { display: flex; align-items: center; gap: 8px; }
+  #typographySettings .range-input-pair .input-with-suffix { width: 88px; }
+  #typographySettings .range-input-pair .range-separator { font-weight: 600; opacity: 0.6; }
 
   .fonts-settings-group { gap: 8px; }
   .fonts-settings-group .font-option {

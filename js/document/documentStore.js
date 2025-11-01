@@ -1,4 +1,11 @@
 import { clamp } from '../utils/math.js';
+import {
+  GLYPH_JITTER_DEFAULTS,
+  normalizeGlyphJitterAmount,
+  normalizeGlyphJitterFrequency,
+  normalizeGlyphJitterSeed,
+  cloneGlyphJitterRange,
+} from '../config/glyphJitterConfig.js';
 
 const KNOWN_INK_SECTIONS = ['texture', 'fuzz', 'bleed', 'grain'];
 
@@ -118,8 +125,12 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
         return { rows };
       })
     : [];
+  const glyphJitterAmount = normalizeGlyphJitterAmount(state.glyphJitterAmountPct, GLYPH_JITTER_DEFAULTS.amountPct);
+  const glyphJitterFrequency = normalizeGlyphJitterFrequency(state.glyphJitterFrequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
+  const glyphJitterSeed = normalizeGlyphJitterSeed(state.glyphJitterSeed, GLYPH_JITTER_DEFAULTS.seed);
+
   return {
-    v: 24,
+    v: 25,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -155,6 +166,12 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     darkPageInDarkMode: !!state.darkPageInDarkMode,
     pageFillColor: state.pageFillColor,
     savedInkStyles: sanitizeSavedInkStyles(state.savedInkStyles),
+    glyphJitter: {
+      enabled: !!state.glyphJitterEnabled,
+      amountPct: cloneGlyphJitterRange(glyphJitterAmount),
+      frequencyPct: cloneGlyphJitterRange(glyphJitterFrequency),
+      seed: glyphJitterSeed,
+    },
     pages,
   };
 }
@@ -172,7 +189,7 @@ export function deserializeDocumentState(data, context) {
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 24) return false;
+  if (!data || data.v < 2 || data.v > 25) return false;
   state.pages = [];
   if (app.stageInner) {
     app.stageInner.innerHTML = '';
@@ -275,6 +292,15 @@ export function deserializeDocumentState(data, context) {
   const sanitizedStageHeight = Number.isFinite(storedStageHeight)
     ? clamp(storedStageHeight, 1, 5)
     : state.stageHeightFactor;
+  const jitterBlock = data.glyphJitter && typeof data.glyphJitter === 'object'
+    ? data.glyphJitter
+    : null;
+  const fallbackAmount = state.glyphJitterAmountPct || GLYPH_JITTER_DEFAULTS.amountPct;
+  const fallbackFrequency = state.glyphJitterFrequencyPct || GLYPH_JITTER_DEFAULTS.frequencyPct;
+  const sanitizedJitterAmount = normalizeGlyphJitterAmount(jitterBlock?.amountPct, fallbackAmount);
+  const sanitizedJitterFrequency = normalizeGlyphJitterFrequency(jitterBlock?.frequencyPct, fallbackFrequency);
+  const sanitizedJitterSeed = normalizeGlyphJitterSeed(jitterBlock?.seed, state.glyphJitterSeed ?? GLYPH_JITTER_DEFAULTS.seed);
+
   Object.assign(state, {
     marginL: data.margins?.L ?? state.marginL,
     marginR: data.margins?.R ?? state.marginR,
@@ -312,6 +338,14 @@ export function deserializeDocumentState(data, context) {
     pageFillColor: typeof data.pageFillColor === 'string' && data.pageFillColor.trim()
       ? data.pageFillColor
       : state.pageFillColor,
+    glyphJitterEnabled: jitterBlock?.enabled === true
+      ? true
+      : jitterBlock?.enabled === false
+        ? false
+        : !!state.glyphJitterEnabled,
+    glyphJitterAmountPct: sanitizedJitterAmount,
+    glyphJitterFrequencyPct: sanitizedJitterFrequency,
+    glyphJitterSeed: sanitizedJitterSeed,
   });
   state.savedInkStyles = sanitizeSavedInkStyles(data.savedInkStyles);
   if (typeof data.documentId === 'string' && data.documentId.trim()) {

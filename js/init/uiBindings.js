@@ -2,6 +2,11 @@ import { clamp } from '../utils/math.js';
 import { sanitizeIntegerField } from '../utils/forms.js';
 import { refreshSavedInkStylesUI, syncInkStrengthDisplays } from '../config/inkSettingsPanel.js';
 import {
+  GLYPH_JITTER_DEFAULTS,
+  normalizeGlyphJitterAmount,
+  normalizeGlyphJitterFrequency,
+} from '../config/glyphJitterConfig.js';
+import {
   DEFAULT_DOCUMENT_TITLE,
   normalizeDocumentTitle,
   generateDocumentId,
@@ -81,6 +86,32 @@ export function setupUIBindings(context, controllers) {
   const docState = { documents: [], activeId: null };
   const docMenuState = { open: false };
   let isEditingTitle = false;
+
+  function formatNumberForInput(value, fractionDigits = 2) {
+    if (!Number.isFinite(value)) return '';
+    if (fractionDigits <= 0) {
+      return String(Math.round(value));
+    }
+    const factor = 10 ** fractionDigits;
+    const rounded = Math.round(value * factor) / factor;
+    let str = rounded.toFixed(fractionDigits);
+    str = str.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
+    return str;
+  }
+
+  function setGlyphJitterInputsDisabled(disabled) {
+    [
+      app.glyphJitterAmountMin,
+      app.glyphJitterAmountMax,
+      app.glyphJitterFrequencyMin,
+      app.glyphJitterFrequencyMax,
+    ].forEach((el) => {
+      if (el) el.disabled = disabled;
+    });
+    if (app.shuffleGlyphJitterSeedBtn) {
+      app.shuffleGlyphJitterSeedBtn.disabled = disabled;
+    }
+  }
 
   const docUpdatedFormatter = (() => {
     if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
@@ -629,6 +660,91 @@ export function setupUIBindings(context, controllers) {
     }
   }
 
+  function bindGlyphJitterControls() {
+    const markGlyphJitterDirty = () => {
+      for (const p of state.pages) {
+        if (!p) continue;
+        p.dirtyAll = true;
+        if (p.active) schedulePaint(p);
+      }
+    };
+
+    const sanitizeAmountInputs = () => {
+      if (!app.glyphJitterAmountMin || !app.glyphJitterAmountMax) return null;
+      const raw = {
+        min: Number.parseFloat(app.glyphJitterAmountMin.value),
+        max: Number.parseFloat(app.glyphJitterAmountMax.value),
+      };
+      const fallback = state.glyphJitterAmountPct || GLYPH_JITTER_DEFAULTS.amountPct;
+      const sanitized = normalizeGlyphJitterAmount(raw, fallback);
+      state.glyphJitterAmountPct = sanitized;
+      app.glyphJitterAmountMin.value = formatNumberForInput(sanitized.min, 2);
+      app.glyphJitterAmountMax.value = formatNumberForInput(sanitized.max, 2);
+      return sanitized;
+    };
+
+    const sanitizeFrequencyInputs = () => {
+      if (!app.glyphJitterFrequencyMin || !app.glyphJitterFrequencyMax) return null;
+      const raw = {
+        min: Number.parseFloat(app.glyphJitterFrequencyMin.value),
+        max: Number.parseFloat(app.glyphJitterFrequencyMax.value),
+      };
+      const fallback = state.glyphJitterFrequencyPct || GLYPH_JITTER_DEFAULTS.frequencyPct;
+      const sanitized = normalizeGlyphJitterFrequency(raw, fallback);
+      state.glyphJitterFrequencyPct = sanitized;
+      app.glyphJitterFrequencyMin.value = formatNumberForInput(sanitized.min, 1);
+      app.glyphJitterFrequencyMax.value = formatNumberForInput(sanitized.max, 1);
+      return sanitized;
+    };
+
+    if (app.glyphJitterToggle) {
+      app.glyphJitterToggle.checked = !!state.glyphJitterEnabled;
+      app.glyphJitterToggle.addEventListener('change', () => {
+        state.glyphJitterEnabled = !!app.glyphJitterToggle.checked;
+        setGlyphJitterInputsDisabled(!state.glyphJitterEnabled);
+        saveStateDebounced();
+        markGlyphJitterDirty();
+        focusStage();
+      });
+    }
+
+    [app.glyphJitterAmountMin, app.glyphJitterAmountMax].forEach((input) => {
+      if (!input) return;
+      input.addEventListener('change', () => {
+        sanitizeAmountInputs();
+        saveStateDebounced();
+        markGlyphJitterDirty();
+        focusStage();
+      });
+      input.addEventListener('blur', () => { sanitizeAmountInputs(); });
+    });
+
+    [app.glyphJitterFrequencyMin, app.glyphJitterFrequencyMax].forEach((input) => {
+      if (!input) return;
+      input.addEventListener('change', () => {
+        sanitizeFrequencyInputs();
+        saveStateDebounced();
+        markGlyphJitterDirty();
+        focusStage();
+      });
+      input.addEventListener('blur', () => { sanitizeFrequencyInputs(); });
+    });
+
+    if (app.shuffleGlyphJitterSeedBtn) {
+      app.shuffleGlyphJitterSeedBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
+        saveStateDebounced();
+        markGlyphJitterDirty();
+        focusStage();
+      });
+    }
+
+    if (state.glyphJitterAmountPct) sanitizeAmountInputs();
+    if (state.glyphJitterFrequencyPct) sanitizeFrequencyInputs();
+    setGlyphJitterInputsDisabled(!state.glyphJitterEnabled);
+  }
+
   function bindRulerInteractions() {
     app.rulerH_stops_container.addEventListener('pointerdown', e => {
       const tri = e.target.closest('.tri');
@@ -751,6 +867,7 @@ export function setupUIBindings(context, controllers) {
     bindMarginInputs();
     bindStageSizeInputs();
     bindToolbarInputs();
+    bindGlyphJitterControls();
     bindAppearanceControls();
     bindRulerInteractions();
     bindZoomControls();
@@ -845,6 +962,16 @@ export function setupUIBindings(context, controllers) {
     updateColsPreviewUI();
     if (app.sizeInput) app.sizeInput.value = String(clamp(Math.round(state.inkWidthPct ?? 95), 1, 150));
     if (app.lhInput) app.lhInput.value = String(state.lineHeightFactor);
+    const jitterAmount = normalizeGlyphJitterAmount(state.glyphJitterAmountPct, GLYPH_JITTER_DEFAULTS.amountPct);
+    const jitterFrequency = normalizeGlyphJitterFrequency(state.glyphJitterFrequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
+    state.glyphJitterAmountPct = jitterAmount;
+    state.glyphJitterFrequencyPct = jitterFrequency;
+    if (app.glyphJitterToggle) app.glyphJitterToggle.checked = !!state.glyphJitterEnabled;
+    if (app.glyphJitterAmountMin) app.glyphJitterAmountMin.value = formatNumberForInput(jitterAmount.min, 2);
+    if (app.glyphJitterAmountMax) app.glyphJitterAmountMax.value = formatNumberForInput(jitterAmount.max, 2);
+    if (app.glyphJitterFrequencyMin) app.glyphJitterFrequencyMin.value = formatNumberForInput(jitterFrequency.min, 1);
+    if (app.glyphJitterFrequencyMax) app.glyphJitterFrequencyMax.value = formatNumberForInput(jitterFrequency.max, 1);
+    setGlyphJitterInputsDisabled(!state.glyphJitterEnabled);
     if (app.showMarginBoxCb) app.showMarginBoxCb.checked = !!state.showMarginBox;
     if (app.wordWrapCb) app.wordWrapCb.checked = !!state.wordWrap;
     if (app.mmLeft) app.mmLeft.value = Math.round(mmX(state.marginL));
@@ -871,6 +998,10 @@ export function setupUIBindings(context, controllers) {
       state.grainPct = 100;
       state.grainSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
       state.altSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
+      state.glyphJitterEnabled = GLYPH_JITTER_DEFAULTS.enabled;
+      state.glyphJitterAmountPct = normalizeGlyphJitterAmount(GLYPH_JITTER_DEFAULTS.amountPct, GLYPH_JITTER_DEFAULTS.amountPct);
+      state.glyphJitterFrequencyPct = normalizeGlyphJitterFrequency(GLYPH_JITTER_DEFAULTS.frequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
+      state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
       state.wordWrap = true;
       applyDefaultMargins();
     }
