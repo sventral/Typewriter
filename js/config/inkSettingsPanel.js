@@ -1,7 +1,10 @@
-import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_INTENSITY, INK_TEXTURE, normalizeInkTextureConfig } from './inkConfig.js';
+import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_INTENSITY, INK_TEXTURE, normalizeEdgeBleedConfig, normalizeInkTextureConfig } from './inkConfig.js';
 
 const sanitizedInkTextureDefaults = normalizeInkTextureConfig(INK_TEXTURE);
 Object.assign(INK_TEXTURE, sanitizedInkTextureDefaults);
+
+const sanitizedEdgeBleedDefaults = normalizeEdgeBleedConfig(EDGE_BLEED);
+Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
@@ -43,7 +46,7 @@ const SECTION_DEFS = [
     id: 'bleed',
     label: 'Bleed',
     config: EDGE_BLEED,
-    keyOrder: ['inks', 'passes'],
+    keyOrder: ['inks', 'widthPx', 'feather', 'lightnessShift', 'noiseRoughness', 'intensity', 'seed'],
     trigger: 'glyph',
     stateKey: 'edgeBleedStrength',
     defaultStrength: EDGE_BLEED.enabled === false ? 0 : 100,
@@ -189,6 +192,8 @@ function normalizeStyleRecord(style, index = 0) {
           : ('strength' in section ? def.config : section);
       if (def.id === 'texture') {
         configSource = normalizeInkTextureConfig(configSource);
+      } else if (def.id === 'bleed') {
+        configSource = normalizeEdgeBleedConfig(configSource);
       }
       record.sections[def.id] = {
         strength,

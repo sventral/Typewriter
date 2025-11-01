@@ -145,14 +145,78 @@ export const EDGE_FUZZ = {
   seed: 0x7F4A7C15,
 };
 
-export const EDGE_BLEED = {
+const EDGE_BLEED_DEFAULTS = {
   enabled: false,
   inks: ['b', 'r'],
-  passes: [
-    { width: 0.25, alpha: 0.18, jitter: 0.22, jitterY: 0.16, lighten: 0.08, strokes: 2, seed: 324508639 },
-    { width: 0.21, alpha: 0.192, jitter: 0.05, jitterY: 0.145, lighten: 0.052, strokes: 1, seed: 610839777 }
-  ]
+  widthPx: 0.32,
+  feather: 1.18,
+  lightnessShift: 0.08,
+  noiseRoughness: 0.24,
+  intensity: 0.22,
+  seed: 0xC13579BD,
 };
+
+export function normalizeEdgeBleedConfig(config) {
+  const base = EDGE_BLEED_DEFAULTS;
+  const source = config && typeof config === 'object' ? config : {};
+  const passes = Array.isArray(source.passes) ? source.passes.filter(pass => pass && typeof pass === 'object') : [];
+  const average = values => {
+    if (!values.length) return null;
+    const sum = values.reduce((acc, val) => acc + val, 0);
+    return sum / values.length;
+  };
+
+  const normalized = {
+    enabled: source.enabled !== false,
+    inks: Array.isArray(source.inks) ? source.inks.filter(ink => typeof ink === 'string' && ink.length) : base.inks.slice(),
+    widthPx: Number.isFinite(source.widthPx) ? Math.max(0, source.widthPx) : base.widthPx,
+    feather: Number.isFinite(source.feather) ? Math.max(0.01, source.feather) : base.feather,
+    lightnessShift: Number.isFinite(source.lightnessShift) ? clamp(source.lightnessShift, 0, 1) : base.lightnessShift,
+    noiseRoughness: Number.isFinite(source.noiseRoughness) ? Math.max(0, source.noiseRoughness) : base.noiseRoughness,
+    intensity: Number.isFinite(source.intensity) ? clamp(source.intensity, 0, 1) : base.intensity,
+    seed: sanitizeSeed(source.seed, base.seed),
+  };
+
+  if (!normalized.inks.length) {
+    normalized.inks = base.inks.slice();
+  }
+
+  if (passes.length) {
+    const widths = passes
+      .map(pass => Number(pass.width))
+      .filter(value => Number.isFinite(value) && value > 0);
+    const lightens = passes
+      .map(pass => Number(pass.lighten))
+      .filter(value => Number.isFinite(value));
+    const jitters = passes
+      .map(pass => {
+        const jx = Number(pass.jitter);
+        const jy = Number(pass.jitterY);
+        if (Number.isFinite(jx) && Number.isFinite(jy)) return Math.max(jx, jy);
+        if (Number.isFinite(jx)) return jx;
+        if (Number.isFinite(jy)) return jy;
+        return NaN;
+      })
+      .filter(value => Number.isFinite(value));
+    const alphas = passes
+      .map(pass => Number(pass.alpha))
+      .filter(value => Number.isFinite(value));
+
+    const widthAvg = average(widths);
+    const lightenAvg = average(lightens);
+    const jitterAvg = average(jitters);
+    const alphaAvg = average(alphas);
+
+    if (Number.isFinite(widthAvg)) normalized.widthPx = Math.max(0, widthAvg);
+    if (Number.isFinite(lightenAvg)) normalized.lightnessShift = clamp(lightenAvg, 0, 1);
+    if (Number.isFinite(jitterAvg)) normalized.noiseRoughness = Math.max(0, jitterAvg);
+    if (Number.isFinite(alphaAvg)) normalized.intensity = clamp(alphaAvg, 0, 1);
+  }
+
+  return normalized;
+}
+
+export const EDGE_BLEED = normalizeEdgeBleedConfig(EDGE_BLEED_DEFAULTS);
 
 export const GRAIN_CFG = {
   enabled: false,
