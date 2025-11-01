@@ -53,6 +53,7 @@ export function createMainState(app, gridDiv = 8) {
     darkPageInDarkMode: false,
     pageFillColor: '#ffffff',
     inkEffectsPreferWhite: false,
+    inkSectionOrder: ['fill', 'texture', 'fuzz', 'bleed', 'grain'],
     savedInkStyles: [],
   };
 }
