@@ -9,6 +9,20 @@ Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
 const INPUT_OVERRIDES = {
+  'fill.centerThickenPct': {
+    type: 'range',
+    min: () => CENTER_THICKEN_LIMITS.min,
+    max: () => CENTER_THICKEN_LIMITS.max,
+    step: 1,
+    precision: 0,
+  },
+  'fill.edgeThinPct': {
+    type: 'range',
+    min: () => EDGE_THIN_LIMITS.min,
+    max: () => EDGE_THIN_LIMITS.max,
+    step: 1,
+    precision: 0,
+  },
   'grain.scale': { type: 'range', min: 0.25, max: 3, step: 0.05, precision: 2 },
   'grain.gamma': { type: 'range', min: 0.2, max: 3, step: 0.05, precision: 2 },
   'grain.opacity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
@@ -21,7 +35,16 @@ const INPUT_OVERRIDES = {
 function getInputOverride(sectionId, path) {
   if (!path) return null;
   const key = sectionId ? `${sectionId}.${path}` : path;
-  return INPUT_OVERRIDES[key] || null;
+  const override = INPUT_OVERRIDES[key];
+  if (!override) return null;
+  if (typeof override.min === 'function' || typeof override.max === 'function') {
+    return {
+      ...override,
+      min: typeof override.min === 'function' ? override.min() : override.min,
+      max: typeof override.max === 'function' ? override.max() : override.max,
+    };
+  }
+  return override;
 }
 
 function resolveIntensityConfig(key) {
@@ -39,7 +62,25 @@ function resolveIntensityConfig(key) {
 const CENTER_THICKEN_LIMITS = resolveIntensityConfig('centerThicken');
 const EDGE_THIN_LIMITS = resolveIntensityConfig('edgeThin');
 
+const FILL_CFG = {
+  enabled: true,
+  centerThickenPct: CENTER_THICKEN_LIMITS.defaultPct,
+  edgeThinPct: EDGE_THIN_LIMITS.defaultPct,
+};
+
 const SECTION_DEFS = [
+  {
+    id: 'fill',
+    label: 'Fill',
+    config: FILL_CFG,
+    keyOrder: [
+      { path: 'centerThickenPct', label: 'Center thickening' },
+      { path: 'edgeThinPct', label: 'Edge thinning' },
+    ],
+    trigger: 'glyph',
+    stateKey: 'inkFillStrength',
+    defaultStrength: 100,
+  },
   {
     id: 'texture',
     label: 'Texture',
@@ -78,6 +119,71 @@ const SECTION_DEFS = [
   }
 ];
 
+function clampFillPercent(value, limits) {
+  const raw = Number(value);
+  const min = limits?.min ?? 0;
+  const max = limits?.max ?? Math.max(min, 200);
+  if (!Number.isFinite(raw)) {
+    return clamp(limits?.defaultPct ?? 100, min, max);
+  }
+  return clamp(Math.round(raw), min, max);
+}
+
+function normalizeFillConfig(config, styleFallback = {}) {
+  const src = config && typeof config === 'object' ? config : {};
+  const fallback = styleFallback && typeof styleFallback === 'object' ? styleFallback : {};
+  const centerFallbacks = [
+    src.centerThicken,
+    src.centerThickenPct,
+    fallback.centerThicken,
+    fallback.centerThickenPct,
+  ];
+  const edgeFallbacks = [
+    src.edgeThin,
+    src.edgeThinPct,
+    fallback.edgeThin,
+    fallback.edgeThinPct,
+  ];
+  const resolveValue = (candidates, limits) => {
+    for (const candidate of candidates) {
+      const num = Number(candidate);
+      if (Number.isFinite(num)) {
+        return clampFillPercent(num, limits);
+      }
+    }
+    return clampFillPercent(limits.defaultPct, limits);
+  };
+  const centerThickenPct = resolveValue(centerFallbacks, CENTER_THICKEN_LIMITS);
+  const edgeThinPct = resolveValue(edgeFallbacks, EDGE_THIN_LIMITS);
+  return {
+    enabled: src.enabled === false ? false : true,
+    centerThickenPct,
+    edgeThinPct,
+  };
+}
+
+function syncFillConfigValues() {
+  FILL_CFG.centerThickenPct = getCenterThickenPercent();
+  FILL_CFG.edgeThinPct = getEdgeThinPercent();
+  FILL_CFG.enabled = getFillStrengthPercent() > 0;
+}
+
+function applyFillConfigToState(config, options = {}) {
+  if (!config || typeof config !== 'object') return;
+  const { silent = false } = options;
+  if (Number.isFinite(Number(config.centerThickenPct))) {
+    setCenterThickenPercent(config.centerThickenPct, { silent: true, updateConfig: false });
+  }
+  if (Number.isFinite(Number(config.edgeThinPct))) {
+    setEdgeThinPercent(config.edgeThinPct, { silent: true, updateConfig: false });
+  }
+  if (!silent) {
+    syncFillConfigValues();
+    scheduleGlyphRefresh();
+    persistPanelState();
+  }
+}
+
 const panelState = {
   appState: null,
   app: null,
@@ -90,10 +196,6 @@ const panelState = {
   saveState: null,
   overallSlider: null,
   overallNumberInput: null,
-  centerThickenSlider: null,
-  centerThickenNumberInput: null,
-  edgeThinSlider: null,
-  edgeThinNumberInput: null,
   pendingGlyphRAF: 0,
   pendingGrainRAF: 0,
   pendingGlyphOptions: null,
@@ -175,24 +277,8 @@ function normalizeStyleRecord(style, index = 0) {
       id: typeof style?.id === 'string' && style.id.trim() ? style.id.trim() : generateStyleId(),
       name: sanitizeStyleName(style?.name) || `Style ${index + 1}`,
       overall: clamp(Math.round(Number(style?.overall ?? 100)), 0, 100),
-      centerThicken: clamp(
-        Math.round(Number.isFinite(Number(style?.centerThicken))
-          ? Number(style.centerThicken)
-          : Number.isFinite(Number(style?.centerThickenPct))
-            ? Number(style.centerThickenPct)
-            : CENTER_THICKEN_LIMITS.defaultPct),
-        CENTER_THICKEN_LIMITS.min,
-        CENTER_THICKEN_LIMITS.max,
-      ),
-      edgeThin: clamp(
-        Math.round(Number.isFinite(Number(style?.edgeThin))
-          ? Number(style.edgeThin)
-          : Number.isFinite(Number(style?.edgeThinPct))
-            ? Number(style.edgeThinPct)
-            : EDGE_THIN_LIMITS.defaultPct),
-        EDGE_THIN_LIMITS.min,
-        EDGE_THIN_LIMITS.max,
-      ),
+      centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
+      edgeThin: EDGE_THIN_LIMITS.defaultPct,
       sections: {},
     };
     SECTION_DEFS.forEach(def => {
@@ -200,6 +286,27 @@ function normalizeStyleRecord(style, index = 0) {
         ? style.sections[def.id]
         : (style && typeof style === 'object' && typeof style[def.id] === 'object' ? style[def.id] : null);
       const section = rawSection && typeof rawSection === 'object' ? rawSection : {};
+      if (def.id === 'fill') {
+        const legacyFill = style && typeof style.fill === 'object' ? style.fill : null;
+        const fillSource = section && Object.keys(section).length ? section : (legacyFill || {});
+        const rawStrength = fillSource?.strength ?? style?.fillStrength ?? legacyFill?.value ?? legacyFill?.percent;
+        const strength = clamp(Math.round(Number.isFinite(Number(rawStrength)) ? Number(rawStrength) : def.defaultStrength ?? 100), 0, 100);
+        const configCandidate = fillSource?.config != null
+          ? fillSource.config
+          : fillSource?.settings != null
+            ? fillSource.settings
+            : ('strength' in fillSource ? null : fillSource);
+        const normalizedFill = normalizeFillConfig(configCandidate, style);
+        normalizedFill.enabled = normalizedFill.enabled && strength > 0;
+        record.centerThicken = normalizedFill.centerThickenPct;
+        record.edgeThin = normalizedFill.edgeThinPct;
+        record.fillStrength = strength;
+        record.sections[def.id] = {
+          strength,
+          config: deepCloneValue(normalizedFill),
+        };
+        return;
+      }
       const strength = clamp(Math.round(Number(section?.strength ?? def.defaultStrength ?? 0)), 0, 100);
       let configSource = section.config != null
         ? section.config
@@ -230,6 +337,7 @@ function createDefaultStyleRecord(index = 0) {
     id: generateStyleId(),
     name: index === 0 ? 'Current style' : `Style ${index + 1}`,
     overall: 100,
+    fillStrength: 100,
     centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
     edgeThin: EDGE_THIN_LIMITS.defaultPct,
     sections: {},
@@ -271,6 +379,7 @@ function createStyleSnapshot(name, existingId = null) {
     id: existingId || generateStyleId(),
     name,
     overall: getPercentFromState('effectsOverallStrength', 100),
+    fillStrength: getFillStrengthPercent(),
     centerThicken: getCenterThickenPercent(),
     edgeThin: getEdgeThinPercent(),
     sections: {},
@@ -922,20 +1031,31 @@ function buildSection(def, root) {
     applyBtn: null,
   };
 
-  def.keyOrder.forEach(key => {
-    const value = def.config[key];
-    const path = key;
+  def.keyOrder.forEach(entry => {
+    let path = null;
+    let labelText = '';
+    if (typeof entry === 'string') {
+      path = entry;
+      labelText = def.labels && typeof def.labels === 'object' && def.labels[entry]
+        ? def.labels[entry]
+        : entry;
+    } else if (entry && typeof entry === 'object') {
+      path = entry.path || entry.key || entry.name || null;
+      labelText = entry.label || entry.title || entry.name || entry.key || entry.path || '';
+    }
+    if (!path) return;
+    const value = getValueByPath(meta.config, path);
     if (Array.isArray(value)) {
-      buildArrayControls(meta, body, value, path, key);
+      buildArrayControls(meta, body, value, path, labelText || path);
       return;
     }
     if (value && typeof value === 'object') {
-      buildObjectControls(meta, body, value, path, key);
+      buildObjectControls(meta, body, value, path, labelText || path);
       return;
     }
     const input = createInputForValue(value, path, meta.id);
     if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
-    const row = buildControlRow(key, input);
+    const row = buildControlRow(labelText || path, input);
     body.appendChild(row);
     meta.inputs.set(path, input);
   });
@@ -1117,6 +1237,10 @@ function applySection(meta) {
     }
     const value = parseInputValue(input, path);
     setValueByPath(meta.config, path, value);
+  }
+  if (meta.id === 'fill') {
+    applyFillConfigToState(meta.config, { silent: true });
+    syncFillConfigValues();
   }
   scheduleRefreshForMeta(meta, { forceRebuild: true });
   persistPanelState();
@@ -1359,22 +1483,29 @@ function applySavedStyle(styleId) {
   if (Number.isFinite(style.overall)) {
     setOverallStrength(style.overall);
   }
-  if (Number.isFinite(style.centerThicken)) {
-    setCenterThickenPercent(style.centerThicken);
-  }
-  if (Number.isFinite(style.edgeThin)) {
-    setEdgeThinPercent(style.edgeThin);
-  }
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
     if (!meta) return;
     const section = style.sections && style.sections[def.id];
-    if (section && section.config) {
+    if (def.id === 'fill') {
+      const fillConfig = section && section.config
+        ? normalizeFillConfig(section.config, style)
+        : normalizeFillConfig(null, style);
+      applyConfigToTarget(meta.config, fillConfig);
+      applyFillConfigToState(meta.config, { silent: true });
+      syncFillConfigValues();
+      syncInputs(meta);
+      scheduleRefreshForMeta(meta, { forceRebuild: true });
+    } else if (section && section.config) {
       applyConfigToTarget(meta.config, section.config);
       syncInputs(meta);
       scheduleRefreshForMeta(meta, { forceRebuild: true });
     }
-    const strength = Number(section && section.strength);
+    const rawStrength = section && section.strength;
+    const strengthSource = def.id === 'fill'
+      ? (rawStrength ?? style.fillStrength)
+      : rawStrength;
+    const strength = Number(strengthSource);
     if (Number.isFinite(strength)) {
       applySectionStrength(meta, strength);
     }
@@ -1391,6 +1522,14 @@ function applySavedStyle(styleId) {
 export function getInkEffectFactor() {
   const pct = getPercentFromState('effectsOverallStrength', 100);
   return normalizedPercent(pct);
+}
+
+function getFillStrengthPercent() {
+  return getPercentFromState('inkFillStrength', 100);
+}
+
+function getFillStrengthFactor() {
+  return normalizedPercent(getFillStrengthPercent());
 }
 
 function getCenterThickenPercent() {
@@ -1413,16 +1552,22 @@ function getEdgeThinPercent() {
 
 export function getCenterThickenFactor() {
   const pct = getCenterThickenPercent();
-  return clamp(pct / 100, CENTER_THICKEN_LIMITS.min / 100, CENTER_THICKEN_LIMITS.max / 100);
+  const base = clamp(pct / 100, CENTER_THICKEN_LIMITS.min / 100, CENTER_THICKEN_LIMITS.max / 100);
+  const strength = getFillStrengthFactor();
+  return 1 + (base - 1) * strength;
 }
 
 export function getEdgeThinFactor() {
   const pct = getEdgeThinPercent();
-  return clamp(pct / 100, EDGE_THIN_LIMITS.min / 100, EDGE_THIN_LIMITS.max / 100);
+  const base = clamp(pct / 100, EDGE_THIN_LIMITS.min / 100, EDGE_THIN_LIMITS.max / 100);
+  const strength = getFillStrengthFactor();
+  return 1 + (base - 1) * strength;
 }
 
 export function getInkSectionStrength(sectionId) {
   switch (sectionId) {
+    case 'fill':
+      return getFillStrengthFactor();
     case 'texture':
       return normalizedPercent(getPercentFromState('inkTextureStrength', INK_TEXTURE.enabled === false ? 0 : 100));
     case 'fuzz':
@@ -1438,6 +1583,7 @@ export function getInkSectionStrength(sectionId) {
 
 export function isInkSectionEnabled(sectionId) {
   const strength = getInkSectionStrength(sectionId);
+  if (sectionId === 'fill') return strength > 0 && FILL_CFG.enabled !== false;
   if (sectionId === 'grain') return strength > 0 && GRAIN_CFG.enabled !== false;
   if (sectionId === 'texture') return strength > 0 && INK_TEXTURE.enabled !== false;
   if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
@@ -1465,18 +1611,8 @@ function setOverallStrength(percent) {
   return pct;
 }
 
-function syncCenterThickenUI() {
-  const pct = getCenterThickenPercent();
-  if (panelState.centerThickenSlider && panelState.centerThickenSlider.value !== String(pct)) {
-    panelState.centerThickenSlider.value = String(pct);
-  }
-  if (panelState.centerThickenNumberInput && panelState.centerThickenNumberInput.value !== String(pct)) {
-    panelState.centerThickenNumberInput.value = String(pct);
-  }
-}
-
 function setCenterThickenPercent(percent, options = {}) {
-  const { silent = false, syncUI = true } = options || {};
+  const { silent = false, updateConfig = true } = options || {};
   const raw = Number(percent);
   const pct = clamp(
     Number.isFinite(raw) ? Math.round(raw) : CENTER_THICKEN_LIMITS.defaultPct,
@@ -1484,24 +1620,20 @@ function setCenterThickenPercent(percent, options = {}) {
     CENTER_THICKEN_LIMITS.max,
   );
   setScalarOnState('centerThickenPct', pct, CENTER_THICKEN_LIMITS.min, CENTER_THICKEN_LIMITS.max);
-  if (syncUI) syncCenterThickenUI();
-  if (!silent) scheduleGlyphRefresh();
-  persistPanelState();
+  if (updateConfig === false) {
+    syncFillConfigValues();
+  } else {
+    FILL_CFG.centerThickenPct = pct;
+  }
+  if (!silent) {
+    scheduleGlyphRefresh();
+    persistPanelState();
+  }
   return pct;
 }
 
-function syncEdgeThinUI() {
-  const pct = getEdgeThinPercent();
-  if (panelState.edgeThinSlider && panelState.edgeThinSlider.value !== String(pct)) {
-    panelState.edgeThinSlider.value = String(pct);
-  }
-  if (panelState.edgeThinNumberInput && panelState.edgeThinNumberInput.value !== String(pct)) {
-    panelState.edgeThinNumberInput.value = String(pct);
-  }
-}
-
 function setEdgeThinPercent(percent, options = {}) {
-  const { silent = false, syncUI = true } = options || {};
+  const { silent = false, updateConfig = true } = options || {};
   const raw = Number(percent);
   const pct = clamp(
     Number.isFinite(raw) ? Math.round(raw) : EDGE_THIN_LIMITS.defaultPct,
@@ -1509,9 +1641,15 @@ function setEdgeThinPercent(percent, options = {}) {
     EDGE_THIN_LIMITS.max,
   );
   setScalarOnState('edgeThinPct', pct, EDGE_THIN_LIMITS.min, EDGE_THIN_LIMITS.max);
-  if (syncUI) syncEdgeThinUI();
-  if (!silent) scheduleGlyphRefresh();
-  persistPanelState();
+  if (updateConfig === false) {
+    syncFillConfigValues();
+  } else {
+    FILL_CFG.edgeThinPct = pct;
+  }
+  if (!silent) {
+    scheduleGlyphRefresh();
+    persistPanelState();
+  }
   return pct;
 }
 
@@ -1524,10 +1662,12 @@ export function syncInkStrengthDisplays(sectionId) {
   if (!panelState.initialized) return;
   if (!sectionId) {
     syncOverallStrengthUI();
-    syncCenterThickenUI();
-    syncEdgeThinUI();
+    syncFillConfigValues();
     panelState.metas.forEach(meta => {
       if (!meta) return;
+      if (meta.id === 'fill') {
+        syncInputs(meta);
+      }
       const fallback = meta.defaultStrength ?? 0;
       const pct = getPercentFromState(meta.stateKey, fallback);
       applySectionStrength(meta, pct, { silent: true });
@@ -1538,12 +1678,14 @@ export function syncInkStrengthDisplays(sectionId) {
     syncOverallStrengthUI();
     return;
   }
-  if (sectionId === 'centerThicken') {
-    syncCenterThickenUI();
-    return;
-  }
-  if (sectionId === 'edgeThin') {
-    syncEdgeThinUI();
+  if (sectionId === 'fill') {
+    const meta = findMetaById('fill');
+    if (!meta) return;
+    syncFillConfigValues();
+    syncInputs(meta);
+    const fallback = meta.defaultStrength ?? 0;
+    const pct = getPercentFromState(meta.stateKey, fallback);
+    applySectionStrength(meta, pct, { silent: true });
     return;
   }
   const meta = findMetaById(sectionId);
@@ -1576,16 +1718,14 @@ export function setupInkSettingsPanel(options = {}) {
   const sectionsRoot = document.getElementById('inkSettingsSections');
   panelState.overallSlider = document.getElementById('inkEffectsOverallSlider');
   panelState.overallNumberInput = document.getElementById('inkEffectsOverallNumber');
-  panelState.centerThickenSlider = document.getElementById('inkCenterThickenSlider');
-  panelState.centerThickenNumberInput = document.getElementById('inkCenterThickenNumber');
-  panelState.edgeThinSlider = document.getElementById('inkEdgeThinSlider');
-  panelState.edgeThinNumberInput = document.getElementById('inkEdgeThinNumber');
   panelState.styleNameInput = document.getElementById('inkStyleNameInput');
   panelState.saveStyleButton = document.getElementById('inkStyleSaveBtn');
   panelState.stylesList = document.getElementById('inkStylesList');
   panelState.exportButton = document.getElementById('inkStyleExportBtn');
   panelState.importButton = document.getElementById('inkStyleImportBtn');
   panelState.importInput = document.getElementById('inkStyleImportInput');
+
+  syncFillConfigValues();
 
   if (panelState.styleNameInput) {
     panelState.styleNameInput.addEventListener('input', () => panelState.styleNameInput.classList.remove('input-error'));
@@ -1630,61 +1770,7 @@ export function setupInkSettingsPanel(options = {}) {
       syncOverallStrengthUI();
     });
   }
-  if (panelState.centerThickenSlider) {
-    panelState.centerThickenSlider.min = String(CENTER_THICKEN_LIMITS.min);
-    panelState.centerThickenSlider.max = String(CENTER_THICKEN_LIMITS.max);
-    panelState.centerThickenSlider.step = '1';
-    panelState.centerThickenSlider.value = String(getCenterThickenPercent());
-    panelState.centerThickenSlider.addEventListener('input', () => {
-      const raw = Number.parseFloat(panelState.centerThickenSlider.value);
-      setCenterThickenPercent(raw);
-    });
-  }
-  if (panelState.centerThickenNumberInput) {
-    panelState.centerThickenNumberInput.min = String(CENTER_THICKEN_LIMITS.min);
-    panelState.centerThickenNumberInput.max = String(CENTER_THICKEN_LIMITS.max);
-    panelState.centerThickenNumberInput.step = '1';
-    panelState.centerThickenNumberInput.value = String(getCenterThickenPercent());
-    panelState.centerThickenNumberInput.addEventListener('input', () => {
-      const raw = Number.parseFloat(panelState.centerThickenNumberInput.value);
-      if (!Number.isFinite(raw)) return;
-      setCenterThickenPercent(raw, { syncUI: false });
-      syncCenterThickenUI();
-    });
-    panelState.centerThickenNumberInput.addEventListener('blur', () => {
-      if (panelState.centerThickenNumberInput.value !== '') return;
-      syncCenterThickenUI();
-    });
-  }
-  if (panelState.edgeThinSlider) {
-    panelState.edgeThinSlider.min = String(EDGE_THIN_LIMITS.min);
-    panelState.edgeThinSlider.max = String(EDGE_THIN_LIMITS.max);
-    panelState.edgeThinSlider.step = '1';
-    panelState.edgeThinSlider.value = String(getEdgeThinPercent());
-    panelState.edgeThinSlider.addEventListener('input', () => {
-      const raw = Number.parseFloat(panelState.edgeThinSlider.value);
-      setEdgeThinPercent(raw);
-    });
-  }
-  if (panelState.edgeThinNumberInput) {
-    panelState.edgeThinNumberInput.min = String(EDGE_THIN_LIMITS.min);
-    panelState.edgeThinNumberInput.max = String(EDGE_THIN_LIMITS.max);
-    panelState.edgeThinNumberInput.step = '1';
-    panelState.edgeThinNumberInput.value = String(getEdgeThinPercent());
-    panelState.edgeThinNumberInput.addEventListener('input', () => {
-      const raw = Number.parseFloat(panelState.edgeThinNumberInput.value);
-      if (!Number.isFinite(raw)) return;
-      setEdgeThinPercent(raw, { syncUI: false });
-      syncEdgeThinUI();
-    });
-    panelState.edgeThinNumberInput.addEventListener('blur', () => {
-      if (panelState.edgeThinNumberInput.value !== '') return;
-      syncEdgeThinUI();
-    });
-  }
   syncOverallStrengthUI();
-  syncCenterThickenUI();
-  syncEdgeThinUI();
 
   if (sectionsRoot) {
     SECTION_DEFS.forEach(def => {
