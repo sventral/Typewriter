@@ -1,7 +1,18 @@
-import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_INTENSITY, INK_TEXTURE, normalizeInkTextureConfig } from './inkConfig.js';
+import {
+  EDGE_BLEED,
+  EDGE_FUZZ,
+  GRAIN_CFG,
+  INK_INTENSITY,
+  INK_TEXTURE,
+  normalizeEdgeFuzzConfig,
+  normalizeInkTextureConfig,
+} from './inkConfig.js';
 
 const sanitizedInkTextureDefaults = normalizeInkTextureConfig(INK_TEXTURE);
 Object.assign(INK_TEXTURE, sanitizedInkTextureDefaults);
+
+const sanitizedEdgeFuzzDefaults = normalizeEdgeFuzzConfig(EDGE_FUZZ);
+Object.assign(EDGE_FUZZ, sanitizedEdgeFuzzDefaults);
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
@@ -34,7 +45,7 @@ const SECTION_DEFS = [
     id: 'fuzz',
     label: 'Edge Fuzz',
     config: EDGE_FUZZ,
-    keyOrder: ['inks', 'widthPx', 'inwardShare', 'roughness', 'frequency', 'opacity', 'seed'],
+    keyOrder: ['inks', 'widths', 'baseOpacity', 'direction', 'noise', 'seed'],
     trigger: 'glyph',
     stateKey: 'edgeFuzzStrength',
     defaultStrength: 100,
@@ -189,6 +200,8 @@ function normalizeStyleRecord(style, index = 0) {
           : ('strength' in section ? def.config : section);
       if (def.id === 'texture') {
         configSource = normalizeInkTextureConfig(configSource);
+      } else if (def.id === 'fuzz') {
+        configSource = normalizeEdgeFuzzConfig(configSource);
       }
       record.sections[def.id] = {
         strength,
@@ -517,6 +530,17 @@ function getObjectKeys(path, obj) {
       return ['enabled', 'direction', 'scale', 'aspect', 'threshold', 'strength', 'seed'];
     case 'scratch.direction':
       return ['x', 'y'];
+    case 'widths':
+      return ['inwardPx', 'outwardPx'];
+    case 'direction': {
+      const keys = ['angleDeg'];
+      Object.keys(obj || {}).forEach(key => {
+        if (key !== 'angleDeg' && !keys.includes(key)) keys.push(key);
+      });
+      return keys;
+    }
+    case 'noise':
+      return ['frequency', 'roughness'];
     case 'alpha':
       return ['max', 'mix_pow', 'low_pow', 'min'];
     case 'seeds':
