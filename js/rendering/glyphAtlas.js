@@ -1,4 +1,5 @@
 import { clamp } from '../utils/math.js';
+import { normalizeInkTextureConfig } from '../config/inkConfig.js';
 
 export function createGlyphAtlas(options) {
   const {
@@ -205,6 +206,142 @@ export function createGlyphAtlas(options) {
     return dist;
   }
 
+  function getSharedDistanceMaps(imageData, options) {
+    if (!imageData) return null;
+    const width = imageData.width | 0;
+    const height = imageData.height | 0;
+    if (width <= 0 || height <= 0) return null;
+    const data = imageData.data;
+    if (!data || data.length !== width * height * 4) return null;
+
+    let existing = options && typeof options.distanceMaps === 'object' ? options.distanceMaps : null;
+    if (existing
+      && existing.width === width
+      && existing.height === height
+      && existing.distToInk instanceof Float32Array
+      && existing.distToVoid instanceof Float32Array
+      && existing.insideMask instanceof Uint8Array) {
+      return existing;
+    }
+
+    const size = width * height;
+    const insideMask = new Uint8Array(size);
+    const outsideMask = new Uint8Array(size);
+    let insideCount = 0;
+    for (let i = 0; i < size; i++) {
+      const alpha = data[i * 4 + 3];
+      if (alpha > 0) {
+        insideMask[i] = 1;
+        insideCount++;
+      } else {
+        outsideMask[i] = 1;
+      }
+    }
+    if (insideCount === 0) return null;
+
+    const distToInk = computeDistanceMap(width, height, insideMask);
+    const distToVoid = computeDistanceMap(width, height, outsideMask);
+    let maxInsideDist = 0;
+    for (let i = 0; i < size; i++) {
+      if (insideMask[i]) {
+        const dist = distToVoid[i];
+        if (dist > maxInsideDist) maxInsideDist = dist;
+      }
+    }
+
+    const maps = existing || {};
+    maps.width = width;
+    maps.height = height;
+    maps.insideMask = insideMask;
+    maps.outsideMask = outsideMask;
+    maps.distToInk = distToInk;
+    maps.distToVoid = distToVoid;
+    maps.maxInsideDist = Math.max(maxInsideDist, 1e-3);
+    maps.inkPixelCount = insideCount;
+
+    if (options && typeof options === 'object') {
+      options.distanceMaps = maps;
+    }
+
+    return maps;
+  }
+
+  function generateNoiseField(width, height, dpPerCss, jitterX, jitterY, charWidth, noiseCfg, smoothing) {
+    if (!noiseCfg || typeof noiseCfg !== 'object') return null;
+    const scaleBase = Number.isFinite(noiseCfg.scale) ? noiseCfg.scale : 1;
+    const scaleCss = Math.max(1e-3, charWidth * Math.max(0.01, scaleBase));
+    const seed = (noiseCfg.seed >>> 0) || 0;
+    const rawWeight = Number.isFinite(noiseCfg.hashWeight) ? clamp(noiseCfg.hashWeight, 0, 1) : 0;
+    const includeHash = rawWeight > 0;
+    const hashWeight = includeHash ? rawWeight : 0;
+    const baseWeight = includeHash ? 1 - hashWeight : 1;
+    const total = width * height;
+    const raw = new Float32Array(total);
+    let idx = 0;
+    for (let y = 0; y < height; y++) {
+      const yCss = (y / dpPerCss) + jitterY;
+      for (let x = 0; x < width; x++) {
+        const xCss = (x / dpPerCss) + jitterX;
+        let value = valueNoise2D(xCss, yCss, scaleCss, seed);
+        if (includeHash) {
+          const hash = hash2(x, y, seed ^ 0x9E3779B1);
+          value = value * baseWeight + hash * hashWeight;
+        }
+        raw[idx++] = value;
+      }
+    }
+
+    const smoothAmt = clamp(Number.isFinite(smoothing) ? smoothing : 0, 0, 1);
+    if (smoothAmt <= 0) return raw;
+
+    const factor = Math.max(2, Math.round(1 + smoothAmt * 5));
+    const sampleW = Math.max(1, Math.round(width / factor));
+    const sampleH = Math.max(1, Math.round(height / factor));
+    const low = new Float32Array(sampleW * sampleH);
+    for (let sy = 0; sy < sampleH; sy++) {
+      const sampleY = (sy + 0.5) * height / sampleH;
+      const yCss = (sampleY / dpPerCss) + jitterY;
+      for (let sx = 0; sx < sampleW; sx++) {
+        const sampleX = (sx + 0.5) * width / sampleW;
+        const xCss = (sampleX / dpPerCss) + jitterX;
+        let value = valueNoise2D(xCss, yCss, scaleCss, seed);
+        if (includeHash) {
+          const hash = hash2(Math.floor(sampleX), Math.floor(sampleY), seed ^ 0x9E3779B1);
+          value = value * baseWeight + hash * hashWeight;
+        }
+        low[sy * sampleW + sx] = value;
+      }
+    }
+
+    const smooth = new Float32Array(total);
+    for (let y = 0; y < height; y++) {
+      const fy = ((y + 0.5) / height) * sampleH - 0.5;
+      const y0 = Math.max(0, Math.floor(fy));
+      const y1 = Math.min(sampleH - 1, y0 + 1);
+      const ty = clamp(fy - y0, 0, 1);
+      for (let x = 0; x < width; x++) {
+        const fx = ((x + 0.5) / width) * sampleW - 0.5;
+        const x0 = Math.max(0, Math.floor(fx));
+        const x1 = Math.min(sampleW - 1, x0 + 1);
+        const tx = clamp(fx - x0, 0, 1);
+        const i00 = low[y0 * sampleW + x0];
+        const i10 = low[y0 * sampleW + x1];
+        const i01 = low[y1 * sampleW + x0];
+        const i11 = low[y1 * sampleW + x1];
+        const v0 = i00 + (i10 - i00) * tx;
+        const v1 = i01 + (i11 - i01) * tx;
+        smooth[y * width + x] = v0 + (v1 - v0) * ty;
+      }
+    }
+
+    const mixA = 1 - smoothAmt;
+    const mixB = smoothAmt;
+    for (let i = 0; i < total; i++) {
+      raw[i] = raw[i] * mixA + smooth[i] * mixB;
+    }
+    return raw;
+  }
+
   function applyEdgeFuzz(imageData, options) {
     const {
       config,
@@ -235,23 +372,9 @@ export function createGlyphAtlas(options) {
     const data = imageData.data;
     if (!data || data.length !== width * height * 4) return;
 
-    const size = width * height;
-    const insideMask = new Uint8Array(size);
-    const outsideMask = new Uint8Array(size);
-    let insideCount = 0;
-    for (let i = 0; i < size; i++) {
-      const alpha = data[i * 4 + 3];
-      if (alpha > 0) {
-        insideMask[i] = 1;
-        insideCount++;
-      } else {
-        outsideMask[i] = 1;
-      }
-    }
-    if (insideCount === 0) return;
-
-    const distToInk = computeDistanceMap(width, height, insideMask);
-    const distToVoid = computeDistanceMap(width, height, outsideMask);
+    const maps = getSharedDistanceMaps(imageData, options);
+    if (!maps || !maps.insideMask || !maps.distToInk || !maps.distToVoid || maps.inkPixelCount === 0) return;
+    const { insideMask, distToInk, distToVoid } = maps;
     const rgb = parseColorToRgb(color);
     const baseOpacity = clamp(Number(config.opacity ?? 0.3), 0, 1) * combinedStrength;
     if (baseOpacity <= 0) return;
@@ -318,38 +441,58 @@ export function createGlyphAtlas(options) {
 
   function applyInkTexture(imageData, options) {
     const { config, renderScale, sampleScale, charWidth, seed, overallStrength, sectionStrength } = options || {};
-    if (!config || !config.enabled) return;
+    if (!config) return;
+    const normalizedConfig = normalizeInkTextureConfig(config);
+    if (!normalizedConfig || !normalizedConfig.enabled) return;
     const overall = clamp(Number.isFinite(overallStrength) ? overallStrength : getInkEffectFactor(), 0, 1);
     const section = clamp(Number.isFinite(sectionStrength) ? sectionStrength : getInkSectionStrengthFn('texture'), 0, 1);
     const combined = clamp(overall * section, 0, 1);
     if (combined <= 0) return;
+
     const data = imageData.data;
-    const width = imageData.width;
-    const height = imageData.height;
-    if (!data || !width || !height) return;
+    const width = imageData.width | 0;
+    const height = imageData.height | 0;
+    if (!data || width <= 0 || height <= 0) return;
 
     const dpPerCss = Math.max(1e-6, renderScale * sampleScale);
-    const jitterSeed = (seed ^ (config.jitterSeed || 0)) >>> 0;
+    const jitterSeed = (seed ^ (normalizedConfig.jitterSeed || 0)) >>> 0;
     const jitterAmt = charWidth * 0.35;
     const jitterX = (hash2(1, 0, jitterSeed) - 0.5) * jitterAmt;
     const jitterY = (hash2(2, 0, jitterSeed) - 0.5) * jitterAmt;
 
-    const octaves = Array.isArray(config.noiseOctaves) ? config.noiseOctaves : [];
-    let weightSum = 0;
-    for (let i = 0; i < octaves.length; i++) weightSum += Math.max(0, octaves[i].weight || 0);
-    const baseNoiseStrength = Number.isFinite(config.noiseStrength) ? config.noiseStrength : 0;
-    const noiseStrength = baseNoiseStrength * combined;
-    const baseNoiseFloor = clamp(Number.isFinite(config.noiseFloor) ? config.noiseFloor : 0, 0, 1);
+    const smoothingAmt = clamp(Number(normalizedConfig.noiseSmoothing) || 0, 0, 1);
+    const centerEdgeBias = clamp(Number(normalizedConfig.centerEdgeBias) || 0, -1, 1);
+    const baseNoiseFloor = clamp(Number(normalizedConfig.noiseFloor) || 0, 0, 1);
     const noiseFloor = 1 - (1 - baseNoiseFloor) * combined;
 
-    const chipCfg = config.chip || {};
-    const chipDensity = Math.max(0, chipCfg.density || 0) * combined;
-    const chipStrength = Math.max(0, chipCfg.strength || 0) * combined;
+    const coarseStrengthBase = Math.max(0, Number(normalizedConfig.coarseNoise?.strength) || 0);
+    const fineStrengthBase = Math.max(0, Number(normalizedConfig.fineNoise?.strength) || 0);
+    const coarseStrength = coarseStrengthBase * combined;
+    const fineStrength = fineStrengthBase * combined;
+
+    const coarseField = coarseStrength > 0
+      ? generateNoiseField(width, height, dpPerCss, jitterX, jitterY, charWidth, normalizedConfig.coarseNoise, smoothingAmt)
+      : null;
+    const fineField = fineStrength > 0
+      ? generateNoiseField(width, height, dpPerCss, jitterX, jitterY, charWidth, normalizedConfig.fineNoise, smoothingAmt * 0.6)
+      : null;
+
+    const hasSharedMaps = options && typeof options.distanceMaps === 'object';
+    const needsBias = Math.abs(centerEdgeBias) > 1e-3;
+    const maps = (needsBias || hasSharedMaps) ? getSharedDistanceMaps(imageData, options) : null;
+    const biasAvailable = !!(maps && maps.distToVoid && maps.maxInsideDist > 1e-6);
+    const biasUpperClamp = centerEdgeBias < 0 ? 1 + Math.min(0.3, -centerEdgeBias * 0.35) : 1;
+
+    const chipCfg = normalizedConfig.chip || {};
+    const chipEnabled = chipCfg.enabled !== false;
+    const chipDensity = chipEnabled ? Math.max(0, chipCfg.density || 0) * combined : 0;
+    const chipStrength = chipEnabled ? Math.max(0, chipCfg.strength || 0) * combined : 0;
     const chipFeather = Math.max(0.01, chipCfg.feather || 0.45);
     const chipSeed = (seed ^ (chipCfg.seed || 0)) >>> 0;
 
-    const scratchCfg = config.scratch || {};
-    const scratchStrength = Math.max(0, scratchCfg.strength || 0) * combined;
+    const scratchCfg = normalizedConfig.scratch || {};
+    const scratchEnabled = scratchCfg.enabled !== false;
+    const scratchStrength = scratchEnabled ? Math.max(0, scratchCfg.strength || 0) * combined : 0;
     const baseScratchThreshold = clamp(Number.isFinite(scratchCfg.threshold) ? scratchCfg.threshold : 0.7, 0, 1 - 1e-3);
     const scratchThreshold = clamp(baseScratchThreshold + (1 - baseScratchThreshold) * (1 - combined), 0, 1 - 1e-3);
     const scratchScale = Math.max(1e-3, scratchCfg.scale || 1);
@@ -357,31 +500,30 @@ export function createGlyphAtlas(options) {
     const scratchSeed = (seed ^ (scratchCfg.seed || 0)) >>> 0;
     const scratchDir = normalizeDirection(scratchCfg.direction);
 
+    const applyNoise = !!(coarseField || fineField || (biasAvailable && centerEdgeBias !== 0));
+
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const idx = (y * width + x) * 4;
+        const pixelIdx = y * width + x;
+        const idx = pixelIdx * 4;
         const alpha = data[idx + 3];
         if (alpha <= 0) continue;
         let a = alpha / 255;
-        const xCss = (x / dpPerCss) + jitterX;
-        const yCss = (y / dpPerCss) + jitterY;
 
-        let noiseVal = 0.5;
-        if (octaves.length && weightSum > 0) {
-          let accum = 0;
-          for (let i = 0; i < octaves.length; i++) {
-            const oct = octaves[i];
-            const scaleCss = Math.max(1e-3, charWidth * Math.max(0.01, oct.scale || 1));
-            const w = Math.max(0, oct.weight || 0);
-            if (w <= 0) continue;
-            const oSeed = (seed ^ (oct.seed || 0)) >>> 0;
-            accum += w * valueNoise2D(xCss, yCss, scaleCss, oSeed);
+        if (applyNoise) {
+          let offset = 0;
+          if (coarseField) offset += (0.5 - coarseField[pixelIdx]) * coarseStrength;
+          if (fineField) offset += (0.5 - fineField[pixelIdx]) * fineStrength;
+          if (biasAvailable) {
+            const dist = maps.distToVoid[pixelIdx];
+            const norm = clamp(dist / maps.maxInsideDist, 0, 1);
+            offset += (0.5 - norm) * centerEdgeBias * 0.8;
           }
-          noiseVal = accum / weightSum;
+          if (offset !== 0 || noiseFloor < 1 || biasUpperClamp > 1) {
+            const mod = clamp(1 - offset, noiseFloor, biasUpperClamp);
+            a *= mod;
+          }
         }
-
-        const mod = clamp(1 - (0.5 - noiseVal) * noiseStrength, noiseFloor, 1);
-        a *= mod;
 
         if (chipDensity > 0 && chipStrength > 0) {
           const chipNoise = hash2(x, y, chipSeed);
@@ -394,6 +536,8 @@ export function createGlyphAtlas(options) {
         }
 
         if (scratchStrength > 0) {
+          const xCss = (x / dpPerCss) + jitterX;
+          const yCss = (y / dpPerCss) + jitterY;
           const proj = xCss * scratchDir.x + yCss * scratchDir.y;
           const ortho = xCss * (-scratchDir.y) + yCss * scratchDir.x;
           const scratchVal = valueNoise2D(proj * scratchScale, ortho * scratchAspect, scratchSeed);
@@ -585,6 +729,7 @@ export function createGlyphAtlas(options) {
           if (useTexture || fuzzEnabled) {
             glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
           }
+          const sharedMaps = (useTexture && fuzzEnabled) ? {} : undefined;
           if (useTexture && glyphData) {
             applyInkTexture(glyphData, {
               config: INK_TEXTURE,
@@ -594,6 +739,7 @@ export function createGlyphAtlas(options) {
               seed: glyphSeed,
               overallStrength,
               sectionStrength: textureSectionStrength,
+              distanceMaps: sharedMaps,
             });
           }
           if (fuzzEnabled && glyphData) {
@@ -605,6 +751,7 @@ export function createGlyphAtlas(options) {
               baseSeed: glyphSeed,
               overallStrength,
               sectionStrength: fuzzSectionStrength,
+              distanceMaps: sharedMaps,
             });
           }
           if (glyphData) {
