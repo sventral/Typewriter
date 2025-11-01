@@ -16,6 +16,8 @@ export function createGlyphAtlas(options) {
     getStateZoom,
     isSafari,
     safariSupersampleThreshold,
+    getCenterThickenFactor: getCenterThickenFactorOpt,
+    getEdgeThinFactor: getEdgeThinFactorOpt,
     getInkEffectFactor,
     getInkSectionStrength,
     isInkSectionEnabled,
@@ -45,6 +47,8 @@ export function createGlyphAtlas(options) {
   const getRenderScaleFn = ensureMetricGetter(getRenderScale, 'RENDER_SCALE');
   const getStateZoomFn = typeof getStateZoom === 'function' ? getStateZoom : (() => state.zoom);
   const getInkSectionStrengthFn = typeof getInkSectionStrength === 'function' ? getInkSectionStrength : (() => 1);
+  const getCenterThickenFactorFn = typeof getCenterThickenFactorOpt === 'function' ? getCenterThickenFactorOpt : (() => 1);
+  const getEdgeThinFactorFn = typeof getEdgeThinFactorOpt === 'function' ? getEdgeThinFactorOpt : (() => 1);
   const ALT_VARIANTS = 9;
   const atlases = new Map();
   window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
@@ -206,23 +210,13 @@ export function createGlyphAtlas(options) {
     return dist;
   }
 
-  function getSharedDistanceMaps(imageData, options) {
+  function computeDistanceMaps(imageData) {
     if (!imageData) return null;
     const width = imageData.width | 0;
     const height = imageData.height | 0;
     if (width <= 0 || height <= 0) return null;
     const data = imageData.data;
     if (!data || data.length !== width * height * 4) return null;
-
-    let existing = options && typeof options.distanceMaps === 'object' ? options.distanceMaps : null;
-    if (existing
-      && existing.width === width
-      && existing.height === height
-      && existing.distToInk instanceof Float32Array
-      && existing.distToVoid instanceof Float32Array
-      && existing.insideMask instanceof Uint8Array) {
-      return existing;
-    }
 
     const size = width * height;
     const insideMask = new Uint8Array(size);
@@ -249,21 +243,26 @@ export function createGlyphAtlas(options) {
       }
     }
 
-    const maps = existing || {};
-    maps.width = width;
-    maps.height = height;
-    maps.insideMask = insideMask;
-    maps.outsideMask = outsideMask;
-    maps.distToInk = distToInk;
-    maps.distToVoid = distToVoid;
-    maps.maxInsideDist = Math.max(maxInsideDist, 1e-3);
-    maps.inkPixelCount = insideCount;
+    return {
+      width,
+      height,
+      insideMask,
+      outsideMask,
+      distToInk,
+      distToVoid,
+      maxInsideDist: Math.max(maxInsideDist, 1e-3),
+      inkPixelCount: insideCount,
+    };
+  }
 
-    if (options && typeof options === 'object') {
-      options.distanceMaps = maps;
-    }
-
-    return maps;
+  function createDistanceMapProvider(imageData) {
+    let cached = null;
+    return () => {
+      if (!cached) {
+        cached = computeDistanceMaps(imageData);
+      }
+      return cached;
+    };
   }
 
   function generateNoiseField(width, height, dpPerCss, jitterX, jitterY, charWidth, noiseCfg, smoothing) {
@@ -356,6 +355,13 @@ export function createGlyphAtlas(options) {
     const combinedStrength = clamp((overallStrength || 0) * (sectionStrength || 0), 0, 1);
     if (combinedStrength <= 0) return;
 
+    const centerThickenRaw = Number(getCenterThickenFactorFn());
+    const edgeThinRaw = Number(getEdgeThinFactorFn());
+    const centerThickenFactor = clamp(Number.isFinite(centerThickenRaw) ? centerThickenRaw : 1, 0, 2);
+    const edgeThinFactor = clamp(Number.isFinite(edgeThinRaw) ? edgeThinRaw : 1, 0, 2);
+    const centerThickenDelta = (centerThickenFactor - 1) * combinedStrength;
+    const edgeThinDelta = (edgeThinFactor - 1) * combinedStrength;
+
     const totalBandCss = Math.max(0, Number(config.widthPx) || 0);
     if (totalBandCss <= 0) return;
     const dpPerCss = Math.max(1e-6, renderScale * sampleScale);
@@ -372,7 +378,8 @@ export function createGlyphAtlas(options) {
     const data = imageData.data;
     if (!data || data.length !== width * height * 4) return;
 
-    const maps = getSharedDistanceMaps(imageData, options);
+    const getDistanceMaps = options && typeof options.getDistanceMaps === 'function' ? options.getDistanceMaps : null;
+    const maps = getDistanceMaps ? getDistanceMaps() : computeDistanceMaps(imageData);
     if (!maps || !maps.insideMask || !maps.distToInk || !maps.distToVoid || maps.inkPixelCount === 0) return;
     const { insideMask, distToInk, distToVoid } = maps;
     const rgb = parseColorToRgb(color);
@@ -404,6 +411,25 @@ export function createGlyphAtlas(options) {
           }
         }
         if (coverage <= 0) continue;
+
+        if (centerThickenDelta !== 0 && inside) {
+          const normInside = clamp(distToVoid[idx] / maps.maxInsideDist, 0, 1);
+          coverage *= clamp(1 + centerThickenDelta * normInside, 0, 2);
+        }
+        if (edgeThinDelta !== 0) {
+          let edgeWeight;
+          if (inside) {
+            const normInside = clamp(distToVoid[idx] / maps.maxInsideDist, 0, 1);
+            edgeWeight = 1 - normInside;
+          } else if (outwardDp > 0) {
+            const normOutside = clamp(distToInk[idx] / Math.max(outwardDp, 1e-3), 0, 1);
+            edgeWeight = 1 - normOutside;
+          } else {
+            edgeWeight = 1;
+          }
+          coverage *= clamp(1 - edgeThinDelta * edgeWeight, 0, 2);
+        }
+        coverage = clamp(coverage, 0, 1);
 
         const xCss = x / dpPerCss;
         const yCss = y / dpPerCss;
@@ -449,6 +475,13 @@ export function createGlyphAtlas(options) {
     const combined = clamp(overall * section, 0, 1);
     if (combined <= 0) return;
 
+    const centerThickenRaw = Number(getCenterThickenFactorFn());
+    const edgeThinRaw = Number(getEdgeThinFactorFn());
+    const centerThickenFactor = clamp(Number.isFinite(centerThickenRaw) ? centerThickenRaw : 1, 0, 2);
+    const edgeThinFactor = clamp(Number.isFinite(edgeThinRaw) ? edgeThinRaw : 1, 0, 2);
+    const centerThickenDelta = (centerThickenFactor - 1) * combined;
+    const edgeThinDelta = (edgeThinFactor - 1) * combined;
+
     const data = imageData.data;
     const width = imageData.width | 0;
     const height = imageData.height | 0;
@@ -477,10 +510,12 @@ export function createGlyphAtlas(options) {
       ? generateNoiseField(width, height, dpPerCss, jitterX, jitterY, charWidth, normalizedConfig.fineNoise, smoothingAmt * 0.6)
       : null;
 
-    const hasSharedMaps = options && typeof options.distanceMaps === 'object';
     const needsBias = Math.abs(centerEdgeBias) > 1e-3;
-    const maps = (needsBias || hasSharedMaps) ? getSharedDistanceMaps(imageData, options) : null;
+    const getDistanceMaps = options && typeof options.getDistanceMaps === 'function' ? options.getDistanceMaps : null;
+    const needsDistanceMaps = needsBias || Math.abs(centerThickenDelta) > 1e-6 || Math.abs(edgeThinDelta) > 1e-6;
+    const maps = needsDistanceMaps && getDistanceMaps ? getDistanceMaps() : (needsBias ? getDistanceMaps?.() : null);
     const biasAvailable = !!(maps && maps.distToVoid && maps.maxInsideDist > 1e-6);
+    const hasCenterEdgeTweaks = !!(maps && maps.insideMask && (Math.abs(centerThickenDelta) > 1e-6 || Math.abs(edgeThinDelta) > 1e-6));
     const biasUpperClamp = centerEdgeBias < 0 ? 1 + Math.min(0.3, -centerEdgeBias * 0.35) : 1;
 
     const chipCfg = normalizedConfig.chip || {};
@@ -522,6 +557,21 @@ export function createGlyphAtlas(options) {
           if (offset !== 0 || noiseFloor < 1 || biasUpperClamp > 1) {
             const mod = clamp(1 - offset, noiseFloor, biasUpperClamp);
             a *= mod;
+          }
+        }
+
+        if (hasCenterEdgeTweaks && maps.insideMask[pixelIdx]) {
+          const norm = clamp(maps.distToVoid[pixelIdx] / maps.maxInsideDist, 0, 1);
+          let modifier = 1;
+          if (centerThickenDelta !== 0) {
+            modifier *= clamp(1 + centerThickenDelta * norm, 0, 2);
+          }
+          if (edgeThinDelta !== 0) {
+            const edgeWeight = 1 - norm;
+            modifier *= clamp(1 - edgeThinDelta * edgeWeight, 0, 2);
+          }
+          if (modifier !== 1) {
+            a *= modifier;
           }
         }
 
@@ -729,7 +779,7 @@ export function createGlyphAtlas(options) {
           if (useTexture || fuzzEnabled) {
             glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
           }
-          const sharedMaps = (useTexture && fuzzEnabled) ? {} : undefined;
+          const distanceProvider = glyphData ? createDistanceMapProvider(glyphData) : null;
           if (useTexture && glyphData) {
             applyInkTexture(glyphData, {
               config: INK_TEXTURE,
@@ -739,7 +789,7 @@ export function createGlyphAtlas(options) {
               seed: glyphSeed,
               overallStrength,
               sectionStrength: textureSectionStrength,
-              distanceMaps: sharedMaps,
+              getDistanceMaps: distanceProvider,
             });
           }
           if (fuzzEnabled && glyphData) {
@@ -751,7 +801,7 @@ export function createGlyphAtlas(options) {
               baseSeed: glyphSeed,
               overallStrength,
               sectionStrength: fuzzSectionStrength,
-              distanceMaps: sharedMaps,
+              getDistanceMaps: distanceProvider,
             });
           }
           if (glyphData) {
@@ -773,6 +823,7 @@ export function createGlyphAtlas(options) {
               baseSeed: glyphSeed,
               overallStrength,
               sectionStrength: bleedSectionStrength,
+              getDistanceMaps: distanceProvider,
             });
             glyphCtx.restore();
           }
