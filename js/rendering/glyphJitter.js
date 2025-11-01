@@ -41,10 +41,5 @@ export function computeGlyphJitterOffset(state, pageIndex, rowMu, col, gridHeigh
   const rawOffset = (amplitudePct / 100) * lineHeight;
   if (rawOffset <= 0) return 0;
   const sign = directionSample < 0.5 ? -1 : 1;
-  const maxOffset = lineHeight * 0.25;
-  const offset = rawOffset * sign;
-  if (!Number.isFinite(maxOffset) || maxOffset <= 0) {
-    return offset;
-  }
-  return Math.max(-maxOffset, Math.min(maxOffset, offset));
+  return rawOffset * sign;
 }
