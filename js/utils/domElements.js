@@ -35,6 +35,7 @@ export function createDomRefs() {
   app.glyphJitterAmountMax = document.getElementById('glyphJitterAmountMax');
   app.glyphJitterFrequencyMin = document.getElementById('glyphJitterFrequencyMin');
   app.glyphJitterFrequencyMax = document.getElementById('glyphJitterFrequencyMax');
+  app.shuffleGlyphJitterSeedBtn = document.getElementById('shuffleGlyphJitterSeedBtn');
   app.showMarginBoxCb = document.getElementById('showMarginBoxCb');
   app.wordWrapCb = document.getElementById('wordWrapCb');
   app.appearanceAuto = document.getElementById('appearanceAuto');
