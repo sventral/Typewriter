@@ -108,9 +108,6 @@ export function setupUIBindings(context, controllers) {
     ].forEach((el) => {
       if (el) el.disabled = disabled;
     });
-    if (app.shuffleGlyphJitterSeedBtn) {
-      app.shuffleGlyphJitterSeedBtn.disabled = disabled;
-    }
   }
 
   const docUpdatedFormatter = (() => {
@@ -623,6 +620,7 @@ export function setupUIBindings(context, controllers) {
       });
       app.sizeInput.addEventListener('change', () => {
         sanitizeIntegerField(app.sizeInput, { min: 1, max: 150, allowEmpty: false, fallbackValue: state.inkWidthPct || 95 });
+        applySubmittedChanges();
         focusStage();
       });
       const applyOnEnter = (e) => {
@@ -634,9 +632,12 @@ export function setupUIBindings(context, controllers) {
       app.sizeInput.addEventListener('keydown', applyOnEnter);
     }
 
-    if (app.applyBtn) app.applyBtn.addEventListener('click', applySubmittedChanges);
-    if (app.applyLHBtn) app.applyLHBtn.addEventListener('click', applyLineHeight);
-    if (app.lhInput) app.lhInput.addEventListener('input', () => { app.lhInput.value = String(readStagedLH()); });
+    if (app.lhInput) {
+      app.lhInput.addEventListener('input', () => { app.lhInput.value = String(readStagedLH()); });
+      app.lhInput.addEventListener('change', () => {
+        applyLineHeight();
+      });
+    }
     if (app.showMarginBoxCb) {
       app.showMarginBoxCb.addEventListener('change', () => {
         state.showMarginBox = !!app.showMarginBoxCb.checked;
@@ -648,6 +649,7 @@ export function setupUIBindings(context, controllers) {
     if (app.cpiSelect) {
       app.cpiSelect.addEventListener('change', () => {
         updateColsPreviewUI();
+        applySubmittedChanges();
         focusStage();
       });
     }
@@ -697,14 +699,25 @@ export function setupUIBindings(context, controllers) {
       return sanitized;
     };
 
+    const randomizeGlyphJitterSeed = () => {
+      state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
+    };
+
+    const commitGlyphJitterChanges = () => {
+      saveStateDebounced();
+      markGlyphJitterDirty();
+      focusStage();
+    };
+
     if (app.glyphJitterToggle) {
       app.glyphJitterToggle.checked = !!state.glyphJitterEnabled;
       app.glyphJitterToggle.addEventListener('change', () => {
         state.glyphJitterEnabled = !!app.glyphJitterToggle.checked;
         setGlyphJitterInputsDisabled(!state.glyphJitterEnabled);
-        saveStateDebounced();
-        markGlyphJitterDirty();
-        focusStage();
+        if (state.glyphJitterEnabled) {
+          randomizeGlyphJitterSeed();
+        }
+        commitGlyphJitterChanges();
       });
     }
 
@@ -712,9 +725,8 @@ export function setupUIBindings(context, controllers) {
       if (!input) return;
       input.addEventListener('change', () => {
         sanitizeAmountInputs();
-        saveStateDebounced();
-        markGlyphJitterDirty();
-        focusStage();
+        randomizeGlyphJitterSeed();
+        commitGlyphJitterChanges();
       });
       input.addEventListener('blur', () => { sanitizeAmountInputs(); });
     });
@@ -723,22 +735,11 @@ export function setupUIBindings(context, controllers) {
       if (!input) return;
       input.addEventListener('change', () => {
         sanitizeFrequencyInputs();
-        saveStateDebounced();
-        markGlyphJitterDirty();
-        focusStage();
+        randomizeGlyphJitterSeed();
+        commitGlyphJitterChanges();
       });
       input.addEventListener('blur', () => { sanitizeFrequencyInputs(); });
     });
-
-    if (app.shuffleGlyphJitterSeedBtn) {
-      app.shuffleGlyphJitterSeedBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
-        saveStateDebounced();
-        markGlyphJitterDirty();
-        focusStage();
-      });
-    }
 
     if (state.glyphJitterAmountPct) sanitizeAmountInputs();
     if (state.glyphJitterFrequencyPct) sanitizeFrequencyInputs();

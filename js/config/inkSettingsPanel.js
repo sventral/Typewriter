@@ -806,8 +806,8 @@ function parseInputValue(input, path) {
 }
 
 function attachFillRealtimeHandler(meta, path, input) {
-  if (!meta || meta.id !== 'fill') return;
-  if (!input || (path !== 'centerThickenPct' && path !== 'edgeThinPct')) return;
+  if (!meta || meta.id !== 'fill') return false;
+  if (!input || (path !== 'centerThickenPct' && path !== 'edgeThinPct')) return false;
   const setter = path === 'centerThickenPct' ? setCenterThickenPercent : setEdgeThinPercent;
   const handleRealtimeUpdate = () => {
     const value = parseInputValue(input, path);
@@ -823,12 +823,20 @@ function attachFillRealtimeHandler(meta, path, input) {
   };
   input.addEventListener('input', handleRealtimeUpdate);
   input.addEventListener('change', handleRealtimeUpdate);
+  return true;
 }
 
 function registerMetaInput(meta, path, input) {
   if (!meta || !path || !input) return;
   meta.inputs.set(path, input);
-  attachFillRealtimeHandler(meta, path, input);
+  if (attachFillRealtimeHandler(meta, path, input)) {
+    return;
+  }
+  const applyCurrentSection = () => applySection(meta);
+  if (input.type === 'range') {
+    input.addEventListener('input', applyCurrentSection);
+  }
+  input.addEventListener('change', applyCurrentSection);
 }
 
 function parseArrayString(value) {
@@ -1054,7 +1062,6 @@ function buildSection(def, root) {
     body,
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
-    applyBtn: null,
   };
 
   def.keyOrder.forEach(entry => {
@@ -1085,18 +1092,6 @@ function buildSection(def, root) {
     body.appendChild(row);
     registerMetaInput(meta, path, input);
   });
-
-  if (meta.id !== 'fill') {
-    const applyRow = document.createElement('div');
-    applyRow.className = 'control-row ink-section-apply-row';
-    applyRow.appendChild(document.createElement('div'));
-    const applyBtn = document.createElement('button');
-    applyBtn.className = 'btn apply-btn';
-    applyBtn.textContent = 'Apply';
-    applyRow.appendChild(applyBtn);
-    body.appendChild(applyRow);
-    meta.applyBtn = applyBtn;
-  }
 
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
@@ -1803,9 +1798,6 @@ export function setupInkSettingsPanel(options = {}) {
   if (sectionsRoot) {
     SECTION_DEFS.forEach(def => {
       const meta = buildSection(def, sectionsRoot);
-      if (meta.applyBtn) {
-        meta.applyBtn.addEventListener('click', () => applySection(meta));
-      }
       syncInputs(meta);
     });
   }
