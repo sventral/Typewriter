@@ -678,9 +678,17 @@ function clearDragIndicators() {
   root.querySelectorAll('.ink-section').forEach(section => {
     section.classList.remove('is-drop-before', 'is-drop-after');
   });
+  root.classList.remove('is-drop-end');
 }
 
 function endSectionDrag() {
+  if (panelState.dragState?.cleanup) {
+    try {
+      panelState.dragState.cleanup();
+    } catch (err) {
+      // noop
+    }
+  }
   if (panelState.dragState && panelState.dragState.element) {
     panelState.dragState.element.classList.remove('is-dragging');
   }
@@ -688,98 +696,169 @@ function endSectionDrag() {
   clearDragIndicators();
 }
 
-function startSectionDrag(event, meta) {
-  if (!meta || !meta.root) return;
-  if (event?.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move';
-    try {
-      event.dataTransfer.setData('text/plain', meta.id || '');
-    } catch (err) {
-      // Ignore failures from browsers that disallow setData during dragstart.
-    }
-  }
-  panelState.dragState = { id: meta.id, element: meta.root };
-  meta.root.classList.add('is-dragging');
-}
-
-function handleSectionDragOver(event, meta) {
-  if (!panelState.dragState || !meta || !meta.root || panelState.dragState.id === meta.id) return;
-  event.preventDefault();
-  if (event?.dataTransfer) {
-    event.dataTransfer.dropEffect = 'move';
-  }
-  const rect = meta.root.getBoundingClientRect();
-  const midpoint = rect.top + rect.height / 2;
-  const position = (event.clientY || 0) <= midpoint ? 'before' : 'after';
-  meta.root.classList.toggle('is-drop-before', position === 'before');
-  meta.root.classList.toggle('is-drop-after', position === 'after');
-}
-
-function handleSectionDrop(event, meta) {
-  if (!panelState.dragState || !meta || !meta.root) return;
-  event.preventDefault();
-  const draggingId = panelState.dragState.id;
-  if (!draggingId || draggingId === meta.id) {
-    endSectionDrag();
-    return;
-  }
+function commitPointerSectionDrop() {
+  const dragState = panelState.dragState;
+  if (!dragState || dragState.mode !== 'pointer') return;
+  const draggingId = dragState.id;
+  if (!draggingId || typeof dragState.dropIndex !== 'number') return;
   const order = Array.isArray(panelState.sectionOrder)
     ? panelState.sectionOrder.slice()
     : DEFAULT_SECTION_ORDER.slice();
   const fromIndex = order.indexOf(draggingId);
-  const targetIndexRaw = order.indexOf(meta.id);
-  if (fromIndex === -1 || targetIndexRaw === -1) {
-    endSectionDrag();
-    return;
-  }
+  if (fromIndex === -1) return;
   order.splice(fromIndex, 1);
-  const rect = meta.root.getBoundingClientRect();
-  const midpoint = rect.top + rect.height / 2;
-  const insertAfter = (event.clientY || 0) > midpoint;
-  const targetIndex = order.indexOf(meta.id);
-  const insertIndex = insertAfter ? targetIndex + 1 : targetIndex;
+  let insertIndex = dragState.dropIndex;
+  if (!Number.isFinite(insertIndex)) {
+    insertIndex = order.length;
+  }
+  insertIndex = Math.max(0, Math.min(order.length, Math.round(insertIndex)));
   order.splice(insertIndex, 0, draggingId);
   applySectionOrder(order);
-  endSectionDrag();
 }
 
-function handleSectionsRootDragOver(event) {
-  if (!panelState.dragState) return;
+function updatePointerDropTarget(clientX, clientY) {
+  const dragState = panelState.dragState;
+  if (!dragState || dragState.mode !== 'pointer') return;
   const root = panelState.sectionsRoot;
   if (!root) return;
-  if (event.target && event.target.closest('.ink-section')) {
-    return;
-  }
-  event.preventDefault();
-  if (event?.dataTransfer) {
-    event.dataTransfer.dropEffect = 'move';
-  }
+
   clearDragIndicators();
+
+  const rootRect = root.getBoundingClientRect();
+  const insideHorizontal = clientX >= rootRect.left && clientX <= rootRect.right;
+  if (!insideHorizontal) {
+    dragState.dropTargetId = null;
+    dragState.dropPosition = null;
+    dragState.dropToEnd = false;
+    dragState.dropIndex = null;
+    return;
+  }
+
+  const metas = Array.isArray(panelState.sectionOrder)
+    ? panelState.sectionOrder
+        .map(id => findMetaById(id))
+        .filter(meta => meta && meta.root && meta.id !== dragState.id)
+    : [];
+
+  if (!metas.length) {
+    root.classList.add('is-drop-end');
+    dragState.dropTargetId = null;
+    dragState.dropPosition = null;
+    dragState.dropToEnd = true;
+    dragState.dropIndex = 0;
+    return;
+  }
+
+  let dropIndex = metas.length;
+  if (clientY <= rootRect.top) {
+    dropIndex = 0;
+  } else if (clientY >= rootRect.bottom) {
+    dropIndex = metas.length;
+  } else {
+    for (let i = 0; i < metas.length; i++) {
+      const meta = metas[i];
+      const rect = meta.root.getBoundingClientRect();
+      const midpoint = rect.top + rect.height / 2;
+      if (clientY < midpoint) {
+        dropIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (dropIndex >= metas.length) {
+    const lastMeta = metas[metas.length - 1];
+    if (lastMeta?.root) {
+      lastMeta.root.classList.add('is-drop-after');
+    }
+    root.classList.add('is-drop-end');
+    dragState.dropTargetId = lastMeta?.id || null;
+    dragState.dropPosition = lastMeta ? 'after' : null;
+    dragState.dropToEnd = true;
+    dragState.dropIndex = metas.length;
+    return;
+  }
+
+  const targetMeta = metas[dropIndex];
+  if (targetMeta?.root) {
+    targetMeta.root.classList.add('is-drop-before');
+  }
+  dragState.dropTargetId = targetMeta?.id || null;
+  dragState.dropPosition = targetMeta ? 'before' : null;
+  dragState.dropToEnd = false;
+  dragState.dropIndex = dropIndex;
 }
 
-function handleSectionsRootDrop(event) {
-  if (!panelState.dragState) return;
-  const root = panelState.sectionsRoot;
-  if (!root) return;
-  if (event.target && event.target.closest('.ink-section')) {
-    return;
-  }
+function startPointerSectionDrag(event, meta) {
+  if (!meta || !meta.root) return;
+  if (event?.button !== undefined && event.button !== 0) return;
+  if (typeof event?.pointerId !== 'number') return;
+  const handle = event.currentTarget;
+  if (!handle) return;
+
   event.preventDefault();
-  const draggingId = panelState.dragState.id;
-  if (!draggingId) {
+
+  if (panelState.dragState) {
     endSectionDrag();
-    return;
   }
-  const order = Array.isArray(panelState.sectionOrder)
-    ? panelState.sectionOrder.slice()
-    : DEFAULT_SECTION_ORDER.slice();
-  const fromIndex = order.indexOf(draggingId);
-  if (fromIndex !== -1) {
-    order.splice(fromIndex, 1);
-    order.push(draggingId);
-    applySectionOrder(order);
+
+  const moveHandler = moveEvent => {
+    if (!panelState.dragState || panelState.dragState.pointerId !== moveEvent.pointerId) return;
+    moveEvent.preventDefault();
+    updatePointerDropTarget(moveEvent.clientX, moveEvent.clientY);
+  };
+
+  const upHandler = upEvent => {
+    if (!panelState.dragState || panelState.dragState.pointerId !== upEvent.pointerId) return;
+    upEvent.preventDefault();
+    commitPointerSectionDrop();
+    endSectionDrag();
+  };
+
+  const cancelHandler = cancelEvent => {
+    if (!panelState.dragState || panelState.dragState.pointerId !== cancelEvent.pointerId) return;
+    cancelEvent.preventDefault();
+    endSectionDrag();
+  };
+
+  panelState.dragState = {
+    id: meta.id,
+    element: meta.root,
+    mode: 'pointer',
+    pointerId: event.pointerId,
+    dropTargetId: null,
+    dropPosition: null,
+    dropToEnd: false,
+    dropIndex: null,
+    cleanup: () => {
+      handle.removeEventListener('pointermove', moveHandler);
+      handle.removeEventListener('pointerup', upHandler);
+      handle.removeEventListener('pointercancel', cancelHandler);
+      if (typeof handle.releasePointerCapture === 'function') {
+        try {
+          handle.releasePointerCapture(event.pointerId);
+        } catch (err) {
+          // noop
+        }
+      }
+    },
+  };
+
+  meta.root.classList.add('is-dragging');
+
+  if (typeof handle.setPointerCapture === 'function') {
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch (err) {
+      // noop
+    }
   }
-  endSectionDrag();
+
+  handle.addEventListener('pointermove', moveHandler);
+  handle.addEventListener('pointerup', upHandler);
+  handle.addEventListener('pointercancel', cancelHandler);
+
+  updatePointerDropTarget(event.clientX, event.clientY);
 }
 
 function getPercentFromState(key, fallback = 0) {
@@ -1235,7 +1314,6 @@ function buildSection(def, root) {
   dragHandle.className = 'ink-section-drag-handle';
   dragHandle.setAttribute('aria-label', `Reorder ${def.label}`);
   dragHandle.innerHTML = '<span aria-hidden="true">⋮⋮</span>';
-  dragHandle.draggable = true;
   topLine.appendChild(dragHandle);
   topLine.appendChild(toggleBtn);
   header.appendChild(topLine);
@@ -1281,17 +1359,7 @@ function buildSection(def, root) {
     defaultStrength: def.defaultStrength ?? 0,
   };
 
-  const dragStartHandler = event => startSectionDrag(event, meta);
-  dragHandle.addEventListener('dragstart', dragStartHandler);
-  dragHandle.addEventListener('dragend', endSectionDrag);
-  dragHandle.addEventListener('dragover', event => handleSectionDragOver(event, meta));
-  dragHandle.addEventListener('drop', event => handleSectionDrop(event, meta));
-  sectionEl.addEventListener('dragover', event => handleSectionDragOver(event, meta));
-  sectionEl.addEventListener('dragleave', () => {
-    sectionEl.classList.remove('is-drop-before', 'is-drop-after');
-  });
-  sectionEl.addEventListener('drop', event => handleSectionDrop(event, meta));
-  sectionEl.addEventListener('dragend', endSectionDrag);
+  dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
 
   def.keyOrder.forEach(entry => {
     let path = null;
@@ -1987,11 +2055,6 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.importButton = document.getElementById('inkStyleImportBtn');
   panelState.importInput = document.getElementById('inkStyleImportInput');
   panelState.sectionsRoot = sectionsRoot;
-
-  if (sectionsRoot) {
-    sectionsRoot.addEventListener('dragover', handleSectionsRootDragOver);
-    sectionsRoot.addEventListener('drop', handleSectionsRootDrop);
-  }
 
   panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
   setSectionOrderOnState(panelState.sectionOrder);
