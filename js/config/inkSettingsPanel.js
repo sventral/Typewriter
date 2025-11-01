@@ -8,6 +8,22 @@ Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
+const INPUT_OVERRIDES = {
+  'grain.scale': { type: 'range', min: 0.25, max: 3, step: 0.05, precision: 2 },
+  'grain.gamma': { type: 'range', min: 0.2, max: 3, step: 0.05, precision: 2 },
+  'grain.opacity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'grain.blend_mode': {
+    type: 'enum-range',
+    options: ['destination-out', 'multiply', 'screen', 'overlay', 'soft-light'],
+  },
+};
+
+function getInputOverride(sectionId, path) {
+  if (!path) return null;
+  const key = sectionId ? `${sectionId}.${path}` : path;
+  return INPUT_OVERRIDES[key] || null;
+}
+
 function resolveIntensityConfig(key) {
   const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
   const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
@@ -55,7 +71,7 @@ const SECTION_DEFS = [
     id: 'grain',
     label: 'Grain',
     config: GRAIN_CFG,
-    keyOrder: ['base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'post_gamma', 'alpha', 'seeds', 'composite_op'],
+    keyOrder: ['scale', 'gamma', 'opacity', 'blend_mode', 'tile', 'base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'alpha', 'seeds'],
     trigger: 'grain',
     stateKey: 'grainPct',
     defaultStrength: 0,
@@ -526,6 +542,8 @@ function getObjectKeys(path, obj) {
       return ['max', 'mix_pow', 'low_pow', 'min'];
     case 'seeds':
       return ['octave', 'hash'];
+    case 'tile':
+      return ['enabled', 'size', 'reuse', 'seed'];
     case 'passes[]':
       return ['width', 'alpha', 'jitter', 'jitterY', 'lighten', 'strokes', 'seed'];
     case 'noiseOctaves[]':
@@ -535,6 +553,36 @@ function getObjectKeys(path, obj) {
   }
 }
 
+function formatSliderNumber(value, precision = 2) {
+  if (!Number.isFinite(value)) return '';
+  let text = value.toFixed(Math.max(0, precision));
+  if (text.includes('.')) {
+    text = text.replace(/0+$/, '').replace(/\.$/, '');
+  }
+  return text;
+}
+
+function updateSliderDisplay(input) {
+  if (!input || !input._valueDisplay) return;
+  if (input.dataset.enumOptions) {
+    const options = input.dataset.enumOptions.split('|');
+    const raw = Number.parseFloat(input.value);
+    const idx = clamp(Number.isFinite(raw) ? Math.round(raw) : 0, 0, Math.max(0, options.length - 1));
+    const label = options[idx] || '';
+    input.dataset.enumValue = label;
+    input._valueDisplay.textContent = label;
+    input.setAttribute('aria-valuetext', label);
+    return;
+  }
+  const precision = Number.isFinite(Number.parseInt(input.dataset.precision, 10))
+    ? Math.max(0, Number.parseInt(input.dataset.precision, 10))
+    : 2;
+  const num = Number.parseFloat(input.value);
+  const text = Number.isFinite(num) ? formatSliderNumber(num, precision) : (input.value || '');
+  input._valueDisplay.textContent = text;
+  input.setAttribute('aria-valuetext', text);
+}
+
 function buildControlRow(labelText, input) {
   const row = document.createElement('div');
   row.className = 'control-row';
@@ -542,10 +590,63 @@ function buildControlRow(labelText, input) {
   label.textContent = labelText;
   row.appendChild(label);
   row.appendChild(input);
+  if (input.dataset.slider === '1') {
+    const display = document.createElement('span');
+    display.className = 'ink-control-value';
+    input._valueDisplay = display;
+    updateSliderDisplay(input);
+    row.appendChild(display);
+    input.addEventListener('input', () => updateSliderDisplay(input));
+  }
   return row;
 }
 
-function createInputForValue(value, path) {
+function createInputForValue(value, path, sectionId) {
+  const override = getInputOverride(sectionId, path);
+  if (override) {
+    if (override.type === 'range') {
+      const min = Number.isFinite(override.min) ? override.min : 0;
+      const max = Number.isFinite(override.max) ? override.max : Math.max(min, 1);
+      const initial = Number.isFinite(value)
+        ? clamp(value, min, max)
+        : Number.isFinite(override.default)
+          ? clamp(override.default, min, max)
+          : min;
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = String(min);
+      input.max = String(max);
+      input.step = Number.isFinite(override.step) ? String(override.step) : '0.01';
+      input.value = String(initial);
+      input.dataset.slider = '1';
+      const precision = Number.isFinite(override.precision) ? Math.max(0, override.precision) : 2;
+      input.dataset.precision = String(precision);
+      return input;
+    }
+    if (override.type === 'enum-range') {
+      const options = Array.isArray(override.options) && override.options.length
+        ? override.options
+        : ['destination-out'];
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = '0';
+      input.max = String(Math.max(0, options.length - 1));
+      input.step = '1';
+      let idx = 0;
+      if (typeof value === 'string') {
+        idx = options.indexOf(value);
+      } else if (Number.isFinite(value)) {
+        idx = Math.round(value);
+      }
+      idx = clamp(Number.isFinite(idx) ? idx : 0, 0, Math.max(0, options.length - 1));
+      input.value = String(idx);
+      input.dataset.enumOptions = options.join('|');
+      input.dataset.slider = '1';
+      input.dataset.precision = '0';
+      input.dataset.enumValue = options[idx] || '';
+      return input;
+    }
+  }
   if (typeof value === 'boolean') {
     const input = document.createElement('input');
     input.type = 'checkbox';
@@ -575,9 +676,20 @@ function createInputForValue(value, path) {
 
 function parseInputValue(input, path) {
   if (!input) return null;
+  if (input.dataset.enumOptions) {
+    const options = input.dataset.enumOptions.split('|');
+    const raw = Number.parseFloat(input.value);
+    const idx = clamp(Number.isFinite(raw) ? Math.round(raw) : 0, 0, Math.max(0, options.length - 1));
+    const choice = options[idx] || '';
+    input.dataset.enumValue = choice;
+    if (input._valueDisplay) {
+      input._valueDisplay.textContent = choice;
+    }
+    return choice;
+  }
   if (input.type === 'checkbox') return !!input.checked;
   if (input.dataset.hex === '1') return parseHex(input.value);
-  if (input.type === 'number') {
+  if (input.type === 'number' || input.type === 'range') {
     const num = Number.parseFloat(input.value);
     return Number.isFinite(num) ? num : 0;
   }
@@ -650,8 +762,8 @@ function buildArrayControls(meta, container, arr, path, label) {
     }
     arr.forEach((value, idx) => {
       const itemPath = `${path}[${idx}]`;
-      const input = createInputForValue(value, itemPath);
-      if (typeof value === 'string') input.dataset.string = '1';
+      const input = createInputForValue(value, itemPath, meta?.id);
+      if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
       const row = buildControlRow(`${label ? label : 'Item'} ${idx + 1}`, input);
       group.appendChild(row);
       meta.inputs.set(itemPath, input);
@@ -686,9 +798,9 @@ function buildArrayControls(meta, container, arr, path, label) {
         buildObjectControls(meta, item, val, `${path}[${idx}].${key}`, key);
         return;
       }
-      const input = createInputForValue(val, itemPath);
+      const input = createInputForValue(val, itemPath, meta?.id);
       const row = buildControlRow(key, input);
-      if (typeof val === 'string') input.dataset.string = '1';
+      if (!input.dataset.enumOptions && typeof val === 'string') input.dataset.string = '1';
       item.appendChild(row);
       meta.inputs.set(itemPath, input);
     });
@@ -719,8 +831,8 @@ function buildObjectControls(meta, container, obj, path, label) {
       buildObjectControls(meta, group, value, keyPath, key);
       return;
     }
-    const input = createInputForValue(value, keyPath);
-    if (typeof value === 'string') input.dataset.string = '1';
+    const input = createInputForValue(value, keyPath, meta?.id);
+    if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
     const row = buildControlRow(key, input);
     group.appendChild(row);
     meta.inputs.set(keyPath, input);
@@ -821,8 +933,8 @@ function buildSection(def, root) {
       buildObjectControls(meta, body, value, path, key);
       return;
     }
-    const input = createInputForValue(value, path);
-    if (typeof value === 'string') input.dataset.string = '1';
+    const input = createInputForValue(value, path, meta.id);
+    if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
     const row = buildControlRow(key, input);
     body.appendChild(row);
     meta.inputs.set(path, input);
@@ -946,6 +1058,22 @@ function applySectionStrength(meta, percent, options = {}) {
 function syncInputs(meta) {
   for (const [path, input] of meta.inputs.entries()) {
     const value = getValueByPath(meta.config, path);
+    if (input.dataset.enumOptions) {
+      const options = input.dataset.enumOptions.split('|');
+      let idx = -1;
+      if (typeof value === 'string') {
+        idx = options.indexOf(value);
+      }
+      if (idx < 0 && Number.isFinite(Number(value))) {
+        idx = Math.round(Number(value));
+      }
+      const bounded = clamp(idx >= 0 ? idx : 0, 0, Math.max(0, options.length - 1));
+      if (input.value !== String(bounded)) {
+        input.value = String(bounded);
+      }
+      updateSliderDisplay(input);
+      continue;
+    }
     if (input.dataset.hex === '1') {
       input.value = toHex(value ?? 0);
     } else if (input.type === 'checkbox') {
@@ -955,8 +1083,26 @@ function syncInputs(meta) {
       else input.value = value == null ? '' : String(value);
     } else if (input.type === 'number') {
       input.value = value == null ? '' : String(value);
+      if (input.dataset.slider === '1') updateSliderDisplay(input);
+    } else if (input.type === 'range') {
+      const fallback = Number.parseFloat(input.value);
+      const min = Number.parseFloat(input.min);
+      const max = Number.parseFloat(input.max);
+      let next = Number.parseFloat(value);
+      if (!Number.isFinite(next)) {
+        next = Number.isFinite(fallback) ? fallback : 0;
+      }
+      const hasBounds = Number.isFinite(min) && Number.isFinite(max);
+      const lower = hasBounds ? Math.min(min, max) : next;
+      const upper = hasBounds ? Math.max(min, max) : next;
+      const clamped = hasBounds ? clamp(next, lower, upper) : next;
+      if (Number.isFinite(clamped)) {
+        input.value = String(clamped);
+      }
+      updateSliderDisplay(input);
     } else {
       input.value = value == null ? '' : String(value);
+      if (input.dataset.slider === '1') updateSliderDisplay(input);
     }
   }
 }
