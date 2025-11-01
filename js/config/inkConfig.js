@@ -3,8 +3,8 @@ import { clamp } from '../utils/math.js';
 const DEFAULT_HASH_WEIGHT = 0;
 
 export const INK_INTENSITY = {
-  centerThicken: { defaultPct: 100, minPct: 0, maxPct: 200 },
-  edgeThin: { defaultPct: 100, minPct: 0, maxPct: 200 },
+  centerThicken: { defaultPct: 91, minPct: 0, maxPct: 200 },
+  edgeThin: { defaultPct: 122, minPct: 0, maxPct: 200 },
 };
 
 const sanitizeSeed = (value, fallback) => (Number.isFinite(value) ? (value >>> 0) : (fallback >>> 0));
@@ -73,12 +73,12 @@ const buildScratchConfig = (defaults, incoming) => {
 export const INK_TEXTURE = {
   enabled: true,
   supersample: 2,
-  coarseNoise: { scale: 0.68, strength: 1.2, seed: 0x9E3779B1 },
-  fineNoise: { scale: 0.18, strength: 0.9, seed: 0x7F4A7C15, hashWeight: 0.32 },
-  noiseSmoothing: 0.35,
-  centerEdgeBias: 0.18,
+  coarseNoise: { scale: 0.528, strength: 2.72, seed: 0x9E3779B1 },
+  fineNoise: { scale: 0.018, strength: 2.9, seed: 0x7F4A7C15, hashWeight: 0 },
+  noiseSmoothing: 0.135,
+  centerEdgeBias: 0.518,
   noiseFloor: 0.34,
-  chip: { enabled: true, density: 0.017, strength: 0.88, feather: 0.45, seed: 0xC13579BD },
+  chip: { enabled: true, density: 0.17, strength: 0.08, feather: 1.05, seed: 0xC13579BD },
   scratch: {
     enabled: true,
     direction: { x: 0.72, y: -0.46 },
@@ -137,28 +137,28 @@ export function normalizeInkTextureConfig(config) {
 export const EDGE_FUZZ = {
   enabled: true,
   inks: ['b', 'r'],
-  widthPx: 1.64,
-  inwardShare: 0.55,
-  roughness: 2.85,
+  widthPx: 0.34,
+  inwardShare: 0.15,
+  roughness: 0.85,
   frequency: 0.2,
   opacity: 0.38,
   seed: 0x7F4A7C15,
 };
 
 export const EDGE_BLEED = {
-  enabled: true,
+  enabled: false,
   inks: ['b', 'r'],
   passes: [
-    { width: 0.25, alpha: 0.18, jitter: 0.22, jitterY: 0.26, lighten: 0.08, strokes: 1, seed: 324508639 },
-    { width: 0.21, alpha: 0.12, jitter: 0.75, jitterY: 0.45, lighten: 0.952, strokes: 1, seed: 610839777 }
+    { width: 0.25, alpha: 0.18, jitter: 0.22, jitterY: 0.16, lighten: 0.08, strokes: 2, seed: 324508639 },
+    { width: 0.21, alpha: 0.192, jitter: 0.05, jitterY: 0.145, lighten: 0.052, strokes: 1, seed: 610839777 }
   ]
 };
 
 export const GRAIN_CFG = {
-  enabled: true,
-  base_scale_from_char_w: 0.64,
-  octave_rel_scales: [0.9, 1.5, 2.3, 3.8],
-  octave_weights: [0.42, 0.1, 0.23, 0.15],
+  enabled: false,
+  base_scale_from_char_w: 0.94,
+  octave_rel_scales: [0.29, 1.5, 2.3, 3.8],
+  octave_weights: [0.22, 0.061, 0.23, 0.25],
   pixel_hash_weight: 0,
   post_gamma: 0.9,
   alpha: { max: 0.45, mix_pow: 0.7, low_pow: 0.4, min: 0.0 },
