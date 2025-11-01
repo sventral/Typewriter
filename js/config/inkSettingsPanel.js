@@ -58,7 +58,7 @@ const SECTION_DEFS = [
     keyOrder: ['base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'post_gamma', 'alpha', 'seeds', 'composite_op'],
     trigger: 'grain',
     stateKey: 'grainPct',
-    defaultStrength: 100,
+    defaultStrength: 0,
   }
 ];
 
@@ -212,7 +212,7 @@ function normalizeStyleRecord(style, index = 0) {
 function createDefaultStyleRecord(index = 0) {
   const record = {
     id: generateStyleId(),
-    name: `Style ${index + 1}`,
+    name: index === 0 ? 'Current style' : `Style ${index + 1}`,
     overall: 100,
     centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
     edgeThin: EDGE_THIN_LIMITS.defaultPct,
