@@ -603,7 +603,7 @@ export function createDocumentEditingController(context) {
     rebuildAllAtlases();
     for (const p of state.pages) {
       p.grainCanvas = null;
-      p.grainForSize = { w: 0, h: 0 };
+      p.grainForSize = { w: 0, h: 0, key: null };
       configureCanvasContext(p.ctx);
       configureCanvasContext(p.backCtx);
       p.dirtyAll = true;

@@ -79,7 +79,7 @@ export function createPageLifecycleController(context, editingController) {
       _dirtyRowMaxMu: undefined,
       marginBoxEl,
       grainCanvas: null,
-      grainForSize: { w: 0, h: 0 },
+      grainForSize: { w: 0, h: 0, key: null },
     };
     const handler = (e) => handlePageClick(e, idx);
     pageEl.addEventListener('mousedown', handler, { capture: false });

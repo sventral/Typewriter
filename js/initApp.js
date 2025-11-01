@@ -359,7 +359,7 @@ if (pendingVirtualization) {
 
 const { isSafari: IS_SAFARI, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD } = detectSafariEnvironment();
 
-const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphAtlas({
+const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion, invalidateGrainCache } = createGlyphAtlas({
   context,
   app,
   state,
@@ -428,6 +428,7 @@ const {
   rebuildAllAtlases,
   drawGlyph,
   applyGrainOverlayOnRegion,
+  invalidateGrainCache,
   lifecycle: context.controllers.lifecycle,
   getCurrentBounds,
   getBatchDepth: () => batchDepth,
@@ -814,7 +815,7 @@ function applyMetricsNow(full=false){
   contextCallbacks.rebuildAllAtlases();
   for (const p of state.pages){
     p.grainCanvas = null;
-    p.grainForSize = { w:0, h:0 };
+    p.grainForSize = { w:0, h:0, key: null };
     configureCanvasContext(p.ctx);
     configureCanvasContext(p.backCtx);
     p.dirtyAll = true;
