@@ -1279,7 +1279,7 @@ export function getInkSectionStrength(sectionId) {
     case 'bleed':
       return normalizedPercent(getPercentFromState('edgeBleedStrength', EDGE_BLEED.enabled === false ? 0 : 100));
     case 'grain':
-      return normalizedPercent(getPercentFromState('grainPct', 100));
+      return normalizedPercent(getPercentFromState('grainPct', GRAIN_CFG.enabled === false ? 0 : 100));
     default:
       return 1;
   }

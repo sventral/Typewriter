@@ -6,7 +6,7 @@ import {
   normalizeGlyphJitterSeed,
   cloneGlyphJitterRange,
 } from '../config/glyphJitterConfig.js';
-import { INK_INTENSITY } from '../config/inkConfig.js';
+import { EDGE_BLEED, GRAIN_CFG, INK_INTENSITY } from '../config/inkConfig.js';
 
 const resolveIntensityBounds = (key) => {
   const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
@@ -180,9 +180,17 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       EDGE_THIN_BOUNDS.max,
     ),
     inkTextureStrength: clamp(Number(state.inkTextureStrength ?? 100), 0, 100),
-    edgeBleedStrength: clamp(Number(state.edgeBleedStrength ?? 100), 0, 100),
+    edgeBleedStrength: clamp(
+      Number(state.edgeBleedStrength ?? (EDGE_BLEED.enabled === false ? 0 : 100)),
+      0,
+      100,
+    ),
     edgeFuzzStrength: clamp(Number(state.edgeFuzzStrength ?? 100), 0, 100),
-    grainPct: clamp(Number(state.grainPct ?? 100), 0, 100),
+    grainPct: clamp(
+      Number(state.grainPct ?? (GRAIN_CFG.enabled === false ? 0 : 100)),
+      0,
+      100,
+    ),
     grainSeed: state.grainSeed >>> 0,
     altSeed: state.altSeed >>> 0,
     wordWrap: state.wordWrap,
@@ -358,9 +366,25 @@ export function deserializeDocumentState(data, context) {
       EDGE_THIN_BOUNDS.max,
     ),
     inkTextureStrength: clamp(Number(data.inkTextureStrength ?? state.inkTextureStrength ?? 100), 0, 100),
-    edgeBleedStrength: clamp(Number(data.edgeBleedStrength ?? state.edgeBleedStrength ?? 100), 0, 100),
+    edgeBleedStrength: clamp(
+      Number(
+        data.edgeBleedStrength
+          ?? state.edgeBleedStrength
+          ?? (EDGE_BLEED.enabled === false ? 0 : 100)
+      ),
+      0,
+      100,
+    ),
     edgeFuzzStrength: clamp(Number(data.edgeFuzzStrength ?? state.edgeFuzzStrength ?? 100), 0, 100),
-    grainPct: clamp(Number(data.grainPct ?? state.grainPct ?? 100), 0, 100),
+    grainPct: clamp(
+      Number(
+        data.grainPct
+          ?? state.grainPct
+          ?? (GRAIN_CFG.enabled === false ? 0 : 100)
+      ),
+      0,
+      100,
+    ),
     grainSeed: (data.grainSeed >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
     altSeed:
       (data.altSeed >>> 0) || (((data.grainSeed >>> 0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
