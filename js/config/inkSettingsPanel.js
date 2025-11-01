@@ -805,6 +805,40 @@ function parseInputValue(input, path) {
   return input.value;
 }
 
+function attachFillRealtimeHandler(meta, path, input) {
+  if (!meta || meta.id !== 'fill') return false;
+  if (!input || (path !== 'centerThickenPct' && path !== 'edgeThinPct')) return false;
+  const setter = path === 'centerThickenPct' ? setCenterThickenPercent : setEdgeThinPercent;
+  const handleRealtimeUpdate = () => {
+    const value = parseInputValue(input, path);
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return;
+    const pct = setter(numeric);
+    if (Number.isFinite(pct) && input.value !== String(pct)) {
+      input.value = String(pct);
+      if (input.dataset.slider === '1') {
+        updateSliderDisplay(input);
+      }
+    }
+  };
+  input.addEventListener('input', handleRealtimeUpdate);
+  input.addEventListener('change', handleRealtimeUpdate);
+  return true;
+}
+
+function registerMetaInput(meta, path, input) {
+  if (!meta || !path || !input) return;
+  meta.inputs.set(path, input);
+  if (attachFillRealtimeHandler(meta, path, input)) {
+    return;
+  }
+  const applyCurrentSection = () => applySection(meta);
+  if (input.type === 'range') {
+    input.addEventListener('input', applyCurrentSection);
+  }
+  input.addEventListener('change', applyCurrentSection);
+}
+
 function parseArrayString(value) {
   if (typeof value !== 'string') return [];
   if (!value.trim()) return [];
@@ -875,7 +909,7 @@ function buildArrayControls(meta, container, arr, path, label) {
       if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
       const row = buildControlRow(`${label ? label : 'Item'} ${idx + 1}`, input);
       group.appendChild(row);
-      meta.inputs.set(itemPath, input);
+      registerMetaInput(meta, itemPath, input);
     });
     container.appendChild(group);
     return;
@@ -911,7 +945,7 @@ function buildArrayControls(meta, container, arr, path, label) {
       const row = buildControlRow(key, input);
       if (!input.dataset.enumOptions && typeof val === 'string') input.dataset.string = '1';
       item.appendChild(row);
-      meta.inputs.set(itemPath, input);
+      registerMetaInput(meta, itemPath, input);
     });
     group.appendChild(item);
   });
@@ -944,7 +978,7 @@ function buildObjectControls(meta, container, obj, path, label) {
     if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
     const row = buildControlRow(key, input);
     group.appendChild(row);
-    meta.inputs.set(keyPath, input);
+    registerMetaInput(meta, keyPath, input);
   });
   container.appendChild(group);
 }
@@ -1028,7 +1062,6 @@ function buildSection(def, root) {
     body,
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
-    applyBtn: null,
   };
 
   def.keyOrder.forEach(entry => {
@@ -1057,18 +1090,8 @@ function buildSection(def, root) {
     if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
     const row = buildControlRow(labelText || path, input);
     body.appendChild(row);
-    meta.inputs.set(path, input);
+    registerMetaInput(meta, path, input);
   });
-
-  const applyRow = document.createElement('div');
-  applyRow.className = 'control-row ink-section-apply-row';
-  applyRow.appendChild(document.createElement('div'));
-  const applyBtn = document.createElement('button');
-  applyBtn.className = 'btn apply-btn';
-  applyBtn.textContent = 'Apply';
-  applyRow.appendChild(applyBtn);
-  body.appendChild(applyRow);
-  meta.applyBtn = applyBtn;
 
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
@@ -1775,9 +1798,6 @@ export function setupInkSettingsPanel(options = {}) {
   if (sectionsRoot) {
     SECTION_DEFS.forEach(def => {
       const meta = buildSection(def, sectionsRoot);
-      if (meta.applyBtn) {
-        meta.applyBtn.addEventListener('click', () => applySection(meta));
-      }
       syncInputs(meta);
     });
   }
