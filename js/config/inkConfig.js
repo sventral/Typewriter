@@ -3,7 +3,7 @@ import { clamp } from '../utils/math.js';
 const DEFAULT_HASH_WEIGHT = 0;
 
 export const INK_INTENSITY = {
-  centerThicken: { defaultPct: 91, minPct: 0, maxPct: 200 },
+  centerThicken: { defaultPct: 174, minPct: 0, maxPct: 200 },
   edgeThin: { defaultPct: 122, minPct: 0, maxPct: 200 },
 };
 
@@ -73,7 +73,7 @@ const buildScratchConfig = (defaults, incoming) => {
 export const INK_TEXTURE = {
   enabled: true,
   supersample: 2,
-  coarseNoise: { scale: 0.528, strength: 2.72, seed: 0x9E3779B1 },
+  coarseNoise: { scale: 0.6528, strength: 2.72, seed: 0x9E3779B1 },
   fineNoise: { scale: 0.018, strength: 2.9, seed: 0x7F4A7C15, hashWeight: 0 },
   noiseSmoothing: 0.135,
   centerEdgeBias: 0.518,
@@ -139,7 +139,7 @@ export const EDGE_FUZZ = {
   inks: ['b', 'r'],
   widthPx: 0.34,
   inwardShare: 0.15,
-  roughness: 0.85,
+  roughness: 16.85,
   frequency: 0.2,
   opacity: 0.38,
   seed: 0x7F4A7C15,
@@ -148,11 +148,11 @@ export const EDGE_FUZZ = {
 const EDGE_BLEED_DEFAULTS = {
   enabled: false,
   inks: ['b', 'r'],
-  widthPx: 0.32,
-  feather: 1.18,
-  lightnessShift: 0.08,
-  noiseRoughness: 0.24,
-  intensity: 0.22,
+  widthPx: 0.322,
+  feather: 0.818,
+  lightnessShift: 0.05,
+  noiseRoughness: 5.24,
+  intensity: 0.2,
   seed: 0xC13579BD,
 };
 
@@ -220,7 +220,7 @@ export const EDGE_BLEED = normalizeEdgeBleedConfig(EDGE_BLEED_DEFAULTS);
 
 export const GRAIN_CFG = {
   enabled: false,
-  base_scale_from_char_w: 0.94,
+  base_scale_from_char_w: 0.194,
   octave_rel_scales: [0.29, 1.5, 2.3, 3.8],
   octave_weights: [0.22, 0.061, 0.23, 0.25],
   pixel_hash_weight: 0,
