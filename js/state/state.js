@@ -44,6 +44,7 @@ export function createMainState(app, gridDiv = 8) {
     grainPct: 0,
     grainSeed: 0xC0FFEE,
     altSeed: 0x51F15EED,
+    inkSectionOrder: ['fill', 'texture', 'fuzz', 'bleed', 'grain'],
     glyphJitterEnabled: GLYPH_JITTER_DEFAULTS.enabled,
     glyphJitterAmountPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.amountPct),
     glyphJitterFrequencyPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.frequencyPct),
