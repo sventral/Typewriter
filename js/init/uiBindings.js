@@ -623,6 +623,7 @@ export function setupUIBindings(context, controllers) {
       });
       app.sizeInput.addEventListener('change', () => {
         sanitizeIntegerField(app.sizeInput, { min: 1, max: 150, allowEmpty: false, fallbackValue: state.inkWidthPct || 95 });
+        applySubmittedChanges();
         focusStage();
       });
       const applyOnEnter = (e) => {
@@ -634,9 +635,12 @@ export function setupUIBindings(context, controllers) {
       app.sizeInput.addEventListener('keydown', applyOnEnter);
     }
 
-    if (app.applyBtn) app.applyBtn.addEventListener('click', applySubmittedChanges);
-    if (app.applyLHBtn) app.applyLHBtn.addEventListener('click', applyLineHeight);
-    if (app.lhInput) app.lhInput.addEventListener('input', () => { app.lhInput.value = String(readStagedLH()); });
+    if (app.lhInput) {
+      app.lhInput.addEventListener('input', () => { app.lhInput.value = String(readStagedLH()); });
+      app.lhInput.addEventListener('change', () => {
+        applyLineHeight();
+      });
+    }
     if (app.showMarginBoxCb) {
       app.showMarginBoxCb.addEventListener('change', () => {
         state.showMarginBox = !!app.showMarginBoxCb.checked;
@@ -648,6 +652,7 @@ export function setupUIBindings(context, controllers) {
     if (app.cpiSelect) {
       app.cpiSelect.addEventListener('change', () => {
         updateColsPreviewUI();
+        applySubmittedChanges();
         focusStage();
       });
     }
