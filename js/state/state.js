@@ -1,3 +1,5 @@
+import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitter.js';
+
 export function createMainState(app, gridDiv = 8) {
   return {
     pages: [],
@@ -27,6 +29,10 @@ export function createMainState(app, gridDiv = 8) {
     grainPct: 100,
     grainSeed: 0xC0FFEE,
     altSeed: 0x51F15EED,
+    glyphJitterEnabled: GLYPH_JITTER_DEFAULTS.enabled,
+    glyphJitterAmountPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.amountPct),
+    glyphJitterFrequencyPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.frequencyPct),
+    glyphJitterSeed: GLYPH_JITTER_DEFAULTS.seed >>> 0,
     wordWrap: true,
     themeMode: 'auto',
     darkPageInDarkMode: false,

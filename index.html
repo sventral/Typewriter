@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.6.3b</div>
+  <div class="app-version">v.6.4b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -141,6 +141,32 @@
             <div class="control-row">
               <div></div>
               <button class="btn apply-btn" id="applyLHBtn" title="Apply line height">Apply</button>
+            </div>
+            <div class="control-row">
+              <label for="glyphJitterToggle">Glyph jitter</label>
+              <input id="glyphJitterToggle" type="checkbox" />
+            </div>
+            <div class="control-row">
+              <label for="glyphJitterAmountMin">Offset range</label>
+              <div class="range-input-pair">
+                <input id="glyphJitterAmountMin" type="number" min="0" max="12" step="0.1" aria-label="Glyph jitter minimum offset percent" />
+                <span class="range-separator">–</span>
+                <input id="glyphJitterAmountMax" type="number" min="0" max="12" step="0.1" aria-label="Glyph jitter maximum offset percent" />
+                <span class="range-suffix">%</span>
+              </div>
+            </div>
+            <div class="control-row">
+              <label for="glyphJitterFrequencyMin">Frequency</label>
+              <div class="range-input-pair">
+                <input id="glyphJitterFrequencyMin" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter minimum frequency percent" />
+                <span class="range-separator">–</span>
+                <input id="glyphJitterFrequencyMax" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter maximum frequency percent" />
+                <span class="range-suffix">%</span>
+              </div>
+            </div>
+            <div class="control-row">
+              <div></div>
+              <button class="btn apply-btn" id="shuffleGlyphJitterSeedBtn" type="button" title="Reshuffle glyph jitter pattern">Reshuffle</button>
             </div>
           </div>
         </div>
