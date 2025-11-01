@@ -2,7 +2,7 @@ import {
   normalizeGlyphJitterAmount,
   normalizeGlyphJitterFrequency,
   normalizeGlyphJitterSeed,
-} from '../config/glyphJitter.js';
+} from '../config/glyphJitterConfig.js';
 
 function hash2(ix, iy, seed) {
   let h = seed | 0;

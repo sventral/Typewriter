@@ -5,7 +5,7 @@ import {
   GLYPH_JITTER_DEFAULTS,
   normalizeGlyphJitterAmount,
   normalizeGlyphJitterFrequency,
-} from '../config/glyphJitter.js';
+} from '../config/glyphJitterConfig.js';
 import {
   DEFAULT_DOCUMENT_TITLE,
   normalizeDocumentTitle,

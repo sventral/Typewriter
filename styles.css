@@ -648,10 +648,24 @@ body[data-page-tone='dark']{
   .input-with-suffix { position: relative; display: flex; }
   .input-with-suffix input { width: 100%; }
   .input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }
-  .range-input-pair { display: inline-flex; align-items: center; gap: 6px; }
-  .range-input-pair input { width: 64px; }
+  .range-input-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 84px) auto minmax(0, 84px) auto;
+    align-items: center;
+    column-gap: 6px;
+  }
+  .range-input-pair input {
+    width: 100%;
+    text-align: right;
+  }
   .range-input-pair .range-separator,
-  .range-input-pair .range-suffix { font-weight: 400; opacity: 0.6; }
+  .range-input-pair .range-suffix {
+    font-weight: 400;
+    opacity: 0.6;
+  }
+  .range-input-pair .range-separator {
+    justify-self: center;
+  }
 
   .fonts-settings-group { gap: 8px; }
   .fonts-settings-group .font-option {
