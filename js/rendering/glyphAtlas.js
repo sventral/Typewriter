@@ -1,5 +1,5 @@
 import { clamp } from '../utils/math.js';
-import { normalizeInkTextureConfig } from '../config/inkConfig.js';
+import { normalizeEdgeFuzzConfig, normalizeInkTextureConfig } from '../config/inkConfig.js';
 
 export function createGlyphAtlas(options) {
   const {
@@ -351,7 +351,9 @@ export function createGlyphAtlas(options) {
       overallStrength,
       sectionStrength,
     } = options || {};
-    if (!config || !config.enabled) return;
+    if (!config) return;
+    const normalizedConfig = normalizeEdgeFuzzConfig(config);
+    if (!normalizedConfig || normalizedConfig.enabled === false) return;
     const combinedStrength = clamp((overallStrength || 0) * (sectionStrength || 0), 0, 1);
     if (combinedStrength <= 0) return;
 
@@ -362,32 +364,80 @@ export function createGlyphAtlas(options) {
     const centerThickenDelta = (centerThickenFactor - 1) * combinedStrength;
     const edgeThinDelta = (edgeThinFactor - 1) * combinedStrength;
 
-    const totalBandCss = Math.max(0, Number(config.widthPx) || 0);
-    if (totalBandCss <= 0) return;
-    const dpPerCss = Math.max(1e-6, renderScale * sampleScale);
-    const totalBandDp = totalBandCss * dpPerCss;
-    if (totalBandDp <= 0) return;
-    const inwardShare = clamp(Number(config.inwardShare ?? 0.5), 0, 1);
-    const inwardDp = totalBandDp * inwardShare;
-    const outwardDp = totalBandDp - inwardDp;
-    if (inwardDp <= 0 && outwardDp <= 0) return;
-
     const width = imageData.width | 0;
     const height = imageData.height | 0;
     if (width <= 0 || height <= 0) return;
     const data = imageData.data;
     if (!data || data.length !== width * height * 4) return;
 
+    const widthsCfg = normalizedConfig.widths || {};
+    const inwardBandCss = Math.max(0, Number(widthsCfg.inwardPx) || 0);
+    const outwardBandCss = Math.max(0, Number(widthsCfg.outwardPx) || 0);
+    if (inwardBandCss <= 0 && outwardBandCss <= 0) return;
+
+    const dpPerCss = Math.max(1e-6, renderScale * sampleScale);
+    const inwardDp = inwardBandCss * dpPerCss;
+    const outwardDp = outwardBandCss * dpPerCss;
+    if (inwardDp <= 0 && outwardDp <= 0) return;
+
     const getDistanceMaps = options && typeof options.getDistanceMaps === 'function' ? options.getDistanceMaps : null;
     const maps = getDistanceMaps ? getDistanceMaps() : computeDistanceMaps(imageData);
     if (!maps || !maps.insideMask || !maps.distToInk || !maps.distToVoid || maps.inkPixelCount === 0) return;
     const { insideMask, distToInk, distToVoid } = maps;
     const rgb = parseColorToRgb(color);
-    const baseOpacity = clamp(Number(config.opacity ?? 0.3), 0, 1) * combinedStrength;
+
+    const baseOpacityRaw = Math.max(0, Number(normalizedConfig.baseOpacity) || 0);
+    const baseOpacity = clamp(baseOpacityRaw * combinedStrength, 0, 2);
     if (baseOpacity <= 0) return;
-    const roughness = clamp(Number(config.roughness ?? 0.6), 0, 2);
-    const frequencyCss = Math.max(1e-3, Number(config.frequency ?? 4));
-    const noiseSeed = (baseSeed ^ (config.seed || 0)) >>> 0;
+
+    const noiseCfg = normalizedConfig.noise || {};
+    const roughness = clamp(Number.isFinite(noiseCfg.roughness) ? noiseCfg.roughness : 0.6, 0, 4);
+    const frequencyCss = Math.max(1e-3, Math.abs(Number.isFinite(noiseCfg.frequency) ? noiseCfg.frequency : 4));
+    const noiseSeed = (baseSeed ^ (normalizedConfig.seed || 0)) >>> 0;
+
+    const directionCfg = normalizedConfig.direction || {};
+    let directionVec = null;
+    if (Number.isFinite(directionCfg.angleDeg)) {
+      const rad = directionCfg.angleDeg * Math.PI / 180;
+      const dx = Math.cos(rad);
+      const dy = Math.sin(rad);
+      const len = Math.hypot(dx, dy);
+      if (len > 1e-5) {
+        directionVec = { x: dx / len, y: dy / len };
+      }
+    } else if (Number.isFinite(directionCfg.x) || Number.isFinite(directionCfg.y)) {
+      const dx = Number.isFinite(directionCfg.x) ? directionCfg.x : 0;
+      const dy = Number.isFinite(directionCfg.y) ? directionCfg.y : 0;
+      const len = Math.hypot(dx, dy);
+      if (len > 1e-5) {
+        directionVec = { x: dx / len, y: dy / len };
+      }
+    }
+
+    let getDirectionWeight = null;
+    if (directionVec) {
+      const dirX = directionVec.x;
+      const dirY = directionVec.y;
+      getDirectionWeight = (map, idx, invert) => {
+        const px = idx % width;
+        const py = (idx - px) / width;
+        const center = map[idx];
+        const left = px > 0 ? map[idx - 1] : center;
+        const right = px < width - 1 ? map[idx + 1] : center;
+        const top = py > 0 ? map[idx - width] : center;
+        const bottom = py < height - 1 ? map[idx + width] : center;
+        let gx = (right - left) * 0.5;
+        let gy = (bottom - top) * 0.5;
+        if (invert) {
+          gx = -gx;
+          gy = -gy;
+        }
+        const mag = Math.hypot(gx, gy);
+        if (mag <= 1e-5) return 1;
+        const dot = clamp((gx / mag) * dirX + (gy / mag) * dirY, -1, 1);
+        return clamp(1 + dot * 0.35, 0.5, 1.5);
+      };
+    }
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -429,14 +479,22 @@ export function createGlyphAtlas(options) {
           }
           coverage *= clamp(1 - edgeThinDelta * edgeWeight, 0, 2);
         }
+
+        if (getDirectionWeight) {
+          const map = inside ? distToVoid : distToInk;
+          const weight = getDirectionWeight(map, idx, inside);
+          coverage *= weight;
+        }
+
         coverage = clamp(coverage, 0, 1);
+        if (coverage <= 1e-4) continue;
 
         const xCss = x / dpPerCss;
         const yCss = y / dpPerCss;
         const coarseNoise = valueNoise2D(xCss, yCss, frequencyCss, noiseSeed);
         const speckleNoise = hash2(x, y, noiseSeed ^ 0x9E3779B1);
         const combinedNoise = (coarseNoise - 0.5) * 0.7 + (speckleNoise - 0.5) * 0.3;
-        const jitter = clamp(1 + combinedNoise * roughness, 0, 2);
+        const jitter = clamp(1 + combinedNoise * roughness, 0, 3);
         const overlayAlpha = clamp(baseOpacity * coverage * jitter, 0, 1);
         if (overlayAlpha <= 0) continue;
 

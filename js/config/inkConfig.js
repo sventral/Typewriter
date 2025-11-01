@@ -134,16 +134,141 @@ export function normalizeInkTextureConfig(config) {
   };
 }
 
-export const EDGE_FUZZ = {
+const EDGE_FUZZ_DEFAULTS = {
   enabled: true,
   inks: ['b', 'r'],
-  widthPx: 0.34,
-  inwardShare: 0.15,
-  roughness: 0.85,
-  frequency: 0.2,
-  opacity: 0.38,
+  widths: { inwardPx: 0.052, outwardPx: 0.288 },
+  baseOpacity: 0.6,
+  direction: { angleDeg: 0 },
+  noise: { frequency: 0.2, roughness: 0.85 },
   seed: 0x7F4A7C15,
 };
+
+const sanitizeWidths = (source, defaults) => {
+  const fallback = defaults && typeof defaults === 'object' ? defaults : { inwardPx: 0, outwardPx: 0 };
+  const widthsSrc = source && typeof source === 'object' && typeof source.widths === 'object' ? source.widths : {};
+  const legacyTotal = Number.isFinite(source?.widthPx) ? Math.max(0, source.widthPx) : null;
+  const legacyShareRaw = Number.isFinite(source?.inwardShare) ? source.inwardShare : null;
+  const legacyShare = legacyShareRaw != null ? clamp(legacyShareRaw, 0, 1) : null;
+  let inward = Number.isFinite(widthsSrc.inwardPx) ? widthsSrc.inwardPx : null;
+  let outward = Number.isFinite(widthsSrc.outwardPx) ? widthsSrc.outwardPx : null;
+  if (!Number.isFinite(inward) && Number.isFinite(source?.inwardWidthPx)) {
+    inward = source.inwardWidthPx;
+  }
+  if (!Number.isFinite(outward) && Number.isFinite(source?.outwardWidthPx)) {
+    outward = source.outwardWidthPx;
+  }
+  if (!Number.isFinite(inward) && legacyTotal != null) {
+    const share = legacyShare != null ? legacyShare : 0.5;
+    inward = legacyTotal * share;
+  }
+  if (!Number.isFinite(outward) && legacyTotal != null) {
+    const inwardForOut = Number.isFinite(inward) ? inward : legacyTotal * (legacyShare != null ? legacyShare : 0.5);
+    outward = legacyTotal - inwardForOut;
+  }
+  if (!Number.isFinite(inward)) inward = fallback.inwardPx;
+  if (!Number.isFinite(outward)) outward = fallback.outwardPx;
+  return {
+    inwardPx: Math.max(0, Number.isFinite(inward) ? inward : 0),
+    outwardPx: Math.max(0, Number.isFinite(outward) ? outward : 0),
+  };
+};
+
+const sanitizeDirection = (source, defaults) => {
+  const fallback = defaults && typeof defaults === 'object' ? defaults : { angleDeg: 0 };
+  const src = source && typeof source === 'object' && typeof source.direction === 'object'
+    ? source.direction
+    : (source && typeof source === 'object' ? source : {});
+  let angle = Number.isFinite(src.angleDeg) ? src.angleDeg : null;
+  if (!Number.isFinite(angle) && Number.isFinite(source?.directionAngleDeg)) {
+    angle = source.directionAngleDeg;
+  }
+  if (!Number.isFinite(angle) && Number.isFinite(src.angle)) {
+    angle = src.angle;
+  }
+  if (!Number.isFinite(angle) && Number.isFinite(src.x) && Number.isFinite(src.y)) {
+    const len = Math.hypot(src.x, src.y);
+    if (len > 1e-6) {
+      angle = (Math.atan2(src.y, src.x) * 180) / Math.PI;
+    }
+  }
+  if (!Number.isFinite(angle) && Number.isFinite(source?.directionAngle)) {
+    angle = source.directionAngle;
+  }
+  if (!Number.isFinite(angle)) {
+    angle = Number.isFinite(fallback.angleDeg) ? fallback.angleDeg : 0;
+  }
+  if (!Number.isFinite(angle)) angle = 0;
+  const normalized = angle % 360;
+  return { angleDeg: Number.isFinite(normalized) ? normalized : 0 };
+};
+
+const sanitizeNoise = (source, defaults) => {
+  const fallback = defaults && typeof defaults === 'object' ? defaults : { frequency: 0.2, roughness: 0.85 };
+  const src = source && typeof source === 'object' && typeof source.noise === 'object'
+    ? source.noise
+    : (source && typeof source === 'object' ? source : {});
+  const frequencyRaw = Number.isFinite(src.frequency)
+    ? src.frequency
+    : Number.isFinite(source?.noiseFrequency)
+      ? source.noiseFrequency
+      : Number.isFinite(source?.frequency)
+        ? source.frequency
+        : fallback.frequency;
+  const roughnessRaw = Number.isFinite(src.roughness)
+    ? src.roughness
+    : Number.isFinite(source?.noiseRoughness)
+      ? source.noiseRoughness
+      : Number.isFinite(source?.roughness)
+        ? source.roughness
+        : fallback.roughness;
+  return {
+    frequency: Math.max(1e-4, Math.abs(Number.isFinite(frequencyRaw) ? frequencyRaw : fallback.frequency || 0.2)),
+    roughness: clamp(Number.isFinite(roughnessRaw) ? roughnessRaw : fallback.roughness || 0.85, 0, 4),
+  };
+};
+
+const sanitizeInks = (source, defaults) => {
+  if (Array.isArray(source)) return source.slice();
+  if (Array.isArray(defaults)) return defaults.slice();
+  return [];
+};
+
+const sanitizeBaseOpacity = (source, defaults) => {
+  const fallback = Number.isFinite(defaults) ? defaults : 0.4;
+  const raw = Number.isFinite(source?.baseOpacity)
+    ? source.baseOpacity
+    : Number.isFinite(source?.opacity)
+      ? source.opacity
+      : fallback;
+  return clamp(Number.isFinite(raw) ? raw : fallback, 0, 2);
+};
+
+function buildEdgeFuzzConfig(config, defaults = EDGE_FUZZ_DEFAULTS) {
+  const base = defaults && typeof defaults === 'object' ? defaults : EDGE_FUZZ_DEFAULTS;
+  const source = config && typeof config === 'object' ? config : {};
+  const widths = sanitizeWidths(source, base.widths);
+  const direction = sanitizeDirection(source, base.direction);
+  const noise = sanitizeNoise(source, base.noise);
+  const inks = sanitizeInks(source.inks, base.inks);
+  const baseOpacity = sanitizeBaseOpacity(source, base.baseOpacity);
+  const seed = sanitizeSeed(source.seed, base.seed);
+  return {
+    enabled: source.enabled !== false,
+    inks,
+    widths,
+    baseOpacity,
+    direction,
+    noise,
+    seed,
+  };
+}
+
+export function normalizeEdgeFuzzConfig(config) {
+  return buildEdgeFuzzConfig(config, EDGE_FUZZ);
+}
+
+export const EDGE_FUZZ = buildEdgeFuzzConfig(EDGE_FUZZ_DEFAULTS);
 
 export const EDGE_BLEED = {
   enabled: false,
