@@ -6,6 +6,22 @@ import {
   normalizeGlyphJitterSeed,
   cloneGlyphJitterRange,
 } from '../config/glyphJitterConfig.js';
+import { EDGE_BLEED, GRAIN_CFG, INK_INTENSITY } from '../config/inkConfig.js';
+
+const resolveIntensityBounds = (key) => {
+  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
+  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
+  const max = Number.isFinite(source?.maxPct) ? Math.max(source.maxPct, min) : Math.max(200, min);
+  const value = Number.isFinite(source?.defaultPct) ? source.defaultPct : 100;
+  return {
+    min,
+    max,
+    defaultPct: clamp(value, min, max),
+  };
+};
+
+const CENTER_THICKEN_BOUNDS = resolveIntensityBounds('centerThicken');
+const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
 
 const KNOWN_INK_SECTIONS = ['texture', 'fuzz', 'bleed', 'grain'];
 
@@ -153,10 +169,28 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
+    centerThickenPct: clamp(
+      Number(state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
+      CENTER_THICKEN_BOUNDS.min,
+      CENTER_THICKEN_BOUNDS.max,
+    ),
+    edgeThinPct: clamp(
+      Number(state.edgeThinPct ?? EDGE_THIN_BOUNDS.defaultPct),
+      EDGE_THIN_BOUNDS.min,
+      EDGE_THIN_BOUNDS.max,
+    ),
     inkTextureStrength: clamp(Number(state.inkTextureStrength ?? 100), 0, 100),
-    edgeBleedStrength: clamp(Number(state.edgeBleedStrength ?? 100), 0, 100),
+    edgeBleedStrength: clamp(
+      Number(state.edgeBleedStrength ?? (EDGE_BLEED.enabled === false ? 0 : 100)),
+      0,
+      100,
+    ),
     edgeFuzzStrength: clamp(Number(state.edgeFuzzStrength ?? 100), 0, 100),
-    grainPct: clamp(Number(state.grainPct ?? 100), 0, 100),
+    grainPct: clamp(
+      Number(state.grainPct ?? (GRAIN_CFG.enabled === false ? 0 : 100)),
+      0,
+      100,
+    ),
     grainSeed: state.grainSeed >>> 0,
     altSeed: state.altSeed >>> 0,
     wordWrap: state.wordWrap,
@@ -321,10 +355,36 @@ export function deserializeDocumentState(data, context) {
       : 1.5,
     zoom: typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4 ? data.zoom : 1.0,
     effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
+    centerThickenPct: clamp(
+      Number(data.centerThickenPct ?? state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
+      CENTER_THICKEN_BOUNDS.min,
+      CENTER_THICKEN_BOUNDS.max,
+    ),
+    edgeThinPct: clamp(
+      Number(data.edgeThinPct ?? state.edgeThinPct ?? EDGE_THIN_BOUNDS.defaultPct),
+      EDGE_THIN_BOUNDS.min,
+      EDGE_THIN_BOUNDS.max,
+    ),
     inkTextureStrength: clamp(Number(data.inkTextureStrength ?? state.inkTextureStrength ?? 100), 0, 100),
-    edgeBleedStrength: clamp(Number(data.edgeBleedStrength ?? state.edgeBleedStrength ?? 100), 0, 100),
+    edgeBleedStrength: clamp(
+      Number(
+        data.edgeBleedStrength
+          ?? state.edgeBleedStrength
+          ?? (EDGE_BLEED.enabled === false ? 0 : 100)
+      ),
+      0,
+      100,
+    ),
     edgeFuzzStrength: clamp(Number(data.edgeFuzzStrength ?? state.edgeFuzzStrength ?? 100), 0, 100),
-    grainPct: clamp(Number(data.grainPct ?? state.grainPct ?? 100), 0, 100),
+    grainPct: clamp(
+      Number(
+        data.grainPct
+          ?? state.grainPct
+          ?? (GRAIN_CFG.enabled === false ? 0 : 100)
+      ),
+      0,
+      100,
+    ),
     grainSeed: (data.grainSeed >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
     altSeed:
       (data.altSeed >>> 0) || (((data.grainSeed >>> 0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
