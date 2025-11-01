@@ -1086,15 +1086,17 @@ function buildSection(def, root) {
     registerMetaInput(meta, path, input);
   });
 
-  const applyRow = document.createElement('div');
-  applyRow.className = 'control-row ink-section-apply-row';
-  applyRow.appendChild(document.createElement('div'));
-  const applyBtn = document.createElement('button');
-  applyBtn.className = 'btn apply-btn';
-  applyBtn.textContent = 'Apply';
-  applyRow.appendChild(applyBtn);
-  body.appendChild(applyRow);
-  meta.applyBtn = applyBtn;
+  if (meta.id !== 'fill') {
+    const applyRow = document.createElement('div');
+    applyRow.className = 'control-row ink-section-apply-row';
+    applyRow.appendChild(document.createElement('div'));
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'btn apply-btn';
+    applyBtn.textContent = 'Apply';
+    applyRow.appendChild(applyBtn);
+    body.appendChild(applyRow);
+    meta.applyBtn = applyBtn;
+  }
 
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
