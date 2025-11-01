@@ -35,6 +35,7 @@ export function createMainState(app, gridDiv = 8) {
     lineStepMu: Math.round(gridDiv * 1.5),
     zoom: 1.0,
     effectsOverallStrength: 100,
+    inkFillStrength: 100,
     centerThickenPct: CENTER_THICKEN_DEFAULT,
     edgeThinPct: EDGE_THIN_DEFAULT,
     inkTextureStrength: 100,
