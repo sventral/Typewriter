@@ -1,4 +1,7 @@
-import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE } from './inkConfig.js';
+import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE, normalizeInkTextureConfig } from './inkConfig.js';
+
+const sanitizedInkTextureDefaults = normalizeInkTextureConfig(INK_TEXTURE);
+Object.assign(INK_TEXTURE, sanitizedInkTextureDefaults);
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
@@ -7,7 +10,7 @@ const SECTION_DEFS = [
     id: 'texture',
     label: 'Texture',
     config: INK_TEXTURE,
-    keyOrder: ['supersample', 'noiseOctaves', 'noiseStrength', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
+    keyOrder: ['supersample', 'coarseNoise', 'fineNoise', 'noiseSmoothing', 'centerEdgeBias', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
     trigger: 'glyph',
     stateKey: 'inkTextureStrength',
     defaultStrength: INK_TEXTURE.enabled === false ? 0 : 100,
@@ -142,11 +145,14 @@ function normalizeStyleRecord(style, index = 0) {
         : (style && typeof style === 'object' && typeof style[def.id] === 'object' ? style[def.id] : null);
       const section = rawSection && typeof rawSection === 'object' ? rawSection : {};
       const strength = clamp(Math.round(Number(section?.strength ?? def.defaultStrength ?? 0)), 0, 100);
-      const configSource = section.config != null
+      let configSource = section.config != null
         ? section.config
         : section.settings != null
           ? section.settings
           : ('strength' in section ? def.config : section);
+      if (def.id === 'texture') {
+        configSource = normalizeInkTextureConfig(configSource);
+      }
       record.sections[def.id] = {
         strength,
         config: deepCloneValue(configSource == null ? def.config : configSource),
@@ -440,10 +446,17 @@ function parseHex(value) {
 function getObjectKeys(path, obj) {
   if (!obj) return [];
   switch (path) {
+    case 'coarseNoise':
+      return ['scale', 'strength', 'seed'];
+    case 'fineNoise': {
+      const keys = ['scale', 'strength', 'seed'];
+      if (obj && Object.prototype.hasOwnProperty.call(obj, 'hashWeight')) keys.push('hashWeight');
+      return keys;
+    }
     case 'chip':
-      return ['density', 'strength', 'feather', 'seed'];
+      return ['enabled', 'density', 'strength', 'feather', 'seed'];
     case 'scratch':
-      return ['direction', 'scale', 'aspect', 'threshold', 'strength', 'seed'];
+      return ['enabled', 'direction', 'scale', 'aspect', 'threshold', 'strength', 'seed'];
     case 'scratch.direction':
       return ['x', 'y'];
     case 'alpha':
