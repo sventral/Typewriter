@@ -1,12 +1,15 @@
 import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE, normalizeInkTextureConfig } from './inkConfig.js';
 
+const sanitizedInkTextureDefaults = normalizeInkTextureConfig(INK_TEXTURE);
+Object.assign(INK_TEXTURE, sanitizedInkTextureDefaults);
+
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
 const SECTION_DEFS = [
   {
     id: 'texture',
     label: 'Texture',
-    config: normalizeInkTextureConfig(INK_TEXTURE),
+    config: INK_TEXTURE,
     keyOrder: ['supersample', 'coarseNoise', 'fineNoise', 'noiseSmoothing', 'centerEdgeBias', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
     trigger: 'glyph',
     stateKey: 'inkTextureStrength',
