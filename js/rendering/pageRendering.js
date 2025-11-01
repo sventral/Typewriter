@@ -1,3 +1,5 @@
+import { computeGlyphJitterOffset } from './glyphJitter.js';
+
 export function createPageRenderer(options) {
   const {
     context,
@@ -67,12 +69,15 @@ export function createPageRenderer(options) {
 
   function drawGlyphStack(ctx, stack, x, baseline, pageIndex, rowMu, col) {
     if (!Array.isArray(stack) || stack.length === 0) return;
+    const gridHeight = getGridHeightFn();
+    const jitterOffset = computeGlyphJitterOffset(state, pageIndex, rowMu, col, gridHeight);
+    const baselineAdjusted = Number.isFinite(jitterOffset) ? baseline + jitterOffset : baseline;
     const overrides = computeEffectOverrides(stack);
     for (let k = 0; k < stack.length; k++) {
       const glyph = stack[k];
       if (!glyph) continue;
       const effectOverride = overrides ? overrides[k] : undefined;
-      drawGlyph(ctx, glyph.char, glyph.ink || 'b', x, baseline, k, stack.length, pageIndex, rowMu, col, effectOverride);
+      drawGlyph(ctx, glyph.char, glyph.ink || 'b', x, baselineAdjusted, k, stack.length, pageIndex, rowMu, col, effectOverride);
     }
   }
 
