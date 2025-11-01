@@ -648,6 +648,10 @@ body[data-page-tone='dark']{
   .input-with-suffix { position: relative; display: flex; }
   .input-with-suffix input { width: 100%; }
   .input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }
+  .range-input-pair { display: inline-flex; align-items: center; gap: 6px; }
+  .range-input-pair input { width: 64px; }
+  .range-input-pair .range-separator,
+  .range-input-pair .range-suffix { font-weight: 400; opacity: 0.6; }
 
   .fonts-settings-group { gap: 8px; }
   .fonts-settings-group .font-option {
