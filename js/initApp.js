@@ -6,7 +6,7 @@ import {
   scheduleMetricsUpdate as scheduleMetricsUpdateForContext,
 } from './config/metrics.js';
 import { createMainState, createEphemeralState } from './state/state.js';
-import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE } from './config/inkConfig.js';
+import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_BLUR, INK_TEXTURE } from './config/inkConfig.js';
 import { clamp } from './utils/math.js';
 import { sanitizeIntegerField } from './utils/forms.js';
 import { detectSafariEnvironment, createStageLayoutController } from './layout/stageLayout.js';
@@ -384,6 +384,7 @@ const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion, invalidateGrain
   edgeFuzzConfig: () => EDGE_FUZZ,
   edgeBleedConfig: () => EDGE_BLEED,
   grainConfig: () => GRAIN_CFG,
+  inkBlurConfig: () => INK_BLUR,
 });
 
 context.setCallback('rebuildAllAtlases', rebuildAllAtlases);
