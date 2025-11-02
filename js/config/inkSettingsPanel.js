@@ -84,18 +84,6 @@ const FILL_CFG = {
 
 const SECTION_DEFS = [
   {
-    id: 'fill',
-    label: 'Fill',
-    config: FILL_CFG,
-    keyOrder: [
-      { path: 'centerThickenPct', label: 'Center thickening' },
-      { path: 'edgeThinPct', label: 'Edge thinning' },
-    ],
-    trigger: 'glyph',
-    stateKey: 'inkFillStrength',
-    defaultStrength: 100,
-  },
-  {
     id: 'blur',
     label: 'Blur',
     config: INK_BLUR,
@@ -108,68 +96,23 @@ const SECTION_DEFS = [
     defaultStrength: INK_BLUR.enabled === false ? 0 : 100,
     autoEnable: false,
   },
-  {
-    id: 'texture',
-    label: 'Texture',
-    config: INK_TEXTURE,
-    keyOrder: ['supersample', 'coarseNoise', 'fineNoise', 'noiseSmoothing', 'centerEdgeBias', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
-    trigger: 'glyph',
-    stateKey: 'inkTextureStrength',
-    defaultStrength: INK_TEXTURE.enabled === false ? 0 : 100,
-  },
-  {
-    id: 'fuzz',
-    label: 'Edge Fuzz',
-    config: EDGE_FUZZ,
-    keyOrder: ['inks', 'widthPx', 'inwardShare', 'roughness', 'frequency', 'opacity', 'seed'],
-    trigger: 'glyph',
-    stateKey: 'edgeFuzzStrength',
-    defaultStrength: 100,
-  },
-  {
-    id: 'bleed',
-    label: 'Bleed',
-    config: EDGE_BLEED,
-    keyOrder: ['inks', 'widthPx', 'feather', 'lightnessShift', 'noiseRoughness', 'intensity', 'seed'],
-    trigger: 'glyph',
-    stateKey: 'edgeBleedStrength',
-    defaultStrength: EDGE_BLEED.enabled === false ? 0 : 100,
-  },
-  {
-    id: 'grain',
-    label: 'Grain',
-    config: GRAIN_CFG,
-    keyOrder: ['scale', 'gamma', 'opacity', 'blend_mode', 'tile', 'base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'alpha', 'seeds'],
-    trigger: 'grain',
-    stateKey: 'grainPct',
-    defaultStrength: 0,
-  }
 ];
 
 const DEFAULT_SECTION_ORDER = SECTION_DEFS.map(def => def.id);
-const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
-  acc[def.id] = def;
-  return acc;
-}, {});
-
-function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
-  const base = Array.isArray(order) ? order : [];
-  const seen = new Set();
+function normalizeSectionOrder(order) {
   const normalized = [];
-  base.forEach(id => {
-    if (typeof id !== 'string') return;
-    const trimmed = id.trim();
-    if (!trimmed || seen.has(trimmed)) return;
-    if (!Object.prototype.hasOwnProperty.call(SECTION_DEF_MAP, trimmed)) return;
-    seen.add(trimmed);
-    normalized.push(trimmed);
-  });
-  (Array.isArray(fallback) ? fallback : DEFAULT_SECTION_ORDER).forEach(id => {
-    if (!Object.prototype.hasOwnProperty.call(SECTION_DEF_MAP, id)) return;
-    if (seen.has(id)) return;
-    seen.add(id);
-    normalized.push(id);
-  });
+  if (Array.isArray(order)) {
+    order.forEach(id => {
+      if (typeof id !== 'string') return;
+      const trimmed = id.trim();
+      if (trimmed === 'blur' && !normalized.includes('blur')) {
+        normalized.push('blur');
+      }
+    });
+  }
+  if (!normalized.length) {
+    normalized.push('blur');
+  }
   return normalized;
 }
 
@@ -261,8 +204,6 @@ const panelState = {
   importButton: null,
   importInput: null,
   sectionsRoot: null,
-  sectionOrder: DEFAULT_SECTION_ORDER.slice(),
-  dragState: null,
 };
 
 const HEX_MATCH_RE = /seed|hash/i;
@@ -444,9 +385,7 @@ function createStyleSnapshot(name, existingId = null) {
     centerThicken: getCenterThickenPercent(),
     edgeThin: getEdgeThinPercent(),
     sections: {},
-    sectionOrder: Array.isArray(panelState.sectionOrder)
-      ? panelState.sectionOrder.slice()
-      : DEFAULT_SECTION_ORDER.slice(),
+    sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
@@ -641,253 +580,6 @@ function getSectionOrderFromState() {
   const appState = getAppState();
   if (!appState) return DEFAULT_SECTION_ORDER.slice();
   return normalizeSectionOrder(appState.inkSectionOrder);
-}
-
-function setSectionOrderOnState(order) {
-  const appState = getAppState();
-  if (!appState) return;
-  appState.inkSectionOrder = normalizeSectionOrder(order);
-}
-
-function arraysEqual(a, b) {
-  if (!Array.isArray(a) || !Array.isArray(b)) return false;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function reorderMetas(order) {
-  if (!Array.isArray(panelState.metas) || !Array.isArray(order)) return;
-  panelState.metas.sort((a, b) => {
-    const aIdx = order.indexOf(a?.id);
-    const bIdx = order.indexOf(b?.id);
-    return (aIdx === -1 ? Number.MAX_SAFE_INTEGER : aIdx)
-      - (bIdx === -1 ? Number.MAX_SAFE_INTEGER : bIdx);
-  });
-}
-
-function updateSectionsDomOrder(order) {
-  const root = panelState.sectionsRoot;
-  if (!root || typeof root.appendChild !== 'function') return;
-  if (!Array.isArray(order)) return;
-  order.forEach(id => {
-    const meta = findMetaById(id);
-    if (!meta || !meta.root || meta.root.parentNode !== root) return;
-    root.appendChild(meta.root);
-  });
-}
-
-function applySectionOrder(order, options = {}) {
-  const normalized = normalizeSectionOrder(order);
-  const current = panelState.sectionOrder || DEFAULT_SECTION_ORDER;
-  if (arraysEqual(normalized, current)) {
-    if (options.syncDom) {
-      updateSectionsDomOrder(normalized);
-    }
-    return;
-  }
-  panelState.sectionOrder = normalized.slice();
-  if (!options.skipStateUpdate) {
-    setSectionOrderOnState(panelState.sectionOrder);
-    persistPanelState();
-  }
-  reorderMetas(panelState.sectionOrder);
-  updateSectionsDomOrder(panelState.sectionOrder);
-  if (options.silent !== true) {
-    scheduleGlyphRefresh(true);
-    scheduleGrainRefresh();
-  }
-}
-
-function clearDragIndicators() {
-  const root = panelState.sectionsRoot;
-  if (!root) return;
-  root.querySelectorAll('.ink-section').forEach(section => {
-    section.classList.remove('is-drop-before', 'is-drop-after');
-  });
-  root.classList.remove('is-drop-end');
-}
-
-function endSectionDrag() {
-  if (panelState.dragState?.cleanup) {
-    try {
-      panelState.dragState.cleanup();
-    } catch (err) {
-      // noop
-    }
-  }
-  if (panelState.dragState && panelState.dragState.element) {
-    panelState.dragState.element.classList.remove('is-dragging');
-  }
-  panelState.dragState = null;
-  clearDragIndicators();
-}
-
-function commitPointerSectionDrop() {
-  const dragState = panelState.dragState;
-  if (!dragState || dragState.mode !== 'pointer') return;
-  const draggingId = dragState.id;
-  if (!draggingId || typeof dragState.dropIndex !== 'number') return;
-  const order = Array.isArray(panelState.sectionOrder)
-    ? panelState.sectionOrder.slice()
-    : DEFAULT_SECTION_ORDER.slice();
-  const fromIndex = order.indexOf(draggingId);
-  if (fromIndex === -1) return;
-  order.splice(fromIndex, 1);
-  let insertIndex = dragState.dropIndex;
-  if (!Number.isFinite(insertIndex)) {
-    insertIndex = order.length;
-  }
-  insertIndex = Math.max(0, Math.min(order.length, Math.round(insertIndex)));
-  order.splice(insertIndex, 0, draggingId);
-  applySectionOrder(order);
-}
-
-function updatePointerDropTarget(clientX, clientY) {
-  const dragState = panelState.dragState;
-  if (!dragState || dragState.mode !== 'pointer') return;
-  const root = panelState.sectionsRoot;
-  if (!root) return;
-
-  clearDragIndicators();
-
-  const rootRect = root.getBoundingClientRect();
-  const insideHorizontal = clientX >= rootRect.left && clientX <= rootRect.right;
-  if (!insideHorizontal) {
-    dragState.dropTargetId = null;
-    dragState.dropPosition = null;
-    dragState.dropToEnd = false;
-    dragState.dropIndex = null;
-    return;
-  }
-
-  const metas = Array.isArray(panelState.sectionOrder)
-    ? panelState.sectionOrder
-        .map(id => findMetaById(id))
-        .filter(meta => meta && meta.root && meta.id !== dragState.id)
-    : [];
-
-  if (!metas.length) {
-    root.classList.add('is-drop-end');
-    dragState.dropTargetId = null;
-    dragState.dropPosition = null;
-    dragState.dropToEnd = true;
-    dragState.dropIndex = 0;
-    return;
-  }
-
-  let dropIndex = metas.length;
-  if (clientY <= rootRect.top) {
-    dropIndex = 0;
-  } else if (clientY >= rootRect.bottom) {
-    dropIndex = metas.length;
-  } else {
-    for (let i = 0; i < metas.length; i++) {
-      const meta = metas[i];
-      const rect = meta.root.getBoundingClientRect();
-      const midpoint = rect.top + rect.height / 2;
-      if (clientY < midpoint) {
-        dropIndex = i;
-        break;
-      }
-    }
-  }
-
-  if (dropIndex >= metas.length) {
-    const lastMeta = metas[metas.length - 1];
-    if (lastMeta?.root) {
-      lastMeta.root.classList.add('is-drop-after');
-    }
-    root.classList.add('is-drop-end');
-    dragState.dropTargetId = lastMeta?.id || null;
-    dragState.dropPosition = lastMeta ? 'after' : null;
-    dragState.dropToEnd = true;
-    dragState.dropIndex = metas.length;
-    return;
-  }
-
-  const targetMeta = metas[dropIndex];
-  if (targetMeta?.root) {
-    targetMeta.root.classList.add('is-drop-before');
-  }
-  dragState.dropTargetId = targetMeta?.id || null;
-  dragState.dropPosition = targetMeta ? 'before' : null;
-  dragState.dropToEnd = false;
-  dragState.dropIndex = dropIndex;
-}
-
-function startPointerSectionDrag(event, meta) {
-  if (!meta || !meta.root) return;
-  if (event?.button !== undefined && event.button !== 0) return;
-  if (typeof event?.pointerId !== 'number') return;
-  const handle = event.currentTarget;
-  if (!handle) return;
-
-  event.preventDefault();
-
-  if (panelState.dragState) {
-    endSectionDrag();
-  }
-
-  const moveHandler = moveEvent => {
-    if (!panelState.dragState || panelState.dragState.pointerId !== moveEvent.pointerId) return;
-    moveEvent.preventDefault();
-    updatePointerDropTarget(moveEvent.clientX, moveEvent.clientY);
-  };
-
-  const upHandler = upEvent => {
-    if (!panelState.dragState || panelState.dragState.pointerId !== upEvent.pointerId) return;
-    upEvent.preventDefault();
-    commitPointerSectionDrop();
-    endSectionDrag();
-  };
-
-  const cancelHandler = cancelEvent => {
-    if (!panelState.dragState || panelState.dragState.pointerId !== cancelEvent.pointerId) return;
-    cancelEvent.preventDefault();
-    endSectionDrag();
-  };
-
-  panelState.dragState = {
-    id: meta.id,
-    element: meta.root,
-    mode: 'pointer',
-    pointerId: event.pointerId,
-    dropTargetId: null,
-    dropPosition: null,
-    dropToEnd: false,
-    dropIndex: null,
-    cleanup: () => {
-      handle.removeEventListener('pointermove', moveHandler);
-      handle.removeEventListener('pointerup', upHandler);
-      handle.removeEventListener('pointercancel', cancelHandler);
-      if (typeof handle.releasePointerCapture === 'function') {
-        try {
-          handle.releasePointerCapture(event.pointerId);
-        } catch (err) {
-          // noop
-        }
-      }
-    },
-  };
-
-  meta.root.classList.add('is-dragging');
-
-  if (typeof handle.setPointerCapture === 'function') {
-    try {
-      handle.setPointerCapture(event.pointerId);
-    } catch (err) {
-      // noop
-    }
-  }
-
-  handle.addEventListener('pointermove', moveHandler);
-  handle.addEventListener('pointerup', upHandler);
-  handle.addEventListener('pointercancel', cancelHandler);
-
-  updatePointerDropTarget(event.clientX, event.clientY);
 }
 
 function getPercentFromState(key, fallback = 0) {
@@ -1338,12 +1030,6 @@ function buildSection(def, root) {
 
   const topLine = document.createElement('div');
   topLine.className = 'ink-section-topline';
-  const dragHandle = document.createElement('button');
-  dragHandle.type = 'button';
-  dragHandle.className = 'ink-section-drag-handle';
-  dragHandle.setAttribute('aria-label', `Reorder ${def.label}`);
-  dragHandle.innerHTML = '<span aria-hidden="true">⋮⋮</span>';
-  topLine.appendChild(dragHandle);
   topLine.appendChild(toggleBtn);
   header.appendChild(topLine);
 
@@ -1388,8 +1074,6 @@ function buildSection(def, root) {
     defaultStrength: def.defaultStrength ?? 0,
     autoEnable: def.autoEnable !== false,
   };
-
-  dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
 
   def.keyOrder.forEach(entry => {
     let path = null;
@@ -1832,9 +1516,6 @@ function applySavedStyle(styleId) {
   const styles = getSavedStyles();
   const style = styles.find(s => s && s.id === styleId);
   if (!style) return;
-  if (Array.isArray(style.sectionOrder) && style.sectionOrder.length) {
-    applySectionOrder(style.sectionOrder);
-  }
   if (Number.isFinite(style.overall)) {
     setOverallStrength(style.overall);
   }
@@ -1950,9 +1631,6 @@ export function isInkSectionEnabled(sectionId) {
 }
 
 export function getInkSectionOrder() {
-  if (Array.isArray(panelState.sectionOrder) && panelState.sectionOrder.length) {
-    return panelState.sectionOrder.slice();
-  }
   return normalizeSectionOrder(getSectionOrderFromState());
 }
 
@@ -2091,9 +1769,6 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.importInput = document.getElementById('inkStyleImportInput');
   panelState.sectionsRoot = sectionsRoot;
 
-  panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
-  setSectionOrderOnState(panelState.sectionOrder);
-
   syncFillConfigValues();
 
   if (panelState.styleNameInput) {
@@ -2143,25 +1818,12 @@ export function setupInkSettingsPanel(options = {}) {
 
   if (sectionsRoot) {
     panelState.metas = [];
-    const seen = new Set();
-    panelState.sectionOrder.forEach(id => {
-      const def = SECTION_DEF_MAP[id];
-      if (!def) return;
-      const meta = buildSection(def, sectionsRoot);
-      if (meta) {
-        seen.add(def.id);
-        syncInputs(meta);
-      }
-    });
     SECTION_DEFS.forEach(def => {
-      if (seen.has(def.id)) return;
       const meta = buildSection(def, sectionsRoot);
       if (meta) {
-        panelState.sectionOrder.push(def.id);
         syncInputs(meta);
       }
     });
-    applySectionOrder(panelState.sectionOrder, { skipStateUpdate: true, syncDom: true, silent: true });
   }
 
   panelState.initialized = true;
