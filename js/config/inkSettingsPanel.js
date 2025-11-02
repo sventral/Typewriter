@@ -1,10 +1,23 @@
-import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_INTENSITY, INK_TEXTURE, normalizeEdgeBleedConfig, normalizeInkTextureConfig } from './inkConfig.js';
+import {
+  EDGE_BLEED,
+  EDGE_FUZZ,
+  GRAIN_CFG,
+  INK_BLUR,
+  INK_INTENSITY,
+  INK_TEXTURE,
+  normalizeEdgeBleedConfig,
+  normalizeInkBlurConfig,
+  normalizeInkTextureConfig,
+} from './inkConfig.js';
 
 const sanitizedInkTextureDefaults = normalizeInkTextureConfig(INK_TEXTURE);
 Object.assign(INK_TEXTURE, sanitizedInkTextureDefaults);
 
 const sanitizedEdgeBleedDefaults = normalizeEdgeBleedConfig(EDGE_BLEED);
 Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
+
+const sanitizedInkBlurDefaults = normalizeInkBlurConfig(INK_BLUR);
+Object.assign(INK_BLUR, sanitizedInkBlurDefaults);
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
@@ -30,6 +43,7 @@ const INPUT_OVERRIDES = {
     type: 'enum-range',
     options: ['destination-out', 'multiply', 'screen', 'overlay', 'soft-light'],
   },
+  'blur.radiusPx': { type: 'range', min: 0, max: 6, step: 0.1, precision: 2 },
 };
 
 function getInputOverride(sectionId, path) {
@@ -80,6 +94,19 @@ const SECTION_DEFS = [
     trigger: 'glyph',
     stateKey: 'inkFillStrength',
     defaultStrength: 100,
+  },
+  {
+    id: 'blur',
+    label: 'Blur',
+    config: INK_BLUR,
+    keyOrder: [
+      { path: 'enabled', label: 'Enable blur' },
+      { path: 'radiusPx', label: 'Radius (px)' },
+    ],
+    trigger: 'glyph',
+    stateKey: 'inkBlurStrength',
+    defaultStrength: INK_BLUR.enabled === false ? 0 : 100,
+    autoEnable: false,
   },
   {
     id: 'texture',
@@ -348,6 +375,8 @@ function normalizeStyleRecord(style, index = 0) {
         configSource = normalizeInkTextureConfig(configSource);
       } else if (def.id === 'bleed') {
         configSource = normalizeEdgeBleedConfig(configSource);
+      } else if (def.id === 'blur') {
+        configSource = normalizeInkBlurConfig(configSource);
       }
       record.sections[def.id] = {
         strength,
@@ -1357,6 +1386,7 @@ function buildSection(def, root) {
     body,
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
+    autoEnable: def.autoEnable !== false,
   };
 
   dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
@@ -1486,7 +1516,9 @@ function applySectionStrength(meta, percent, options = {}) {
   if (options.silent) return;
   setPercentOnState(meta.stateKey, pct);
   if (meta.config && typeof meta.config === 'object') {
-    meta.config.enabled = pct > 0;
+    if (meta.autoEnable !== false) {
+      meta.config.enabled = pct > 0;
+    }
   }
   if (meta.id === 'grain') {
     syncGrainInputField(pct);
@@ -1891,6 +1923,8 @@ export function getInkSectionStrength(sectionId) {
   switch (sectionId) {
     case 'fill':
       return getFillStrengthFactor();
+    case 'blur':
+      return normalizedPercent(getPercentFromState('inkBlurStrength', INK_BLUR.enabled === false ? 0 : 100));
     case 'texture':
       return normalizedPercent(getPercentFromState('inkTextureStrength', INK_TEXTURE.enabled === false ? 0 : 100));
     case 'fuzz':
@@ -1909,6 +1943,7 @@ export function isInkSectionEnabled(sectionId) {
   if (sectionId === 'fill') return strength > 0 && FILL_CFG.enabled !== false;
   if (sectionId === 'grain') return strength > 0 && GRAIN_CFG.enabled !== false;
   if (sectionId === 'texture') return strength > 0 && INK_TEXTURE.enabled !== false;
+  if (sectionId === 'blur') return strength > 0 && INK_BLUR.enabled !== false;
   if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
   if (sectionId === 'bleed') return strength > 0 && EDGE_BLEED.enabled !== false;
   return strength > 0;

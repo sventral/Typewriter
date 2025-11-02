@@ -26,6 +26,7 @@ export function createGlyphAtlas(options) {
     edgeFuzzConfig,
     edgeBleedConfig,
     grainConfig,
+    inkBlurConfig,
   } = options || {};
 
   const app = explicitApp || context?.app;
@@ -50,7 +51,7 @@ export function createGlyphAtlas(options) {
   const getInkSectionStrengthFn = typeof getInkSectionStrength === 'function' ? getInkSectionStrength : (() => 1);
   const getInkSectionOrderFn = typeof getInkSectionOrder === 'function'
     ? getInkSectionOrder
-    : (() => ['fill', 'texture', 'fuzz', 'bleed', 'grain']);
+    : (() => ['fill', 'blur', 'texture', 'fuzz', 'bleed', 'grain']);
   const getCenterThickenFactorFn = typeof getCenterThickenFactorOpt === 'function' ? getCenterThickenFactorOpt : (() => 1);
   const getEdgeThinFactorFn = typeof getEdgeThinFactorOpt === 'function' ? getEdgeThinFactorOpt : (() => 1);
   const ALT_VARIANTS = 9;
@@ -379,7 +380,7 @@ export function createGlyphAtlas(options) {
     };
   }
 
-  const GLYPH_PIPELINE_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed'];
+  const GLYPH_PIPELINE_SECTIONS = ['fill', 'blur', 'texture', 'fuzz', 'bleed'];
 
   function normalizePipelineOrder(order) {
     const base = Array.isArray(order) ? order : [];
@@ -522,6 +523,71 @@ export function createGlyphAtlas(options) {
       if (modifier === 1) continue;
       const nextAlpha = clamp((alpha / 255) * modifier, 0, 1);
       data[baseIdx + 3] = Math.round(nextAlpha * 255);
+    }
+  }
+
+  function applyBlurEffect(imageData, options = {}) {
+    const {
+      config,
+      renderScale,
+      sampleScale,
+      overallStrength,
+      sectionStrength,
+    } = options || {};
+    if (!imageData || !config || config.enabled === false) return;
+    const overall = clamp(Number.isFinite(overallStrength) ? overallStrength : getInkEffectFactor(), 0, 1);
+    const section = clamp(Number.isFinite(sectionStrength) ? sectionStrength : getInkSectionStrengthFn('blur'), 0, 1);
+    const combined = clamp(overall * section, 0, 1);
+    if (combined <= 0 || !isInkSectionEnabled('blur')) return;
+
+    const radiusPxRaw = Number(config.radiusPx);
+    const radiusPx = clamp(Number.isFinite(radiusPxRaw) ? radiusPxRaw : 0, 0, 6);
+    if (radiusPx <= 0) return;
+
+    const dpPerCss = Math.max(1e-6, (Number(renderScale) || 1) * (Number(sampleScale) || 1));
+    const radiusDp = Math.max(0, Math.round(radiusPx * dpPerCss));
+    if (radiusDp <= 0) return;
+
+    const { width, height, data } = imageData;
+    if (!width || !height || !data) return;
+    const total = width * height;
+    const baseAlpha = new Float32Array(total);
+    for (let i = 0, j = 0; i < total; i++, j += 4) {
+      baseAlpha[i] = data[j + 3];
+    }
+
+    const temp = new Float32Array(total);
+    const blurred = new Float32Array(total);
+    const kernelSize = radiusDp * 2 + 1;
+
+    for (let y = 0; y < height; y++) {
+      const rowOffset = y * width;
+      for (let x = 0; x < width; x++) {
+        let sum = 0;
+        for (let k = -radiusDp; k <= radiusDp; k++) {
+          const sampleX = Math.min(width - 1, Math.max(0, x + k));
+          sum += baseAlpha[rowOffset + sampleX];
+        }
+        temp[rowOffset + x] = sum / kernelSize;
+      }
+    }
+
+    for (let x = 0; x < width; x++) {
+      for (let y = 0; y < height; y++) {
+        let sum = 0;
+        for (let k = -radiusDp; k <= radiusDp; k++) {
+          const sampleY = Math.min(height - 1, Math.max(0, y + k));
+          sum += temp[sampleY * width + x];
+        }
+        blurred[y * width + x] = sum / kernelSize;
+      }
+    }
+
+    for (let i = 0, j = 0; i < total; i++, j += 4) {
+      const base = baseAlpha[i];
+      const target = blurred[i];
+      const mixed = clamp(base + (target - base) * combined, 0, 255);
+      data[j + 3] = Math.round(mixed);
     }
   }
 
@@ -854,18 +920,30 @@ export function createGlyphAtlas(options) {
 
     const overallStrength = clamp(getInkEffectFactor(), 0, 1);
     const fillSectionStrength = clamp(getInkSectionStrengthFn('fill'), 0, 1);
+    const blurSectionStrength = clamp(getInkSectionStrengthFn('blur'), 0, 1);
     const textureSectionStrength = clamp(getInkSectionStrengthFn('texture'), 0, 1);
     const fuzzSectionStrength = clamp(getInkSectionStrengthFn('fuzz'), 0, 1);
     const bleedSectionStrength = clamp(getInkSectionStrengthFn('bleed'), 0, 1);
     const rawOrder = normalizePipelineOrder(getInkSectionOrderFn());
+    const INK_TEXTURE = inkTextureConfig();
+    const EDGE_FUZZ = edgeFuzzConfig ? edgeFuzzConfig() : {};
+    const EDGE_BLEED = edgeBleedConfig();
+    const INK_BLUR_CFG = typeof inkBlurConfig === 'function' ? inkBlurConfig() : {};
+    const blurRadius = clamp(Number.isFinite(INK_BLUR_CFG.radiusPx) ? INK_BLUR_CFG.radiusPx : 0, 0, 6);
     const fuzzKey = (effectsAllowed && fuzzSectionStrength > 0 && isInkSectionEnabled('fuzz'))
       ? Math.round(fuzzSectionStrength * 100)
       : 0;
     const fillKey = (effectsAllowed && fillSectionStrength > 0 && isInkSectionEnabled('fill'))
       ? Math.round(fillSectionStrength * 100)
       : 0;
+    const blurKey = (effectsAllowed
+      && blurSectionStrength > 0
+      && isInkSectionEnabled('blur')
+      && INK_BLUR_CFG.enabled !== false)
+        ? `${Math.round(blurSectionStrength * 100)}-${Math.round(blurRadius * 100)}`
+        : '0';
     const orderKey = rawOrder.join('-');
-    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|fz${fuzzKey}|fl${fillKey}|ord${orderKey}`;
+    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|fz${fuzzKey}|fl${fillKey}|bl${blurKey}|ord${orderKey}`;
     let atlas = atlases.get(key);
     if (atlas) return atlas;
 
@@ -876,9 +954,6 @@ export function createGlyphAtlas(options) {
     const ACTIVE_FONT_NAME = getActiveFontNameFn();
     const RENDER_SCALE = getRenderScaleFn();
     const COLORS = colors;
-    const INK_TEXTURE = inkTextureConfig();
-    const EDGE_FUZZ = edgeFuzzConfig ? edgeFuzzConfig() : {};
-    const EDGE_BLEED = edgeBleedConfig();
 
     const ASCII_START = 32;
     const ASCII_END = 126;
@@ -933,15 +1008,20 @@ export function createGlyphAtlas(options) {
       && fuzzSectionStrength > 0
       && isInkSectionEnabled('fuzz')
       && (!Array.isArray(EDGE_FUZZ.inks) || EDGE_FUZZ.inks.includes(ink));
+    const blurEnabled = INK_BLUR_CFG.enabled !== false
+      && effectsAllowed
+      && blurSectionStrength > 0
+      && isInkSectionEnabled('blur');
     const pipelineOrder = rawOrder;
     const pipelineStages = [];
     pipelineOrder.forEach(id => {
       if (id === 'fill' && fillEnabled) pipelineStages.push('fill');
+      else if (id === 'blur' && blurEnabled) pipelineStages.push('blur');
       else if (id === 'texture' && useTexture) pipelineStages.push('texture');
       else if (id === 'fuzz' && fuzzEnabled) pipelineStages.push('fuzz');
       else if (id === 'bleed' && bleedEnabled) pipelineStages.push('bleed');
     });
-    const needsPipeline = useTexture || bleedEnabled || fuzzEnabled || fillEnabled || sampleScale > 1;
+    const needsPipeline = useTexture || bleedEnabled || fuzzEnabled || fillEnabled || blurEnabled || sampleScale > 1;
 
     let glyphCanvas = null;
     let glyphCtx = null;
@@ -1003,7 +1083,7 @@ export function createGlyphAtlas(options) {
           const hasGlyphStageAfter = index => {
             for (let i = index + 1; i < pipelineStages.length; i++) {
               const stage = pipelineStages[i];
-              if (stage === 'texture' || stage === 'fuzz' || stage === 'fill') {
+              if (stage === 'texture' || stage === 'fuzz' || stage === 'fill' || stage === 'blur') {
                 return true;
               }
             }
@@ -1018,6 +1098,19 @@ export function createGlyphAtlas(options) {
                   overallStrength,
                   sectionStrength: fillSectionStrength,
                   getDistanceMaps: distanceProvider,
+                });
+                glyphDataDirty = true;
+              }
+              continue;
+            }
+            if (stage === 'blur') {
+              if (glyphData) {
+                applyBlurEffect(glyphData, {
+                  config: INK_BLUR_CFG,
+                  renderScale: RENDER_SCALE,
+                  sampleScale,
+                  overallStrength,
+                  sectionStrength: blurSectionStrength,
                 });
                 glyphDataDirty = true;
               }

@@ -6,7 +6,7 @@ import {
   normalizeGlyphJitterSeed,
   cloneGlyphJitterRange,
 } from '../config/glyphJitterConfig.js';
-import { EDGE_BLEED, GRAIN_CFG, INK_INTENSITY } from '../config/inkConfig.js';
+import { EDGE_BLEED, GRAIN_CFG, INK_BLUR, INK_INTENSITY } from '../config/inkConfig.js';
 
 const resolveIntensityBounds = (key) => {
   const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
@@ -23,7 +23,7 @@ const resolveIntensityBounds = (key) => {
 const CENTER_THICKEN_BOUNDS = resolveIntensityBounds('centerThicken');
 const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
 
-const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain'];
+const KNOWN_INK_SECTIONS = ['fill', 'blur', 'texture', 'fuzz', 'bleed', 'grain'];
 
 function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
   const base = Array.isArray(order) ? order : [];
@@ -201,6 +201,11 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       Number(state.edgeThinPct ?? EDGE_THIN_BOUNDS.defaultPct),
       EDGE_THIN_BOUNDS.min,
       EDGE_THIN_BOUNDS.max,
+    ),
+    inkBlurStrength: clamp(
+      Number(state.inkBlurStrength ?? (INK_BLUR.enabled === false ? 0 : 100)),
+      0,
+      100,
     ),
     inkTextureStrength: clamp(Number(state.inkTextureStrength ?? 100), 0, 100),
     edgeBleedStrength: clamp(
@@ -393,6 +398,15 @@ export function deserializeDocumentState(data, context) {
       Number(data.edgeThinPct ?? state.edgeThinPct ?? EDGE_THIN_BOUNDS.defaultPct),
       EDGE_THIN_BOUNDS.min,
       EDGE_THIN_BOUNDS.max,
+    ),
+    inkBlurStrength: clamp(
+      Number(
+        data.inkBlurStrength
+          ?? state.inkBlurStrength
+          ?? (INK_BLUR.enabled === false ? 0 : 100)
+      ),
+      0,
+      100,
     ),
     inkTextureStrength: clamp(Number(data.inkTextureStrength ?? state.inkTextureStrength ?? 100), 0, 100),
     edgeBleedStrength: clamp(

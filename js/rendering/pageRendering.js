@@ -41,9 +41,9 @@ export function createPageRenderer(options) {
   const { touchPage } = lifecycle;
   const getInkSectionOrderFn = typeof getInkSectionOrder === 'function'
     ? getInkSectionOrder
-    : (() => ['fill', 'texture', 'fuzz', 'bleed', 'grain']);
+    : (() => ['fill', 'blur', 'texture', 'fuzz', 'bleed', 'grain']);
 
-  const GLYPH_SECTION_IDS = ['fill', 'texture', 'fuzz', 'bleed'];
+  const GLYPH_SECTION_IDS = ['fill', 'blur', 'texture', 'fuzz', 'bleed'];
 
   function getGrainPlacement() {
     const order = getInkSectionOrderFn();

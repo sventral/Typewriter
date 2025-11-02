@@ -91,6 +91,11 @@ export const INK_TEXTURE = {
   jitterSeed: 0x8BADF00D
 };
 
+export const INK_BLUR = {
+  enabled: false,
+  radiusPx: 1.2,
+};
+
 export function normalizeInkTextureConfig(config) {
   const defaults = INK_TEXTURE;
   const source = config && typeof config === 'object' ? config : {};
@@ -131,6 +136,19 @@ export function normalizeInkTextureConfig(config) {
     chip,
     scratch,
     jitterSeed,
+  };
+}
+
+export function normalizeInkBlurConfig(config) {
+  const defaults = INK_BLUR;
+  const source = config && typeof config === 'object' ? config : {};
+  const defaultEnabled = defaults && defaults.enabled === false ? false : true;
+  const enabled = source.enabled === false ? false : defaultEnabled;
+  const radiusSource = Number.isFinite(source.radiusPx) ? source.radiusPx : defaults.radiusPx;
+  const radiusPx = clamp(Number.isFinite(radiusSource) ? radiusSource : 0, 0, 8);
+  return {
+    enabled,
+    radiusPx,
   };
 }
 
