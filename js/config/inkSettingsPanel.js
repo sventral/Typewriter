@@ -8,6 +8,10 @@ Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
+const BLUR_LIMITS = { min: 0, max: 20, defaultRadius: 4 };
+const sanitizedBlurRadius = clamp(Number.isFinite(BLUR_LIMITS.defaultRadius) ? BLUR_LIMITS.defaultRadius : 0, BLUR_LIMITS.min, BLUR_LIMITS.max);
+
+
 const INPUT_OVERRIDES = {
   'fill.centerThickenPct': {
     type: 'range',
@@ -30,6 +34,7 @@ const INPUT_OVERRIDES = {
     type: 'enum-range',
     options: ['destination-out', 'multiply', 'screen', 'overlay', 'soft-light'],
   },
+  'blur.radius': { type: 'range', min: BLUR_LIMITS.min, max: BLUR_LIMITS.max, step: 0.5, precision: 1 },
 };
 
 function getInputOverride(sectionId, path) {
@@ -68,10 +73,17 @@ const FILL_CFG = {
   edgeThinPct: EDGE_THIN_LIMITS.defaultPct,
 };
 
+const BLUR_CFG = {
+  enabled: false,
+  radius: sanitizedBlurRadius,
+  preview: false,
+};
+
 const SECTION_DEFS = [
   {
     id: 'fill',
     label: 'Fill',
+    hidden: true,
     config: FILL_CFG,
     keyOrder: [
       { path: 'centerThickenPct', label: 'Center thickening' },
@@ -84,6 +96,7 @@ const SECTION_DEFS = [
   {
     id: 'texture',
     label: 'Texture',
+    hidden: true,
     config: INK_TEXTURE,
     keyOrder: ['supersample', 'coarseNoise', 'fineNoise', 'noiseSmoothing', 'centerEdgeBias', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
     trigger: 'glyph',
@@ -93,6 +106,7 @@ const SECTION_DEFS = [
   {
     id: 'fuzz',
     label: 'Edge Fuzz',
+    hidden: true,
     config: EDGE_FUZZ,
     keyOrder: ['inks', 'widthPx', 'inwardShare', 'roughness', 'frequency', 'opacity', 'seed'],
     trigger: 'glyph',
@@ -102,6 +116,7 @@ const SECTION_DEFS = [
   {
     id: 'bleed',
     label: 'Bleed',
+    hidden: true,
     config: EDGE_BLEED,
     keyOrder: ['inks', 'widthPx', 'feather', 'lightnessShift', 'noiseRoughness', 'intensity', 'seed'],
     trigger: 'glyph',
@@ -111,12 +126,25 @@ const SECTION_DEFS = [
   {
     id: 'grain',
     label: 'Grain',
+    hidden: true,
     config: GRAIN_CFG,
     keyOrder: ['scale', 'gamma', 'opacity', 'blend_mode', 'tile', 'base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'alpha', 'seeds'],
     trigger: 'grain',
     stateKey: 'grainPct',
     defaultStrength: 0,
-  }
+  },
+  {
+    id: 'blur',
+    label: 'Blur',
+    config: BLUR_CFG,
+    keyOrder: [
+      { path: 'radius', label: 'Radius (px)' },
+      { path: 'preview', label: 'Preview blur overlay' },
+    ],
+    trigger: 'glyph',
+    stateKey: 'inkBlurStrength',
+    defaultStrength: 0,
+  },
 ];
 
 const DEFAULT_SECTION_ORDER = SECTION_DEFS.map(def => def.id);
@@ -193,6 +221,49 @@ function syncFillConfigValues() {
   FILL_CFG.centerThickenPct = getCenterThickenPercent();
   FILL_CFG.edgeThinPct = getEdgeThinPercent();
   FILL_CFG.enabled = getFillStrengthPercent() > 0;
+}
+
+function getBlurRadiusState() {
+  return getScalarFromState('blurRadius', sanitizedBlurRadius, BLUR_LIMITS.min, BLUR_LIMITS.max);
+}
+
+function getBlurPreviewState() {
+  const appState = getAppState();
+  if (!appState) return false;
+  return !!appState.blurPreviewEnabled;
+}
+
+function syncBlurConfigValues() {
+  BLUR_CFG.radius = getBlurRadiusState();
+  BLUR_CFG.preview = getBlurPreviewState();
+  BLUR_CFG.enabled = getPercentFromState('inkBlurStrength', 0) > 0;
+}
+
+function setBlurRadius(value, options = {}) {
+  const { silent = false } = options || {};
+  const raw = Number(value);
+  const radius = clamp(
+    Number.isFinite(raw) ? raw : sanitizedBlurRadius,
+    BLUR_LIMITS.min,
+    BLUR_LIMITS.max,
+  );
+  BLUR_CFG.radius = radius;
+  setScalarOnState('blurRadius', radius, BLUR_LIMITS.min, BLUR_LIMITS.max);
+  if (!silent) {
+    persistPanelState();
+  }
+  return radius;
+}
+
+function setBlurPreviewEnabled(enabled, options = {}) {
+  const { silent = false } = options || {};
+  const flag = !!enabled;
+  BLUR_CFG.preview = flag;
+  setBooleanOnState('blurPreviewEnabled', flag);
+  if (!silent) {
+    persistPanelState();
+  }
+  return flag;
 }
 
 function applyFillConfigToState(config, options = {}) {
@@ -323,18 +394,36 @@ function normalizeStyleRecord(style, index = 0) {
         const rawStrength = fillSource?.strength ?? style?.fillStrength ?? legacyFill?.value ?? legacyFill?.percent;
         const strength = clamp(Math.round(Number.isFinite(Number(rawStrength)) ? Number(rawStrength) : def.defaultStrength ?? 100), 0, 100);
         const configCandidate = fillSource?.config != null
-          ? fillSource.config
-          : fillSource?.settings != null
-            ? fillSource.settings
-            : ('strength' in fillSource ? null : fillSource);
-        const normalizedFill = normalizeFillConfig(configCandidate, style);
-        normalizedFill.enabled = normalizedFill.enabled && strength > 0;
-        record.centerThicken = normalizedFill.centerThickenPct;
-        record.edgeThin = normalizedFill.edgeThinPct;
-        record.fillStrength = strength;
+        ? fillSource.config
+        : fillSource?.settings != null
+          ? fillSource.settings
+          : ('strength' in fillSource ? null : fillSource);
+      const normalizedFill = normalizeFillConfig(configCandidate, style);
+      normalizedFill.enabled = normalizedFill.enabled && strength > 0;
+      record.centerThicken = normalizedFill.centerThickenPct;
+      record.edgeThin = normalizedFill.edgeThinPct;
+      record.fillStrength = strength;
+      record.sections[def.id] = {
+        strength,
+        config: deepCloneValue(normalizedFill),
+      };
+      return;
+      }
+      if (def.id === 'blur') {
+        const blurSource = section && section.config ? section.config : section;
+        const radius = clamp(
+          Number.isFinite(Number(blurSource?.radius)) ? Number(blurSource.radius) : BLUR_LIMITS.defaultRadius,
+          BLUR_LIMITS.min,
+          BLUR_LIMITS.max,
+        );
+        const preview = blurSource?.preview === true;
         record.sections[def.id] = {
           strength,
-          config: deepCloneValue(normalizedFill),
+          config: {
+            enabled: strength > 0,
+            radius,
+            preview,
+          },
         };
         return;
       }
@@ -893,6 +982,12 @@ function setScalarOnState(key, value, min = 0, max = 100) {
   appState[key] = clamp(next, min, max);
 }
 
+function setBooleanOnState(key, value) {
+  const appState = getAppState();
+  if (!appState) return;
+  appState[key] = !!value;
+}
+
 function normalizedPercent(value) {
   return clamp((Number(value) || 0) / 100, 0, 1);
 }
@@ -1287,130 +1382,135 @@ function setSectionCollapsed(meta, collapsed) {
 }
 
 function buildSection(def, root) {
-  const sectionEl = document.createElement('section');
-  sectionEl.className = 'ink-section';
-  sectionEl.dataset.sectionId = def.id;
+  if (!def) return null;
 
-  const header = document.createElement('div');
-  header.className = 'ink-section-header';
-  const toggleBtn = document.createElement('button');
-  toggleBtn.type = 'button';
-  toggleBtn.className = 'ink-section-toggle';
-  toggleBtn.setAttribute('aria-expanded', 'false');
-  const icon = document.createElement('span');
-  icon.className = 'ink-section-toggle-icon';
-  icon.setAttribute('aria-hidden', 'true');
-  icon.textContent = '▸';
-  toggleBtn.appendChild(icon);
-  const title = document.createElement('span');
-  title.className = 'ink-section-title';
-  title.textContent = def.label;
-  toggleBtn.appendChild(title);
-
-  const topLine = document.createElement('div');
-  topLine.className = 'ink-section-topline';
-  const dragHandle = document.createElement('button');
-  dragHandle.type = 'button';
-  dragHandle.className = 'ink-section-drag-handle';
-  dragHandle.setAttribute('aria-label', `Reorder ${def.label}`);
-  dragHandle.innerHTML = '<span aria-hidden="true">⋮⋮</span>';
-  topLine.appendChild(dragHandle);
-  topLine.appendChild(toggleBtn);
-  header.appendChild(topLine);
-
-  const strengthWrap = document.createElement('div');
-  strengthWrap.className = 'ink-section-controls';
-  const slider = document.createElement('input');
-  slider.type = 'range';
-  slider.min = '0';
-  slider.max = '100';
-  slider.step = '1';
-  const startPercent = getPercentFromState(def.stateKey, def.defaultStrength ?? 0);
-  slider.value = String(startPercent);
-  strengthWrap.appendChild(slider);
-  const numberInput = document.createElement('input');
-  numberInput.type = 'number';
-  numberInput.min = '0';
-  numberInput.max = '100';
-  numberInput.step = '1';
-  numberInput.value = String(startPercent);
-  numberInput.setAttribute('aria-label', `${def.label} strength`);
-  strengthWrap.appendChild(numberInput);
-  header.appendChild(strengthWrap);
-
-  sectionEl.appendChild(header);
-
-  const body = document.createElement('div');
-  body.className = 'ink-section-body';
-  const bodyId = `inkSection-${def.id}`;
-  body.id = bodyId;
-  toggleBtn.setAttribute('aria-controls', bodyId);
   const meta = {
     id: def.id,
     config: def.config,
     trigger: def.trigger,
     stateKey: def.stateKey,
-    root: sectionEl,
+    root: null,
     inputs: new Map(),
-    slider,
-    numberInput,
-    body,
-    toggleButton: toggleBtn,
+    slider: null,
+    numberInput: null,
+    body: null,
+    toggleButton: null,
     defaultStrength: def.defaultStrength ?? 0,
   };
 
-  dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
+  const startPercent = getPercentFromState(def.stateKey, def.defaultStrength ?? 0);
 
-  def.keyOrder.forEach(entry => {
-    let path = null;
-    let labelText = '';
-    if (typeof entry === 'string') {
-      path = entry;
-      labelText = def.labels && typeof def.labels === 'object' && def.labels[entry]
-        ? def.labels[entry]
-        : entry;
-    } else if (entry && typeof entry === 'object') {
-      path = entry.path || entry.key || entry.name || null;
-      labelText = entry.label || entry.title || entry.name || entry.key || entry.path || '';
-    }
-    if (!path) return;
-    const value = getValueByPath(meta.config, path);
-    if (Array.isArray(value)) {
-      buildArrayControls(meta, body, value, path, labelText || path);
-      return;
-    }
-    if (value && typeof value === 'object') {
-      buildObjectControls(meta, body, value, path, labelText || path);
-      return;
-    }
-    const input = createInputForValue(value, path, meta.id);
-    if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
-    const row = buildControlRow(labelText || path, input);
-    body.appendChild(row);
-    registerMetaInput(meta, path, input);
-  });
+  if (!def.hidden && root) {
+    const sectionEl = document.createElement('section');
+    sectionEl.className = 'ink-section';
+    sectionEl.dataset.sectionId = def.id;
 
-  sectionEl.appendChild(body);
-  root.appendChild(sectionEl);
+    const header = document.createElement('div');
+    header.className = 'ink-section-header';
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'ink-section-toggle';
+    toggleBtn.setAttribute('aria-expanded', 'false');
+    const icon = document.createElement('span');
+    icon.className = 'ink-section-toggle-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = '▸';
+    toggleBtn.appendChild(icon);
+    const title = document.createElement('span');
+    title.className = 'ink-section-title';
+    title.textContent = def.label;
+    toggleBtn.appendChild(title);
+
+    const topLine = document.createElement('div');
+    topLine.className = 'ink-section-topline';
+    topLine.appendChild(toggleBtn);
+    header.appendChild(topLine);
+
+    const strengthWrap = document.createElement('div');
+    strengthWrap.className = 'ink-section-controls';
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '100';
+    slider.step = '1';
+    slider.value = String(startPercent);
+    strengthWrap.appendChild(slider);
+    const numberInput = document.createElement('input');
+    numberInput.type = 'number';
+    numberInput.min = '0';
+    numberInput.max = '100';
+    numberInput.step = '1';
+    numberInput.value = String(startPercent);
+    numberInput.setAttribute('aria-label', `${def.label} strength`);
+    strengthWrap.appendChild(numberInput);
+    header.appendChild(strengthWrap);
+
+    sectionEl.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'ink-section-body';
+    const bodyId = `inkSection-${def.id}`;
+    body.id = bodyId;
+    toggleBtn.setAttribute('aria-controls', bodyId);
+
+    def.keyOrder.forEach(entry => {
+      let path = null;
+      let labelText = '';
+      if (typeof entry === 'string') {
+        path = entry;
+        labelText = def.labels && typeof def.labels === 'object' && def.labels[entry]
+          ? def.labels[entry]
+          : entry;
+      } else if (entry && typeof entry === 'object') {
+        path = entry.path || entry.key || entry.name || null;
+        labelText = entry.label || entry.title || entry.name || entry.key || entry.path || '';
+      }
+      if (!path) return;
+      const value = getValueByPath(meta.config, path);
+      if (Array.isArray(value)) {
+        buildArrayControls(meta, body, value, path, labelText || path);
+        return;
+      }
+      if (value && typeof value === 'object') {
+        buildObjectControls(meta, body, value, path, labelText || path);
+        return;
+      }
+      const input = createInputForValue(value, path, meta.id);
+      if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
+      const row = buildControlRow(labelText || path, input);
+      body.appendChild(row);
+      registerMetaInput(meta, path, input);
+    });
+
+    sectionEl.appendChild(body);
+    root.appendChild(sectionEl);
+
+    meta.root = sectionEl;
+    meta.slider = slider;
+    meta.numberInput = numberInput;
+    meta.body = body;
+    meta.toggleButton = toggleBtn;
+
+    toggleBtn.addEventListener('click', () => {
+      setSectionCollapsed(meta, !meta.isCollapsed);
+    });
+    slider.addEventListener('input', () => {
+      applySectionStrength(meta, Number.parseFloat(slider.value) || 0);
+    });
+    numberInput.addEventListener('input', () => {
+      const raw = Number.parseFloat(numberInput.value);
+      if (!Number.isFinite(raw)) return;
+      applySectionStrength(meta, raw);
+    });
+    numberInput.addEventListener('blur', () => {
+      if (numberInput.value !== '') return;
+      const fallback = meta.defaultStrength ?? 0;
+      const pct = getPercentFromState(meta.stateKey, fallback);
+      applySectionStrength(meta, pct, { silent: true });
+    });
+  }
+
   panelState.metas.push(meta);
-
-  toggleBtn.addEventListener('click', () => {
-    setSectionCollapsed(meta, !meta.isCollapsed);
-  });
-  slider.addEventListener('input', () => {
-    applySectionStrength(meta, Number.parseFloat(slider.value) || 0);
-  });
-  numberInput.addEventListener('input', () => {
-    const raw = Number.parseFloat(numberInput.value);
-    if (!Number.isFinite(raw)) return;
-    applySectionStrength(meta, raw);
-  });
-  numberInput.addEventListener('blur', () => {
-    if (numberInput.value !== '') return;
-    const fallback = meta.defaultStrength ?? 0;
-    const pct = getPercentFromState(meta.stateKey, fallback);
-    applySectionStrength(meta, pct, { silent: true });
-  });
 
   setSectionCollapsed(meta, true);
   applySectionStrength(meta, startPercent, { silent: true, syncSlider: false, syncNumber: false });
@@ -1561,6 +1661,11 @@ function applySection(meta) {
   if (meta.id === 'fill') {
     applyFillConfigToState(meta.config, { silent: true });
     syncFillConfigValues();
+  } else if (meta.id === 'blur') {
+    const radius = setBlurRadius(meta.config.radius, { silent: true });
+    meta.config.radius = radius;
+    const previewEnabled = setBlurPreviewEnabled(meta.config.preview, { silent: true });
+    meta.config.preview = previewEnabled;
   }
   scheduleRefreshForMeta(meta, { forceRebuild: true });
   persistPanelState();
@@ -1819,6 +1924,15 @@ function applySavedStyle(styleId) {
       syncFillConfigValues();
       syncInputs(meta);
       scheduleRefreshForMeta(meta, { forceRebuild: true });
+    } else if (def.id === 'blur') {
+      const blurConfig = section && section.config ? section.config : BLUR_CFG;
+      applyConfigToTarget(meta.config, blurConfig);
+      const radius = setBlurRadius(meta.config.radius, { silent: true });
+      meta.config.radius = radius;
+      const previewEnabled = setBlurPreviewEnabled(meta.config.preview, { silent: true });
+      meta.config.preview = previewEnabled;
+      syncInputs(meta);
+      scheduleRefreshForMeta(meta, { forceRebuild: true });
     } else if (section && section.config) {
       applyConfigToTarget(meta.config, section.config);
       syncInputs(meta);
@@ -1911,6 +2025,7 @@ export function isInkSectionEnabled(sectionId) {
   if (sectionId === 'texture') return strength > 0 && INK_TEXTURE.enabled !== false;
   if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
   if (sectionId === 'bleed') return strength > 0 && EDGE_BLEED.enabled !== false;
+  if (sectionId === 'blur') return strength > 0 && BLUR_CFG.enabled !== false;
   return strength > 0;
 }
 
@@ -1993,9 +2108,12 @@ export function syncInkStrengthDisplays(sectionId) {
   if (!sectionId) {
     syncOverallStrengthUI();
     syncFillConfigValues();
+    syncBlurConfigValues();
     panelState.metas.forEach(meta => {
       if (!meta) return;
       if (meta.id === 'fill') {
+        syncInputs(meta);
+      } else if (meta.id === 'blur') {
         syncInputs(meta);
       }
       const fallback = meta.defaultStrength ?? 0;
@@ -2012,6 +2130,16 @@ export function syncInkStrengthDisplays(sectionId) {
     const meta = findMetaById('fill');
     if (!meta) return;
     syncFillConfigValues();
+    syncInputs(meta);
+    const fallback = meta.defaultStrength ?? 0;
+    const pct = getPercentFromState(meta.stateKey, fallback);
+    applySectionStrength(meta, pct, { silent: true });
+    return;
+  }
+  if (sectionId === 'blur') {
+    const meta = findMetaById('blur');
+    if (!meta) return;
+    syncBlurConfigValues();
     syncInputs(meta);
     const fallback = meta.defaultStrength ?? 0;
     const pct = getPercentFromState(meta.stateKey, fallback);
@@ -2060,6 +2188,7 @@ export function setupInkSettingsPanel(options = {}) {
   setSectionOrderOnState(panelState.sectionOrder);
 
   syncFillConfigValues();
+  syncBlurConfigValues();
 
   if (panelState.styleNameInput) {
     panelState.styleNameInput.addEventListener('input', () => panelState.styleNameInput.classList.remove('input-error'));

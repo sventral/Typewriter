@@ -23,7 +23,7 @@ const resolveIntensityBounds = (key) => {
 const CENTER_THICKEN_BOUNDS = resolveIntensityBounds('centerThicken');
 const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
 
-const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain'];
+const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'blur'];
 
 function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
   const base = Array.isArray(order) ? order : [];
@@ -216,6 +216,9 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     ),
     grainSeed: state.grainSeed >>> 0,
     altSeed: state.altSeed >>> 0,
+    inkBlurStrength: clamp(Number(state.inkBlurStrength ?? 0), 0, 100),
+    blurRadius: clamp(Number(state.blurRadius ?? 4), 0, 20),
+    blurPreviewEnabled: !!state.blurPreviewEnabled,
     inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
     wordWrap: state.wordWrap,
     stageWidthFactor: state.stageWidthFactor,
@@ -417,6 +420,13 @@ export function deserializeDocumentState(data, context) {
     grainSeed: (data.grainSeed >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
     altSeed:
       (data.altSeed >>> 0) || (((data.grainSeed >>> 0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
+    inkBlurStrength: clamp(Number(data.inkBlurStrength ?? state.inkBlurStrength ?? 0), 0, 100),
+    blurRadius: clamp(
+      Number(data.blurRadius ?? state.blurRadius ?? 4),
+      0,
+      20,
+    ),
+    blurPreviewEnabled: data.blurPreviewEnabled ?? state.blurPreviewEnabled ?? false,
     wordWrap: data.wordWrap !== false,
     stageWidthFactor: sanitizedStageWidth,
     stageHeightFactor: sanitizedStageHeight,
