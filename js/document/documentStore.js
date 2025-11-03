@@ -6,7 +6,8 @@ import {
   normalizeGlyphJitterSeed,
   cloneGlyphJitterRange,
 } from '../config/glyphJitterConfig.js';
-import { EDGE_BLEED, GRAIN_CFG, INK_BLUR, INK_INTENSITY } from '../config/inkConfig.js';
+import { INK_BLUR, INK_INTENSITY } from '../config/inkConfig.js';
+import { EDGE_BLEED, GRAIN_CFG } from '../config/legacyInkEffects.js';
 
 const resolveIntensityBounds = (key) => {
   const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;

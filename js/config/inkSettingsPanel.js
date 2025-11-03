@@ -1,14 +1,12 @@
+import { INK_BLUR, INK_INTENSITY, normalizeInkBlurConfig } from './inkConfig.js';
 import {
   EDGE_BLEED,
   EDGE_FUZZ,
   GRAIN_CFG,
-  INK_BLUR,
-  INK_INTENSITY,
   INK_TEXTURE,
   normalizeEdgeBleedConfig,
-  normalizeInkBlurConfig,
   normalizeInkTextureConfig,
-} from './inkConfig.js';
+} from './legacyInkEffects.js';
 
 const sanitizedInkTextureDefaults = normalizeInkTextureConfig(INK_TEXTURE);
 Object.assign(INK_TEXTURE, sanitizedInkTextureDefaults);

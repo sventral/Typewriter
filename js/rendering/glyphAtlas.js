@@ -1,5 +1,5 @@
 import { clamp } from '../utils/math.js';
-import { normalizeInkTextureConfig } from '../config/inkConfig.js';
+import { normalizeInkTextureConfig } from '../config/legacyInkEffects.js';
 
 export function createGlyphAtlas(options) {
   const {
