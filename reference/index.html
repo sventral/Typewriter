@@ -1,0 +1,521 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Typewriter Simulator</title><style>:root{--bg:#f7f5ee;--ink:#0c0}html,body{height:100%;margin:0;font:14px/1.3 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial}body{height:100vh;overflow:hidden;display:grid;grid-template-columns:420px 1fr;gap:16px;background:#111;color:#ddd;padding:16px;box-sizing:border-box}#p{background:#1b1b1b;border-radius:12px;padding:12px;box-shadow:0 0 0 1px #222 inset;max-height:calc(100vh - 32px);overflow:auto}#p h2{font-size:14px;margin:0 0 8px;color:#cfcfcf}#p .row{display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;margin:6px 0}#p .row.row-check{grid-template-columns:1fr}#p .row.row-textarea{grid-template-columns:120px 1fr;align-items:start}#p .row.row-range{grid-template-columns:120px minmax(0,1fr) 84px}#p input[type=range]{width:100%}#p input:not([type=checkbox]),#p select,#p button{width:100%;background:#0f0f0f;border:1px solid #333;color:#ddd;border-radius:6px}#p input:not([type=checkbox]){padding:6px}#p select,#p button{padding:8px}#p .val{width:100%;background:#0f0f0f;border:1px solid #333;color:#ddd;border-radius:6px;padding:6px 8px;text-align:right;font-variant-numeric:tabular-nums}#p textarea{width:100%;min-height:120px;background:#0f0f0f;border:1px solid #333;color:#ddd;border-radius:8px;padding:8px;resize:vertical}#stg{background:#222;border-radius:12px;padding:12px;box-shadow:0 0 0 1px #222 inset;display:grid;grid-template-rows:auto 1fr}canvas{background:var(--bg);border-radius:8px;display:block}.bar{display:flex;gap:8px;margin-bottom:8px}.bar>*{flex:0 0 auto}@font-face{font-family:'TT2020 Style E';src:local('TT2020 Style E'),local('TT2020StyleE-Regular');font-weight:400}fieldset{border:1px solid #333;border-radius:10px;margin:10px 0;padding:8px}legend{padding:0 6px;color:#bbb}#cfg{min-height:80px}</style></head><body><div id="p"><h2>Typewriter settings</h2><form id="pf"></form><div class="bar"><button id="do">Render</button><button id="rnd">Randomize</button></div><fieldset><legend>Config I/O</legend><div class="row row-textarea"><label for="cfg">Config JSON</label><textarea id="cfg" placeholder="Paste config here or click Export"></textarea></div><div class="row"><label></label><div style="display:flex;gap:8px"><button id="xCfg" type="button">Export</button><button id="iCfg" type="button">Import</button><button id="cCfg" type="button">Copy</button></div></div></fieldset></div><div id="stg"><div class="bar"><span>Canvas</span></div><canvas id="c" width="1600" height="600"></canvas></div><script>
+'use strict';
+/*
+  LIFT POINTS (repo-shaped, copy these into the repo one-by-one):
+    - createDistanceMapProvider(shape) -> { getInside(i), getOutside(i), getMaxInside(), raw:{inside,outside} }
+    - applyFillAdjustments(imageDataCoverage, ctx)
+    - applyDropoutsMask(imageDataCoverage, ctx)
+    - applyGrainSpeckTexture(imageDataCoverage, ctx)
+    - applyCenterEdgeShape(imageDataCoverage, ctx)
+    - applyPunchHolesMask(imageDataCoverage, ctx, holes) + createPunchSet(ctx)
+    - applyEdgeFuzz(imageDataCoverage, ctx)
+    - applySmudgeHalo(imageDataCoverage, ctx)
+    - STAGE_REGISTRY (maps stage id -> function), GLYPH_PIPELINE_ORDER (array)
+    - exportRepoStyleConfig() (optional helper to emit SECTION_DEFS-like config)
+*/
+const VER='r24';
+const $=id=>document.getElementById(id), $$=s=>document.querySelectorAll(s), ce=t=>document.createElement(t), root=document.documentElement;
+const {min,max,abs,ceil,floor,round,sin,cos,PI,hypot,imul,pow,sign}=Math;
+const TAU=PI*2, clamp=(x,a,b)=>x<a?a:x>b?b:x, clamp01=v=>v<0?0:v>1?1:v;
+
+/* ===== UI (unchanged names/order/defaults) ===== */
+const labelOf=id=>id.replace(/^enable/,'').replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase()).replace(/\bVbias\b/i,'Vertical bias').trim();
+const PANEL_SCHEMA=[
+  ['fieldset','Fill',[
+    ['check','enableToneCore',true],
+    ['range','pressureMid',0,1.6,.01,.83],
+    ['range','pressureVar',0,.8,.01,.32],
+    ['range','inkGamma',.4,2.5,.01,1.34],
+    ['range','toneJitter',0,.6,.01,.42],
+    ['range','ribbon',0,.5,.01,.1],
+    ['number','ribbonPeriod',3,30,.5,8.5],
+    ['range','ribbonSharp',0,1,.01,.15],
+    ['check','enableVbias',true],
+    ['range','verticalBias',-1,1,.01,-.84],
+    ['range','vBiasAmt',0,1,.01,.36],
+    ['check','enableCenterEdge',false],
+    ['range','centerThicken',0,1,.01,.28],
+    ['range','edgeThin',0,1,.01,0]
+  ]],
+  ['fieldset','Edge',[
+    ['check','enableRim',false],
+    ['range','rim',0,.8,.01,.27],
+    ['range','rimCurve',.4,3,.01,2.21],
+    ['check','enableEdgeFuzz',true],
+    ['range','fuzzOpacity',0,1,.01,.23],
+    ['number','fuzzIn',0,24,.25,2],
+    ['number','fuzzOut',0,24,.25,2],
+    ['range','fuzzRough',0,1,.01,.63],
+    ['number','fuzzScale',2,64,1,6],
+    ['range','fuzzMix',0,1,.01,.38]
+  ]],
+  ['fieldset','Grain',[
+    ['check','enableGrainSpeck',true],
+    ['range','mottling',0,.8,.01,.11],
+    ['range','speckDark',0,1,.01,.21],
+    ['range','speckLight',0,1,.01,.53],
+    ['range','speckGrayBias',0,1,.01,.51]
+  ]],
+  ['fieldset','Defects',[
+    ['check','enableDropouts',true],
+    ['range','gapAmount',0,2,.01,.57],
+    ['number','gapWidth',0,12,.25,10],
+    ['number','gapScale',2,64,1,25],
+    ['range','pinholeDensity',0,1,.01,.36],
+    ['range','gapStreakDensity',0,1,.01,.2],
+    ['range','pinholeWeight',0,1,.01,.28],
+    ['check','enableSmudge',true],
+    ['range','smudgeStrength',0,2,.01,.57],
+    ['number','smudgeRadius',0,32,.25,15],
+    ['range','smudgeFalloff',0,4,.01,1.39],
+    ['number','smudgeScale',2,64,1,24],
+    ['range','smudgeDensity',0,1,.01,.33],
+    ['number','smudgeDir',0,360,1,300],
+    ['range','smudgeSpread',0,1,.01,.5],
+    ['check','enablePunch',true],
+    ['range','punchChance',0,1,.01,.51],
+    ['range','punchCount',0,10,1,2],
+    ['range','punchSizeMin',.002,.08,.001,.004],
+    ['range','punchSizeMax',.004,.12,.001,.082],
+    ['range','punchEdgeBias',-1,1,.01,.8],
+    ['range','punchSoft',0,.4,.005,.295],
+    ['range','punchIntensity',0,1.5,.01,.96]
+  ]],
+  ['fieldset','Meta',[
+    ['number','fontSize',8,96,1,80],
+    ['number','seed',0,0xffffffff,1,2654435769],
+    ['textarea','text',`THE QUICK BROWN FOX\njumps over the lazy dog.\n0123456789 &?!`]
+  ]]
+];
+function build(){
+  const form=$('pf'), frag=document.createDocumentFragment();
+  for(const block of PANEL_SCHEMA){
+    const title=block[1], items=block[2];
+    const fs=ce('fieldset'), lg=ce('legend'); lg.textContent=title; fs.appendChild(lg);
+    for(const it of items){
+      const t=it[0], id=it[1];
+      const row=ce('div'); row.className='row';
+      const lab=ce('label'); const labTxt=labelOf(id);
+      if(t==='check'){
+        const checked=!!it[2]; row.classList.add('row-check');
+        const inp=ce('input'); inp.type='checkbox'; inp.id=id; if(checked) inp.checked=true;
+        lab.appendChild(inp); lab.append(' ',labTxt); row.appendChild(lab);
+      }else if(t==='textarea'){
+        const value=String(it[2]??''); row.classList.add('row-textarea');
+        lab.setAttribute('for',id); lab.textContent=labTxt;
+        const inp=ce('textarea'); inp.id=id; inp.value=value; row.appendChild(lab); row.appendChild(inp);
+      }else if(t==='range'){
+        const[, ,minV,maxV,stepV,defV]=it; row.classList.add('row-range');
+        lab.setAttribute('for',id); lab.textContent=labTxt;
+        const inp=ce('input'); inp.id=id; inp.type='range';
+        if(minV!=null) inp.min=minV; if(maxV!=null) inp.max=maxV; if(stepV!=null) inp.step=stepV; if(defV!=null) inp.value=defV;
+        const out=ce('output'); out.className='val'; out.id=id+'Val';
+        row.appendChild(lab); row.appendChild(inp); row.appendChild(out);
+      }else{
+        const[, ,minV,maxV,stepV,defV]=it;
+        lab.setAttribute('for',id); lab.textContent=labTxt;
+        const inp=ce('input'); inp.id=id; inp.type=t;
+        if(minV!=null) inp.min=minV; if(maxV!=null) inp.max=maxV; if(stepV!=null) inp.step=stepV; if(defV!=null) inp.value=defV;
+        row.appendChild(lab); row.appendChild(inp);
+      }
+      fs.appendChild(row);
+    }
+    frag.appendChild(fs);
+  }
+  form.replaceChildren(frag);
+}
+build();
+const UI=(()=>{const map={};$$('#p input,#p textarea,#p select').forEach(el=>{if(el.id)map[el.id]=el});return map})();
+
+/* ===== Canvas/bootstrap (unchanged) ===== */
+const canvas=$('c'), ctx=canvas.getContext('2d');
+const BW=1600,BH=600,EM=72;
+function initDPR(){const dpr=max(1,min(3,window.devicePixelRatio||1));canvas.width=round(BW*dpr);canvas.height=round(BH*dpr);ctx.setTransform(dpr,0,0,dpr,0,0)}
+initDPR();
+function syncVals(){$$('#p input[type=range]').forEach(el=>{const out=$(el.id+'Val');if(!out)return;const asNum=(typeof el.valueAsNumber==='number'&&!isNaN(el.valueAsNumber));const fixed=(el.step&&String(el.step).includes('.'))?3:0;out.textContent=asNum?el.valueAsNumber.toFixed(fixed):el.value})}
+function getCfg(){
+  const docSeed=(Number(UI.seed.value)>>>0)||0x9E3779B9;
+  const fontPx=Number(UI.fontSize.value)||48;
+  const font=`${fontPx}px 'TT2020 Style E', 'Courier New', monospace`;
+  const SS=clamp(round(EM/max(8,fontPx)),1,4);
+  const smul=(fontPx/EM)*SS;
+  return{
+    font,fontPx,ss:SS,smul,text:UI.text.value,
+    ink:{rim:+UI.rim.value,rimCurve:+UI.rimCurve.value,pressureMid:+UI.pressureMid.value,pressureVar:+UI.pressureVar.value,inkGamma:+UI.inkGamma.value,toneJitter:+UI.toneJitter.value,mottling:+UI.mottling.value,speckDark:+UI.speckDark.value,speckLight:+UI.speckLight.value,speckGrayBias:+UI.speckGrayBias.value},
+    ribbon:{amp:+UI.ribbon.value,period:+UI.ribbonPeriod.value,sharp:+UI.ribbonSharp.value,phase:0},
+    bias:{vertical:+UI.verticalBias.value,amount:+UI.vBiasAmt.value},
+    noise:{lfScale:22,hfScale:1},
+    color:[12,12,12],docSeed,
+    centerEdge:{center:+UI.centerThicken.value,edge:+UI.edgeThin.value},
+    dropouts:{amount:+UI.gapAmount.value,width:+(UI.gapWidth.value||0),scale:+(UI.gapScale.value||14),pinhole:+UI.pinholeDensity.value,streakDensity:+UI.gapStreakDensity.value,pinholeWeight:+UI.pinholeWeight.value},
+    edgeFuzz:{opacity:(+UI.fuzzOpacity.value)*.75,inBand:+(UI.fuzzIn.value||0),outBand:+(UI.fuzzOut.value||0),rough:+UI.fuzzRough.value,scale:+(UI.fuzzScale.value||18),mix:+UI.fuzzMix.value},
+    smudge:{strength:+UI.smudgeStrength.value,radius:+(UI.smudgeRadius.value||0),falloff:+UI.smudgeFalloff.value,scale:+(UI.smudgeScale.value||24),density:+UI.smudgeDensity.value,dirDeg:+(UI.smudgeDir.value||0),spread:+(UI.smudgeSpread.value||0)},
+    punch:{count:min(((+(UI.punchCount?.value||0))|0),((+(UI.punchCount?.max||10))|0)),rMin:+(UI.punchSizeMin?.value||0),rMax:+(UI.punchSizeMax?.value||0),edgeBias:+(UI.punchEdgeBias?.value||0),soft:+(UI.punchSoft?.value||0),intensity:+(UI.punchIntensity?.value||0),chance:clamp01(+(UI.punchChance?.value||1))},
+    enable:{toneCore:!!UI.enableToneCore.checked,vBias:!!UI.enableVbias.checked,rim:!!UI.enableRim.checked,centerEdge:!!UI.enableCenterEdge.checked,grainSpeck:!!UI.enableGrainSpeck.checked,dropouts:!!UI.enableDropouts.checked,edgeFuzz:!!UI.enableEdgeFuzz.checked,smudge:!!UI.enableSmudge.checked,punch:!!UI.enablePunch?.checked}
+  }
+}
+
+/* ===== Utilities ===== */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=imul(a^a>>>15,1|a);t^=t+imul(t^t>>>7,61|a);return((t^t>>>14)>>>0)/4294967296}}
+function hash2(x,y,seed){let h=x*374761393^y*668265263^seed;h=(h^(h>>>13))>>>0;h=imul(h,1274126177)>>>0;return(h>>>0)/4294967296}
+function noise2(x,y,scale,seed){const xi=floor(x/scale),yi=floor(y/scale);const xf=(x/scale)-xi,yf=(y/scale)-yi;const h00=hash2(xi,yi,seed),h10=hash2(xi+1,yi,seed),h01=hash2(xi,yi+1,seed),h11=hash2(xi+1,yi+1,seed);const sx=xf*xf*(3-2*xf),sy=yf*yf*(3-2*yf);const nx0=h00*(1-sx)+h10*sx,nx1=h01*(1-sx)+h11*sx;return nx0*(1-sy)+nx1*sy}
+function edgeMask(alpha,w,h,x,y){const i=y*w+x;const aL=x>0?alpha[i-1]:0,aR=x<w-1?alpha[i+1]:0,aU=y>0?alpha[i-w]:0,aD=y<h-1?alpha[i+w]:0;const g=abs(aL-aR)+abs(aU-aD);return min(1,g/255)}
+function splitNL(s){return s.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n')}
+function ribbonShape(y,period,sharp,phase){const s=sin(y/period+phase)*.5+.5;if(sharp<=0)return s;const k=max(.0001,1-sharp);return s<.5?pow(s*2,k)*.5:1-pow((1-s)*2,k)*.5}
+function superellipseMask(nx,ny,ax,ay,rot,powN){const c=cos(rot),s=sin(rot);const rx=(nx*c-ny*s)/ax,ry=(nx*s+ny*c)/ay;return pow(abs(rx),powN)+pow(abs(ry),powN)}
+function dtInside(alpha0,w,h){
+  const INF=1e9, dist=new Float32Array(w*h);
+  for(let i=0;i<w*h;i++) dist[i]=alpha0[i]>0?INF:0;
+  for(let y=0;y<h;y++){for(let x=0;x<w;x++){const i=y*w+x,d0=dist[i];if(d0===0)continue;let best=d0;if(x>0)best=min(best,dist[i-1]+1);if(y>0)best=min(best,dist[i-w]+1);if(x>0&&y>0)best=min(best,dist[i-w-1]+1.4142135);if(x<w-1&&y>0)best=min(best,dist[i-w+1]+1.4142135);dist[i]=best}}
+  let maxInside=0;
+  for(let y=h-1;y>=0;y--){for(let x=0;x<w;x++){const i=y*w+x,d0=dist[i];if(d0===0)continue;let best=d0;if(x<w-1)best=min(best,dist[i+1]+1);if(y<h-1)best=min(best,dist[i+w]+1);if(x<w-1&&y<h-1)best=min(best,dist[i+w+1]+1.4142135);if(x>0&&y<h-1)best=min(best,dist[i+w-1]+1.4142135);dist[i]=best;if(best<INF&&best>maxInside)maxInside=best}}
+  return{dist,maxInside};
+}
+function dtOutside(alpha0,w,h){
+  const INF=1e9, dist=new Float32Array(w*h);
+  for(let i=0;i<w*h;i++) dist[i]=alpha0[i]===0?INF:0;
+  for(let y=0;y<h;y++){for(let x=0;x<w;x++){const i=y*w+x,d0=dist[i];if(d0===0)continue;let best=d0;if(x>0)best=min(best,dist[i-1]+1);if(y>0)best=min(best,dist[i-w]+1);if(x>0&&y>0)best=min(best,dist[i-w-1]+1.4142135);if(x<w-1&&y>0)best=min(best,dist[i-w+1]+1.4142135);dist[i]=best}}
+  let maxOutside=0;
+  for(let y=h-1;y>=0;y--){for(let x=0;x<w;x++){const i=y*w+x,d0=dist[i];if(d0===0)continue;let best=d0;if(x<w-1)best=min(best,dist[i+1]+1);if(y<h-1)best=min(best,dist[i+w]+1);if(x<w-1&&y<h-1)best=min(best,dist[i+w+1]+1.4142135);if(x>0&&y<h-1)best=min(best,dist[i+w-1]+1.4142135);dist[i]=best;if(best<INF&&best>maxOutside)maxOutside=best}}
+  return{dist,maxOutside};
+}
+function gradOut(dist,w,h,x,y){const i=y*w+x,dx=(x>0?dist[i-1]:dist[i])-(x<w-1?dist[i+1]:dist[i]),dy=(y>0?dist[i-w]:dist[i])-(y<h-1?dist[i+w]:dist[i]);return[dx,dy]}
+function dot(a,bx,by){return a[0]*bx+a[1]*by}
+function len(v){return hypot(v[0],v[1])||1}
+function mkGamma(g){const lut=new Float32Array(256);for(let i=0;i<256;i++){const t=i/255;lut[i]=pow(t,g)}return lut}
+function mkRim(curve){const k=max(.4,curve),lut=new Float32Array(256);for(let i=0;i<256;i++){const t=i/255;lut[i]=pow(t,1/k)}return lut}
+const LUT_CACHE={gamma:new Map(),rim:new Map()};
+function getGamma(g){const k=g.toFixed(3);let l=LUT_CACHE.gamma.get(k);if(!l){l=mkGamma(g);LUT_CACHE.gamma.set(k,l)}return l}
+function getRim(c){const k=c.toFixed(3);let l=LUT_CACHE.rim.get(k);if(!l){l=mkRim(c);LUT_CACHE.rim.set(k,l)}return l}
+
+/* ===== Glyph cache & DM provider ===== */
+const glyphCache=new Map();let lastFP=-1,lastSS=-1,lastFont='';
+function getGlyphShape(cc,font,fontPx,ss,drawGlyph){
+  const key=`${cc}:${fontPx}:${ss}`; let g=glyphCache.get(key);
+  if(!g){const {img,alpha,w,h}=drawGlyph(cc); const ins=dtInside(alpha,w,h), out=dtOutside(alpha,w,h); g={img,alpha,w,h,insideDist:ins.dist,maxInside:ins.maxInside,outsideDist:out.dist}; glyphCache.set(key,g)}
+  return g;
+}
+function createDistanceMapProvider(shape){
+  const inside=shape.insideDist, outside=shape.outsideDist, maxInside=shape.maxInside||0;
+  return {
+    getInside:i=>inside?inside[i]:0,
+    getOutside:i=>outside?outside[i]:0,
+    getMaxInside:()=>maxInside,
+    raw:{inside,outside}
+  };
+}
+
+/* ===== Lift-friendly effect stages (pure over coverage) ===== */
+function applyFillAdjustments(coverage, ctx){
+  const {w,h,alpha0,params,seed,gix,smul}=ctx;
+  const lfScale=params.noise.lfScale*smul, hfScale=params.noise.hfScale*smul;
+  const periodPx=params.ribbon.period*smul;
+  const gammaLUT=getGamma(params.ink.inkGamma), rimLUT=getRim(params.ink.rimCurve);
+  const toneCoreEn=!!params.enable.toneCore, vBiasEn=!!params.enable.vBias, rimEn=!!params.enable.rim;
+  const rPhase=(params.ribbon.phase+(gix%37)*.25)%TAU;
+  const rhythm=1+.08*sin((gix%23)/23*TAU);
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=y*w+x; const a=alpha0[i]/255;
+      const e=edgeMask(alpha0,w,h,x,y);
+      const p=noise2(x+gix*13,y+gix*7,lfScale,seed);
+      const m=noise2(x*1.7+seed,y*1.3-seed,hfScale,seed^0xA5A5A5A5);
+      const rBand=ribbonShape(y,periodPx,params.ribbon.sharp,rPhase);
+      let press=toneCoreEn?(params.ink.pressureMid+params.ink.pressureVar*(p-.5)*2):1;
+      press=clamp(press,.05,1.6);
+      let cov=a*press;
+      if(toneCoreEn) cov*=1+params.ink.toneJitter*((m-.5)*2);
+      if(params.ribbon.amp>0) cov*=1+params.ribbon.amp*((rBand-.5)*2);
+      if(vBiasEn){
+        const vBiasNorm=y/(h-1)-.5;
+        const vb=vBiasNorm*(1+.5*sign(vBiasNorm)*vBiasNorm*vBiasNorm);
+        cov*=1+params.bias.vertical*(params.bias.amount||0)*vb*1.6;
+      }
+      cov*=1+0*rhythm+rhythm-1;
+      const rimBoost=rimLUT[(e*255)|0];
+      if(rimEn) cov+=params.ink.rim*rimBoost*(1-cov);
+      if(toneCoreEn){const idx=(clamp01(cov)*255)|0; cov=gammaLUT[idx];}
+      coverage[i]=clamp01(cov);
+    }
+  }
+}
+function applyDropoutsMask(coverage, ctx){
+  const {w,h,params,seed,smul,alpha0,dm}=ctx;
+  if(!params.enable.dropouts||!params.dropouts||params.dropouts.amount<=0) return;
+  const inside=dm?.raw?.inside; const widthPx=max(.0001,params.dropouts.width*smul);
+  const dropScalePx=max(2,params.dropouts.scale*smul);
+  const dropThr=1-clamp01(params.dropouts.streakDensity);
+  const dropPw=clamp01(params.dropouts.pinholeWeight);
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=y*w+x; if(alpha0[i]===0) continue;
+      const band=inside?clamp01(1-((inside[i]||0)/widthPx)):0;
+      const nlf=noise2(x,y,dropScalePx,seed^0x51F1F1F1);
+      const streak=(nlf>dropThr?1:0)*band;
+      const nhf=hash2(x*3+7,y*3+11,seed^0xC0FFEE00);
+      const pinh=(nhf>1-params.dropouts.pinhole?1:0)*(1-band);
+      const gap=clamp01((1-dropPw)*streak+dropPw*pinh);
+      const amt=min(2,params.dropouts.amount);
+      coverage[i]=clamp01(max(0,1-amt*gap)*coverage[i]);
+    }
+  }
+}
+function applyGrainSpeckTexture(coverage, ctx){
+  const {w,h,params,seed,alpha0}=ctx;
+  if(!params.enable.grainSpeck) return;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=y*w+x; if(alpha0[i]===0) continue;
+      const speckMask=hash2(x,y,seed^0xBEEFCAFE);
+      const affect=(1-params.ink.speckGrayBias)+params.ink.speckGrayBias*(1-coverage[i]);
+      let cov=coverage[i];
+      cov=1-(1-cov)*(1-params.ink.speckDark*(speckMask>.85?affect:0));
+      cov*=1-params.ink.speckLight*(speckMask<.15?affect:0);
+      coverage[i]=clamp01(cov);
+    }
+  }
+}
+function applyCenterEdgeShape(coverage, ctx){
+  const {w,h,params,alpha0,dm}=ctx;
+  if(!params.enable.centerEdge||!params.centerEdge) return;
+  const inside=dm?.raw?.inside, maxInside=dm?.getMaxInside?dm.getMaxInside():0;
+  if(!inside||maxInside<=0) return;
+  const cK=params.centerEdge.center||0, eK=params.centerEdge.edge||0;
+  if(cK===0 && eK===0) return;
+  for(let i=0;i<w*h;i++){
+    if(alpha0[i]===0) continue;
+    const norm=(inside[i]||0)/maxInside;
+    let mod=1;
+    mod*=clamp(1+cK*norm,0,2);
+    mod*=clamp(1-eK*(1-norm),0,2);
+    coverage[i]=clamp01(coverage[i]*mod);
+  }
+}
+function createPunchSet(ctx){
+  const {w,h,params,seed,dm,alpha0}=ctx;
+  if(!params.enable.punch||!params.punch||params.punch.intensity<=0) return null;
+  const inside=dm?.raw?.inside, maxInside=dm?.getMaxInside?dm.getMaxInside():0;
+  const rng=mulberry32((seed^0xC71C71C7)>>>0);
+  const cnt=max(0,params.punch.count|0);
+  if(cnt<=0) return null;
+  const rmin=max(.001,min(params.punch.rMin,params.punch.rMax));
+  const rmax=max(rmin,params.punch.rMax);
+  const b=clamp(params.punch.edgeBias||0,-1,1), mag=abs(b), sgn=sign(b);
+  const baseScale=min(w,h), sxN=baseScale/w, syN=baseScale/h;
+  function pickCenter(){
+    for(let t=0;t<60;t++){
+      const cx=floor(rng()*w), cy=floor(rng()*h), i=cy*w+cx;
+      if(alpha0[i]===0) continue;
+      if(mag>0&&inside&&maxInside>0){
+        const norm=((inside[i]||0)/(1e-6+max(1,maxInside)));
+        const prefer=sgn>0?(1-norm):norm; const p=(1-mag)+mag*prefer;
+        if(rng()<p) return[cx/w,cy/h];
+      }else return[cx/w,cy/h];
+    }
+    return[rng(),rng()];
+  }
+  const holes=[];
+  for(let k=0;k<cnt;k++){
+    const[cxN,cyN]=pickCenter(); const r=rmin+rng()*(rmax-rmin);
+    const anis=.8+rng()*.4, ax=r*sxN*anis, ay=r*syN/anis, rot=rng()*TAU, soft=(params.punch.soft||0)*max(ax,ay);
+    const minX=max(0,floor((cxN-ax-soft)*w)),maxX=min(w-1,ceil((cxN+ax+soft)*w));
+    const minY=max(0,floor((cyN-ay-soft)*h)),maxY=min(h-1,ceil((cyN+ay+soft)*h));
+    holes.push({cx:cxN,cy:cyN,ax,ay,rot,soft,minX,maxX,minY,maxY});
+  }
+  return holes;
+}
+function applyPunchHolesMask(coverage, ctx, holes){
+  if(!holes||!holes.length) return;
+  const {w,h,params,alpha0}=ctx;
+  const punchK=clamp(params.punch?.intensity||0,0,1.5);
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=y*w+x; if(alpha0[i]===0) continue;
+      let hole=0;
+      for(const pf of holes){
+        if(x<pf.minX||x>pf.maxX||y<pf.minY||y>pf.maxY) continue;
+        const nx=x/w-pf.cx, ny=y/h-pf.cy;
+        const v=superellipseMask(nx,ny,pf.ax,pf.ay,pf.rot,2);
+        if(v<1+pf.soft){
+          const t=pf.soft>0?clamp01((1+pf.soft-v)/pf.soft):(v<1?1:0);
+          if(t>hole) hole=t;
+        }
+      }
+      if(hole>0) coverage[i]=clamp01(max(0,coverage[i]*(1-punchK*hole)));
+    }
+  }
+}
+function applyEdgeFuzz(coverage, ctx){
+  const {w,h,params,seed,smul,alpha0,dm}=ctx;
+  const cfg=params.edgeFuzz;
+  if(!params.enable.edgeFuzz||!cfg||(cfg.inBand<=0&&cfg.outBand<=0)) return;
+  const inside=dm?.raw?.inside, outside=dm?.raw?.outside;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=y*w+x;
+      let covF=0, a=alpha0[i]/255;
+      if(a>0&&cfg.inBand>0&&inside) covF=max(covF,clamp01(1-(((inside[i]||0))/(cfg.inBand*smul))));
+      if(a===0&&cfg.outBand>0&&outside&&(outside[i]>0)) covF=max(covF,clamp01(1-(((outside[i]||0))/(cfg.outBand*smul))));
+      if(covF>0){
+        const ns=max(2,(cfg.scale||2)*smul);
+        const vNoise=noise2(x,y,ns,seed^0x0F0F0F0F);
+        const vHash=hash2(x,y,seed^0xF00DFACE);
+        const blend=cfg.mix;
+        const n=vNoise*(1-blend)+vHash*blend;
+        const jitter=1+cfg.rough*((n-.5)*2);
+        const o=clamp(cfg.opacity*covF*jitter,0,.75);
+        coverage[i]=1-(1-coverage[i])*(1-clamp01(o));
+      }
+    }
+  }
+}
+function applySmudgeHalo(coverage, ctx){
+  const {w,h,alpha0,params,smul,seed,dm}=ctx;
+  const s=params.smudge;
+  const outside=dm?.raw?.outside;
+  if(!params.enable.smudge||!s||s.strength<=0||!outside) return;
+  const R=max(.0001,s.radius*smul);
+  if(R<=0) return;
+  const ns=max(2,s.scale*smul);
+  const theta=(s.dirDeg||0)*PI/180, dir=[cos(theta),sin(theta)];
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=y*w+x;
+      if(!(outside[i]>0)) continue;
+      let band=max(0,1-((outside[i]||0)/R));
+      band=pow(band,max(.0001,1+s.falloff));
+      const n=noise2(x,y,ns,seed^0xDEADC0DE);
+      const gate=max(0,(n-(1-s.density))*(1/(s.density+1e-4)));
+      const g=gradOut(outside,w,h,x,y);
+      const ndotl=max(0,dot(g,dir[0],dir[1])/len(g));
+      const dirW=pow(ndotl,max(.01,1-s.spread)*2+.5);
+      const sm=s.strength*band*gate*dirW;
+      if(alpha0[i]===0) coverage[i]=max(coverage[i],min(1,sm));
+    }
+  }
+}
+
+/* ===== Stage registry + explicit pipeline ===== */
+const STAGE_REGISTRY={
+  fill:applyFillAdjustments,
+  dropouts:applyDropoutsMask,
+  texture:applyGrainSpeckTexture,
+  centerEdge:applyCenterEdgeShape,
+  punch:(coverage,ctx)=>{const holes=createPunchSet(ctx);applyPunchHolesMask(coverage,ctx,holes)},
+  fuzz:applyEdgeFuzz,
+  smudge:applySmudgeHalo
+};
+const GLYPH_PIPELINE_ORDER=['fill','dropouts','texture','centerEdge','punch','fuzz','smudge'];
+
+/* ===== Renderer (refactored, same visuals) ===== */
+function processGlyph(shape,seed,gix,charCode,params){
+  const w=shape.w,h=shape.h,alpha0=shape.alpha;
+  const imgOut=new ImageData(new Uint8ClampedArray(shape.img.data),w,h);
+  const d=imgOut.data;
+  const dm=createDistanceMapProvider(shape);
+  const smul=params.smul;
+  const ctx={w,h,alpha0,params,seed,gix,smul,dm};
+  const coverage=new Float32Array(w*h);
+
+  for(const id of GLYPH_PIPELINE_ORDER){
+    const fn=STAGE_REGISTRY[id];
+    if(fn) fn(coverage,ctx);
+  }
+  for(let i=0,k=0;i<w*h;i++,k+=4){d[k]=12;d[k+1]=12;d[k+2]=12;d[k+3]=round(clamp01(coverage[i])*255)}
+  return imgOut;
+}
+
+/* ===== Page render (unchanged scaffolding) ===== */
+async function render(){
+  const cfg=getCfg();
+  if(cfg.fontPx!==lastFP||cfg.ss!==lastSS||cfg.font!==lastFont){glyphCache.clear();lastFP=cfg.fontPx;lastSS=cfg.ss;lastFont=cfg.font}
+  ctx.fillStyle=getComputedStyle(root).getPropertyValue('--bg'); ctx.fillRect(0,0,BW,BH);
+  ctx.font=cfg.font; ctx.textBaseline='top';
+  const lh=ceil(parseInt(cfg.font,10)*1.25), lines=splitNL(cfg.text);
+  const gw=ceil(ctx.measureText('M').width)+8, gh=lh, SS=cfg.ss;
+  const buf=ce('canvas'); buf.width=gw*SS; buf.height=gh*SS; const bctx=buf.getContext('2d'); bctx.setTransform(SS,0,0,SS,0,0);
+  const drawGlyph=cc=>{bctx.setTransform(SS,0,0,SS,0,0); bctx.clearRect(0,0,gw,gh); bctx.font=cfg.font; bctx.textBaseline='top'; bctx.fillStyle='black'; bctx.fillText(String.fromCharCode(cc),2,0); const W=gw*SS,H=gh*SS; const img=bctx.getImageData(0,0,W,H); const alpha=new Uint8ClampedArray(W*H); for(let y=0,k=3,i=0;y<H;y++)for(let x=0;x<W;x++,k+=4,i++) alpha[i]=img.data[k]; return {img,alpha,w:W,h:H}};
+  let y=24,gix=0; const prng=mulberry32(cfg.docSeed>>>0);
+  for(const line of lines){let x=48; for(const ch of line){
+    const cc=ch.charCodeAt(0); const shape=getGlyphShape(cc,cfg.font,cfg.fontPx,SS,drawGlyph);
+    const seed=((cfg.docSeed*31)^cc*131)>>>0;
+    const img=processGlyph(shape,seed,gix,cc,cfg);
+    bctx.putImageData(img,0,0);
+    ctx.drawImage(buf,x,y,gw,gh);
+    y+=(prng()-.5)*.25; x+=gw-6; gix++;
+  } y+=lh }
+  // global subtle grain tint (unchanged)
+  const gimg=ctx.getImageData(0,0,canvas.width,canvas.height), gd=gimg.data;
+  for(let i=0;i<gd.length;i+=4){const n=(mulberry32((i^0xABCDEF)>>>0)()-.5)*2; gd[i]+=n*2; gd[i+1]+=n*2; gd[i+2]+=n*1.5}
+  ctx.putImageData(gimg,0,0);
+}
+
+/* ===== Optional: export SECTION_DEFS-like config for repo integration ===== */
+function exportRepoStyleConfig(){
+  const cfg=getCfg();
+  const strength = on => on?1:0; // simple 0/1 strength from toggles (lab-only)
+  return {
+    sectionOrder:['fill','texture','fuzz','smudge','dropouts','punch'],
+    sections:{
+      fill:{
+        strength:strength(cfg.enable.toneCore),
+        config:{
+          pressureMid:cfg.ink.pressureMid,
+          pressureVar:cfg.ink.pressureVar,
+          inkGamma:cfg.ink.inkGamma,
+          toneJitter:cfg.ink.toneJitter,
+          rim:cfg.ink.rim,
+          rimCurve:cfg.ink.rimCurve,
+          ribbon:{amp:cfg.ribbon.amp,period:cfg.ribbon.period,sharp:cfg.ribbon.sharp},
+          vBias:{vertical:cfg.bias.vertical,amount:cfg.bias.amount},
+          centerThickenPct:cfg.centerEdge.center,
+          edgeThinPct:cfg.centerEdge.edge
+        }
+      },
+      texture:{
+        strength:strength(cfg.enable.grainSpeck),
+        config:{
+          mottling:cfg.ink.mottling,
+          speckDark:cfg.ink.speckDark,
+          speckLight:cfg.ink.speckLight,
+          speckGrayBias:cfg.ink.speckGrayBias
+        }
+      },
+      fuzz:{
+        strength:strength(cfg.enable.edgeFuzz),
+        config:{...cfg.edgeFuzz}
+      },
+      smudge:{
+        strength:strength(cfg.enable.smudge),
+        config:{...cfg.smudge}
+      },
+      dropouts:{
+        strength:strength(cfg.enable.dropouts),
+        config:{...cfg.dropouts}
+      },
+      punch:{
+        strength:strength(cfg.enable.punch),
+        config:{...cfg.punch}
+      }
+    }
+  };
+}
+
+/* ===== Events (unchanged) ===== */
+const go=()=>{canvas.style.width=BW+'px';canvas.style.height=BH+'px';syncVals();render()};
+const debounce=(fn,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn.apply(this,a),ms)}};
+const rerender=debounce(()=>{syncVals();render()},50);
+const rerenderText=debounce(()=>{render()},80);
+$('p').addEventListener('input',e=>{const t=e.target;if(t.tagName==='TEXTAREA')rerenderText();else if(t.matches('input,select'))rerender()});
+$('do').addEventListener('click',go);
+$('rnd').addEventListener('click',()=>{UI.seed.value=(Math.random()*0xffffffff>>>0);go()});
+function collectUI(){const o={__version:VER}; $$('#p input,#p textarea,#p select').forEach(el=>{if(!el.id)return; if(el.type==='checkbox')o[el.id]=!!el.checked; else if(el.type==='number'||el.type==='range'){const v=(typeof el.valueAsNumber==='number'&&!Number.isNaN(el.valueAsNumber))?el.valueAsNumber:Number(el.value); o[el.id]=Number.isFinite(v)?v:0;} else o[el.id]=String(el.value)}); return o;}
+function applyUI(cfg){if(!cfg||typeof cfg!=='object')return; Object.keys(cfg).forEach(k=>{if(k==='__version')return; const el=UI[k]; if(!el)return; if(el.type==='checkbox') el.checked=!!cfg[k]; else if(el.type==='number'||el.type==='range'){let v=Number(cfg[k]); if(Number.isNaN(v))return; if(el.min!==''&&!Number.isNaN(+el.min))v=max(+el.min,v); if(el.max!==''&&!Number.isNaN(+el.max))v=min(+el.max,v); el.value=String(v);} else el.value=String(cfg[k])}); syncVals();}
+function exportConfig(){return JSON.stringify(collectUI(),null,2)}
+function importConfig(text){let parsed=null;try{parsed=JSON.parse(text)}catch(e){alert('Invalid JSON');return false} applyUI(parsed); render(); return true}
+const cfgEl=$('cfg');
+$('xCfg').addEventListener('click',()=>{cfgEl.value=exportConfig();cfgEl.select()});
+$('cCfg').addEventListener('click',async()=>{const txt=cfgEl.value||exportConfig();try{await navigator.clipboard.writeText(txt)}catch(e){}});
+$('iCfg').addEventListener('click',()=>{importConfig(cfgEl.value)});
+(async()=>{try{if(document.fonts&&document.fonts.load){await document.fonts.load("48px 'TT2020 Style E'")}}catch(e){} go()})();
+</script></body></html>
