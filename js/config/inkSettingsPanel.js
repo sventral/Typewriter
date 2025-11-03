@@ -82,21 +82,120 @@ const FILL_CFG = {
   edgeThinPct: EDGE_THIN_LIMITS.defaultPct,
 };
 
-const SECTION_DEFS = [
+const FILL_SECTION_DEF = {
+  id: 'fill',
+  label: 'Fill',
+  config: FILL_CFG,
+  keyOrder: [
+    { path: 'enabled', label: 'Enable fill adjustments' },
+    { path: 'centerThickenPct', label: 'Center thicken (%)' },
+    { path: 'edgeThinPct', label: 'Edge thin (%)' },
+  ],
+  trigger: 'glyph',
+  stateKey: 'inkFillStrength',
+  defaultStrength: 100,
+  autoEnable: false,
+};
+
+const BLUR_SECTION_DEF = {
+  id: 'blur',
+  label: 'Blur',
+  config: INK_BLUR,
+  keyOrder: [
+    { path: 'enabled', label: 'Enable blur' },
+    { path: 'radiusPx', label: 'Radius (px)' },
+  ],
+  trigger: 'glyph',
+  stateKey: 'inkBlurStrength',
+  defaultStrength: INK_BLUR.enabled === false ? 0 : 100,
+  autoEnable: false,
+};
+
+export const LEGACY_SECTION_DEFS = [
+  FILL_SECTION_DEF,
   {
-    id: 'blur',
-    label: 'Blur',
-    config: INK_BLUR,
+    id: 'texture',
+    label: 'Texture',
+    config: INK_TEXTURE,
     keyOrder: [
-      { path: 'enabled', label: 'Enable blur' },
-      { path: 'radiusPx', label: 'Radius (px)' },
+      { path: 'enabled', label: 'Enable texture' },
+      { path: 'supersample', label: 'Supersample' },
+      { path: 'coarseNoise', label: 'Coarse noise' },
+      { path: 'fineNoise', label: 'Fine noise' },
+      { path: 'noiseSmoothing', label: 'Noise smoothing' },
+      { path: 'centerEdgeBias', label: 'Center-edge bias' },
+      { path: 'noiseFloor', label: 'Noise floor' },
+      { path: 'chip', label: 'Paper chipping' },
+      { path: 'scratch', label: 'Scratches' },
+      { path: 'jitterSeed', label: 'Jitter seed' },
     ],
     trigger: 'glyph',
-    stateKey: 'inkBlurStrength',
-    defaultStrength: INK_BLUR.enabled === false ? 0 : 100,
-    autoEnable: false,
+    stateKey: 'inkTextureStrength',
+    defaultStrength: INK_TEXTURE.enabled === false ? 0 : 100,
+  },
+  {
+    id: 'fuzz',
+    label: 'Edge fuzz',
+    config: EDGE_FUZZ,
+    keyOrder: [
+      { path: 'enabled', label: 'Enable edge fuzz' },
+      { path: 'inks', label: 'Inks' },
+      { path: 'widthPx', label: 'Width (px)' },
+      { path: 'inwardShare', label: 'Inward share' },
+      { path: 'roughness', label: 'Roughness' },
+      { path: 'frequency', label: 'Frequency' },
+      { path: 'opacity', label: 'Opacity' },
+      { path: 'seed', label: 'Seed' },
+    ],
+    trigger: 'glyph',
+    stateKey: 'edgeFuzzStrength',
+    defaultStrength: 100,
+  },
+  {
+    id: 'bleed',
+    label: 'Edge bleed',
+    config: EDGE_BLEED,
+    keyOrder: [
+      { path: 'enabled', label: 'Enable edge bleed' },
+      { path: 'inks', label: 'Inks' },
+      { path: 'widthPx', label: 'Width (px)' },
+      { path: 'feather', label: 'Feather' },
+      { path: 'lightnessShift', label: 'Lightness shift' },
+      { path: 'noiseRoughness', label: 'Noise roughness' },
+      { path: 'intensity', label: 'Intensity' },
+      { path: 'seed', label: 'Seed' },
+    ],
+    trigger: 'glyph',
+    stateKey: 'edgeBleedStrength',
+    defaultStrength: EDGE_BLEED.enabled === false ? 0 : 100,
+  },
+  {
+    id: 'grain',
+    label: 'Paper grain',
+    config: GRAIN_CFG,
+    keyOrder: [
+      { path: 'enabled', label: 'Enable grain' },
+      { path: 'scale', label: 'Scale' },
+      { path: 'gamma', label: 'Gamma' },
+      { path: 'opacity', label: 'Opacity' },
+      { path: 'blend_mode', label: 'Blend mode' },
+      { path: 'tile', label: 'Tile' },
+      { path: 'base_scale_from_char_w', label: 'Base scale factor' },
+      { path: 'octave_rel_scales', label: 'Octave relative scales' },
+      { path: 'octave_weights', label: 'Octave weights' },
+      { path: 'pixel_hash_weight', label: 'Pixel hash weight' },
+      { path: 'post_gamma', label: 'Post gamma' },
+      { path: 'alpha', label: 'Alpha' },
+      { path: 'seeds', label: 'Seeds' },
+      { path: 'composite_op', label: 'Composite operation' },
+    ],
+    trigger: 'grain',
+    stateKey: 'grainPct',
+    defaultStrength: GRAIN_CFG.enabled === false ? 0 : 100,
   },
 ];
+
+const SECTION_DEFS = [BLUR_SECTION_DEF];
 
 const DEFAULT_SECTION_ORDER = SECTION_DEFS.map(def => def.id);
 function normalizeSectionOrder(order) {
@@ -234,6 +333,36 @@ function deepCloneValue(value) {
   return value;
 }
 
+function normalizeFillSection(style, sectionDef = FILL_SECTION_DEF) {
+  if (!sectionDef) return null;
+  const sections = style?.sections && typeof style.sections === 'object' ? style.sections : null;
+  const rawSection = sections && typeof sections[sectionDef.id] === 'object' ? sections[sectionDef.id] : null;
+  const legacyFill = style && typeof style.fill === 'object' ? style.fill : null;
+  const section = rawSection && Object.keys(rawSection).length ? rawSection : null;
+  const fillSource = section || legacyFill || {};
+  const rawStrength = fillSource?.strength
+    ?? style?.fillStrength
+    ?? legacyFill?.value
+    ?? legacyFill?.percent;
+  const fallbackStrength = sectionDef.defaultStrength ?? 100;
+  const strength = clamp(
+    Math.round(Number.isFinite(Number(rawStrength)) ? Number(rawStrength) : fallbackStrength),
+    0,
+    100,
+  );
+  const configCandidate = fillSource?.config != null
+    ? fillSource.config
+    : fillSource?.settings != null
+      ? fillSource.settings
+      : ('strength' in fillSource ? null : fillSource);
+  const normalizedFill = normalizeFillConfig(configCandidate, style);
+  normalizedFill.enabled = normalizedFill.enabled && strength > 0;
+  return {
+    strength,
+    config: deepCloneValue(normalizedFill),
+  };
+}
+
 function sanitizeStyleName(name) {
   if (typeof name !== 'string') return '';
   const trimmed = name.trim();
@@ -275,37 +404,24 @@ function normalizeStyleRecord(style, index = 0) {
       id: typeof style?.id === 'string' && style.id.trim() ? style.id.trim() : generateStyleId(),
       name: sanitizeStyleName(style?.name) || `Style ${index + 1}`,
       overall: clamp(Math.round(Number(style?.overall ?? 100)), 0, 100),
+      fillStrength: clamp(Math.round(Number(style?.fillStrength ?? FILL_SECTION_DEF.defaultStrength ?? 100)), 0, 100),
       centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
       edgeThin: EDGE_THIN_LIMITS.defaultPct,
       sections: {},
       sectionOrder: normalizeSectionOrder(style?.sectionOrder),
     };
+    const normalizedFill = normalizeFillSection(style);
+    if (normalizedFill) {
+      record.fillStrength = normalizedFill.strength;
+      record.centerThicken = normalizedFill.config.centerThickenPct;
+      record.edgeThin = normalizedFill.config.edgeThinPct;
+      record.sections[FILL_SECTION_DEF.id] = normalizedFill;
+    }
     SECTION_DEFS.forEach(def => {
       const rawSection = style?.sections && typeof style.sections === 'object'
         ? style.sections[def.id]
         : (style && typeof style === 'object' && typeof style[def.id] === 'object' ? style[def.id] : null);
       const section = rawSection && typeof rawSection === 'object' ? rawSection : {};
-      if (def.id === 'fill') {
-        const legacyFill = style && typeof style.fill === 'object' ? style.fill : null;
-        const fillSource = section && Object.keys(section).length ? section : (legacyFill || {});
-        const rawStrength = fillSource?.strength ?? style?.fillStrength ?? legacyFill?.value ?? legacyFill?.percent;
-        const strength = clamp(Math.round(Number.isFinite(Number(rawStrength)) ? Number(rawStrength) : def.defaultStrength ?? 100), 0, 100);
-        const configCandidate = fillSource?.config != null
-          ? fillSource.config
-          : fillSource?.settings != null
-            ? fillSource.settings
-            : ('strength' in fillSource ? null : fillSource);
-        const normalizedFill = normalizeFillConfig(configCandidate, style);
-        normalizedFill.enabled = normalizedFill.enabled && strength > 0;
-        record.centerThicken = normalizedFill.centerThickenPct;
-        record.edgeThin = normalizedFill.edgeThinPct;
-        record.fillStrength = strength;
-        record.sections[def.id] = {
-          strength,
-          config: deepCloneValue(normalizedFill),
-        };
-        return;
-      }
       const strength = clamp(Math.round(Number(section?.strength ?? def.defaultStrength ?? 0)), 0, 100);
       let configSource = section.config != null
         ? section.config
@@ -350,6 +466,20 @@ function createDefaultStyleRecord(index = 0) {
       config: deepCloneValue(def.config),
     };
   });
+  const normalizedFill = normalizeFillSection({
+    sections: {
+      [FILL_SECTION_DEF.id]: {
+        strength: record.fillStrength,
+        config: FILL_SECTION_DEF.config,
+      },
+    },
+    fillStrength: record.fillStrength,
+  });
+  if (normalizedFill) {
+    record.centerThicken = normalizedFill.config.centerThickenPct;
+    record.edgeThin = normalizedFill.config.edgeThinPct;
+    record.sections[FILL_SECTION_DEF.id] = normalizedFill;
+  }
   return record;
 }
 
@@ -395,6 +525,16 @@ function createStyleSnapshot(name, existingId = null) {
       config: deepCloneValue(configSource),
     };
   });
+  const fillConfigSource = findMetaById(FILL_SECTION_DEF.id)?.config || FILL_SECTION_DEF.config;
+  const normalizedFill = normalizeFillSection({
+    sections: { [FILL_SECTION_DEF.id]: { strength: base.fillStrength, config: fillConfigSource } },
+    fillStrength: base.fillStrength,
+  });
+  if (normalizedFill) {
+    base.sections[FILL_SECTION_DEF.id] = normalizedFill;
+    base.centerThicken = normalizedFill.config.centerThickenPct;
+    base.edgeThin = normalizedFill.config.edgeThinPct;
+  }
   return normalizeStyleRecord(base);
 }
 
@@ -1519,29 +1659,24 @@ function applySavedStyle(styleId) {
   if (Number.isFinite(style.overall)) {
     setOverallStrength(style.overall);
   }
+  const normalizedFill = normalizeFillSection(style);
+  if (normalizedFill) {
+    applyConfigToTarget(FILL_SECTION_DEF.config, normalizedFill.config);
+    applyFillConfigToState(normalizedFill.config, { silent: true });
+    setPercentOnState(FILL_SECTION_DEF.stateKey, normalizedFill.strength);
+    syncFillConfigValues();
+    scheduleGlyphRefresh(true);
+  }
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
     if (!meta) return;
     const section = style.sections && style.sections[def.id];
-    if (def.id === 'fill') {
-      const fillConfig = section && section.config
-        ? normalizeFillConfig(section.config, style)
-        : normalizeFillConfig(null, style);
-      applyConfigToTarget(meta.config, fillConfig);
-      applyFillConfigToState(meta.config, { silent: true });
-      syncFillConfigValues();
-      syncInputs(meta);
-      scheduleRefreshForMeta(meta, { forceRebuild: true });
-    } else if (section && section.config) {
+    if (section && section.config) {
       applyConfigToTarget(meta.config, section.config);
       syncInputs(meta);
       scheduleRefreshForMeta(meta, { forceRebuild: true });
     }
-    const rawStrength = section && section.strength;
-    const strengthSource = def.id === 'fill'
-      ? (rawStrength ?? style.fillStrength)
-      : rawStrength;
-    const strength = Number(strengthSource);
+    const strength = Number(section && section.strength);
     if (Number.isFinite(strength)) {
       applySectionStrength(meta, strength);
     }
@@ -1722,9 +1857,9 @@ export function syncInkStrengthDisplays(sectionId) {
     return;
   }
   if (sectionId === 'fill') {
+    syncFillConfigValues();
     const meta = findMetaById('fill');
     if (!meta) return;
-    syncFillConfigValues();
     syncInputs(meta);
     const fallback = meta.defaultStrength ?? 0;
     const pct = getPercentFromState(meta.stateKey, fallback);
