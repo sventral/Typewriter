@@ -9,25 +9,9 @@ Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
 const DEFAULT_INK_EFFECT_MODE = 'classic';
-const LEGACY_SECTION_IDS = ['fill', 'texture', 'fuzz', 'bleed', 'grain'];
-const LEGACY_SECTION_LABELS = {
-  fill: 'Fill',
-  texture: 'Texture',
-  fuzz: 'Edge Fuzz',
-  bleed: 'Bleed',
-  grain: 'Grain',
-};
-const INK_EFFECT_MODE_OPTIONS = [
-  { value: 'classic', label: 'Classic' },
-  { value: 'experimental', label: 'Experimental' },
-];
-const EXPERIMENTAL_SECTION_ID = 'experimental';
-const EXPERIMENTAL_SECTION_CFG = {
-  mode: DEFAULT_INK_EFFECT_MODE,
-  sectionVisibility: LEGACY_SECTION_IDS.reduce((acc, id) => {
-    acc[id] = true;
-    return acc;
-  }, {}),
+const INK_EFFECT_MODE_LABELS = {
+  classic: 'Legacy effects',
+  experimental: 'Experimental effects',
 };
 
 const INPUT_OVERRIDES = {
@@ -52,10 +36,49 @@ const INPUT_OVERRIDES = {
     type: 'enum-range',
     options: ['destination-out', 'multiply', 'screen', 'overlay', 'soft-light'],
   },
-  'experimental.mode': {
-    type: 'select',
-    options: INK_EFFECT_MODE_OPTIONS,
-  },
+  'expTone.ink.pressureMid': { type: 'range', min: 0, max: 1.6, step: 0.01, precision: 2 },
+  'expTone.ink.pressureVar': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
+  'expTone.ink.inkGamma': { type: 'range', min: 0.4, max: 2.5, step: 0.01, precision: 2 },
+  'expTone.ink.toneJitter': { type: 'range', min: 0, max: 0.6, step: 0.01, precision: 2 },
+  'expTone.ribbon.amp': { type: 'range', min: 0, max: 0.5, step: 0.01, precision: 2 },
+  'expTone.ribbon.period': { type: 'range', min: 3, max: 30, step: 0.5, precision: 2 },
+  'expTone.ribbon.sharp': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expTone.bias.vertical': { type: 'range', min: -1, max: 1, step: 0.01, precision: 2 },
+  'expTone.bias.amount': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expTone.centerEdge.center': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expTone.centerEdge.edge': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.ink.rim': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
+  'expEdge.ink.rimCurve': { type: 'range', min: 0.4, max: 3, step: 0.01, precision: 2 },
+  'expEdge.edgeFuzz.opacity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.edgeFuzz.inBand': { type: 'range', min: 0, max: 24, step: 0.25, precision: 2 },
+  'expEdge.edgeFuzz.outBand': { type: 'range', min: 0, max: 24, step: 0.25, precision: 2 },
+  'expEdge.edgeFuzz.rough': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.edgeFuzz.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
+  'expEdge.edgeFuzz.mix': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expGrain.ink.mottling': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
+  'expGrain.ink.speckDark': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expGrain.ink.speckLight': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expGrain.ink.speckGrayBias': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expDefects.dropouts.amount': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
+  'expDefects.dropouts.width': { type: 'range', min: 0, max: 12, step: 0.25, precision: 2 },
+  'expDefects.dropouts.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
+  'expDefects.dropouts.pinhole': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expDefects.dropouts.streakDensity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expDefects.dropouts.pinholeWeight': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expDefects.smudge.strength': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
+  'expDefects.smudge.radius': { type: 'range', min: 0, max: 32, step: 0.25, precision: 2 },
+  'expDefects.smudge.falloff': { type: 'range', min: 0, max: 4, step: 0.01, precision: 2 },
+  'expDefects.smudge.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
+  'expDefects.smudge.density': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expDefects.smudge.dirDeg': { type: 'range', min: 0, max: 360, step: 1, precision: 0 },
+  'expDefects.smudge.spread': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expDefects.punch.chance': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expDefects.punch.count': { type: 'range', min: 0, max: 10, step: 1, precision: 0 },
+  'expDefects.punch.rMin': { type: 'range', min: 0.002, max: 0.08, step: 0.001, precision: 3 },
+  'expDefects.punch.rMax': { type: 'range', min: 0.004, max: 0.12, step: 0.001, precision: 3 },
+  'expDefects.punch.edgeBias': { type: 'range', min: -1, max: 1, step: 0.01, precision: 2 },
+  'expDefects.punch.soft': { type: 'range', min: 0, max: 0.4, step: 0.005, precision: 3 },
+  'expDefects.punch.intensity': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
 };
 
 function getInputOverride(sectionId, path) {
@@ -94,10 +117,153 @@ const FILL_CFG = {
   edgeThinPct: EDGE_THIN_LIMITS.defaultPct,
 };
 
+const EXPERIMENTAL_EFFECTS_CONFIG = {
+  enable: {
+    toneCore: true,
+    vBias: true,
+    rim: false,
+    centerEdge: false,
+    grainSpeck: true,
+    dropouts: true,
+    edgeFuzz: true,
+    smudge: true,
+    punch: true,
+  },
+  ink: {
+    pressureMid: 0.83,
+    pressureVar: 0.32,
+    inkGamma: 1.34,
+    toneJitter: 0.42,
+    rim: 0.27,
+    rimCurve: 2.21,
+    mottling: 0.11,
+    speckDark: 0.21,
+    speckLight: 0.53,
+    speckGrayBias: 0.51,
+  },
+  ribbon: {
+    amp: 0.1,
+    period: 8.5,
+    sharp: 0.15,
+    phase: 0,
+  },
+  bias: {
+    vertical: -0.84,
+    amount: 0.36,
+  },
+  noise: {
+    lfScale: 22,
+    hfScale: 1,
+  },
+  centerEdge: {
+    center: 0.28,
+    edge: 0,
+  },
+  dropouts: {
+    amount: 0.57,
+    width: 10,
+    scale: 25,
+    pinhole: 0.36,
+    streakDensity: 0.2,
+    pinholeWeight: 0.28,
+  },
+  edgeFuzz: {
+    opacity: 0.23,
+    inBand: 2,
+    outBand: 2,
+    rough: 0.63,
+    scale: 6,
+    mix: 0.38,
+  },
+  smudge: {
+    strength: 0.57,
+    radius: 15,
+    falloff: 1.39,
+    scale: 24,
+    density: 0.33,
+    dirDeg: 300,
+    spread: 0.5,
+  },
+  punch: {
+    chance: 0.51,
+    count: 2,
+    rMin: 0.004,
+    rMax: 0.082,
+    edgeBias: 0.8,
+    soft: 0.295,
+    intensity: 0.96,
+  },
+};
+
+const EXP_TONE_KEYS = [
+  { path: 'enable.toneCore', label: 'Enable tone core' },
+  { path: 'ink.pressureMid', label: 'Pressure mid' },
+  { path: 'ink.pressureVar', label: 'Pressure variance' },
+  { path: 'ink.inkGamma', label: 'Ink gamma' },
+  { path: 'ink.toneJitter', label: 'Tone jitter' },
+  { path: 'ribbon.amp', label: 'Ribbon amplitude' },
+  { path: 'ribbon.period', label: 'Ribbon period' },
+  { path: 'ribbon.sharp', label: 'Ribbon sharpness' },
+  { path: 'enable.vBias', label: 'Enable vertical bias' },
+  { path: 'bias.vertical', label: 'Vertical bias' },
+  { path: 'bias.amount', label: 'Bias amount' },
+  { path: 'enable.centerEdge', label: 'Enable center/edge shaping' },
+  { path: 'centerEdge.center', label: 'Center boost' },
+  { path: 'centerEdge.edge', label: 'Edge boost' },
+];
+
+const EXP_EDGE_KEYS = [
+  { path: 'enable.rim', label: 'Enable rim lighting' },
+  { path: 'ink.rim', label: 'Rim strength' },
+  { path: 'ink.rimCurve', label: 'Rim curve' },
+  { path: 'enable.edgeFuzz', label: 'Enable edge fuzz' },
+  { path: 'edgeFuzz.opacity', label: 'Edge fuzz opacity' },
+  { path: 'edgeFuzz.inBand', label: 'Inner fuzz band (px)' },
+  { path: 'edgeFuzz.outBand', label: 'Outer fuzz band (px)' },
+  { path: 'edgeFuzz.rough', label: 'Fuzz roughness' },
+  { path: 'edgeFuzz.scale', label: 'Fuzz scale (px)' },
+  { path: 'edgeFuzz.mix', label: 'Fuzz mix' },
+];
+
+const EXP_GRAIN_KEYS = [
+  { path: 'enable.grainSpeck', label: 'Enable grain speckle' },
+  { path: 'ink.mottling', label: 'Mottling' },
+  { path: 'ink.speckDark', label: 'Dark specks' },
+  { path: 'ink.speckLight', label: 'Light specks' },
+  { path: 'ink.speckGrayBias', label: 'Speck gray bias' },
+];
+
+const EXP_DEFECT_KEYS = [
+  { path: 'enable.dropouts', label: 'Enable dropouts' },
+  { path: 'dropouts.amount', label: 'Dropout amount' },
+  { path: 'dropouts.width', label: 'Dropout width (px)' },
+  { path: 'dropouts.scale', label: 'Dropout scale (px)' },
+  { path: 'dropouts.pinhole', label: 'Pinhole density' },
+  { path: 'dropouts.streakDensity', label: 'Streak density' },
+  { path: 'dropouts.pinholeWeight', label: 'Pinhole weight' },
+  { path: 'enable.smudge', label: 'Enable smudge halo' },
+  { path: 'smudge.strength', label: 'Smudge strength' },
+  { path: 'smudge.radius', label: 'Smudge radius (px)' },
+  { path: 'smudge.falloff', label: 'Smudge falloff' },
+  { path: 'smudge.scale', label: 'Smudge scale (px)' },
+  { path: 'smudge.density', label: 'Smudge density' },
+  { path: 'smudge.dirDeg', label: 'Smudge direction (deg)' },
+  { path: 'smudge.spread', label: 'Smudge spread' },
+  { path: 'enable.punch', label: 'Enable punch defects' },
+  { path: 'punch.chance', label: 'Punch chance' },
+  { path: 'punch.count', label: 'Punch count' },
+  { path: 'punch.rMin', label: 'Punch size min' },
+  { path: 'punch.rMax', label: 'Punch size max' },
+  { path: 'punch.edgeBias', label: 'Edge bias' },
+  { path: 'punch.soft', label: 'Punch softness' },
+  { path: 'punch.intensity', label: 'Punch intensity' },
+];
+
 const SECTION_DEFS = [
   {
     id: 'fill',
     label: 'Fill',
+    mode: 'classic',
     config: FILL_CFG,
     keyOrder: [
       { path: 'centerThickenPct', label: 'Center thickening' },
@@ -110,6 +276,7 @@ const SECTION_DEFS = [
   {
     id: 'texture',
     label: 'Texture',
+    mode: 'classic',
     config: INK_TEXTURE,
     keyOrder: ['supersample', 'coarseNoise', 'fineNoise', 'noiseSmoothing', 'centerEdgeBias', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
     trigger: 'glyph',
@@ -119,6 +286,7 @@ const SECTION_DEFS = [
   {
     id: 'fuzz',
     label: 'Edge Fuzz',
+    mode: 'classic',
     config: EDGE_FUZZ,
     keyOrder: ['inks', 'widthPx', 'inwardShare', 'roughness', 'frequency', 'opacity', 'seed'],
     trigger: 'glyph',
@@ -128,6 +296,7 @@ const SECTION_DEFS = [
   {
     id: 'bleed',
     label: 'Bleed',
+    mode: 'classic',
     config: EDGE_BLEED,
     keyOrder: ['inks', 'widthPx', 'feather', 'lightnessShift', 'noiseRoughness', 'intensity', 'seed'],
     trigger: 'glyph',
@@ -137,6 +306,7 @@ const SECTION_DEFS = [
   {
     id: 'grain',
     label: 'Grain',
+    mode: 'classic',
     config: GRAIN_CFG,
     keyOrder: ['scale', 'gamma', 'opacity', 'blend_mode', 'tile', 'base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'alpha', 'seeds'],
     trigger: 'grain',
@@ -144,20 +314,45 @@ const SECTION_DEFS = [
     defaultStrength: 0,
   },
   {
-    id: EXPERIMENTAL_SECTION_ID,
-    label: 'Experimental',
-    config: EXPERIMENTAL_SECTION_CFG,
-    keyOrder: [
-      { path: 'mode', label: 'Ink effect mode' },
-      ...LEGACY_SECTION_IDS.map(sectionId => ({
-        path: `sectionVisibility.${sectionId}`,
-        label: `Show ${LEGACY_SECTION_LABELS[sectionId] || sectionId} controls`,
-      })),
-    ],
+    id: 'expTone',
+    label: 'Experimental tone & ribbon',
+    mode: 'experimental',
+    config: EXPERIMENTAL_EFFECTS_CONFIG,
+    keyOrder: EXP_TONE_KEYS,
     trigger: 'glyph',
     stateKey: null,
     defaultStrength: 100,
-  }
+  },
+  {
+    id: 'expEdge',
+    label: 'Experimental edge shaping',
+    mode: 'experimental',
+    config: EXPERIMENTAL_EFFECTS_CONFIG,
+    keyOrder: EXP_EDGE_KEYS,
+    trigger: 'glyph',
+    stateKey: null,
+    defaultStrength: 100,
+  },
+  {
+    id: 'expGrain',
+    label: 'Experimental texture',
+    mode: 'experimental',
+    config: EXPERIMENTAL_EFFECTS_CONFIG,
+    keyOrder: EXP_GRAIN_KEYS,
+    trigger: 'glyph',
+    stateKey: null,
+    defaultStrength: 100,
+  },
+  {
+    id: 'expDefects',
+    label: 'Experimental defects',
+    mode: 'experimental',
+    config: EXPERIMENTAL_EFFECTS_CONFIG,
+    keyOrder: EXP_DEFECT_KEYS,
+    trigger: 'glyph',
+    stateKey: null,
+    defaultStrength: 100,
+  },
 ];
 
 const DEFAULT_SECTION_ORDER = SECTION_DEFS.map(def => def.id);
@@ -165,24 +360,6 @@ const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
   acc[def.id] = def;
   return acc;
 }, {});
-
-function normalizeInkEffectsMode(mode) {
-  if (typeof mode !== 'string') return DEFAULT_INK_EFFECT_MODE;
-  const trimmed = mode.trim();
-  return trimmed || DEFAULT_INK_EFFECT_MODE;
-}
-
-function normalizeSectionVisibilityMap(source) {
-  const raw = source && typeof source === 'object' ? source : null;
-  const normalized = {};
-  SECTION_DEFS.forEach(def => {
-    const value = raw && Object.prototype.hasOwnProperty.call(raw, def.id)
-      ? raw[def.id]
-      : undefined;
-    normalized[def.id] = value !== false;
-  });
-  return normalized;
-}
 
 function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
   const base = Array.isArray(order) ? order : [];
@@ -203,6 +380,14 @@ function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
     normalized.push(id);
   });
   return normalized;
+}
+
+function normalizeInkEffectsMode(mode) {
+  if (typeof mode !== 'string') return DEFAULT_INK_EFFECT_MODE;
+  const trimmed = mode.trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(INK_EFFECT_MODE_LABELS, trimmed)
+    ? trimmed
+    : DEFAULT_INK_EFFECT_MODE;
 }
 
 function clampFillPercent(value, limits) {
@@ -295,145 +480,9 @@ const panelState = {
   sectionsRoot: null,
   sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   dragState: null,
-  experimentalMeta: null,
+  modeRadios: [],
+  currentMode: DEFAULT_INK_EFFECT_MODE,
 };
-
-function getAppState() {
-  return panelState.appState;
-}
-
-function getInkEffectsModeFromState() {
-  const appState = getAppState();
-  if (!appState) return DEFAULT_INK_EFFECT_MODE;
-  const mode = normalizeInkEffectsMode(appState.inkEffectsMode);
-  appState.inkEffectsMode = mode;
-  return mode;
-}
-
-function setInkEffectsModeOnState(mode) {
-  const appState = getAppState();
-  if (!appState) return DEFAULT_INK_EFFECT_MODE;
-  const normalized = normalizeInkEffectsMode(mode);
-  appState.inkEffectsMode = normalized;
-  return normalized;
-}
-
-function getExperimentalVisibilityMapFromState() {
-  const appState = getAppState();
-  if (!appState) return normalizeSectionVisibilityMap();
-  const normalized = normalizeSectionVisibilityMap(appState.experimentalInkSectionsVisibility);
-  appState.experimentalInkSectionsVisibility = { ...normalized };
-  return normalized;
-}
-
-function setExperimentalVisibilityMapOnState(map) {
-  const appState = getAppState();
-  if (!appState) return normalizeSectionVisibilityMap(map);
-  const normalized = normalizeSectionVisibilityMap(map);
-  appState.experimentalInkSectionsVisibility = { ...normalized };
-  return normalized;
-}
-
-function isSectionVisibleInState(sectionId) {
-  if (!sectionId) return true;
-  const visibility = getExperimentalVisibilityMapFromState();
-  return visibility[sectionId] !== false;
-}
-
-function setSectionVisibilityOnState(sectionId, visible) {
-  if (!sectionId) return;
-  const appState = getAppState();
-  if (!appState) return;
-  const visibility = getExperimentalVisibilityMapFromState();
-  if (visibility[sectionId] === (visible !== false)) return;
-  const updated = { ...visibility, [sectionId]: visible !== false };
-  appState.experimentalInkSectionsVisibility = updated;
-}
-
-function syncSectionVisibilityFromState(options = {}) {
-  const { silent = true, map = null } = options || {};
-  const visibility = map || getExperimentalVisibilityMapFromState();
-  if (!Array.isArray(panelState.metas)) return visibility;
-  panelState.metas.forEach(meta => {
-    if (!meta) return;
-    const visible = visibility[meta.id] !== false;
-    setSectionCollapsed(meta, !visible, { skipStateUpdate: true, silent });
-  });
-  return visibility;
-}
-
-function setMetaModeDisabled(meta, disabled) {
-  if (!meta) return;
-  const shouldDisable = !!disabled;
-  if (meta.slider) meta.slider.disabled = shouldDisable;
-  if (meta.numberInput) meta.numberInput.disabled = shouldDisable;
-  if (meta.inputs && typeof meta.inputs.forEach === 'function') {
-    meta.inputs.forEach(input => {
-      if (!input) return;
-      input.disabled = shouldDisable;
-    });
-  }
-  if (meta.root) {
-    meta.root.classList.toggle('is-mode-disabled', shouldDisable);
-  }
-}
-
-function setExperimentalControlsEnabled(enabled) {
-  const meta = panelState.experimentalMeta;
-  if (!meta) return;
-  const allow = enabled !== false;
-  if (meta.inputs && typeof meta.inputs.forEach === 'function') {
-    meta.inputs.forEach((input, path) => {
-      if (!input) return;
-      if (path === 'mode') {
-        input.disabled = false;
-      } else {
-        input.disabled = !allow;
-      }
-    });
-  }
-  if (meta.root) {
-    meta.root.classList.toggle('is-mode-disabled', !allow);
-  }
-}
-
-function syncExperimentalModeUI(options = {}) {
-  if (!Array.isArray(panelState.metas) || !panelState.metas.length) return;
-  const mode = normalizeInkEffectsMode(options.mode ?? getInkEffectsModeFromState());
-  const visibility = normalizeSectionVisibilityMap(options.visibility ?? getExperimentalVisibilityMapFromState());
-  const experimentalActive = mode === 'experimental';
-
-  const experimentalMeta = panelState.experimentalMeta;
-  if (experimentalMeta) {
-    experimentalMeta.config.mode = mode;
-    if (!experimentalMeta.config.sectionVisibility || typeof experimentalMeta.config.sectionVisibility !== 'object') {
-      experimentalMeta.config.sectionVisibility = {};
-    }
-    Object.keys(visibility).forEach(sectionId => {
-      experimentalMeta.config.sectionVisibility[sectionId] = visibility[sectionId] !== false;
-    });
-    syncInputs(experimentalMeta);
-  }
-
-  panelState.metas.forEach(meta => {
-    if (!meta) return;
-    if (meta.id === EXPERIMENTAL_SECTION_ID) {
-      setExperimentalControlsEnabled(experimentalActive);
-      if (meta.root) {
-        const visible = !experimentalActive || visibility[meta.id] !== false;
-        meta.root.hidden = !visible;
-        meta.root.classList.toggle('is-mode-hidden', !visible);
-      }
-      return;
-    }
-    setMetaModeDisabled(meta, experimentalActive);
-    if (meta.root) {
-      const shouldShow = !experimentalActive || visibility[meta.id] !== false;
-      meta.root.hidden = !shouldShow;
-      meta.root.classList.toggle('is-mode-hidden', !shouldShow);
-    }
-  });
-}
 
 const HEX_MATCH_RE = /seed|hash/i;
 const STYLE_NAME_MAX_LEN = 60;
@@ -510,9 +559,6 @@ function normalizeStyleRecord(style, index = 0) {
       sectionOrder: normalizeSectionOrder(style?.sectionOrder),
     };
     record.inkEffectsMode = normalizeInkEffectsMode(style?.inkEffectsMode ?? style?.effectsMode);
-    record.experimentalInkSectionsVisibility = normalizeSectionVisibilityMap(
-      style?.experimentalInkSectionsVisibility ?? style?.sectionVisibility,
-    );
     SECTION_DEFS.forEach(def => {
       const rawSection = style?.sections && typeof style.sections === 'object'
         ? style.sections[def.id]
@@ -575,7 +621,6 @@ function createDefaultStyleRecord(index = 0) {
     sections: {},
     sectionOrder: DEFAULT_SECTION_ORDER.slice(),
     inkEffectsMode: DEFAULT_INK_EFFECT_MODE,
-    experimentalInkSectionsVisibility: normalizeSectionVisibilityMap(),
   };
   SECTION_DEFS.forEach(def => {
     record.sections[def.id] = {
@@ -622,13 +667,15 @@ function createStyleSnapshot(name, existingId = null) {
       ? panelState.sectionOrder.slice()
       : DEFAULT_SECTION_ORDER.slice(),
     inkEffectsMode: getInkEffectsModeFromState(),
-    experimentalInkSectionsVisibility: deepCloneValue(getExperimentalVisibilityMapFromState()),
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
     const configSource = meta && meta.config ? meta.config : def.config;
+    const strengthValue = def.stateKey
+      ? getPercentFromState(def.stateKey, def.defaultStrength ?? 0)
+      : (Number.isFinite(def.defaultStrength) ? def.defaultStrength : 100);
     base.sections[def.id] = {
-      strength: getPercentFromState(def.stateKey, def.defaultStrength ?? 0),
+      strength: strengthValue,
       config: deepCloneValue(configSource),
     };
   });
@@ -807,6 +854,26 @@ function handleImportInputChange(event) {
 
 function isHexField(path) {
   return HEX_MATCH_RE.test(path || '');
+}
+
+function getAppState() {
+  return panelState.appState;
+}
+
+function getInkEffectsModeFromState() {
+  const appState = getAppState();
+  if (!appState) return DEFAULT_INK_EFFECT_MODE;
+  const mode = normalizeInkEffectsMode(appState.inkEffectsMode);
+  appState.inkEffectsMode = mode;
+  return mode;
+}
+
+function setInkEffectsModeOnState(mode) {
+  const appState = getAppState();
+  if (!appState) return DEFAULT_INK_EFFECT_MODE;
+  const normalized = normalizeInkEffectsMode(mode);
+  appState.inkEffectsMode = normalized;
+  return normalized;
 }
 
 function getSectionOrderFromState() {
@@ -1221,32 +1288,6 @@ function createInputForValue(value, path, sectionId) {
       input.dataset.precision = String(precision);
       return input;
     }
-    if (override.type === 'select') {
-      const select = document.createElement('select');
-      const options = Array.isArray(override.options) ? override.options : [];
-      const normalized = options.map(option => {
-        if (option && typeof option === 'object') {
-          const optValue = option.value == null ? '' : String(option.value);
-          const optLabel = option.label == null ? optValue : String(option.label);
-          return { value: optValue, label: optLabel };
-        }
-        const text = option == null ? '' : String(option);
-        return { value: text, label: text };
-      });
-      if (!normalized.length) {
-        normalized.push({ value: '', label: '' });
-      }
-      normalized.forEach(opt => {
-        const optionEl = document.createElement('option');
-        optionEl.value = opt.value;
-        optionEl.textContent = opt.label;
-        select.appendChild(optionEl);
-      });
-      const current = value == null ? '' : String(value);
-      const match = normalized.find(opt => opt.value === current);
-      select.value = match ? match.value : normalized[0].value;
-      return select;
-    }
     if (override.type === 'enum-range') {
       const options = Array.isArray(override.options) && override.options.length
         ? override.options
@@ -1300,9 +1341,6 @@ function createInputForValue(value, path, sectionId) {
 
 function parseInputValue(input, path) {
   if (!input) return null;
-  if (input.tagName === 'SELECT') {
-    return input.value;
-  }
   if (input.dataset.enumOptions) {
     const options = input.dataset.enumOptions.split('|');
     const raw = Number.parseFloat(input.value);
@@ -1501,9 +1539,54 @@ function buildObjectControls(meta, container, obj, path, label) {
   container.appendChild(group);
 }
 
-function setSectionCollapsed(meta, collapsed, options = {}) {
+function setMetaModeDisabled(meta, disabled) {
   if (!meta) return;
-  const { skipStateUpdate = false, silent = false } = options || {};
+  const shouldDisable = !!disabled;
+  if (meta.slider) meta.slider.disabled = shouldDisable;
+  if (meta.numberInput) meta.numberInput.disabled = shouldDisable;
+  if (meta.inputs && typeof meta.inputs.forEach === 'function') {
+    meta.inputs.forEach(input => {
+      if (!input) return;
+      input.disabled = shouldDisable;
+    });
+  }
+  if (meta.root) {
+    meta.root.classList.toggle('is-mode-disabled', shouldDisable);
+  }
+}
+
+function syncInkEffectsModeRadios(mode) {
+  const normalized = normalizeInkEffectsMode(mode);
+  if (!Array.isArray(panelState.modeRadios)) return;
+  panelState.modeRadios.forEach(radio => {
+    if (!radio) return;
+    const radioMode = normalizeInkEffectsMode(radio.value);
+    const shouldCheck = radioMode === normalized;
+    if (radio.checked !== shouldCheck) {
+      radio.checked = shouldCheck;
+    }
+    radio.setAttribute('aria-checked', String(shouldCheck));
+  });
+}
+
+function syncInkEffectsModeUI(mode = getInkEffectsModeFromState()) {
+  const normalized = normalizeInkEffectsMode(mode);
+  panelState.currentMode = normalized;
+  syncInkEffectsModeRadios(normalized);
+  if (!Array.isArray(panelState.metas)) return;
+  panelState.metas.forEach(meta => {
+    if (!meta) return;
+    const metaMode = normalizeInkEffectsMode(meta.mode || 'classic');
+    const disable = metaMode !== normalized;
+    setMetaModeDisabled(meta, disable);
+    if (meta.root) {
+      meta.root.dataset.mode = metaMode;
+    }
+  });
+}
+
+function setSectionCollapsed(meta, collapsed) {
+  if (!meta) return;
   const isCollapsed = !!collapsed;
   meta.isCollapsed = isCollapsed;
   if (meta.root) {
@@ -1515,18 +1598,14 @@ function setSectionCollapsed(meta, collapsed, options = {}) {
   if (meta.toggleButton) {
     meta.toggleButton.setAttribute('aria-expanded', String(!isCollapsed));
   }
-  if (!skipStateUpdate && meta.id) {
-    setSectionVisibilityOnState(meta.id, !isCollapsed);
-    if (!silent) {
-      persistPanelState();
-    }
-  }
 }
 
 function buildSection(def, root) {
   const sectionEl = document.createElement('section');
   sectionEl.className = 'ink-section';
   sectionEl.dataset.sectionId = def.id;
+  const mode = normalizeInkEffectsMode(def.mode || 'classic');
+  sectionEl.dataset.mode = mode;
 
   const header = document.createElement('div');
   header.className = 'ink-section-header';
@@ -1601,21 +1680,10 @@ function buildSection(def, root) {
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
     hasStrengthControl,
+    mode,
   };
 
   dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
-
-  if (meta.id === EXPERIMENTAL_SECTION_ID) {
-    const visibilityState = getExperimentalVisibilityMapFromState();
-    meta.config.mode = getInkEffectsModeFromState();
-    if (!meta.config.sectionVisibility || typeof meta.config.sectionVisibility !== 'object') {
-      meta.config.sectionVisibility = {};
-    }
-    Object.keys(visibilityState).forEach(sectionId => {
-      meta.config.sectionVisibility[sectionId] = visibilityState[sectionId] !== false;
-    });
-    panelState.experimentalMeta = meta;
-  }
 
   def.keyOrder.forEach(entry => {
     let path = null;
@@ -1649,9 +1717,6 @@ function buildSection(def, root) {
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
   panelState.metas.push(meta);
-  if (meta.id === EXPERIMENTAL_SECTION_ID) {
-    panelState.experimentalMeta = meta;
-  }
 
   toggleBtn.addEventListener('click', () => {
     setSectionCollapsed(meta, !meta.isCollapsed);
@@ -1669,17 +1734,17 @@ function buildSection(def, root) {
     });
     numberInput.addEventListener('blur', () => {
       if (numberInput.value !== '') return;
-      if (!meta.stateKey) return;
       const fallback = meta.defaultStrength ?? 0;
       const pct = getPercentFromState(meta.stateKey, fallback);
       applySectionStrength(meta, pct, { silent: true });
     });
   }
 
-  const visible = isSectionVisibleInState(meta.id);
-  setSectionCollapsed(meta, !visible, { skipStateUpdate: true, silent: true });
+  setSectionCollapsed(meta, true);
   if (hasStrengthControl) {
     applySectionStrength(meta, startPercent, { silent: true, syncSlider: false, syncNumber: false });
+  } else {
+    setMetaModeDisabled(meta, mode !== panelState.currentMode);
   }
   return meta;
 }
@@ -1751,8 +1816,10 @@ function applySectionStrength(meta, percent, options = {}) {
     meta.root.classList.toggle('is-disabled', pct <= 0);
   }
   if (options.silent) return;
-  setPercentOnState(meta.stateKey, pct);
-  if (meta.config && typeof meta.config === 'object') {
+  if (meta.stateKey) {
+    setPercentOnState(meta.stateKey, pct);
+  }
+  if (meta.hasStrengthControl && meta.config && typeof meta.config === 'object') {
     meta.config.enabled = pct > 0;
   }
   if (meta.id === 'grain') {
@@ -1814,25 +1881,6 @@ function syncInputs(meta) {
   }
 }
 
-function applyExperimentalControls(meta) {
-  if (!meta) return;
-  const normalizedMode = normalizeInkEffectsMode(meta.config?.mode);
-  meta.config.mode = normalizedMode;
-  const previousMode = getInkEffectsModeFromState();
-  const nextMode = setInkEffectsModeOnState(normalizedMode);
-  const visibility = normalizeSectionVisibilityMap(meta.config?.sectionVisibility);
-  meta.config.sectionVisibility = visibility;
-  setExperimentalVisibilityMapOnState(visibility);
-  syncSectionVisibilityFromState({ map: visibility, silent: true });
-  syncExperimentalModeUI({ mode: nextMode, visibility });
-  persistPanelState();
-  if (previousMode !== nextMode) {
-    scheduleGlyphRefresh(true);
-    scheduleGrainRefresh();
-  }
-  syncInputs(meta);
-}
-
 function applySection(meta) {
   for (const [path, input] of meta.inputs.entries()) {
     if (!input) continue;
@@ -1847,9 +1895,6 @@ function applySection(meta) {
   if (meta.id === 'fill') {
     applyFillConfigToState(meta.config, { silent: true });
     syncFillConfigValues();
-  } else if (meta.id === EXPERIMENTAL_SECTION_ID) {
-    applyExperimentalControls(meta);
-    return;
   }
   scheduleRefreshForMeta(meta, { forceRebuild: true });
   persistPanelState();
@@ -2089,19 +2134,16 @@ function applySavedStyle(styleId) {
   const styles = getSavedStyles();
   const style = styles.find(s => s && s.id === styleId);
   if (!style) return;
-  const mode = normalizeInkEffectsMode(style.inkEffectsMode ?? style.effectsMode);
-  setInkEffectsModeOnState(mode);
-  const visibility = setExperimentalVisibilityMapOnState(
-    style.experimentalInkSectionsVisibility ?? style.sectionVisibility,
-  );
+  const mode = normalizeInkEffectsMode(style.inkEffectsMode || style.effectsMode);
+  const appliedMode = setInkEffectsModeOnState(mode);
+  panelState.currentMode = appliedMode;
+  syncInkEffectsModeUI(appliedMode);
   if (Array.isArray(style.sectionOrder) && style.sectionOrder.length) {
     applySectionOrder(style.sectionOrder);
   }
   if (Number.isFinite(style.overall)) {
     setOverallStrength(style.overall);
   }
-  syncSectionVisibilityFromState({ map: visibility, silent: true });
-  syncExperimentalModeUI({ mode, visibility });
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
     if (!meta) return;
@@ -2125,7 +2167,7 @@ function applySavedStyle(styleId) {
       ? (rawStrength ?? style.fillStrength)
       : rawStrength;
     const strength = Number(strengthSource);
-    if (Number.isFinite(strength)) {
+    if (meta.hasStrengthControl && Number.isFinite(strength)) {
       applySectionStrength(meta, strength);
     }
   });
@@ -2134,6 +2176,7 @@ function applySavedStyle(styleId) {
     panelState.styleNameInput.value = style.name;
     panelState.styleNameInput.classList.remove('input-error');
   }
+  syncInkEffectsModeRadios(panelState.currentMode);
   persistPanelState();
   renderSavedStylesList();
 }
@@ -2294,11 +2337,6 @@ export function syncInkStrengthDisplays(sectionId) {
       if (meta.id === 'fill') {
         syncInputs(meta);
       }
-      if (meta.id === EXPERIMENTAL_SECTION_ID) {
-        syncExperimentalModeUI();
-        return;
-      }
-      if (!meta.stateKey) return;
       const fallback = meta.defaultStrength ?? 0;
       const pct = getPercentFromState(meta.stateKey, fallback);
       applySectionStrength(meta, pct, { silent: true });
@@ -2319,13 +2357,8 @@ export function syncInkStrengthDisplays(sectionId) {
     applySectionStrength(meta, pct, { silent: true });
     return;
   }
-  if (sectionId === EXPERIMENTAL_SECTION_ID) {
-    syncExperimentalModeUI();
-    return;
-  }
   const meta = findMetaById(sectionId);
   if (!meta) return;
-  if (!meta.stateKey) return;
   const fallback = meta.defaultStrength ?? 0;
   const pct = getPercentFromState(meta.stateKey, fallback);
   applySectionStrength(meta, pct, { silent: true });
@@ -2364,6 +2397,33 @@ export function setupInkSettingsPanel(options = {}) {
 
   panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
   setSectionOrderOnState(panelState.sectionOrder);
+
+  panelState.currentMode = getInkEffectsModeFromState();
+  const modeRadios = Array.from(document.querySelectorAll('input[name="inkEffectsMode"]'));
+  panelState.modeRadios = modeRadios;
+  modeRadios.forEach(radio => {
+    if (!radio) return;
+    const radioMode = normalizeInkEffectsMode(radio.value);
+    if (INK_EFFECT_MODE_LABELS[radioMode]) {
+      radio.setAttribute('aria-label', INK_EFFECT_MODE_LABELS[radioMode]);
+    }
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      const requested = normalizeInkEffectsMode(radio.value);
+      const current = getInkEffectsModeFromState();
+      if (requested === current) {
+        syncInkEffectsModeRadios(current);
+        return;
+      }
+      const applied = setInkEffectsModeOnState(requested);
+      panelState.currentMode = applied;
+      syncInkEffectsModeUI(applied);
+      persistPanelState();
+      scheduleGlyphRefresh(true);
+      scheduleGrainRefresh();
+    });
+  });
+  syncInkEffectsModeRadios(panelState.currentMode);
 
   syncFillConfigValues();
 
@@ -2435,7 +2495,7 @@ export function setupInkSettingsPanel(options = {}) {
     applySectionOrder(panelState.sectionOrder, { skipStateUpdate: true, syncDom: true, silent: true });
   }
 
-  syncExperimentalModeUI();
+  syncInkEffectsModeUI(panelState.currentMode);
 
   panelState.initialized = true;
   syncInkStrengthDisplays();
