@@ -23,25 +23,13 @@ const resolveIntensityBounds = (key) => {
 const CENTER_THICKEN_BOUNDS = resolveIntensityBounds('centerThicken');
 const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
 
-const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain'];
+const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'];
 const DEFAULT_INK_EFFECT_MODE = 'classic';
 
 function sanitizeInkEffectsMode(mode, fallback = DEFAULT_INK_EFFECT_MODE) {
   if (typeof mode !== 'string') return fallback;
   const trimmed = mode.trim();
   return trimmed || fallback;
-}
-
-function sanitizeExperimentalVisibilityMap(map) {
-  const source = map && typeof map === 'object' ? map : null;
-  const visibility = {};
-  KNOWN_INK_SECTIONS.forEach(id => {
-    const value = source && Object.prototype.hasOwnProperty.call(source, id)
-      ? source[id]
-      : undefined;
-    visibility[id] = value !== false;
-  });
-  return visibility;
 }
 
 function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
@@ -102,7 +90,6 @@ function sanitizeSavedInkStyle(style, index = 0) {
       sections: {},
       sectionOrder: KNOWN_INK_SECTIONS.slice(),
       inkEffectsMode: DEFAULT_INK_EFFECT_MODE,
-      experimentalInkSectionsVisibility: sanitizeExperimentalVisibilityMap(),
     };
   }
   const id = typeof style.id === 'string' && style.id.trim()
@@ -126,9 +113,6 @@ function sanitizeSavedInkStyle(style, index = 0) {
   }
   const sectionOrder = normalizeInkSectionOrder(style.sectionOrder);
   const inkEffectsMode = sanitizeInkEffectsMode(style.inkEffectsMode ?? style.effectsMode, DEFAULT_INK_EFFECT_MODE);
-  const experimentalInkSectionsVisibility = sanitizeExperimentalVisibilityMap(
-    style.experimentalInkSectionsVisibility ?? style.sectionVisibility,
-  );
   return {
     id,
     name,
@@ -136,7 +120,6 @@ function sanitizeSavedInkStyle(style, index = 0) {
     sections,
     sectionOrder,
     inkEffectsMode,
-    experimentalInkSectionsVisibility,
   };
 }
 
@@ -225,7 +208,6 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
     inkEffectsMode: sanitizeInkEffectsMode(state.inkEffectsMode, DEFAULT_INK_EFFECT_MODE),
-    experimentalInkSectionsVisibility: sanitizeExperimentalVisibilityMap(state.experimentalInkSectionsVisibility),
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
     inkFillStrength: clamp(Number(state.inkFillStrength ?? 100), 0, 100),
     centerThickenPct: clamp(
@@ -477,9 +459,6 @@ export function deserializeDocumentState(data, context) {
   state.inkEffectsMode = sanitizeInkEffectsMode(
     data.inkEffectsMode ?? state.inkEffectsMode,
     state.inkEffectsMode ?? DEFAULT_INK_EFFECT_MODE,
-  );
-  state.experimentalInkSectionsVisibility = sanitizeExperimentalVisibilityMap(
-    data.experimentalInkSectionsVisibility ?? state.experimentalInkSectionsVisibility,
   );
   if (typeof data.documentId === 'string' && data.documentId.trim()) {
     state.documentId = data.documentId.trim();
