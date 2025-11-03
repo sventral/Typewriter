@@ -125,6 +125,26 @@ const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
   return acc;
 }, {});
 
+const DEFAULT_INK_EFFECT_MODE = 'classic';
+
+function normalizeInkEffectsMode(mode) {
+  if (typeof mode !== 'string') return DEFAULT_INK_EFFECT_MODE;
+  const trimmed = mode.trim();
+  return trimmed || DEFAULT_INK_EFFECT_MODE;
+}
+
+function normalizeSectionVisibilityMap(source) {
+  const raw = source && typeof source === 'object' ? source : null;
+  const normalized = {};
+  SECTION_DEFS.forEach(def => {
+    const value = raw && Object.prototype.hasOwnProperty.call(raw, def.id)
+      ? raw[def.id]
+      : undefined;
+    normalized[def.id] = value !== false;
+  });
+  return normalized;
+}
+
 function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
   const base = Array.isArray(order) ? order : [];
   const seen = new Set();
@@ -238,6 +258,70 @@ const panelState = {
   dragState: null,
 };
 
+function getAppState() {
+  return panelState.appState;
+}
+
+function getInkEffectsModeFromState() {
+  const appState = getAppState();
+  if (!appState) return DEFAULT_INK_EFFECT_MODE;
+  const mode = normalizeInkEffectsMode(appState.inkEffectsMode);
+  appState.inkEffectsMode = mode;
+  return mode;
+}
+
+function setInkEffectsModeOnState(mode) {
+  const appState = getAppState();
+  if (!appState) return DEFAULT_INK_EFFECT_MODE;
+  const normalized = normalizeInkEffectsMode(mode);
+  appState.inkEffectsMode = normalized;
+  return normalized;
+}
+
+function getExperimentalVisibilityMapFromState() {
+  const appState = getAppState();
+  if (!appState) return normalizeSectionVisibilityMap();
+  const normalized = normalizeSectionVisibilityMap(appState.experimentalInkSectionsVisibility);
+  appState.experimentalInkSectionsVisibility = { ...normalized };
+  return normalized;
+}
+
+function setExperimentalVisibilityMapOnState(map) {
+  const appState = getAppState();
+  if (!appState) return normalizeSectionVisibilityMap(map);
+  const normalized = normalizeSectionVisibilityMap(map);
+  appState.experimentalInkSectionsVisibility = { ...normalized };
+  return normalized;
+}
+
+function isSectionVisibleInState(sectionId) {
+  if (!sectionId) return true;
+  const visibility = getExperimentalVisibilityMapFromState();
+  return visibility[sectionId] !== false;
+}
+
+function setSectionVisibilityOnState(sectionId, visible) {
+  if (!sectionId) return;
+  const appState = getAppState();
+  if (!appState) return;
+  const visibility = getExperimentalVisibilityMapFromState();
+  if (visibility[sectionId] === (visible !== false)) return;
+  const updated = { ...visibility, [sectionId]: visible !== false };
+  appState.experimentalInkSectionsVisibility = updated;
+}
+
+function syncSectionVisibilityFromState(options = {}) {
+  const { silent = true, map = null } = options || {};
+  const visibility = map || getExperimentalVisibilityMapFromState();
+  if (!Array.isArray(panelState.metas)) return visibility;
+  panelState.metas.forEach(meta => {
+    if (!meta) return;
+    const visible = visibility[meta.id] !== false;
+    setSectionCollapsed(meta, !visible, { skipStateUpdate: true, silent });
+  });
+  return visibility;
+}
+
 const HEX_MATCH_RE = /seed|hash/i;
 const STYLE_NAME_MAX_LEN = 60;
 const STYLE_EXPORT_VERSION = 2;
@@ -312,6 +396,10 @@ function normalizeStyleRecord(style, index = 0) {
       sections: {},
       sectionOrder: normalizeSectionOrder(style?.sectionOrder),
     };
+    record.inkEffectsMode = normalizeInkEffectsMode(style?.inkEffectsMode ?? style?.effectsMode);
+    record.experimentalInkSectionsVisibility = normalizeSectionVisibilityMap(
+      style?.experimentalInkSectionsVisibility ?? style?.sectionVisibility,
+    );
     SECTION_DEFS.forEach(def => {
       const rawSection = style?.sections && typeof style.sections === 'object'
         ? style.sections[def.id]
@@ -373,6 +461,8 @@ function createDefaultStyleRecord(index = 0) {
     edgeThin: EDGE_THIN_LIMITS.defaultPct,
     sections: {},
     sectionOrder: DEFAULT_SECTION_ORDER.slice(),
+    inkEffectsMode: DEFAULT_INK_EFFECT_MODE,
+    experimentalInkSectionsVisibility: normalizeSectionVisibilityMap(),
   };
   SECTION_DEFS.forEach(def => {
     record.sections[def.id] = {
@@ -418,6 +508,8 @@ function createStyleSnapshot(name, existingId = null) {
     sectionOrder: Array.isArray(panelState.sectionOrder)
       ? panelState.sectionOrder.slice()
       : DEFAULT_SECTION_ORDER.slice(),
+    inkEffectsMode: getInkEffectsModeFromState(),
+    experimentalInkSectionsVisibility: deepCloneValue(getExperimentalVisibilityMapFromState()),
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
@@ -602,10 +694,6 @@ function handleImportInputChange(event) {
 
 function isHexField(path) {
   return HEX_MATCH_RE.test(path || '');
-}
-
-function getAppState() {
-  return panelState.appState;
 }
 
 function getSectionOrderFromState() {
@@ -1271,8 +1359,9 @@ function buildObjectControls(meta, container, obj, path, label) {
   container.appendChild(group);
 }
 
-function setSectionCollapsed(meta, collapsed) {
+function setSectionCollapsed(meta, collapsed, options = {}) {
   if (!meta) return;
+  const { skipStateUpdate = false, silent = false } = options || {};
   const isCollapsed = !!collapsed;
   meta.isCollapsed = isCollapsed;
   if (meta.root) {
@@ -1283,6 +1372,12 @@ function setSectionCollapsed(meta, collapsed) {
   }
   if (meta.toggleButton) {
     meta.toggleButton.setAttribute('aria-expanded', String(!isCollapsed));
+  }
+  if (!skipStateUpdate && meta.id) {
+    setSectionVisibilityOnState(meta.id, !isCollapsed);
+    if (!silent) {
+      persistPanelState();
+    }
   }
 }
 
@@ -1412,7 +1507,8 @@ function buildSection(def, root) {
     applySectionStrength(meta, pct, { silent: true });
   });
 
-  setSectionCollapsed(meta, true);
+  const visible = isSectionVisibleInState(meta.id);
+  setSectionCollapsed(meta, !visible, { skipStateUpdate: true, silent: true });
   applySectionStrength(meta, startPercent, { silent: true, syncSlider: false, syncNumber: false });
   return meta;
 }
@@ -1800,12 +1896,18 @@ function applySavedStyle(styleId) {
   const styles = getSavedStyles();
   const style = styles.find(s => s && s.id === styleId);
   if (!style) return;
+  const mode = normalizeInkEffectsMode(style.inkEffectsMode ?? style.effectsMode);
+  setInkEffectsModeOnState(mode);
+  const visibility = setExperimentalVisibilityMapOnState(
+    style.experimentalInkSectionsVisibility ?? style.sectionVisibility,
+  );
   if (Array.isArray(style.sectionOrder) && style.sectionOrder.length) {
     applySectionOrder(style.sectionOrder);
   }
   if (Number.isFinite(style.overall)) {
     setOverallStrength(style.overall);
   }
+  syncSectionVisibilityFromState({ map: visibility, silent: true });
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
     if (!meta) return;
