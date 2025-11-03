@@ -8,6 +8,28 @@ Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
+const DEFAULT_INK_EFFECT_MODE = 'classic';
+const LEGACY_SECTION_IDS = ['fill', 'texture', 'fuzz', 'bleed', 'grain'];
+const LEGACY_SECTION_LABELS = {
+  fill: 'Fill',
+  texture: 'Texture',
+  fuzz: 'Edge Fuzz',
+  bleed: 'Bleed',
+  grain: 'Grain',
+};
+const INK_EFFECT_MODE_OPTIONS = [
+  { value: 'classic', label: 'Classic' },
+  { value: 'experimental', label: 'Experimental' },
+];
+const EXPERIMENTAL_SECTION_ID = 'experimental';
+const EXPERIMENTAL_SECTION_CFG = {
+  mode: DEFAULT_INK_EFFECT_MODE,
+  sectionVisibility: LEGACY_SECTION_IDS.reduce((acc, id) => {
+    acc[id] = true;
+    return acc;
+  }, {}),
+};
+
 const INPUT_OVERRIDES = {
   'fill.centerThickenPct': {
     type: 'range',
@@ -29,6 +51,10 @@ const INPUT_OVERRIDES = {
   'grain.blend_mode': {
     type: 'enum-range',
     options: ['destination-out', 'multiply', 'screen', 'overlay', 'soft-light'],
+  },
+  'experimental.mode': {
+    type: 'select',
+    options: INK_EFFECT_MODE_OPTIONS,
   },
 };
 
@@ -116,6 +142,21 @@ const SECTION_DEFS = [
     trigger: 'grain',
     stateKey: 'grainPct',
     defaultStrength: 0,
+  },
+  {
+    id: EXPERIMENTAL_SECTION_ID,
+    label: 'Experimental',
+    config: EXPERIMENTAL_SECTION_CFG,
+    keyOrder: [
+      { path: 'mode', label: 'Ink effect mode' },
+      ...LEGACY_SECTION_IDS.map(sectionId => ({
+        path: `sectionVisibility.${sectionId}`,
+        label: `Show ${LEGACY_SECTION_LABELS[sectionId] || sectionId} controls`,
+      })),
+    ],
+    trigger: 'glyph',
+    stateKey: null,
+    defaultStrength: 100,
   }
 ];
 
@@ -124,8 +165,6 @@ const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
   acc[def.id] = def;
   return acc;
 }, {});
-
-const DEFAULT_INK_EFFECT_MODE = 'classic';
 
 function normalizeInkEffectsMode(mode) {
   if (typeof mode !== 'string') return DEFAULT_INK_EFFECT_MODE;
@@ -256,6 +295,7 @@ const panelState = {
   sectionsRoot: null,
   sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   dragState: null,
+  experimentalMeta: null,
 };
 
 function getAppState() {
@@ -320,6 +360,79 @@ function syncSectionVisibilityFromState(options = {}) {
     setSectionCollapsed(meta, !visible, { skipStateUpdate: true, silent });
   });
   return visibility;
+}
+
+function setMetaModeDisabled(meta, disabled) {
+  if (!meta) return;
+  const shouldDisable = !!disabled;
+  if (meta.slider) meta.slider.disabled = shouldDisable;
+  if (meta.numberInput) meta.numberInput.disabled = shouldDisable;
+  if (meta.inputs && typeof meta.inputs.forEach === 'function') {
+    meta.inputs.forEach(input => {
+      if (!input) return;
+      input.disabled = shouldDisable;
+    });
+  }
+  if (meta.root) {
+    meta.root.classList.toggle('is-mode-disabled', shouldDisable);
+  }
+}
+
+function setExperimentalControlsEnabled(enabled) {
+  const meta = panelState.experimentalMeta;
+  if (!meta) return;
+  const allow = enabled !== false;
+  if (meta.inputs && typeof meta.inputs.forEach === 'function') {
+    meta.inputs.forEach((input, path) => {
+      if (!input) return;
+      if (path === 'mode') {
+        input.disabled = false;
+      } else {
+        input.disabled = !allow;
+      }
+    });
+  }
+  if (meta.root) {
+    meta.root.classList.toggle('is-mode-disabled', !allow);
+  }
+}
+
+function syncExperimentalModeUI(options = {}) {
+  if (!Array.isArray(panelState.metas) || !panelState.metas.length) return;
+  const mode = normalizeInkEffectsMode(options.mode ?? getInkEffectsModeFromState());
+  const visibility = normalizeSectionVisibilityMap(options.visibility ?? getExperimentalVisibilityMapFromState());
+  const experimentalActive = mode === 'experimental';
+
+  const experimentalMeta = panelState.experimentalMeta;
+  if (experimentalMeta) {
+    experimentalMeta.config.mode = mode;
+    if (!experimentalMeta.config.sectionVisibility || typeof experimentalMeta.config.sectionVisibility !== 'object') {
+      experimentalMeta.config.sectionVisibility = {};
+    }
+    Object.keys(visibility).forEach(sectionId => {
+      experimentalMeta.config.sectionVisibility[sectionId] = visibility[sectionId] !== false;
+    });
+    syncInputs(experimentalMeta);
+  }
+
+  panelState.metas.forEach(meta => {
+    if (!meta) return;
+    if (meta.id === EXPERIMENTAL_SECTION_ID) {
+      setExperimentalControlsEnabled(experimentalActive);
+      if (meta.root) {
+        const visible = !experimentalActive || visibility[meta.id] !== false;
+        meta.root.hidden = !visible;
+        meta.root.classList.toggle('is-mode-hidden', !visible);
+      }
+      return;
+    }
+    setMetaModeDisabled(meta, experimentalActive);
+    if (meta.root) {
+      const shouldShow = !experimentalActive || visibility[meta.id] !== false;
+      meta.root.hidden = !shouldShow;
+      meta.root.classList.toggle('is-mode-hidden', !shouldShow);
+    }
+  });
 }
 
 const HEX_MATCH_RE = /seed|hash/i;
@@ -1108,6 +1221,32 @@ function createInputForValue(value, path, sectionId) {
       input.dataset.precision = String(precision);
       return input;
     }
+    if (override.type === 'select') {
+      const select = document.createElement('select');
+      const options = Array.isArray(override.options) ? override.options : [];
+      const normalized = options.map(option => {
+        if (option && typeof option === 'object') {
+          const optValue = option.value == null ? '' : String(option.value);
+          const optLabel = option.label == null ? optValue : String(option.label);
+          return { value: optValue, label: optLabel };
+        }
+        const text = option == null ? '' : String(option);
+        return { value: text, label: text };
+      });
+      if (!normalized.length) {
+        normalized.push({ value: '', label: '' });
+      }
+      normalized.forEach(opt => {
+        const optionEl = document.createElement('option');
+        optionEl.value = opt.value;
+        optionEl.textContent = opt.label;
+        select.appendChild(optionEl);
+      });
+      const current = value == null ? '' : String(value);
+      const match = normalized.find(opt => opt.value === current);
+      select.value = match ? match.value : normalized[0].value;
+      return select;
+    }
     if (override.type === 'enum-range') {
       const options = Array.isArray(override.options) && override.options.length
         ? override.options
@@ -1161,6 +1300,9 @@ function createInputForValue(value, path, sectionId) {
 
 function parseInputValue(input, path) {
   if (!input) return null;
+  if (input.tagName === 'SELECT') {
+    return input.value;
+  }
   if (input.dataset.enumOptions) {
     const options = input.dataset.enumOptions.split('|');
     const raw = Number.parseFloat(input.value);
@@ -1413,25 +1555,31 @@ function buildSection(def, root) {
   topLine.appendChild(toggleBtn);
   header.appendChild(topLine);
 
-  const strengthWrap = document.createElement('div');
-  strengthWrap.className = 'ink-section-controls';
-  const slider = document.createElement('input');
-  slider.type = 'range';
-  slider.min = '0';
-  slider.max = '100';
-  slider.step = '1';
-  const startPercent = getPercentFromState(def.stateKey, def.defaultStrength ?? 0);
-  slider.value = String(startPercent);
-  strengthWrap.appendChild(slider);
-  const numberInput = document.createElement('input');
-  numberInput.type = 'number';
-  numberInput.min = '0';
-  numberInput.max = '100';
-  numberInput.step = '1';
-  numberInput.value = String(startPercent);
-  numberInput.setAttribute('aria-label', `${def.label} strength`);
-  strengthWrap.appendChild(numberInput);
-  header.appendChild(strengthWrap);
+  const hasStrengthControl = typeof def.stateKey === 'string' && def.stateKey.length > 0;
+  let slider = null;
+  let numberInput = null;
+  let startPercent = def.defaultStrength ?? 0;
+  if (hasStrengthControl) {
+    const strengthWrap = document.createElement('div');
+    strengthWrap.className = 'ink-section-controls';
+    slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '100';
+    slider.step = '1';
+    startPercent = getPercentFromState(def.stateKey, def.defaultStrength ?? 0);
+    slider.value = String(startPercent);
+    strengthWrap.appendChild(slider);
+    numberInput = document.createElement('input');
+    numberInput.type = 'number';
+    numberInput.min = '0';
+    numberInput.max = '100';
+    numberInput.step = '1';
+    numberInput.value = String(startPercent);
+    numberInput.setAttribute('aria-label', `${def.label} strength`);
+    strengthWrap.appendChild(numberInput);
+    header.appendChild(strengthWrap);
+  }
 
   sectionEl.appendChild(header);
 
@@ -1452,9 +1600,22 @@ function buildSection(def, root) {
     body,
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
+    hasStrengthControl,
   };
 
   dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
+
+  if (meta.id === EXPERIMENTAL_SECTION_ID) {
+    const visibilityState = getExperimentalVisibilityMapFromState();
+    meta.config.mode = getInkEffectsModeFromState();
+    if (!meta.config.sectionVisibility || typeof meta.config.sectionVisibility !== 'object') {
+      meta.config.sectionVisibility = {};
+    }
+    Object.keys(visibilityState).forEach(sectionId => {
+      meta.config.sectionVisibility[sectionId] = visibilityState[sectionId] !== false;
+    });
+    panelState.experimentalMeta = meta;
+  }
 
   def.keyOrder.forEach(entry => {
     let path = null;
@@ -1488,28 +1649,38 @@ function buildSection(def, root) {
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
   panelState.metas.push(meta);
+  if (meta.id === EXPERIMENTAL_SECTION_ID) {
+    panelState.experimentalMeta = meta;
+  }
 
   toggleBtn.addEventListener('click', () => {
     setSectionCollapsed(meta, !meta.isCollapsed);
   });
-  slider.addEventListener('input', () => {
-    applySectionStrength(meta, Number.parseFloat(slider.value) || 0);
-  });
-  numberInput.addEventListener('input', () => {
-    const raw = Number.parseFloat(numberInput.value);
-    if (!Number.isFinite(raw)) return;
-    applySectionStrength(meta, raw);
-  });
-  numberInput.addEventListener('blur', () => {
-    if (numberInput.value !== '') return;
-    const fallback = meta.defaultStrength ?? 0;
-    const pct = getPercentFromState(meta.stateKey, fallback);
-    applySectionStrength(meta, pct, { silent: true });
-  });
+  if (slider) {
+    slider.addEventListener('input', () => {
+      applySectionStrength(meta, Number.parseFloat(slider.value) || 0);
+    });
+  }
+  if (numberInput) {
+    numberInput.addEventListener('input', () => {
+      const raw = Number.parseFloat(numberInput.value);
+      if (!Number.isFinite(raw)) return;
+      applySectionStrength(meta, raw);
+    });
+    numberInput.addEventListener('blur', () => {
+      if (numberInput.value !== '') return;
+      if (!meta.stateKey) return;
+      const fallback = meta.defaultStrength ?? 0;
+      const pct = getPercentFromState(meta.stateKey, fallback);
+      applySectionStrength(meta, pct, { silent: true });
+    });
+  }
 
   const visible = isSectionVisibleInState(meta.id);
   setSectionCollapsed(meta, !visible, { skipStateUpdate: true, silent: true });
-  applySectionStrength(meta, startPercent, { silent: true, syncSlider: false, syncNumber: false });
+  if (hasStrengthControl) {
+    applySectionStrength(meta, startPercent, { silent: true, syncSlider: false, syncNumber: false });
+  }
   return meta;
 }
 
@@ -1643,6 +1814,25 @@ function syncInputs(meta) {
   }
 }
 
+function applyExperimentalControls(meta) {
+  if (!meta) return;
+  const normalizedMode = normalizeInkEffectsMode(meta.config?.mode);
+  meta.config.mode = normalizedMode;
+  const previousMode = getInkEffectsModeFromState();
+  const nextMode = setInkEffectsModeOnState(normalizedMode);
+  const visibility = normalizeSectionVisibilityMap(meta.config?.sectionVisibility);
+  meta.config.sectionVisibility = visibility;
+  setExperimentalVisibilityMapOnState(visibility);
+  syncSectionVisibilityFromState({ map: visibility, silent: true });
+  syncExperimentalModeUI({ mode: nextMode, visibility });
+  persistPanelState();
+  if (previousMode !== nextMode) {
+    scheduleGlyphRefresh(true);
+    scheduleGrainRefresh();
+  }
+  syncInputs(meta);
+}
+
 function applySection(meta) {
   for (const [path, input] of meta.inputs.entries()) {
     if (!input) continue;
@@ -1657,6 +1847,9 @@ function applySection(meta) {
   if (meta.id === 'fill') {
     applyFillConfigToState(meta.config, { silent: true });
     syncFillConfigValues();
+  } else if (meta.id === EXPERIMENTAL_SECTION_ID) {
+    applyExperimentalControls(meta);
+    return;
   }
   scheduleRefreshForMeta(meta, { forceRebuild: true });
   persistPanelState();
@@ -1908,6 +2101,7 @@ function applySavedStyle(styleId) {
     setOverallStrength(style.overall);
   }
   syncSectionVisibilityFromState({ map: visibility, silent: true });
+  syncExperimentalModeUI({ mode, visibility });
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
     if (!meta) return;
@@ -2100,6 +2294,11 @@ export function syncInkStrengthDisplays(sectionId) {
       if (meta.id === 'fill') {
         syncInputs(meta);
       }
+      if (meta.id === EXPERIMENTAL_SECTION_ID) {
+        syncExperimentalModeUI();
+        return;
+      }
+      if (!meta.stateKey) return;
       const fallback = meta.defaultStrength ?? 0;
       const pct = getPercentFromState(meta.stateKey, fallback);
       applySectionStrength(meta, pct, { silent: true });
@@ -2120,8 +2319,13 @@ export function syncInkStrengthDisplays(sectionId) {
     applySectionStrength(meta, pct, { silent: true });
     return;
   }
+  if (sectionId === EXPERIMENTAL_SECTION_ID) {
+    syncExperimentalModeUI();
+    return;
+  }
   const meta = findMetaById(sectionId);
   if (!meta) return;
+  if (!meta.stateKey) return;
   const fallback = meta.defaultStrength ?? 0;
   const pct = getPercentFromState(meta.stateKey, fallback);
   applySectionStrength(meta, pct, { silent: true });
@@ -2230,6 +2434,8 @@ export function setupInkSettingsPanel(options = {}) {
     });
     applySectionOrder(panelState.sectionOrder, { skipStateUpdate: true, syncDom: true, silent: true });
   }
+
+  syncExperimentalModeUI();
 
   panelState.initialized = true;
   syncInkStrengthDisplays();
