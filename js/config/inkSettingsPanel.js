@@ -2260,6 +2260,14 @@ export function getInkSectionOrder() {
   return normalizeSectionOrder(getSectionOrderFromState());
 }
 
+export function getInkEffectsMode() {
+  return getInkEffectsModeFromState();
+}
+
+export function getExperimentalEffectsConfig() {
+  return EXPERIMENTAL_EFFECTS_CONFIG;
+}
+
 function syncOverallStrengthUI() {
   const pct = getPercentFromState('effectsOverallStrength', 100);
   if (panelState.overallSlider && panelState.overallSlider.value !== String(pct)) {
