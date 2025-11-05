@@ -1,3 +1,5 @@
+//js/rendering/experimental/glyphProcessor.js
+
 import { clamp01 } from './textureMath.js';
 import { createDistanceMapProvider } from './distanceMaps.js';
 import { createExperimentalStagePipeline, GLYPH_PIPELINE_ORDER } from './stagePipeline.js';
