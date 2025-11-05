@@ -1,3 +1,4 @@
+// js/rendering/glyphAtlas.js
 import { clamp } from '../utils/math.js';
 import { normalizeInkTextureConfig } from '../config/inkConfig.js';
 import { createExperimentalGlyphProcessor } from './experimental/glyphProcessor.js';
