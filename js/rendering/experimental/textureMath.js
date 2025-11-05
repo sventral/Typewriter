@@ -1,3 +1,4 @@
+// js/rendering/experimental/textureMath.js
 const { min, max, abs, floor, sin, cos, PI, hypot, imul, pow, sign } = Math;
 
 export const TAU = PI * 2;
