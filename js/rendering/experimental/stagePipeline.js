@@ -1,3 +1,5 @@
+//js/rendering/experimental/stagePipeline.js
+
 import {
   TAU,
   clamp,
