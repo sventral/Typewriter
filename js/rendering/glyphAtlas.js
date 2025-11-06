@@ -1369,9 +1369,14 @@ if (atlas) return atlas;
             const canRun = !!(inside?.dist && outside?.dist && inside.maxInside > 0);
             if (canRun && (stagePipeline || typeof processor.runGlyphPipeline === 'function')) {
               const params = cloneParams();
-              const fontPx = getFontSizeFn() || FONT_SIZE || 48;
-              params.smul = (fontPx / 72) * sampleScale;
-              console.log('smul', params.smul, 'fontPx', fontPx, 'sampleScale', sampleScale);
+              const fontPxRaw = getFontSizeFn() || FONT_SIZE || 48;
+              const fontPx = Number.isFinite(fontPxRaw) && fontPxRaw > 0 ? fontPxRaw : 48;
+              const supersample = clamp(
+                Math.round(72 / Math.max(8, fontPx)),
+                1,
+                4,
+              );
+              params.smul = (fontPx / 72) * supersample;
               params.ink = { ...(params.ink || {}), colorRgb };
               const dm = createDistanceMapProvider({
                 insideDist: inside.dist,
