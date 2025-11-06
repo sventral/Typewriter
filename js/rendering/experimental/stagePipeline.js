@@ -227,7 +227,9 @@ export function createExperimentalStagePipeline(deps = {}) {
             yCss * detailCss * 3.17 - 2.9,
             speckSeed ^ 0x7F4A7C15,
           );
-          const speckMask = clamp01Fn(lerp(baseMask, microMask, 0.35));
+          const microPerturb = (microMask - 0.5) * 0.7;
+          const combinedMask = clamp01Fn(baseMask + microPerturb);
+          const speckMask = clamp01Fn((combinedMask - 0.5) * 1.6 + 0.5);
           if (speckMask > darkGate) {
             darkAccum += (speckMask - darkGate) * invDarkSpan;
           }
