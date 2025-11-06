@@ -20,6 +20,12 @@ const { min, max, abs, floor, ceil, round, sin, cos, pow } = Math;
 
 const MIN_DETAIL_DENSITY_CSS = 2;
 const DETAIL_MULTIPLIER = 2.6;
+const SPECK_SUBPIXEL_OFFSETS = Object.freeze([
+  [0.1666667, 0.1666667],
+  [0.6666667, 0.1666667],
+  [0.1666667, 0.6666667],
+  [0.6666667, 0.6666667],
+]);
 
 const ensureDetailDensity = ctx => {
   if (!ctx) {
@@ -150,21 +156,43 @@ export function createExperimentalStagePipeline(deps = {}) {
     const invDp = 1 / dpPerCss;
     if (!params.enable.grainSpeck) return;
     const detailCss = getDetailDensityCss(ctx, 1.5);
+    const sampleOffsets = SPECK_SUBPIXEL_OFFSETS;
+    const sampleCount = sampleOffsets.length || 1;
+    const invSampleCount = 1 / sampleCount;
+    const speckSeed = seed ^ 0xBEEFCAFE;
+    const { speckDark = 0, speckLight = 0, speckGrayBias = 0 } = params.ink || {};
+    const darkGate = 0.85;
+    const lightGate = 0.15;
+    const invDarkSpan = 1 / (1 - darkGate);
+    const invLightSpan = 1 / lightGate;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
         if (alpha0[i] === 0) continue;
-        const xCss = x * invDp;
-        const yCss = y * invDp;
-        const speckMask = hash2Fn(
-          floor(xCss * detailCss),
-          floor(yCss * detailCss),
-          seed ^ 0xBEEFCAFE,
-        );
-        const affect = (1 - params.ink.speckGrayBias) + params.ink.speckGrayBias * (1 - coverage[i]);
+        let darkAccum = 0;
+        let lightAccum = 0;
+        for (let s = 0; s < sampleCount; s++) {
+          const offset = sampleOffsets[s];
+          const xCss = (x + offset[0]) * invDp;
+          const yCss = (y + offset[1]) * invDp;
+          const speckMask = hash2Fn(
+            floor(xCss * detailCss),
+            floor(yCss * detailCss),
+            speckSeed,
+          );
+          if (speckMask > darkGate) {
+            darkAccum += (speckMask - darkGate) * invDarkSpan;
+          }
+          if (speckMask < lightGate) {
+            lightAccum += (lightGate - speckMask) * invLightSpan;
+          }
+        }
+        const affect = (1 - speckGrayBias) + speckGrayBias * (1 - coverage[i]);
+        const darkFactor = speckDark * affect * clamp01Fn(darkAccum * invSampleCount * 2);
+        const lightFactor = speckLight * affect * clamp01Fn(lightAccum * invSampleCount * 2);
         let cov = coverage[i];
-        cov = 1 - (1 - cov) * (1 - params.ink.speckDark * (speckMask > 0.85 ? affect : 0));
-        cov *= 1 - params.ink.speckLight * (speckMask < 0.15 ? affect : 0);
+        cov = 1 - (1 - cov) * (1 - darkFactor);
+        cov *= 1 - lightFactor;
         coverage[i] = clamp01Fn(cov);
       }
     }
