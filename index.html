@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.7.1b</div>
+  <div class="app-version">v.10.4b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -131,16 +131,8 @@
               </div>
             </div>
             <div class="control-row">
-              <div></div>
-              <button class="btn apply-btn" id="applyBtn" title="Apply CPI &amp; size">Apply</button>
-            </div>
-            <div class="control-row">
               <label for="lhInput">Line Height</label>
               <input id="lhInput" type="number" step="0.5" min="1" max="3" value="1.5" />
-            </div>
-            <div class="control-row">
-              <div></div>
-              <button class="btn apply-btn" id="applyLHBtn" title="Apply line height">Apply</button>
             </div>
             <div class="control-row">
               <label for="glyphJitterToggle">Glyph jitter</label>
@@ -300,6 +292,19 @@
                 <input type="range" id="inkEffectsOverallSlider" min="0" max="100" step="1" value="100" />
                 <input type="number" id="inkEffectsOverallNumber" min="0" max="100" step="1" value="100" aria-label="Overall strength" />
               </div>
+            </div>
+          </div>
+          <div class="ink-mode-row" role="radiogroup" aria-label="Ink pipeline mode">
+            <span class="ink-mode-label">Ink pipeline</span>
+            <div class="ink-mode-options">
+              <label class="ink-mode-option">
+                <input type="radio" name="inkEffectsMode" value="classic" checked />
+                Legacy effects
+              </label>
+              <label class="ink-mode-option">
+                <input type="radio" name="inkEffectsMode" value="experimental" />
+                Experimental effects
+              </label>
             </div>
           </div>
           <div id="inkSettingsSections"></div>

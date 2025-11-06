@@ -417,6 +417,12 @@ body[data-page-tone='dark']{
   }
 
   .page canvas{ display:block; width:100%; height:auto; }
+  .stage.high-zoom-crisp .page canvas{
+    image-rendering:-moz-crisp-edges;
+    image-rendering:-webkit-optimize-contrast;
+    image-rendering:crisp-edges;
+    image-rendering:pixelated;
+  }
   .caret{ position:absolute; width:2px; background:var(--caret-color); pointer-events:none; animation:blink 1s steps(1) infinite; }
   @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
 
@@ -553,8 +559,21 @@ body[data-page-tone='dark']{
   }
   .ink-section { padding: 12px 0; border-top: 1px solid rgba(0,0,0,0.08); }
   .ink-section:first-of-type { border-top: none; padding-top: 4px; }
+  .ink-section.is-dragging { opacity: 0.6; }
+  .ink-section.is-drop-before { box-shadow: inset 0 3px 0 var(--accent-color); }
+  .ink-section.is-drop-after { box-shadow: inset 0 -3px 0 var(--accent-color); }
+  #inkSettingsSections.is-drop-end::after {
+    content: '';
+    display: block;
+    border-bottom: 3px solid var(--accent-color);
+    margin-top: 4px;
+  }
   .ink-section-header { display: grid; grid-template-columns: var(--ink-heading-width) minmax(0, 1fr); column-gap: 12px; row-gap: 6px; margin-bottom: 8px; }
   .ink-section-topline { grid-column: 1 / span 2; display: flex; }
+  .ink-section-drag-handle { appearance: none; border: none; background: none; color: inherit; display: inline-flex; align-items: center; justify-content: center; cursor: grab; padding: 0 6px 0 0; font-size: 14px; opacity: 0.7; }
+  .ink-section-drag-handle:active { cursor: grabbing; }
+  .ink-section-drag-handle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; opacity: 1; }
+  .ink-section-drag-handle span { pointer-events: none; }
   .ink-section-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; justify-self: stretch; justify-content: flex-start; white-space: nowrap; }
   .ink-section-toggle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
   .ink-section-toggle-icon { display: inline-flex; width: 16px; justify-content: center; transition: transform 0.18s ease; transform: rotate(90deg); font-size: 16px; line-height: 1; }
@@ -575,13 +594,30 @@ body[data-page-tone='dark']{
   .ink-overall-controls input[type="range"] { width: 100%; min-width: 0; }
   .ink-overall-controls input[type="number"] { width: 64px; padding: 0 6px; }
   .ink-overall-spacer { width: 16px; display: inline-flex; flex: 0 0 16px; visibility: hidden; }
+  .ink-mode-row { display: grid; grid-template-columns: var(--ink-heading-width) minmax(0, 1fr); column-gap: 12px; align-items: center; margin: 12px 0 8px; }
+  .ink-mode-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.75; }
+  .ink-mode-options { display: flex; flex-wrap: wrap; gap: 12px; }
+  .ink-mode-option { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
   .ink-settings-divider { margin: 16px 0; }
   .ink-section-body .control-row { margin-bottom: 6px; }
+  .ink-section-body .control-row input[type="range"] {
+    flex: 1;
+    margin: 0 8px;
+  }
+  .ink-section-body .control-row .ink-control-value {
+    min-width: 56px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
   .ink-subgroup { border-left: 2px solid rgba(0,0,0,0.06); padding-left: 10px; margin: 6px 0 10px; }
   .ink-subheading { font-size: 11px; font-weight: 600; opacity: 0.65; margin: 8px 0 6px; text-transform: uppercase; }
   .ink-array-item { border: 1px solid rgba(0,0,0,0.08); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
   .ink-array-title { font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 6px; text-transform: uppercase; }
   .ink-section.is-disabled { opacity: 0.55; }
+  .ink-section.is-mode-disabled { opacity: 0.35; }
+  .ink-section.is-mode-disabled .ink-section-body,
+  .ink-section.is-mode-disabled .ink-section-controls,
+  .ink-section.is-mode-disabled .ink-section-drag-handle { pointer-events: none; }
   .ink-section-apply-row .btn { margin-left: 12px; }
   .ink-seed-input { font-family: 'SFMono-Regular', 'SFMono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; }
   .ink-styles-section { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; }

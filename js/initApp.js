@@ -13,7 +13,17 @@ import { detectSafariEnvironment, createStageLayoutController } from './layout/s
 import { createLayoutAndZoomController } from './layout/layoutAndZoomController.js';
 import { createGlyphAtlas } from './rendering/glyphAtlas.js';
 import { createPageRenderer } from './rendering/pageRendering.js';
-import { getInkEffectFactor, getInkSectionStrength, isInkSectionEnabled, setupInkSettingsPanel } from './config/inkSettingsPanel.js';
+import {
+  getCenterThickenFactor,
+  getEdgeThinFactor,
+  getInkEffectFactor,
+  getInkEffectsMode,
+  getInkSectionStrength,
+  getInkSectionOrder,
+  getExperimentalEffectsConfig,
+  isInkSectionEnabled,
+  setupInkSettingsPanel,
+} from './config/inkSettingsPanel.js';
 import { createDocumentEditingController } from './document/documentEditing.js';
 import { createInputController } from './document/inputHandlers.js';
 import { createPageLifecycleController } from './document/pageLifecycle.js';
@@ -21,11 +31,80 @@ import { setupUIBindings } from './init/uiBindings.js';
 import { createAppContext } from './init/appContext.js';
 import { createThemeController } from './config/themeController.js';
 
+const DEFAULT_CANVAS_DIMENSION_CAP = 8192;
+const MIN_CANVAS_DIMENSION_CAP = 1024;
+const CANVAS_DIMENSION_CANDIDATES = [
+  16384,
+  15360,
+  14336,
+  13312,
+  12288,
+  11000,
+  9830,
+  9216,
+  8192,
+  7168,
+  6144,
+  4096,
+];
+
+let cachedCanvasDimensionLimit = null;
+
+function detectCanvasDimensionLimit() {
+  if (cachedCanvasDimensionLimit) return cachedCanvasDimensionLimit;
+  const fallback = { width: DEFAULT_CANVAS_DIMENSION_CAP, height: DEFAULT_CANVAS_DIMENSION_CAP };
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+    cachedCanvasDimensionLimit = fallback;
+    return cachedCanvasDimensionLimit;
+  }
+
+  try {
+    const probeCanvas = document.createElement('canvas');
+    if (!probeCanvas || typeof probeCanvas.getContext !== 'function') {
+      cachedCanvasDimensionLimit = fallback;
+      return cachedCanvasDimensionLimit;
+    }
+
+    const probeDimension = (dimension) => {
+      const other = dimension === 'width' ? 'height' : 'width';
+      for (const size of CANVAS_DIMENSION_CANDIDATES) {
+        try {
+          probeCanvas.width = dimension === 'width' ? size : 1;
+          probeCanvas.height = dimension === 'height' ? size : 1;
+          const ctx = probeCanvas.getContext('2d');
+          if (!ctx) continue;
+          ctx.fillStyle = '#000';
+          ctx.fillRect(0, 0, 1, 1);
+          ctx.getImageData(0, 0, 1, 1);
+          if (probeCanvas[dimension] === size && probeCanvas[other] >= 1) {
+            return size;
+          }
+        } catch (err) {
+          continue;
+        }
+      }
+      return fallback[dimension];
+    };
+
+    const widthLimit = probeDimension('width');
+    const heightLimit = probeDimension('height');
+    cachedCanvasDimensionLimit = {
+      width: Math.max(MIN_CANVAS_DIMENSION_CAP, widthLimit || fallback.width),
+      height: Math.max(MIN_CANVAS_DIMENSION_CAP, heightLimit || fallback.height),
+    };
+  } catch (err) {
+    cachedCanvasDimensionLimit = fallback;
+  }
+
+  return cachedCanvasDimensionLimit;
+}
+
 export function initApp(){
 
 const app = createDomRefs();
 
 const metrics = computeBaseMetrics(app);
+const canvasDimensionLimit = detectCanvasDimensionLimit();
 const { DPR, GRID_DIV, COLORS, STORAGE_KEY, A4_WIDTH_IN, PPI, LPI, LINE_H_RAW } = metrics;
 
 const state = createMainState(app, GRID_DIV);
@@ -34,6 +113,9 @@ const ephemeral = createEphemeralState();
 const context = createAppContext({ app, state, metrics, ephemeral });
 const metricsStore = context.scalars;
 const { callbacks: contextCallbacks } = context;
+
+const HIGH_ZOOM_CSS_THRESHOLD = 3.75;
+let stageCrispClassApplied = false;
 
 const metricsOptions = {
   state,
@@ -352,7 +434,7 @@ if (pendingVirtualization) {
 
 const { isSafari: IS_SAFARI, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD } = detectSafariEnvironment();
 
-const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphAtlas({
+const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion, invalidateGrainCache } = createGlyphAtlas({
   context,
   app,
   state,
@@ -366,8 +448,13 @@ const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion } = createGlyphA
   getStateZoom: () => state.zoom,
   isSafari: IS_SAFARI,
   safariSupersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD,
+  getCenterThickenFactor,
+  getEdgeThinFactor,
   getInkEffectFactor,
+  getInkEffectsMode,
   getInkSectionStrength,
+  getInkSectionOrder,
+  getExperimentalEffectsConfig,
   isInkSectionEnabled,
   inkTextureConfig: () => INK_TEXTURE,
   edgeFuzzConfig: () => EDGE_FUZZ,
@@ -419,9 +506,11 @@ const {
   rebuildAllAtlases,
   drawGlyph,
   applyGrainOverlayOnRegion,
+  invalidateGrainCache,
   lifecycle: context.controllers.lifecycle,
   getCurrentBounds,
   getBatchDepth: () => batchDepth,
+  getInkSectionOrder,
 });
 
 Object.assign(rendererHooks, { markRowAsDirty, schedulePaint });
@@ -721,17 +810,46 @@ async function resolveAvailableFace(preferredFace){
   return 'monospace';
 }
 
+function toggleStageCrispClass(active) {
+  if (!app?.stage?.classList) return;
+  if (stageCrispClassApplied === active) return;
+  stageCrispClassApplied = active;
+  app.stage.classList.toggle('high-zoom-crisp', active);
+}
+
 function computeMaxRenderScale(){
-  const cap = 8192;
-  const limitW = cap / app.PAGE_W;
-  const limitH = cap / app.PAGE_H;
+  const capW = (canvasDimensionLimit && Number.isFinite(canvasDimensionLimit.width))
+    ? canvasDimensionLimit.width
+    : DEFAULT_CANVAS_DIMENSION_CAP;
+  const capH = (canvasDimensionLimit && Number.isFinite(canvasDimensionLimit.height))
+    ? canvasDimensionLimit.height
+    : DEFAULT_CANVAS_DIMENSION_CAP;
+  const limitW = app.PAGE_W ? capW / app.PAGE_W : 1;
+  const limitH = app.PAGE_H ? capH / app.PAGE_H : 1;
   return Math.max(1, Math.min(limitW, limitH));
 }
+
 function setRenderScaleForZoom(){
-  const buckets = [1, 1.5, 2, 3, 4];
-  const zb = buckets.reduce((best, z)=> Math.abs(z - state.zoom) < Math.abs(best - state.zoom) ? z : best, buckets[0]);
-  const desired = DPR * zb;
-  metricsStore.RENDER_SCALE = Math.min(desired, computeMaxRenderScale());
+  const zoom = Math.max(1, Math.min(state.zoom || 1, 4));
+  const baseScale = DPR * zoom;
+  const zoomSupersampleTarget = zoom <= 1.5
+    ? 1
+    : Math.min(2.5, 1 + (zoom - 1.5) * 0.6);
+  const maxScale = computeMaxRenderScale();
+  const headroom = maxScale / Math.max(baseScale, 1);
+  const canOversample = headroom > 1.01;
+  const appliedSupersample = canOversample
+    ? Math.max(1, Math.min(zoomSupersampleTarget, headroom))
+    : 1;
+  const renderScale = headroom >= 1
+    ? Math.min(maxScale, baseScale * appliedSupersample)
+    : maxScale;
+  metricsStore.RENDER_SCALE = renderScale;
+  metricsStore.RENDER_SUPERSAMPLE = appliedSupersample;
+  const desired = baseScale * zoomSupersampleTarget;
+  const shortfall = desired > 0 ? desired / Math.max(renderScale, 1) : 1;
+  const shouldCrisp = zoom >= HIGH_ZOOM_CSS_THRESHOLD && shortfall > 1.15;
+  toggleStageCrispClass(shouldCrisp);
 }
 function prewarmFontFace(face){
   const px = Math.max(12, Math.ceil(getTargetPitchPx()));
@@ -805,7 +923,7 @@ function applyMetricsNow(full=false){
   contextCallbacks.rebuildAllAtlases();
   for (const p of state.pages){
     p.grainCanvas = null;
-    p.grainForSize = { w:0, h:0 };
+    p.grainForSize = { w:0, h:0, key: null };
     configureCanvasContext(p.ctx);
     configureCanvasContext(p.backCtx);
     p.dirtyAll = true;
