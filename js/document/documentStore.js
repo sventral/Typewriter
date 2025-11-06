@@ -395,7 +395,7 @@ export function deserializeDocumentState(data, context) {
     lineHeightFactor: [1, 1.5, 2, 2.5, 3].includes(data.lineHeightFactor)
       ? data.lineHeightFactor
       : 1.5,
-    zoom: typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 10 ? data.zoom : 1.0,
+    zoom: typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4 ? data.zoom : 1.0,
     effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
     inkFillStrength: clamp(
       Number(data.inkFillStrength ?? state.inkFillStrength ?? 100),
