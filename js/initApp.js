@@ -545,6 +545,7 @@ context.controllers.layoutAndZoom = createLayoutAndZoomController(
     app,
     state,
     DPR,
+    getRenderScale: () => metricsStore.RENDER_SCALE,
     getCharWidth: () => metricsStore.CHAR_W,
     getGridHeight: () => metricsStore.GRID_H,
     getAsc: () => metricsStore.ASC,

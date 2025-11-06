@@ -5,6 +5,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     app,
     state,
     DPR,
+    getRenderScale,
     getCharWidth,
     getGridHeight,
     getAsc,
@@ -659,46 +660,105 @@ const normFromZ = (pct) => {
   }
 
   function runBatchedZoomRedraw() {
-    const seen = new Set();
+    const totalPages = Array.isArray(state.pages) ? state.pages.length : 0;
+    const activeIndex = Number.isInteger(app.activePageIndex) ? app.activePageIndex : null;
+    const caretIndex = Number.isInteger(state.caret?.page) ? state.caret.page : null;
+    const [rawVisibleStart, rawVisibleEnd] =
+      typeof pageLifecycle?.visibleWindowIndices === 'function'
+        ? pageLifecycle.visibleWindowIndices()
+        : [0, Math.max(0, totalPages - 1)];
+    const visibleStart = Math.max(0, Math.min(rawVisibleStart ?? 0, rawVisibleEnd ?? 0));
+    const visibleEnd = Math.max(visibleStart, Math.max(rawVisibleStart ?? 0, rawVisibleEnd ?? 0));
+    const prefetchPad = 1;
+    const highStart = Math.max(0, visibleStart - prefetchPad);
+    const highEnd = Math.min(Math.max(0, totalPages - 1), visibleEnd + prefetchPad);
+    const highIndexSet = new Set();
+    for (let i = highStart; i <= highEnd; i++) highIndexSet.add(i);
+    for (let i = 0; i < totalPages; i++) {
+      if (state.pages[i]?.active) highIndexSet.add(i);
+    }
+    if (activeIndex != null) highIndexSet.add(activeIndex);
+    if (caretIndex != null) highIndexSet.add(caretIndex);
+
+    const seenHigh = new Set();
+    const seenBaseline = new Set();
     const priority = [];
     const rest = [];
+    const baseline = [];
 
-    const enqueue = (page, target) => {
-      if (!page || seen.has(page)) return;
-      seen.add(page);
+    const shouldUseHighRes = (idx) => highIndexSet.has(idx);
+
+    const enqueueBaseline = (page) => {
+      if (!page || seenHigh.has(page) || seenBaseline.has(page)) return;
+      seenBaseline.add(page);
+      baseline.push(page);
+    };
+
+    const enqueueHigh = (idx, target) => {
+      if (idx == null || idx < 0 || idx >= totalPages) return;
+      const page = state.pages[idx];
+      if (!page) return;
+      if (!shouldUseHighRes(idx)) {
+        enqueueBaseline(page);
+        return;
+      }
+      if (seenHigh.has(page)) return;
+      seenHigh.add(page);
       target.push(page);
     };
 
-    const activeIndex = Number.isInteger(app.activePageIndex) ? app.activePageIndex : null;
-    if (activeIndex != null) enqueue(state.pages[activeIndex], priority);
+    if (activeIndex != null) enqueueHigh(activeIndex, priority);
+    if (caretIndex != null) enqueueHigh(caretIndex, priority);
 
-    const caretIndex = Number.isInteger(state.caret?.page) ? state.caret.page : null;
-    if (caretIndex != null) enqueue(state.pages[caretIndex], priority);
-
-    for (const page of state.pages) {
-      if (page?.active) enqueue(page, priority);
+    for (let i = 0; i < totalPages; i++) {
+      if (state.pages[i]?.active) enqueueHigh(i, priority);
     }
 
-    for (const page of state.pages) enqueue(page, rest);
+    for (let i = 0; i < totalPages; i++) enqueueHigh(i, rest);
+
+    const highRenderScale = typeof getRenderScale === 'function' ? getRenderScale() : 1;
+    const baselineCandidate = Math.max(1, Math.min(highRenderScale, DPR || 1));
+    const allowBaselineDownscale = baselineCandidate + 0.0001 < highRenderScale;
+    const baselineScale = allowBaselineDownscale ? baselineCandidate : highRenderScale;
+
+    const resizePage = (page, scale) => {
+      if (!page) return false;
+      let changed = false;
+      if (page.canvas) {
+        const resized = prepareCanvas(page.canvas, { page, renderScale: scale });
+        if (resized && page.ctx) configureCanvasContext(page.ctx, scale);
+        changed = changed || resized;
+      }
+      if (page.backCanvas) {
+        const resizedBack = prepareCanvas(page.backCanvas, { page, renderScale: scale });
+        if (resizedBack && page.backCtx) configureCanvasContext(page.backCtx, scale);
+        changed = changed || resizedBack;
+      }
+      return changed;
+    };
+
+    if (allowBaselineDownscale || baseline.length) {
+      for (const page of baseline) {
+        if (allowBaselineDownscale) {
+          const changed = resizePage(page, baselineScale);
+          if (changed) page.dirtyAll = true;
+        }
+        page.needsHighResRepaint = true;
+        page.dirtyAll = true;
+      }
+    }
+
+    const prepPage = (page) => {
+      if (!page) return;
+      resizePage(page, highRenderScale);
+      page.needsHighResRepaint = false;
+      page.dirtyAll = true;
+      if (page.active) schedulePaint(page);
+    };
 
     if (!priority.length && rest.length) {
       priority.push(rest.shift());
     }
-
-    const now =
-      typeof performance !== 'undefined' && typeof performance.now === 'function'
-        ? () => performance.now()
-        : () => Date.now();
-
-    const prepPage = (page) => {
-      if (!page) return;
-      if (page.canvas) prepareCanvas(page.canvas);
-      if (page.backCanvas) prepareCanvas(page.backCanvas);
-      if (page.ctx) configureCanvasContext(page.ctx);
-      if (page.backCtx) configureCanvasContext(page.backCtx);
-      page.dirtyAll = true;
-      if (page.active) schedulePaint(page);
-    };
 
     for (const page of priority) prepPage(page);
 
@@ -713,6 +773,11 @@ const normFromZ = (pct) => {
     finalize();
 
     if (!rest.length) return;
+
+    const now =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? () => performance.now()
+        : () => Date.now();
 
     let index = 0;
 

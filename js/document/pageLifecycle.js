@@ -1,5 +1,7 @@
 import { clamp } from '../utils/math.js';
 
+const CANVAS_RENDER_SCALE_PROP = '__twRenderScale';
+
 export function createPageLifecycleController(context, editingController) {
   const {
     app,
@@ -29,16 +31,48 @@ export function createPageLifecycleController(context, editingController) {
 
   let schedulePaint = () => {};
 
-  function prepareCanvas(canvas) {
-    canvas.width = Math.floor(app.PAGE_W * getRenderScale());
-    canvas.height = Math.floor(app.PAGE_H * getRenderScale());
+  function currentCanvasScale(canvas) {
+    const stored = canvas?.[CANVAS_RENDER_SCALE_PROP];
+    return Number.isFinite(stored) ? stored : null;
+  }
+
+  function prepareCanvas(canvas, options = {}) {
+    if (!canvas) return false;
+    const { page = null, renderScale: overrideScale } = options || {};
+    const targetScale = Number.isFinite(overrideScale)
+      ? overrideScale
+      : getRenderScale();
+    const previousScale = currentCanvasScale(canvas);
+    const resized = !Number.isFinite(previousScale)
+      || previousScale <= 0
+      || Math.abs(previousScale - targetScale) > 0.0001;
+    if (resized) {
+      canvas.width = Math.max(1, Math.floor(app.PAGE_W * targetScale));
+      canvas.height = Math.max(1, Math.floor(app.PAGE_H * targetScale));
+      canvas[CANVAS_RENDER_SCALE_PROP] = targetScale;
+      if (page) {
+        if (canvas === page.canvas) page.renderScale = targetScale;
+        if (canvas === page.backCanvas) page.backRenderScale = targetScale;
+      }
+    }
     const displayZoom = layoutZoomFactor();
     canvas.style.width = (app.PAGE_W * displayZoom) + 'px';
     canvas.style.height = (app.PAGE_H * displayZoom) + 'px';
+    return resized;
   }
 
-  function configureCanvasContext(ctx) {
-    const renderScale = getRenderScale();
+  function resolveRenderScaleForContext(ctx, explicitScale) {
+    if (Number.isFinite(explicitScale)) return explicitScale;
+    if (ctx?.canvas) {
+      const stored = currentCanvasScale(ctx.canvas);
+      if (Number.isFinite(stored)) return stored;
+    }
+    return getRenderScale();
+  }
+
+  function configureCanvasContext(ctx, renderScaleOverride) {
+    if (!ctx) return;
+    const renderScale = resolveRenderScaleForContext(ctx, renderScaleOverride);
     ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     ctx.font = exactFontString(getFontSize(), getActiveFontName());
     ctx.textAlign = 'left';
@@ -50,27 +84,14 @@ export function createPageLifecycleController(context, editingController) {
 
   function makePageRecord(idx, wrapEl, pageEl, canvas, marginBoxEl) {
     try { pageEl.style.cursor = 'text'; } catch {}
-    prepareCanvas(canvas);
-    const ctx = canvas.getContext('2d');
-    configureCanvasContext(ctx);
-    const backCanvas = document.createElement('canvas');
-    prepareCanvas(backCanvas);
-    const backCtx = backCanvas.getContext('2d');
-    configureCanvasContext(backCtx);
-    backCtx.save();
-    backCtx.globalCompositeOperation = 'source-over';
-    backCtx.globalAlpha = 1;
-    backCtx.fillStyle = '#ffffff';
-    backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
-    backCtx.restore();
     const page = {
       index: idx,
       wrapEl,
       pageEl,
       canvas,
-      ctx,
-      backCanvas,
-      backCtx,
+      ctx: null,
+      backCanvas: null,
+      backCtx: null,
       grid: new Map(),
       raf: 0,
       dirtyAll: true,
@@ -80,10 +101,31 @@ export function createPageLifecycleController(context, editingController) {
       marginBoxEl,
       grainCanvas: null,
       grainForSize: { w: 0, h: 0, key: null },
+      renderScale: null,
+      backRenderScale: null,
+      needsHighResRepaint: false,
     };
     const handler = (e) => handlePageClick(e, idx);
     pageEl.addEventListener('mousedown', handler, { capture: false });
     canvas.addEventListener('mousedown', handler, { capture: false });
+
+    prepareCanvas(canvas, { page });
+    const ctx = canvas.getContext('2d');
+    page.ctx = ctx;
+    configureCanvasContext(ctx);
+
+    const backCanvas = document.createElement('canvas');
+    page.backCanvas = backCanvas;
+    prepareCanvas(backCanvas, { page });
+    const backCtx = backCanvas.getContext('2d');
+    page.backCtx = backCtx;
+    configureCanvasContext(backCtx);
+    backCtx.save();
+    backCtx.globalCompositeOperation = 'source-over';
+    backCtx.globalAlpha = 1;
+    backCtx.fillStyle = '#ffffff';
+    backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
+    backCtx.restore();
     return page;
   }
 
@@ -186,6 +228,14 @@ export function createPageLifecycleController(context, editingController) {
     if (active) {
       if (page.canvas?.style) {
         page.canvas.style.visibility = 'visible';
+      }
+      if (page.needsHighResRepaint) {
+        const resizedFront = prepareCanvas(page.canvas, { page });
+        const resizedBack = prepareCanvas(page.backCanvas, { page });
+        if (resizedFront && page.ctx) configureCanvasContext(page.ctx);
+        if (resizedBack && page.backCtx) configureCanvasContext(page.backCtx);
+        page.dirtyAll = true;
+        page.needsHighResRepaint = false;
       }
       const hasPendingRows = page._dirtyRowMinMu !== undefined || page._dirtyRowMaxMu !== undefined;
       if (page.dirtyAll || hasPendingRows) {
