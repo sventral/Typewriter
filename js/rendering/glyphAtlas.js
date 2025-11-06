@@ -1378,6 +1378,7 @@ if (atlas) return atlas;
               );
               params.smul = (fontPx / 72) * supersample;
               params.ink = { ...(params.ink || {}), colorRgb };
+              const dpPerCss = Math.max(1e-6, (Number(RENDER_SCALE) || 1) * (Number(sampleScale) || 1));
               const dm = createDistanceMapProvider({
                 insideDist: inside.dist,
                 outsideDist: outside.dist,
@@ -1392,6 +1393,7 @@ if (atlas) return atlas;
                 gix: variantIdx | 0,
                 smul: params.smul || 1,
                 dm,
+                dpPerCss,
               };
               const coverage = new Float32Array(glyphWidth * glyphHeight);
               if (typeof processor.runGlyphPipeline === 'function') {
