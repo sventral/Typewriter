@@ -1,4 +1,3 @@
-// js/state/state.js
 import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitterConfig.js';
 import { INK_INTENSITY } from '../config/inkConfig.js';
 
