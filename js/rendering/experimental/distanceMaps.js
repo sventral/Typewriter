@@ -1,5 +1,3 @@
-//js/rendering/experimental/distanceMaps.js
-
 export function computeInsideDistance(alpha, w, h) {
   const INF = 1e9;
   const dist = new Float32Array(w * h);
