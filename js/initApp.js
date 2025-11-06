@@ -745,9 +745,8 @@ function computeMaxRenderScale(){
   return Math.max(1, Math.min(limitW, limitH));
 }
 function setRenderScaleForZoom(){
-  const buckets = [1, 1.5, 2, 3, 4];
-  const zb = buckets.reduce((best, z)=> Math.abs(z - state.zoom) < Math.abs(best - state.zoom) ? z : best, buckets[0]);
-  const desired = DPR * zb;
+  const zoom = Math.max(1, Math.min(state.zoom || 1, 4));
+  const desired = DPR * zoom;
   metricsStore.RENDER_SCALE = Math.min(desired, computeMaxRenderScale());
 }
 function prewarmFontFace(face){
