@@ -6,8 +6,52 @@ import {
   normalizeGlyphJitterSeed,
   cloneGlyphJitterRange,
 } from '../config/glyphJitterConfig.js';
+import { EDGE_BLEED, GRAIN_CFG, INK_INTENSITY } from '../config/inkConfig.js';
 
-const KNOWN_INK_SECTIONS = ['texture', 'fuzz', 'bleed', 'grain'];
+const resolveIntensityBounds = (key) => {
+  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
+  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
+  const max = Number.isFinite(source?.maxPct) ? Math.max(source.maxPct, min) : Math.max(200, min);
+  const value = Number.isFinite(source?.defaultPct) ? source.defaultPct : 100;
+  return {
+    min,
+    max,
+    defaultPct: clamp(value, min, max),
+  };
+};
+
+const CENTER_THICKEN_BOUNDS = resolveIntensityBounds('centerThicken');
+const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
+
+const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'];
+const DEFAULT_INK_EFFECT_MODE = 'classic';
+
+function sanitizeInkEffectsMode(mode, fallback = DEFAULT_INK_EFFECT_MODE) {
+  if (typeof mode !== 'string') return fallback;
+  const trimmed = mode.trim();
+  return trimmed || fallback;
+}
+
+function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
+  const base = Array.isArray(order) ? order : [];
+  const seen = new Set();
+  const normalized = [];
+  base.forEach(id => {
+    if (typeof id !== 'string') return;
+    const trimmed = id.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    if (!KNOWN_INK_SECTIONS.includes(trimmed)) return;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  });
+  (Array.isArray(fallback) ? fallback : KNOWN_INK_SECTIONS).forEach(id => {
+    if (!KNOWN_INK_SECTIONS.includes(id)) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    normalized.push(id);
+  });
+  return normalized;
+}
 
 function cloneInkStyleValue(value) {
   if (Array.isArray(value)) {
@@ -44,6 +88,8 @@ function sanitizeSavedInkStyle(style, index = 0) {
       name: `Style ${index + 1}`,
       overall: 100,
       sections: {},
+      sectionOrder: KNOWN_INK_SECTIONS.slice(),
+      inkEffectsMode: DEFAULT_INK_EFFECT_MODE,
     };
   }
   const id = typeof style.id === 'string' && style.id.trim()
@@ -65,7 +111,16 @@ function sanitizeSavedInkStyle(style, index = 0) {
       sections[sectionId] = sanitizeStyleSection(style[sectionId]);
     });
   }
-  return { id, name, overall, sections };
+  const sectionOrder = normalizeInkSectionOrder(style.sectionOrder);
+  const inkEffectsMode = sanitizeInkEffectsMode(style.inkEffectsMode ?? style.effectsMode, DEFAULT_INK_EFFECT_MODE);
+  return {
+    id,
+    name,
+    overall,
+    sections,
+    sectionOrder,
+    inkEffectsMode,
+  };
 }
 
 function sanitizeSavedInkStyles(styles) {
@@ -152,13 +207,34 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     inkOpacity: state.inkOpacity,
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
+    inkEffectsMode: sanitizeInkEffectsMode(state.inkEffectsMode, DEFAULT_INK_EFFECT_MODE),
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
+    inkFillStrength: clamp(Number(state.inkFillStrength ?? 100), 0, 100),
+    centerThickenPct: clamp(
+      Number(state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
+      CENTER_THICKEN_BOUNDS.min,
+      CENTER_THICKEN_BOUNDS.max,
+    ),
+    edgeThinPct: clamp(
+      Number(state.edgeThinPct ?? EDGE_THIN_BOUNDS.defaultPct),
+      EDGE_THIN_BOUNDS.min,
+      EDGE_THIN_BOUNDS.max,
+    ),
     inkTextureStrength: clamp(Number(state.inkTextureStrength ?? 100), 0, 100),
-    edgeBleedStrength: clamp(Number(state.edgeBleedStrength ?? 100), 0, 100),
+    edgeBleedStrength: clamp(
+      Number(state.edgeBleedStrength ?? (EDGE_BLEED.enabled === false ? 0 : 100)),
+      0,
+      100,
+    ),
     edgeFuzzStrength: clamp(Number(state.edgeFuzzStrength ?? 100), 0, 100),
-    grainPct: clamp(Number(state.grainPct ?? 100), 0, 100),
+    grainPct: clamp(
+      Number(state.grainPct ?? (GRAIN_CFG.enabled === false ? 0 : 100)),
+      0,
+      100,
+    ),
     grainSeed: state.grainSeed >>> 0,
     altSeed: state.altSeed >>> 0,
+    inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
     wordWrap: state.wordWrap,
     stageWidthFactor: state.stageWidthFactor,
     stageHeightFactor: state.stageHeightFactor,
@@ -321,10 +397,41 @@ export function deserializeDocumentState(data, context) {
       : 1.5,
     zoom: typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4 ? data.zoom : 1.0,
     effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
+    inkFillStrength: clamp(
+      Number(data.inkFillStrength ?? state.inkFillStrength ?? 100),
+      0,
+      100,
+    ),
+    centerThickenPct: clamp(
+      Number(data.centerThickenPct ?? state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
+      CENTER_THICKEN_BOUNDS.min,
+      CENTER_THICKEN_BOUNDS.max,
+    ),
+    edgeThinPct: clamp(
+      Number(data.edgeThinPct ?? state.edgeThinPct ?? EDGE_THIN_BOUNDS.defaultPct),
+      EDGE_THIN_BOUNDS.min,
+      EDGE_THIN_BOUNDS.max,
+    ),
     inkTextureStrength: clamp(Number(data.inkTextureStrength ?? state.inkTextureStrength ?? 100), 0, 100),
-    edgeBleedStrength: clamp(Number(data.edgeBleedStrength ?? state.edgeBleedStrength ?? 100), 0, 100),
+    edgeBleedStrength: clamp(
+      Number(
+        data.edgeBleedStrength
+          ?? state.edgeBleedStrength
+          ?? (EDGE_BLEED.enabled === false ? 0 : 100)
+      ),
+      0,
+      100,
+    ),
     edgeFuzzStrength: clamp(Number(data.edgeFuzzStrength ?? state.edgeFuzzStrength ?? 100), 0, 100),
-    grainPct: clamp(Number(data.grainPct ?? state.grainPct ?? 100), 0, 100),
+    grainPct: clamp(
+      Number(
+        data.grainPct
+          ?? state.grainPct
+          ?? (GRAIN_CFG.enabled === false ? 0 : 100)
+      ),
+      0,
+      100,
+    ),
     grainSeed: (data.grainSeed >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
     altSeed:
       (data.altSeed >>> 0) || (((data.grainSeed >>> 0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
@@ -348,6 +455,11 @@ export function deserializeDocumentState(data, context) {
     glyphJitterSeed: sanitizedJitterSeed,
   });
   state.savedInkStyles = sanitizeSavedInkStyles(data.savedInkStyles);
+  state.inkSectionOrder = normalizeInkSectionOrder(data.inkSectionOrder, state.inkSectionOrder);
+  state.inkEffectsMode = sanitizeInkEffectsMode(
+    data.inkEffectsMode ?? state.inkEffectsMode,
+    state.inkEffectsMode ?? DEFAULT_INK_EFFECT_MODE,
+  );
   if (typeof data.documentId === 'string' && data.documentId.trim()) {
     state.documentId = data.documentId.trim();
   }

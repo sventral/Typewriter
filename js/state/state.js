@@ -1,4 +1,16 @@
 import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitterConfig.js';
+import { INK_INTENSITY } from '../config/inkConfig.js';
+
+const resolveIntensityDefault = (key) => {
+  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
+  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
+  const max = Number.isFinite(source?.maxPct) ? Math.max(source.maxPct, min) : Math.max(200, min);
+  const value = Number.isFinite(source?.defaultPct) ? source.defaultPct : 100;
+  return Math.min(Math.max(value, min), max);
+};
+
+const CENTER_THICKEN_DEFAULT = resolveIntensityDefault('centerThicken');
+const EDGE_THIN_DEFAULT = resolveIntensityDefault('edgeThin');
 
 export function createMainState(app, gridDiv = 8) {
   return {
@@ -23,12 +35,17 @@ export function createMainState(app, gridDiv = 8) {
     lineStepMu: Math.round(gridDiv * 1.5),
     zoom: 1.0,
     effectsOverallStrength: 100,
+    inkFillStrength: 100,
+    centerThickenPct: CENTER_THICKEN_DEFAULT,
+    edgeThinPct: EDGE_THIN_DEFAULT,
     inkTextureStrength: 100,
-    edgeBleedStrength: 100,
+    edgeBleedStrength: 0,
     edgeFuzzStrength: 100,
-    grainPct: 100,
+    grainPct: 0,
     grainSeed: 0xC0FFEE,
     altSeed: 0x51F15EED,
+    inkSectionOrder: ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'],
+    inkEffectsMode: 'classic',
     glyphJitterEnabled: GLYPH_JITTER_DEFAULTS.enabled,
     glyphJitterAmountPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.amountPct),
     glyphJitterFrequencyPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.frequencyPct),

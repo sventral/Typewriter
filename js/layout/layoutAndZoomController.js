@@ -615,17 +615,17 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   const LOG2 = Math.log(2);
   const LOG4 = Math.log(4);
 
-  const zFromNorm = (n) => {
-    const clamped = Math.max(0, Math.min(1, n));
-    if (clamped <= N_KNEE) return 50 * Math.pow(2, clamped / N_KNEE);
-    return 100 * Math.pow(4, (clamped - N_KNEE) / (1 - N_KNEE));
-  };
+const zFromNorm = (n) => {
+  const clamped = Math.max(0, Math.min(1, n));
+  if (clamped <= N_KNEE) return 50 * Math.pow(2, clamped / N_KNEE);
+  return 100 * Math.pow(4, (clamped - N_KNEE) / (1 - N_KNEE));
+};
 
-  const normFromZ = (pct) => {
-    let p = Math.max(Z_MIN, Math.min(Z_MAX, pct));
-    if (p <= Z_KNEE) return (Math.log(p / 50) / LOG2) * N_KNEE;
-    return N_KNEE + (Math.log(p / 100) / LOG4) * (1 - N_KNEE);
-  };
+const normFromZ = (pct) => {
+  let p = Math.max(Z_MIN, Math.min(Z_MAX, pct));
+  if (p <= Z_KNEE) return (Math.log(p / 50) / LOG2) * N_KNEE;
+  return N_KNEE + (Math.log(p / 100) / LOG4) * (1 - N_KNEE);
+};
 
   const detent = (p) => (Math.abs(p - 100) <= 6 ? 100 : p);
 

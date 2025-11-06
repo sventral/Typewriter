@@ -79,7 +79,7 @@ export function createPageLifecycleController(context, editingController) {
       _dirtyRowMaxMu: undefined,
       marginBoxEl,
       grainCanvas: null,
-      grainForSize: { w: 0, h: 0 },
+      grainForSize: { w: 0, h: 0, key: null },
     };
     const handler = (e) => handlePageClick(e, idx);
     pageEl.addEventListener('mousedown', handler, { capture: false });
@@ -184,11 +184,23 @@ export function createPageLifecycleController(context, editingController) {
     if (!page || page.active === active) return;
     page.active = active;
     if (active) {
-      page.canvas.style.visibility = 'visible';
-      page.dirtyAll = true;
-      schedulePaint(page);
+      if (page.canvas?.style) {
+        page.canvas.style.visibility = 'visible';
+      }
+      const hasPendingRows = page._dirtyRowMinMu !== undefined || page._dirtyRowMaxMu !== undefined;
+      if (page.dirtyAll || hasPendingRows) {
+        schedulePaint(page);
+      }
     } else {
-      page.canvas.style.visibility = 'hidden';
+      if (page.canvas?.style) {
+        page.canvas.style.visibility = 'hidden';
+      }
+      if (page.raf && typeof cancelAnimationFrame === 'function') {
+        try {
+          cancelAnimationFrame(page.raf);
+        } catch {}
+        page.raf = 0;
+      }
     }
   }
 

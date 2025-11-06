@@ -29,9 +29,7 @@ export function createDomRefs() {
   app.cpiSelect = document.getElementById('cpiSelect');
   app.colsPreviewSpan = document.getElementById('colsPreview');
   app.sizeInput = document.getElementById('sizeInput');
-  app.applyBtn  = document.getElementById('applyBtn');
   app.lhInput = document.getElementById('lhInput');
-  app.applyLHBtn = document.getElementById('applyLHBtn');
   app.glyphJitterToggle = document.getElementById('glyphJitterToggle');
   app.glyphJitterAmountMin = document.getElementById('glyphJitterAmountMin');
   app.glyphJitterAmountMax = document.getElementById('glyphJitterAmountMax');
