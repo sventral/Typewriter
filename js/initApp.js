@@ -746,8 +746,10 @@ function computeMaxRenderScale(){
 }
 function setRenderScaleForZoom(){
   const zoom = Math.max(1, Math.min(state.zoom || 1, 4));
-  const desired = DPR * zoom;
-  metricsStore.RENDER_SCALE = Math.min(desired, computeMaxRenderScale());
+  const supersample = Math.max(1, zoom);
+  const desired = DPR * zoom * supersample;
+  const maxScale = computeMaxRenderScale();
+  metricsStore.RENDER_SCALE = Math.min(desired, maxScale);
 }
 function prewarmFontFace(face){
   const px = Math.max(12, Math.ceil(getTargetPitchPx()));
