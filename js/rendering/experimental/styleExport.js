@@ -1,5 +1,3 @@
-//js/rendering/experimental/styleExport.js
-
 const strength = on => (on ? 1 : 0);
 
 export function exportRepoStyleConfig(config) {
