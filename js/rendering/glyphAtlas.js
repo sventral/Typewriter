@@ -79,6 +79,22 @@ export function createGlyphAtlas(options) {
     window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
   }
 
+function djb2(str) {
+  let h = 5381 >>> 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  return h >>> 0;
+}
+
+function hash36FromJSON(obj) {
+  let s;
+  try { s = JSON.stringify(obj); } catch { return '0'; }
+  let h = 5381 >>> 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return (h >>> 0).toString(36);
+}
+
+
+
   function hash2(ix, iy, seed) {
     let h = seed | 0;
     h ^= Math.imul(ix | 0, 0x9E3779B1);
@@ -106,7 +122,7 @@ export function createGlyphAtlas(options) {
     const n11 = hash2(x1, y1, seed);
     const nx0 = n00 + (n10 - n00) * sx;
     const nx1 = n01 + (n11 - n01) * sx;
-    return nx0 + (nx1 - n00) * sy;
+    return nx0 + (nx1 - nx0) * sy;
   }
 
   function tileableValueNoise2D(x, y, scale, seed, periodX, periodY) {
@@ -384,7 +400,7 @@ export function createGlyphAtlas(options) {
     };
   }
 
-  function createDistanceMapProvider(imageData) {
+  function createLegacyDistanceMapProviderFactory(imageData) {
     let cached = null;
     return () => {
       if (!cached) {
@@ -931,6 +947,7 @@ export function createGlyphAtlas(options) {
     const FONT_SIZE = getFontSizeFn();
     const ACTIVE_FONT_NAME = getActiveFontNameFn();
     const RENDER_SCALE = getRenderScaleFn();
+
     const COLORS = colors;
     const INK_TEXTURE = inkTextureConfig();
     const EDGE_FUZZ = edgeFuzzConfig ? edgeFuzzConfig() : {};
@@ -1054,7 +1071,7 @@ export function createGlyphAtlas(options) {
           if (needsPipeline) {
             glyphData = glyphCtx.getImageData(0, 0, glyphWidth, glyphHeight);
           }
-          const distanceProvider = glyphData ? createDistanceMapProvider(glyphData) : null;
+          const distanceProvider = glyphData ? createLegacyDistanceMapProviderFactory(glyphData) : null;
 
           const hasGlyphStageAfter = index => {
             for (let i = index + 1; i < pipelineStages.length; i++) {
@@ -1192,13 +1209,36 @@ export function createGlyphAtlas(options) {
       effectsAllowed = true;
     }
 
-    const overallStrength = clamp(getInkEffectFactor(), 0, 1);
-    const rawOrder = getInkSectionOrderFn();
-    const pipelineStages = resolveExperimentalStages(rawOrder);
-    const orderKey = pipelineStages.join('-');
-    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|ord${orderKey}`;
-    let atlas = experimentalAtlases.get(key);
-    if (atlas) return atlas;
+const overallStrength = clamp(getInkEffectFactor(), 0, 1);
+const rawOrder = getInkSectionOrderFn();
+const pipelineStages = resolveExperimentalStages(rawOrder);
+
+// BEGIN: config snapshot + hash (no name collisions)
+const baseCfgForHash = getExperimentalEffectsConfigFn() || {};
+const snapshot = {
+  effectsAllowed,
+  overall: overallStrength,
+  order: pipelineStages,
+  params: {
+    // keep this lean; only numbers/booleans used by stages
+    ink: { inkGamma: baseCfgForHash.ink?.inkGamma|0, toneJitter: baseCfgForHash.ink?.toneJitter|0 },
+    ribbon: { amp: baseCfgForHash.ribbon?.amp|0, period: baseCfgForHash.ribbon?.period|0, sharp: baseCfgForHash.ribbon?.sharp|0 },
+    centerEdge: { centerThickenPct: baseCfgForHash.centerEdge?.centerThickenPct|0, edgeThinPct: baseCfgForHash.centerEdge?.edgeThinPct|0 },
+    dropouts: { chance: baseCfgForHash.dropouts?.chance|0, max: baseCfgForHash.dropouts?.max|0 },
+    edgeFuzz: { radius: baseCfgForHash.edgeFuzz?.radius|0, jitter: baseCfgForHash.edgeFuzz?.jitter|0 },
+    smudge: { radius: baseCfgForHash.smudge?.radius|0, scale: baseCfgForHash.smudge?.scale|0, strength: baseCfgForHash.smudge?.strength|0 },
+    punch: { intensity: baseCfgForHash.punch?.intensity|0, count: baseCfgForHash.punch?.count|0 },
+  },
+};
+const cfgHash = hash36FromJSON(snapshot);
+// END: config snapshot + hash
+
+const orderKey = pipelineStages.join('-');
+const key = `${ink}|v${variantIdx|0}|fx${effectsAllowed?1:0}|ord${orderKey}|h${cfgHash}`;
+let atlas = experimentalAtlases.get(key);
+if (atlas) return atlas;
+
+
 
     const ASC = getAscFn();
     const DESC = getDescFn();
@@ -1317,44 +1357,59 @@ export function createGlyphAtlas(options) {
           glyphCtx.restore();
 
           let glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
-
           const basePixels = glyphData.data;
-          if (effectsAllowed && stagePipeline && overallStrength > 0 && Array.isArray(effectiveOrder) && effectiveOrder.length) {
+
+          if (effectsAllowed && overallStrength > 0 && Array.isArray(effectiveOrder) && effectiveOrder.length) {
             const glyphWidth = glyphCanvas.width;
             const glyphHeight = glyphCanvas.height;
             const alpha = new Uint8Array(glyphWidth * glyphHeight);
-            for (let i = 0, k = 0; i < alpha.length; i++, k += 4) {
-              alpha[i] = basePixels[k + 3];
-            }
+            for (let i = 0, k = 0; i < alpha.length; i++, k += 4) alpha[i] = basePixels[k + 3];
             const inside = computeInsideDistance(alpha, glyphWidth, glyphHeight);
             const outside = computeOutsideDistance(alpha, glyphWidth, glyphHeight);
-            const params = cloneParams();
-            const dm = createDistanceMapProvider({
-              insideDist: inside?.dist,
-              outsideDist: outside?.dist,
-              maxInside: inside?.maxInside || 0,
-            });
-            const context = {
-              w: glyphWidth,
-              h: glyphHeight,
-              alpha0: alpha,
-              params,
-              seed: glyphSeed,
-              gix: variantIdx | 0,
-              smul: params?.smul ?? 1,
-              dm,
-            };
-            const coverage = new Float32Array(glyphWidth * glyphHeight);
-            stagePipeline.runPipeline(coverage, context, effectiveOrder);
-            for (let i = 0, k = 0; i < coverage.length; i++, k += 4) {
-              const baseAlpha = basePixels[k + 3] / 255;
-              const rawCoverage = coverage[i];
-              const coverageAlpha = Number.isFinite(rawCoverage) ? clamp(rawCoverage, 0, 1) : baseAlpha;
-              const mixedAlpha = clamp(baseAlpha + (coverageAlpha - baseAlpha) * overallStrength, 0, 1);
-              basePixels[k] = colorRgb.r;
-              basePixels[k + 1] = colorRgb.g;
-              basePixels[k + 2] = colorRgb.b;
-              basePixels[k + 3] = Math.round(mixedAlpha * 255);
+            const canRun = !!(inside?.dist && outside?.dist && inside.maxInside > 0);
+            if (canRun && (stagePipeline || typeof processor.runGlyphPipeline === 'function')) {
+              const params = cloneParams();
+              const fontPx = getFontSizeFn() || FONT_SIZE || 48;
+              params.smul = (fontPx / 72) * sampleScale;
+              console.log('smul', params.smul, 'fontPx', fontPx, 'sampleScale', sampleScale);
+              params.ink = { ...(params.ink || {}), colorRgb };
+              const dm = createDistanceMapProvider({
+                insideDist: inside.dist,
+                outsideDist: outside.dist,
+                maxInside: inside.maxInside,
+              });
+              const context = {
+                w: glyphWidth,
+                h: glyphHeight,
+                alpha0: alpha,
+                params,
+                seed: glyphSeed,
+                gix: variantIdx | 0,
+                smul: params.smul || 1,
+                dm,
+              };
+              const coverage = new Float32Array(glyphWidth * glyphHeight);
+              if (typeof processor.runGlyphPipeline === 'function') {
+                processor.runGlyphPipeline({ ...context, coverage }, effectiveOrder);
+              } else {
+                stagePipeline.runPipeline(coverage, context, effectiveOrder);
+              }
+              for (let i = 0, k = 0; i < coverage.length; i++, k += 4) {
+                const baseAlpha = basePixels[k + 3] / 255;
+                const cov = coverage[i];
+                const coverageAlpha = Number.isFinite(cov) ? clamp(cov, 0, 1) : baseAlpha;
+                const mixedAlpha = clamp(baseAlpha + (coverageAlpha - baseAlpha) * overallStrength, 0, 1);
+                basePixels[k] = colorRgb.r;
+                basePixels[k + 1] = colorRgb.g;
+                basePixels[k + 2] = colorRgb.b;
+                basePixels[k + 3] = Math.round(mixedAlpha * 255);
+              }
+            } else {
+              for (let k = 0; k < basePixels.length; k += 4) {
+                basePixels[k] = colorRgb.r;
+                basePixels[k + 1] = colorRgb.g;
+                basePixels[k + 2] = colorRgb.b;
+              }
             }
           } else {
             for (let k = 0; k < basePixels.length; k += 4) {
