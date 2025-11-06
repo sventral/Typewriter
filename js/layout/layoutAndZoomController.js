@@ -610,22 +610,22 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   const Z_MIN = 50;
   const Z_KNEE = 100;
-  const Z_MAX = 400;
+  const Z_MAX = 1000;
   const N_KNEE = 1 / 3;
   const LOG2 = Math.log(2);
-  const LOG4 = Math.log(4);
+const LOG10 = Math.log(10); // Changed from LOG4 to LOG10
 
-  const zFromNorm = (n) => {
-    const clamped = Math.max(0, Math.min(1, n));
-    if (clamped <= N_KNEE) return 50 * Math.pow(2, clamped / N_KNEE);
-    return 100 * Math.pow(4, (clamped - N_KNEE) / (1 - N_KNEE));
-  };
+const zFromNorm = (n) => {
+  const clamped = Math.max(0, Math.min(1, n));
+  if (clamped <= N_KNEE) return 50 * Math.pow(2, clamped / N_KNEE);
+  return 100 * Math.pow(10, (clamped - N_KNEE) / (1 - N_KNEE)); // Changed 4 to 10
+};
 
-  const normFromZ = (pct) => {
-    let p = Math.max(Z_MIN, Math.min(Z_MAX, pct));
-    if (p <= Z_KNEE) return (Math.log(p / 50) / LOG2) * N_KNEE;
-    return N_KNEE + (Math.log(p / 100) / LOG4) * (1 - N_KNEE);
-  };
+const normFromZ = (pct) => {
+  let p = Math.max(Z_MIN, Math.min(Z_MAX, pct));
+  if (p <= Z_KNEE) return (Math.log(p / 50) / LOG2) * N_KNEE;
+  return N_KNEE + (Math.log(p / 100) / LOG10) * (1 - N_KNEE); // Changed LOG4 to LOG10
+};
 
   const detent = (p) => (Math.abs(p - 100) <= 6 ? 100 : p);
 
