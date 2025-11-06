@@ -167,20 +167,19 @@ export function createDocumentEditingController(context) {
     }
     if (changed) markRowAsDirty(page, rowMu);
   }
+function insertStringFast(s) {
+  const text = (s || '').replace(/\r\n?/g, '\n');
+  const bounds = getCurrentBounds();
 
-  function insertStringFast(s) {
-    const text = (s || '').replace(/\r\n?/g, '\n');
-    const bounds = getCurrentBounds();
+  let pageIndex = state.caret.page;
+  let page = state.pages[pageIndex] || addPage();
+  let rowMu = state.caret.rowMu;
+  let startCol = state.caret.col;
+  const ink = state.ink;
 
-    let pageIndex = state.caret.page;
-    let page = state.pages[pageIndex] || addPage();
-    let rowMu = state.caret.rowMu;
-    let startCol = state.caret.col;
-    const ink = state.ink;
-
-    const prevFreeze = getFreezeVirtual();
-    setFreezeVirtual(true);
-
+  const prevFreeze = getFreezeVirtual();
+  setFreezeVirtual(true);
+  try {
     const newline = () => {
       startCol = bounds.L;
       rowMu += state.lineStepMu;
@@ -239,13 +238,15 @@ export function createDocumentEditingController(context) {
     flush();
 
     state.caret = { page: pageIndex, rowMu, col: startCol };
-
+  } finally {
     setFreezeVirtual(prevFreeze);
     updateCaretPosition();
     positionRulers();
     requestVirtualization();
     saveStateDebounced();
   }
+}
+
 
   function advanceCaret() {
     const bounds = getCurrentBounds();
