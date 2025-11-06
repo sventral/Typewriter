@@ -18,6 +18,23 @@ import {
 
 const { min, max, abs, floor, ceil, round, sin, cos, pow } = Math;
 
+const MIN_DETAIL_DENSITY_CSS = 2;
+const DETAIL_MULTIPLIER = 2.6;
+
+const ensureDetailDensity = ctx => {
+  if (!ctx) {
+    return { css: MIN_DETAIL_DENSITY_CSS };
+  }
+  if (!ctx.__detailDensity) {
+    const smul = Number.isFinite(ctx.smul) ? max(1, ctx.smul) : 1;
+    const css = max(MIN_DETAIL_DENSITY_CSS, smul * DETAIL_MULTIPLIER);
+    ctx.__detailDensity = { css };
+  }
+  return ctx.__detailDensity;
+};
+
+const getDetailDensityCss = (ctx, boost = 1) => ensureDetailDensity(ctx).css * boost;
+
 export const GLYPH_PIPELINE_ORDER = Object.freeze([
   'fill',
   'dropouts',
@@ -51,9 +68,10 @@ export function createExperimentalStagePipeline(deps = {}) {
     const { w, h, alpha0, params, seed, gix, smul } = ctx;
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
-    const lfScale = Math.max(1e-6, params.noise.lfScale * smul);
-    const hfScale = Math.max(1e-6, params.noise.hfScale * smul);
-    const periodPx = Math.max(1e-6, params.ribbon.period * smul);
+    const detailCss = getDetailDensityCss(ctx);
+    const lfScale = Math.max(1e-6, (params.noise.lfScale * smul) / detailCss);
+    const hfScale = Math.max(1e-6, (params.noise.hfScale * smul) / detailCss);
+    const periodPx = Math.max(1e-6, (params.ribbon.period * smul) / detailCss);
     const gammaLUT = getGamma(params.ink.inkGamma);
     const rimLUT = getRim(params.ink.rimCurve);
     const toneCoreEn = !!params.enable.toneCore;
@@ -98,9 +116,10 @@ export function createExperimentalStagePipeline(deps = {}) {
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
     if (!params.enable.dropouts || !params.dropouts || params.dropouts.amount <= 0) return;
+    const detailCss = getDetailDensityCss(ctx);
     const inside = dm?.raw?.inside;
     const widthPx = max(0.0001, params.dropouts.width * smul * dpPerCss);
-    const dropScalePx = max(2, params.dropouts.scale * smul);
+    const dropScalePx = max(2 / detailCss, (params.dropouts.scale * smul) / detailCss);
     const dropThr = 1 - clamp01Fn(params.dropouts.streakDensity);
     const dropPw = clamp01Fn(params.dropouts.pinholeWeight);
     for (let y = 0; y < h; y++) {
@@ -112,7 +131,11 @@ export function createExperimentalStagePipeline(deps = {}) {
         const yCss = y * invDp;
         const nlf = noise2Fn(xCss, yCss, dropScalePx, seed ^ 0x51F1F1F1);
         const streak = (nlf > dropThr ? 1 : 0) * band;
-        const nhf = hash2Fn(floor(xCss * 3 + 7), floor(yCss * 3 + 11), seed ^ 0xC0FFEE00);
+        const nhf = hash2Fn(
+          floor(xCss * detailCss * 3 + 7),
+          floor(yCss * detailCss * 3 + 11),
+          seed ^ 0xC0FFEE00,
+        );
         const pinh = (nhf > 1 - params.dropouts.pinhole ? 1 : 0) * (1 - band);
         const gap = clamp01Fn((1 - dropPw) * streak + dropPw * pinh);
         const amt = min(2, params.dropouts.amount);
@@ -126,11 +149,18 @@ export function createExperimentalStagePipeline(deps = {}) {
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
     if (!params.enable.grainSpeck) return;
+    const detailCss = getDetailDensityCss(ctx, 1.5);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
         if (alpha0[i] === 0) continue;
-        const speckMask = hash2Fn(floor(x * invDp), floor(y * invDp), seed ^ 0xBEEFCAFE);
+        const xCss = x * invDp;
+        const yCss = y * invDp;
+        const speckMask = hash2Fn(
+          floor(xCss * detailCss),
+          floor(yCss * detailCss),
+          seed ^ 0xBEEFCAFE,
+        );
         const affect = (1 - params.ink.speckGrayBias) + params.ink.speckGrayBias * (1 - coverage[i]);
         let cov = coverage[i];
         cov = 1 - (1 - cov) * (1 - params.ink.speckDark * (speckMask > 0.85 ? affect : 0));
@@ -246,6 +276,7 @@ export function createExperimentalStagePipeline(deps = {}) {
     if (!params.enable.edgeFuzz || !cfg || (cfg.inBand <= 0 && cfg.outBand <= 0)) return;
     const inside = dm?.raw?.inside;
     const outside = dm?.raw?.outside;
+    const detailCss = getDetailDensityCss(ctx);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
@@ -258,11 +289,15 @@ export function createExperimentalStagePipeline(deps = {}) {
           covF = max(covF, clamp01Fn(1 - ((outside[i] || 0) / (cfg.outBand * smul * dpPerCss))));
         }
         if (covF > 0) {
-          const ns = max(2, (cfg.scale || 2) * smul);
+          const ns = max(2 / detailCss, ((cfg.scale || 2) * smul) / detailCss);
           const xCss = x * invDp;
           const yCss = y * invDp;
           const vNoise = noise2Fn(xCss, yCss, ns, seed ^ 0x0F0F0F0F);
-          const vHash = hash2Fn(floor(xCss), floor(yCss), seed ^ 0xF00DFACE);
+          const vHash = hash2Fn(
+            floor(xCss * detailCss),
+            floor(yCss * detailCss),
+            seed ^ 0xF00DFACE,
+          );
           const blend = cfg.mix;
           const n = vNoise * (1 - blend) + vHash * blend;
           const jitter = 1 + cfg.rough * ((n - 0.5) * 2);
@@ -284,7 +319,8 @@ function applySmudgeHalo(coverage, ctx) {
   const R = Math.max(0.0001, s.radius * smul * dpPerCss);
   if (R <= 0) return;
 
-  const ns = Math.max(2, s.scale * smul);
+  const detailCss = getDetailDensityCss(ctx);
+  const ns = Math.max(2 / detailCss, (s.scale * smul) / detailCss);
   const theta = (s.dirDeg || 0) * (Math.PI / 180); // ← fix
   const dir = [Math.cos(theta), Math.sin(theta)];
 
