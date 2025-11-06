@@ -261,34 +261,41 @@ export function createExperimentalStagePipeline(deps = {}) {
     }
   }
 
-  function applySmudgeHalo(coverage, ctx) {
-    const { w, h, alpha0, params, smul, seed, dm } = ctx;
-    const s = params.smudge;
-    const outside = dm?.raw?.outside;
-    if (!params.enable.smudge || !s || s.strength <= 0 || !outside) return;
-    const R = max(0.0001, s.radius * smul);
-    if (R <= 0) return;
-    const ns = max(2, s.scale * smul);
-    const theta = (s.dirDeg || 0) * PI / 180;
-    const dir = [cos(theta), sin(theta)];
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        if (!(outside[i] > 0)) continue;
-        let band = max(0, 1 - ((outside[i] || 0) / R));
-        band = pow(band, max(0.0001, 1 + s.falloff));
-        const n = noise2Fn(x, y, ns, seed ^ 0xDEADC0DE);
-        const gate = max(0, (n - (1 - s.density)) * (1 / (s.density + 1e-4)));
-        const g = gradOutFn(outside, w, h, x, y);
-        const ndotl = max(0, dotFn(g, dir[0], dir[1]) / lenFn(g));
-        const dirW = pow(ndotl, max(0.01, 1 - s.spread) * 2 + 0.5);
-        const sm = s.strength * band * gate * dirW;
-        if (alpha0[i] === 0) {
-          coverage[i] = max(coverage[i], min(1, sm));
-        }
+function applySmudgeHalo(coverage, ctx) {
+  const { w, h, alpha0, params, smul, seed, dm } = ctx;
+  const s = params.smudge;
+  const outside = dm?.raw?.outside;
+  if (!params.enable.smudge || !s || s.strength <= 0 || !outside) return;
+
+  const R = Math.max(0.0001, s.radius * smul);
+  if (R <= 0) return;
+
+  const ns = Math.max(2, s.scale * smul);
+  const theta = (s.dirDeg || 0) * (Math.PI / 180); // ← fix
+  const dir = [Math.cos(theta), Math.sin(theta)];
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!(outside[i] > 0)) continue;
+
+      let band = Math.max(0, 1 - ((outside[i] || 0) / R));
+      band = Math.pow(band, Math.max(0.0001, 1 + s.falloff));
+
+      const n = noise2Fn(x, y, ns, seed ^ 0xDEADC0DE);
+      const gate = Math.max(0, (n - (1 - s.density)) * (1 / (s.density + 1e-4)));
+
+      const g = gradOutFn(outside, w, h, x, y);
+      const ndotl = Math.max(0, dotFn(g, dir[0], dir[1]) / lenFn(g));
+      const dirW = Math.pow(ndotl, Math.max(0.01, 1 - s.spread) * 2 + 0.5);
+
+      const sm = s.strength * band * gate * dirW;
+      if (alpha0[i] === 0) {
+        coverage[i] = Math.max(coverage[i], Math.min(1, sm));
       }
     }
   }
+}
 
   const stageRegistry = {
     fill: applyFillAdjustments,
