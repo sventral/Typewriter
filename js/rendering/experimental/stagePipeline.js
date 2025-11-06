@@ -18,8 +18,24 @@ import {
 
 const { min, max, abs, floor, ceil, round, sin, cos, pow } = Math;
 
+const lerp = (a, b, t) => a + (b - a) * t;
+const smoothStep = t => t * t * (3 - 2 * t);
+
+const SPECK_NOISE_OCTAVES = Object.freeze([
+  { freq: 0.75, weight: 0.28, offsetX: 17.31, offsetY: -9.41, salt: 0x13579BDF },
+  { freq: 1, weight: 0.46, offsetX: -3.77, offsetY: 11.09, salt: 0x2468ACE1 },
+  { freq: 1.92, weight: 0.26, offsetX: 6.51, offsetY: 4.22, salt: 0x9E3779B9 },
+]);
+const SPECK_NOISE_WEIGHT_SUM = SPECK_NOISE_OCTAVES.reduce((sum, octave) => sum + octave.weight, 0);
+
 const MIN_DETAIL_DENSITY_CSS = 2;
 const DETAIL_MULTIPLIER = 2.6;
+const SPECK_SUBPIXEL_OFFSETS = Object.freeze([
+  [0.1666667, 0.1666667],
+  [0.6666667, 0.1666667],
+  [0.1666667, 0.6666667],
+  [0.6666667, 0.6666667],
+]);
 
 const ensureDetailDensity = ctx => {
   if (!ctx) {
@@ -34,6 +50,41 @@ const ensureDetailDensity = ctx => {
 };
 
 const getDetailDensityCss = (ctx, boost = 1) => ensureDetailDensity(ctx).css * boost;
+
+const sampleSpeckValueNoise = (hash2Fn, x, y, seed) => {
+  const xi = floor(x);
+  const yi = floor(y);
+  const xf = x - xi;
+  const yf = y - yi;
+  const sx = smoothStep(xf);
+  const sy = smoothStep(yf);
+  const h00 = hash2Fn(xi, yi, seed);
+  const h10 = hash2Fn(xi + 1, yi, seed);
+  const h01 = hash2Fn(xi, yi + 1, seed);
+  const h11 = hash2Fn(xi + 1, yi + 1, seed);
+  const nx0 = lerp(h00, h10, sx);
+  const nx1 = lerp(h01, h11, sx);
+  return lerp(nx0, nx1, sy);
+};
+
+const sampleSpeckField = (hash2Fn, xCss, yCss, detailCss, seed) => {
+  let accum = 0;
+  for (let o = 0; o < SPECK_NOISE_OCTAVES.length; o++) {
+    const octave = SPECK_NOISE_OCTAVES[o];
+    const freq = max(0.0001, detailCss * octave.freq);
+    const value = sampleSpeckValueNoise(
+      hash2Fn,
+      xCss * freq + octave.offsetX,
+      yCss * freq + octave.offsetY,
+      seed ^ octave.salt,
+    );
+    accum += value * octave.weight;
+  }
+  const normalized = accum / (SPECK_NOISE_WEIGHT_SUM || 1);
+  const centered = normalized - 0.5;
+  const contrast = 1.25;
+  return clamp01(centered * contrast + 0.5);
+};
 
 export const GLYPH_PIPELINE_ORDER = Object.freeze([
   'fill',
@@ -150,21 +201,50 @@ export function createExperimentalStagePipeline(deps = {}) {
     const invDp = 1 / dpPerCss;
     if (!params.enable.grainSpeck) return;
     const detailCss = getDetailDensityCss(ctx, 1.5);
+    const sampleOffsets = SPECK_SUBPIXEL_OFFSETS;
+    const sampleCount = sampleOffsets.length || 1;
+    const invSampleCount = 1 / sampleCount;
+    const speckSeed = seed ^ 0xBEEFCAFE;
+    const { speckDark = 0, speckLight = 0, speckGrayBias = 0 } = params.ink || {};
+    const darkGate = 0.85;
+    const lightGate = 0.15;
+    const invDarkSpan = 1 / (1 - darkGate);
+    const invLightSpan = 1 / lightGate;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
         if (alpha0[i] === 0) continue;
-        const xCss = x * invDp;
-        const yCss = y * invDp;
-        const speckMask = hash2Fn(
-          floor(xCss * detailCss),
-          floor(yCss * detailCss),
-          seed ^ 0xBEEFCAFE,
-        );
-        const affect = (1 - params.ink.speckGrayBias) + params.ink.speckGrayBias * (1 - coverage[i]);
+        let darkAccum = 0;
+        let lightAccum = 0;
+        for (let s = 0; s < sampleCount; s++) {
+          const offset = sampleOffsets[s];
+          const xCss = (x + offset[0]) * invDp;
+          const yCss = (y + offset[1]) * invDp;
+          const baseMask = sampleSpeckField(hash2Fn, xCss, yCss, detailCss, speckSeed);
+          const microMask = sampleSpeckValueNoise(
+            hash2Fn,
+            xCss * detailCss * 3.37 + 5.71,
+            yCss * detailCss * 3.17 - 2.9,
+            speckSeed ^ 0x7F4A7C15,
+          );
+          const microPerturb = (microMask - 0.5) * 0.7;
+          const combinedMask = clamp01Fn(baseMask + microPerturb);
+          const speckMask = clamp01Fn((combinedMask - 0.5) * 1.6 + 0.5);
+          if (speckMask > darkGate) {
+            darkAccum += (speckMask - darkGate) * invDarkSpan;
+          }
+          if (speckMask < lightGate) {
+            lightAccum += (lightGate - speckMask) * invLightSpan;
+          }
+        }
+        const affect = (1 - speckGrayBias) + speckGrayBias * (1 - coverage[i]);
+        const interior = clamp01Fn(alpha0[i] / 255);
+        const edgeFade = clamp01Fn(interior * interior * 1.1);
+        const darkFactor = speckDark * affect * edgeFade * clamp01Fn(darkAccum * invSampleCount * 2.2);
+        const lightFactor = speckLight * affect * edgeFade * clamp01Fn(lightAccum * invSampleCount * 2);
         let cov = coverage[i];
-        cov = 1 - (1 - cov) * (1 - params.ink.speckDark * (speckMask > 0.85 ? affect : 0));
-        cov *= 1 - params.ink.speckLight * (speckMask < 0.15 ? affect : 0);
+        cov = 1 - (1 - cov) * (1 - darkFactor);
+        cov *= 1 - lightFactor;
         coverage[i] = clamp01Fn(cov);
       }
     }
