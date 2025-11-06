@@ -1,4 +1,3 @@
-// js/config/inkConfig.js
 import { clamp } from '../utils/math.js';
 
 const DEFAULT_HASH_WEIGHT = 0;
