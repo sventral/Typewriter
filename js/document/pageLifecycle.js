@@ -28,6 +28,131 @@ export function createPageLifecycleController(context, editingController) {
   } = editingController;
 
   let schedulePaint = () => {};
+  const pageByWrap = new WeakMap();
+  const geometryState = {
+    cssScale: 1,
+    paperOffsetY: 0,
+    zoomWrapTop: 0,
+    zoomWrapHeight: 0,
+    initialized: false,
+  };
+
+  const pageResizeObserver = (typeof ResizeObserver === 'function')
+    ? new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const page = pageByWrap.get(entry.target);
+          if (page) {
+            markPageGeometryDirty(page);
+          }
+        }
+      })
+    : null;
+
+  const stageResizeObserver = (typeof ResizeObserver === 'function' && app.stageInner)
+    ? new ResizeObserver(() => {
+        markAllPageGeometryDirty();
+      })
+    : null;
+
+  if (stageResizeObserver && app.stageInner) {
+    try {
+      stageResizeObserver.observe(app.stageInner);
+    } catch {}
+  }
+
+  function markPageGeometryDirty(page) {
+    if (!page) return;
+    if (!page.geometry) {
+      page.geometry = { baseTop: 0, baseHeight: app.PAGE_H, dirty: true };
+    } else {
+      page.geometry.dirty = true;
+    }
+  }
+
+  function markAllPageGeometryDirty() {
+    for (const page of state.pages) {
+      if (page) {
+        markPageGeometryDirty(page);
+      }
+    }
+  }
+
+  function computeCssScale(rect) {
+    const zoomWrap = app.zoomWrap;
+    const fallback = Number.isFinite(state.zoom) ? state.zoom : 1;
+    if (!zoomWrap) return fallback;
+    const height = rect?.height;
+    const rawHeight = zoomWrap.offsetHeight;
+    if (Number.isFinite(height) && Number.isFinite(rawHeight) && rawHeight > 0) {
+      const scale = height / rawHeight;
+      return Number.isFinite(scale) && scale > 0 ? scale : fallback;
+    }
+    return fallback;
+  }
+
+  function computeViewportContext() {
+    let zoomWrapRect = null;
+    if (app.zoomWrap && typeof app.zoomWrap.getBoundingClientRect === 'function') {
+      zoomWrapRect = app.zoomWrap.getBoundingClientRect();
+    }
+    const cssScale = computeCssScale(zoomWrapRect);
+    const paperOffsetY = Number.isFinite(state.paperOffset?.y) ? state.paperOffset.y : 0;
+    const zoomWrapTop = Number.isFinite(zoomWrapRect?.top) ? zoomWrapRect.top : 0;
+    const zoomWrapHeight = Number.isFinite(zoomWrapRect?.height) ? zoomWrapRect.height : 0;
+    if (geometryState.initialized) {
+      if (Math.abs(cssScale - geometryState.cssScale) > 1e-4) {
+        markAllPageGeometryDirty();
+      } else if (Math.abs(zoomWrapHeight - geometryState.zoomWrapHeight) > 0.5) {
+        markAllPageGeometryDirty();
+      }
+    } else {
+      geometryState.initialized = true;
+    }
+    geometryState.cssScale = cssScale;
+    geometryState.paperOffsetY = paperOffsetY;
+    geometryState.zoomWrapTop = zoomWrapTop;
+    geometryState.zoomWrapHeight = zoomWrapHeight;
+    return { cssScale, paperOffsetY, zoomWrapTop };
+  }
+
+  function ensurePageGeometry(page, viewportCtx) {
+    if (!page) return;
+    if (!page.geometry) {
+      page.geometry = { baseTop: 0, baseHeight: app.PAGE_H, dirty: true };
+    }
+    if (!page.geometry.dirty) return;
+    const wrapEl = page.wrapEl;
+    if (!wrapEl || typeof wrapEl.getBoundingClientRect !== 'function') {
+      page.geometry.baseTop = 0;
+      page.geometry.baseHeight = app.PAGE_H;
+      page.geometry.dirty = false;
+      return;
+    }
+    const rect = wrapEl.getBoundingClientRect();
+    const scale = viewportCtx.cssScale || 1;
+    const safeScale = Math.abs(scale) < 1e-6 ? 1 : scale;
+    const zoomWrapTop = viewportCtx.zoomWrapTop || 0;
+    const paperOffset = viewportCtx.paperOffsetY || 0;
+    const baseTop = ((rect.top - zoomWrapTop) / safeScale) - paperOffset;
+    const baseHeight = rect.height / safeScale;
+    page.geometry.baseTop = Number.isFinite(baseTop) ? baseTop : 0;
+    page.geometry.baseHeight = Number.isFinite(baseHeight) ? baseHeight : app.PAGE_H;
+    page.geometry.dirty = false;
+  }
+
+  function getPageViewportRect(page, viewportCtx) {
+    if (!page) {
+      return { top: 0, bottom: 0, height: 0 };
+    }
+    ensurePageGeometry(page, viewportCtx);
+    const baseTop = Number.isFinite(page.geometry?.baseTop) ? page.geometry.baseTop : 0;
+    const baseHeight = Number.isFinite(page.geometry?.baseHeight) ? page.geometry.baseHeight : app.PAGE_H;
+    const scale = viewportCtx.cssScale || 1;
+    const top = viewportCtx.zoomWrapTop + (baseTop + viewportCtx.paperOffsetY) * scale;
+    const height = baseHeight * scale;
+    const bottom = top + height;
+    return { top, bottom, height };
+  }
 
   function prepareCanvas(canvas) {
     canvas.width = Math.floor(app.PAGE_W * getRenderScale());
@@ -81,10 +206,15 @@ export function createPageLifecycleController(context, editingController) {
       grainCanvas: null,
       grainForSize: { w: 0, h: 0, key: null },
       zoomPreparedFor: state.zoom || 1,
+      geometry: { baseTop: 0, baseHeight: app.PAGE_H, dirty: true },
     };
     const handler = (e) => handlePageClick(e, idx);
     pageEl.addEventListener('mousedown', handler, { capture: false });
     canvas.addEventListener('mousedown', handler, { capture: false });
+    if (pageResizeObserver && wrapEl) {
+      try { pageResizeObserver.observe(wrapEl); } catch {}
+    }
+    pageByWrap.set(wrapEl, page);
     return page;
   }
 
@@ -107,6 +237,7 @@ export function createPageLifecycleController(context, editingController) {
     const page = makePageRecord(idx, wrap, pageEl, canvas, mb);
     page.canvas.style.visibility = 'hidden';
     state.pages.push(page);
+    markPageGeometryDirty(page);
     renderMargins();
     requestVirtualization();
     return page;
@@ -120,6 +251,7 @@ export function createPageLifecycleController(context, editingController) {
     page.canvas.style.visibility = 'hidden';
     page.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
     state.pages.push(page);
+    markPageGeometryDirty(page);
   }
 
   function resetPagesBlankPreserveSettings() {
@@ -145,6 +277,7 @@ export function createPageLifecycleController(context, editingController) {
     const page = makePageRecord(0, wrap, pageEl, canvas, marginBoxEl);
     page.canvas.style.visibility = 'hidden';
     state.pages.push(page);
+    markPageGeometryDirty(page);
     renderMargins();
     requestVirtualization();
   }
@@ -242,6 +375,7 @@ export function createPageLifecycleController(context, editingController) {
   function visibleWindowIndices() {
     if (!state.pages.length) return [0, 0];
     const sp = app.stage.getBoundingClientRect();
+    const viewportCtx = computeViewportContext();
     const viewTop = sp.top;
     const viewBottom = sp.bottom;
     const rawViewHeight = viewBottom - viewTop;
@@ -273,7 +407,7 @@ export function createPageLifecycleController(context, editingController) {
     for (let i = 0; i < state.pages.length; i++) {
       const page = state.pages[i];
       if (!page?.wrapEl) continue;
-      const r = page.wrapEl.getBoundingClientRect();
+      const r = getPageViewportRect(page, viewportCtx);
       const mid = (r.top + r.bottom) / 2;
       const d = Math.abs(mid - scrollCenterY);
       if (d < bestDist) {
