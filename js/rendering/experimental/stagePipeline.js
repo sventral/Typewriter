@@ -31,6 +31,11 @@ const SPECK_NOISE_WEIGHT_SUM = SPECK_NOISE_OCTAVES.reduce((sum, octave) => sum +
 
 const MIN_DETAIL_DENSITY_CSS = 2;
 const DETAIL_MULTIPLIER = 2.6;
+const DEFAULT_DETAIL_RESOLUTION = Object.freeze({
+  threshold: 2.5,
+  scale: 0.5,
+  stages: Object.freeze(['dropouts', 'texture', 'fuzz', 'smudge']),
+});
 const SPECK_SUBPIXEL_OFFSETS = Object.freeze([
   [0.1666667, 0.1666667],
   [0.6666667, 0.1666667],
@@ -51,6 +56,215 @@ const ensureDetailDensity = ctx => {
 };
 
 const getDetailDensityCss = (ctx, boost = 1) => ensureDetailDensity(ctx).css * boost;
+
+const clampScale = (value, minValue, maxValue) =>
+  Number.isFinite(value) ? clamp(value, minValue, maxValue) : maxValue;
+
+const normalizeDetailResolutionConfig = raw => {
+  if (raw === false) return null;
+  const source = raw && typeof raw === 'object' ? raw : DEFAULT_DETAIL_RESOLUTION;
+  const threshold = Number.isFinite(source.threshold)
+    ? max(0, source.threshold)
+    : DEFAULT_DETAIL_RESOLUTION.threshold;
+  const scale = clampScale(source.scale, 0.1, 1);
+  if (scale >= 0.999) {
+    return {
+      threshold,
+      scale: 1,
+      stages: new Set(),
+    };
+  }
+  const stagesArray = Array.isArray(source.stages) && source.stages.length
+    ? source.stages
+    : DEFAULT_DETAIL_RESOLUTION.stages;
+  const stageSet = new Set();
+  stagesArray.forEach(stage => {
+    if (typeof stage === 'string' && stage) {
+      stageSet.add(stage);
+    }
+  });
+  if (!stageSet.size) {
+    DEFAULT_DETAIL_RESOLUTION.stages.forEach(stage => stageSet.add(stage));
+  }
+  return {
+    threshold,
+    scale,
+    stages: stageSet,
+  };
+};
+
+const sampleBilinear = (data, width, height, x, y) => {
+  if (!data || width <= 0 || height <= 0) return 0;
+  const x0 = clamp(floor(x), 0, width - 1);
+  const y0 = clamp(floor(y), 0, height - 1);
+  const x1 = clamp(x0 + 1, 0, width - 1);
+  const y1 = clamp(y0 + 1, 0, height - 1);
+  const tx = clamp01(x - x0);
+  const ty = clamp01(y - y0);
+  const i00 = y0 * width + x0;
+  const i10 = y0 * width + x1;
+  const i01 = y1 * width + x0;
+  const i11 = y1 * width + x1;
+  const v00 = data[i00] ?? 0;
+  const v10 = data[i10] ?? v00;
+  const v01 = data[i01] ?? v00;
+  const v11 = data[i11] ?? v01;
+  const nx0 = lerp(v00, v10, tx);
+  const nx1 = lerp(v01, v11, tx);
+  return lerp(nx0, nx1, ty);
+};
+
+const downsampleUint8 = (data, width, height, scale) => {
+  const dw = max(1, round(width * scale));
+  const dh = max(1, round(height * scale));
+  if (dw === width && dh === height) {
+    return { data: new Uint8Array(data), width, height };
+  }
+  const result = new Uint8Array(dw * dh);
+  const scaleX = width / dw;
+  const scaleY = height / dh;
+  for (let y = 0; y < dh; y++) {
+    const srcY = (y + 0.5) * scaleY - 0.5;
+    for (let x = 0; x < dw; x++) {
+      const srcX = (x + 0.5) * scaleX - 0.5;
+      const value = sampleBilinear(data, width, height, srcX, srcY);
+      result[y * dw + x] = clamp(round(value), 0, 255);
+    }
+  }
+  return { data: result, width: dw, height: dh };
+};
+
+const downsampleFloat = (data, width, height, scale, scaleValues = false) => {
+  const dw = max(1, round(width * scale));
+  const dh = max(1, round(height * scale));
+  if (dw === width && dh === height) {
+    const clone = new Float32Array(data.length);
+    clone.set(data);
+    if (scaleValues && scale !== 1) {
+      for (let i = 0; i < clone.length; i++) clone[i] *= scale;
+    }
+    return { data: clone, width, height };
+  }
+  const result = new Float32Array(dw * dh);
+  const scaleX = width / dw;
+  const scaleY = height / dh;
+  for (let y = 0; y < dh; y++) {
+    const srcY = (y + 0.5) * scaleY - 0.5;
+    for (let x = 0; x < dw; x++) {
+      const srcX = (x + 0.5) * scaleX - 0.5;
+      let value = sampleBilinear(data, width, height, srcX, srcY);
+      if (scaleValues) value *= scale;
+      result[y * dw + x] = value;
+    }
+  }
+  return { data: result, width: dw, height: dh };
+};
+
+const applyLowResDeltaToCoverage = (
+  coverage,
+  baseWidth,
+  baseHeight,
+  lowAfter,
+  lowBefore,
+  lowWidth,
+  lowHeight,
+  clamp01Fn,
+) => {
+  const total = lowAfter.length;
+  const delta = new Float32Array(total);
+  for (let i = 0; i < total; i++) delta[i] = lowAfter[i] - lowBefore[i];
+  const scaleX = lowWidth / baseWidth;
+  const scaleY = lowHeight / baseHeight;
+  const clampCoverage = typeof clamp01Fn === 'function' ? clamp01Fn : clamp01;
+  for (let y = 0; y < baseHeight; y++) {
+    const srcY = (y + 0.5) * scaleY - 0.5;
+    for (let x = 0; x < baseWidth; x++) {
+      const srcX = (x + 0.5) * scaleX - 0.5;
+      const deltaSample = sampleBilinear(delta, lowWidth, lowHeight, srcX, srcY);
+      const idx = y * baseWidth + x;
+      coverage[idx] = clampCoverage(coverage[idx] + deltaSample);
+    }
+  }
+};
+
+const createDetailResolutionContext = (ctx, coverage, scale) => {
+  if (!ctx || !coverage) return null;
+  const { w, h, alpha0, dm } = ctx;
+  if (!w || !h) return null;
+  const dw = max(1, round(w * scale));
+  const dh = max(1, round(h * scale));
+  if (dw === w && dh === h) return null;
+
+  const coverageLow = downsampleFloat(coverage, w, h, scale).data;
+  const coverageBefore = coverageLow.slice();
+  const alphaResult = alpha0 ? downsampleUint8(alpha0, w, h, scale) : null;
+
+  let detailDm = null;
+  if (dm && dm.raw) {
+    const inside = dm.raw.inside;
+    const outside = dm.raw.outside;
+    const insideResult = inside ? downsampleFloat(inside, w, h, scale, true) : null;
+    const outsideResult = outside ? downsampleFloat(outside, w, h, scale, true) : null;
+    let maxInside = 0;
+    if (insideResult && insideResult.data) {
+      const arr = insideResult.data;
+      for (let i = 0; i < arr.length; i++) {
+        if (arr[i] > maxInside) maxInside = arr[i];
+      }
+    } else if (typeof dm.getMaxInside === 'function') {
+      maxInside = (dm.getMaxInside() || 0) * scale;
+    }
+    detailDm = {
+      getInside: idx => (insideResult?.data ? insideResult.data[idx] : 0),
+      getOutside: idx => (outsideResult?.data ? outsideResult.data[idx] : 0),
+      getMaxInside: () => maxInside,
+      raw: {
+        inside: insideResult?.data || null,
+        outside: outsideResult?.data || null,
+      },
+    };
+  }
+
+  const detailCtx = { ...ctx };
+  detailCtx.w = dw;
+  detailCtx.h = dh;
+  detailCtx.alpha0 = alphaResult?.data || new Uint8Array(dw * dh);
+  detailCtx.dpPerCss = max(1e-6, (ctx.dpPerCss || 1) * scale);
+  detailCtx.__detailDensity = undefined;
+  if (detailDm) detailCtx.dm = detailDm;
+
+  return { detailCtx, coverageLow, coverageBefore, lowWidth: dw, lowHeight: dh };
+};
+
+const shouldRunDetailStageLowRes = (stageId, ctx, config) => {
+  if (!config || !config.stages || !config.stages.size) return false;
+  if (!config.stages.has(stageId)) return false;
+  if (!ctx || !ctx.w || !ctx.h) return false;
+  const dpPerCss = Math.max(1e-6, ctx.dpPerCss || 1);
+  if (dpPerCss < config.threshold) return false;
+  if (config.scale >= 0.999) return false;
+  if (ctx.w <= 2 || ctx.h <= 2) return false;
+  return true;
+};
+
+const runDetailStageAtResolution = (stageFn, coverage, ctx, config, clamp01Fn) => {
+  const detail = createDetailResolutionContext(ctx, coverage, config.scale);
+  if (!detail) {
+    stageFn(coverage, ctx);
+    return;
+  }
+  stageFn(detail.coverageLow, detail.detailCtx);
+  applyLowResDeltaToCoverage(
+    coverage,
+    ctx.w,
+    ctx.h,
+    detail.coverageLow,
+    detail.coverageBefore,
+    detail.lowWidth,
+    detail.lowHeight,
+    clamp01Fn,
+  );
+};
 
 const sampleSpeckValueNoise = (hash2Fn, x, y, seed) => {
   const xi = floor(x);
@@ -118,6 +332,10 @@ export function createExperimentalStagePipeline(deps = {}) {
 
   const detailNoiseCache =
     deps.detailNoiseCache || globalDetailNoiseCache || createDetailNoiseCache({ noise2: noise2Fn });
+  const hasDetailConfig = Object.prototype.hasOwnProperty.call(deps, 'detailResolution');
+  const detailResolutionConfig = normalizeDetailResolutionConfig(
+    hasDetailConfig ? deps.detailResolution : undefined,
+  );
 
   function applyFillAdjustments(coverage, ctx) {
     const { w, h, alpha0, params, seed, gix, smul } = ctx;
@@ -493,9 +711,13 @@ function applySmudgeHalo(coverage, ctx) {
   };
 
   const runPipeline = (coverage, ctx, order = GLYPH_PIPELINE_ORDER) => {
-    for (const id of order) {
+    const stages = Array.isArray(order) && order.length ? order : GLYPH_PIPELINE_ORDER;
+    for (const id of stages) {
       const fn = stageRegistry[id];
-      if (typeof fn === 'function') {
+      if (typeof fn !== 'function') continue;
+      if (detailResolutionConfig && shouldRunDetailStageLowRes(id, ctx, detailResolutionConfig)) {
+        runDetailStageAtResolution(fn, coverage, ctx, detailResolutionConfig, clamp01Fn);
+      } else {
         fn(coverage, ctx);
       }
     }
