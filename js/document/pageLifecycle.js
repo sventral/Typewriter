@@ -211,10 +211,10 @@ export function createPageLifecycleController(context, editingController) {
     const handler = (e) => handlePageClick(e, idx);
     pageEl.addEventListener('mousedown', handler, { capture: false });
     canvas.addEventListener('mousedown', handler, { capture: false });
-    if (pageResizeObserver && wrap) {
-      try { pageResizeObserver.observe(wrap); } catch {}
+    if (pageResizeObserver && wrapEl) {
+      try { pageResizeObserver.observe(wrapEl); } catch {}
     }
-    pageByWrap.set(wrap, page);
+    pageByWrap.set(wrapEl, page);
     return page;
   }
 
