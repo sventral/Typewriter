@@ -54,11 +54,17 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
+  let zoomMeasurementsDirty = true;
   let zoomMeasurementsObserver = null;
 
-  function refreshZoomMeasurements() {
+  function refreshZoomMeasurements({ force = false } = {}) {
+    if (!force && !zoomMeasurementsDirty && zoomMeasurements && Number.isFinite(zoomMeasurements.height) && zoomMeasurements.height > 0) {
+      return zoomMeasurements;
+    }
+    zoomMeasurementsDirty = false;
     if (!app.zoomTrack) {
       zoomMeasurements = null;
+      zoomMeasurementsDirty = true;
       return null;
     }
     const trackRect = app.zoomTrack.getBoundingClientRect();
@@ -72,21 +78,27 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   }
 
   function ensureZoomMeasurements() {
-    if (!zoomMeasurements || !Number.isFinite(zoomMeasurements.height) || zoomMeasurements.height <= 0) {
+    if (zoomMeasurementsDirty || !zoomMeasurements || !Number.isFinite(zoomMeasurements.height) || zoomMeasurements.height <= 0) {
       return refreshZoomMeasurements();
     }
     return zoomMeasurements;
   }
 
+  function markZoomMeasurementsDirty() {
+    zoomMeasurementsDirty = true;
+  }
+
   function setupZoomMeasurementTracking() {
     if (!app.zoomTrack) {
       zoomMeasurements = null;
+      markZoomMeasurementsDirty();
       return;
     }
-    refreshZoomMeasurements();
+    refreshZoomMeasurements({ force: true });
     if (typeof ResizeObserver !== 'function' || zoomMeasurementsObserver) return;
     zoomMeasurementsObserver = new ResizeObserver(() => {
-      refreshZoomMeasurements();
+      markZoomMeasurementsDirty();
+      refreshZoomMeasurements({ force: true });
       updateZoomUIFromState();
     });
     zoomMeasurementsObserver.observe(app.zoomTrack);
