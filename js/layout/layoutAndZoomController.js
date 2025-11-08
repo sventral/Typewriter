@@ -154,14 +154,21 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     return Number.isFinite(span) && span > 0 ? span : app.PAGE_H;
   }
 
+  function effectiveZoomScale() {
+    const scale = cssScaleFactor();
+    return Number.isFinite(scale) && scale > 1 ? scale : 1;
+  }
+
   function hammerAllowanceX() {
     const span = documentHorizontalSpanPx();
-    return Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_W / 2;
+    const allowance = Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_W / 2;
+    return allowance * effectiveZoomScale();
   }
 
   function hammerAllowanceY() {
     const span = documentVerticalSpanPx();
-    return Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_H / 2;
+    const allowance = Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_H / 2;
+    return allowance * effectiveZoomScale();
   }
 
   function clampPaperOffset(x, y) {
@@ -754,7 +761,17 @@ const normFromZ = (pct) => {
 
   function setZoomPercent(pct) {
     const z = detent(Math.round(Math.max(Z_MIN, Math.min(Z_MAX, pct))));
-    state.zoom = z / 100;
+    const prevZoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+    const nextZoom = z / 100;
+    const prevOffsetX = state.paperOffset.x;
+    const prevOffsetY = state.paperOffset.y;
+    state.zoom = nextZoom;
+    if (prevZoom > 0 && Number.isFinite(prevOffsetX) && Number.isFinite(prevOffsetY)) {
+      const ratio = prevZoom / nextZoom;
+      if (Number.isFinite(ratio) && Math.abs(ratio - 1) > 1e-6) {
+        setPaperOffset(prevOffsetX * ratio, prevOffsetY * ratio);
+      }
+    }
     if (isSafari && !getZooming()) stageLayoutSetSafariZoomMode('steady', { force: true });
     applyZoomCSS();
     reanchorCaretAfterZoomChange();
