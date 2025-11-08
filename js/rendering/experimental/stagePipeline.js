@@ -15,6 +15,7 @@ import {
   mulberry32,
   signOf,
 } from './textureMath.js';
+import { createDetailNoiseCache, globalDetailNoiseCache } from './detailNoiseCache.js';
 
 const { min, max, abs, floor, ceil, round, sin, cos, pow } = Math;
 
@@ -115,6 +116,9 @@ export function createExperimentalStagePipeline(deps = {}) {
     sign: signFn = signOf,
   } = deps;
 
+  const detailNoiseCache =
+    deps.detailNoiseCache || globalDetailNoiseCache || createDetailNoiseCache({ noise2: noise2Fn });
+
   function applyFillAdjustments(coverage, ctx) {
     const { w, h, alpha0, params, seed, gix, smul } = ctx;
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
@@ -130,6 +134,28 @@ export function createExperimentalStagePipeline(deps = {}) {
     const rimEn = !!params.enable.rim;
     const rPhase = (params.ribbon.phase + (gix % 37) * 0.25) % tauConst;
     const rhythm = 1 + 0.08 * sin((gix % 23) / 23 * tauConst);
+    const baseTile = detailNoiseCache.getTile({
+      detailCss,
+      width: w,
+      height: h,
+      dpPerCss,
+      scale: lfScale,
+      seed,
+      xOffset: (gix || 0) * 13,
+      yOffset: (gix || 0) * 7,
+    });
+    const microTile = detailNoiseCache.getTile({
+      detailCss,
+      width: w,
+      height: h,
+      dpPerCss,
+      scale: hfScale,
+      seed: seed ^ 0xA5A5A5A5,
+      xMul: 1.7,
+      yMul: 1.3,
+      xOffset: seed,
+      yOffset: -seed,
+    });
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
@@ -137,8 +163,8 @@ export function createExperimentalStagePipeline(deps = {}) {
         const yCss = y * invDp;
         const a = alpha0[i] / 255;
         const e = edgeMaskFn(alpha0, w, h, x, y);
-        const p = noise2Fn(xCss + gix * 13, yCss + gix * 7, lfScale, seed);
-        const m = noise2Fn(xCss * 1.7 + seed, yCss * 1.3 - seed, hfScale, seed ^ 0xA5A5A5A5);
+        const p = baseTile.data[i];
+        const m = microTile.data[i];
         const rBand = ribbonShapeFn(yCss, periodPx, params.ribbon.sharp, rPhase);
         let press = toneCoreEn ? params.ink.pressureMid + params.ink.pressureVar * (p - 0.5) * 2 : 1;
         press = clampFn(press, 0.05, 1.6);
@@ -173,6 +199,14 @@ export function createExperimentalStagePipeline(deps = {}) {
     const dropScalePx = max(2 / detailCss, (params.dropouts.scale * smul) / detailCss);
     const dropThr = 1 - clamp01Fn(params.dropouts.streakDensity);
     const dropPw = clamp01Fn(params.dropouts.pinholeWeight);
+    const dropoutTile = detailNoiseCache.getTile({
+      detailCss,
+      width: w,
+      height: h,
+      dpPerCss,
+      scale: dropScalePx,
+      seed: seed ^ 0x51F1F1F1,
+    });
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
@@ -180,7 +214,7 @@ export function createExperimentalStagePipeline(deps = {}) {
         const band = inside ? clamp01Fn(1 - ((inside[i] || 0) / widthPx)) : 0;
         const xCss = x * invDp;
         const yCss = y * invDp;
-        const nlf = noise2Fn(xCss, yCss, dropScalePx, seed ^ 0x51F1F1F1);
+        const nlf = dropoutTile.data[i];
         const streak = (nlf > dropThr ? 1 : 0) * band;
         const nhf = hash2Fn(
           floor(xCss * detailCss * 3 + 7),
@@ -357,6 +391,15 @@ export function createExperimentalStagePipeline(deps = {}) {
     const inside = dm?.raw?.inside;
     const outside = dm?.raw?.outside;
     const detailCss = getDetailDensityCss(ctx);
+    const ns = max(2 / detailCss, ((cfg.scale || 2) * smul) / detailCss);
+    const fuzzTile = detailNoiseCache.getTile({
+      detailCss,
+      width: w,
+      height: h,
+      dpPerCss,
+      scale: ns,
+      seed: seed ^ 0x0F0F0F0F,
+    });
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
@@ -369,10 +412,9 @@ export function createExperimentalStagePipeline(deps = {}) {
           covF = max(covF, clamp01Fn(1 - ((outside[i] || 0) / (cfg.outBand * smul * dpPerCss))));
         }
         if (covF > 0) {
-          const ns = max(2 / detailCss, ((cfg.scale || 2) * smul) / detailCss);
           const xCss = x * invDp;
           const yCss = y * invDp;
-          const vNoise = noise2Fn(xCss, yCss, ns, seed ^ 0x0F0F0F0F);
+          const vNoise = fuzzTile.data[i];
           const vHash = hash2Fn(
             floor(xCss * detailCss),
             floor(yCss * detailCss),
@@ -403,6 +445,14 @@ function applySmudgeHalo(coverage, ctx) {
   const ns = Math.max(2 / detailCss, (s.scale * smul) / detailCss);
   const theta = (s.dirDeg || 0) * (Math.PI / 180); // ← fix
   const dir = [Math.cos(theta), Math.sin(theta)];
+  const smudgeTile = detailNoiseCache.getTile({
+    detailCss,
+    width: w,
+    height: h,
+    dpPerCss,
+    scale: ns,
+    seed: seed ^ 0xDEADC0DE,
+  });
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -414,7 +464,7 @@ function applySmudgeHalo(coverage, ctx) {
 
       const xCss = x * invDp;
       const yCss = y * invDp;
-      const n = noise2Fn(xCss, yCss, ns, seed ^ 0xDEADC0DE);
+      const n = smudgeTile.data[i];
       const gate = Math.max(0, (n - (1 - s.density)) * (1 / (s.density + 1e-4)));
 
       const g = gradOutFn(outside, w, h, x, y);
