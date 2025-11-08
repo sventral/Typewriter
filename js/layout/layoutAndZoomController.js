@@ -747,10 +747,23 @@ const normFromZ = (pct) => {
     scheduleZoomRedrawFrame(processBatch);
   }
 
+  function zoomRedrawDebounceDelay() {
+    const BASE_DELAY_MS = 160;
+    const MIN_DELAY_MS = 60;
+    const pageCount = Array.isArray(state.pages) ? state.pages.length : 0;
+    if (!pageCount) return BASE_DELAY_MS;
+    const docSpan = documentVerticalSpanPx();
+    const approxPages = Number.isFinite(docSpan) && docSpan > 0 ? docSpan / app.PAGE_H : pageCount;
+    const reduction = Math.min(90, Math.max(0, (approxPages - 1) * 12));
+    const adjusted = BASE_DELAY_MS - reduction;
+    return adjusted > MIN_DELAY_MS ? adjusted : MIN_DELAY_MS;
+  }
+
   function scheduleZoomCrispRedraw() {
     const existing = getZoomDebounceTimer();
     if (existing) clearTimeout(existing);
     clearPendingZoomRedrawFrame();
+    const debounceDelay = zoomRedrawDebounceDelay();
     const timer = setTimeout(() => {
       setZoomDebounceTimer(null);
       if (getZooming()) {
@@ -762,7 +775,7 @@ const normFromZ = (pct) => {
       setRenderScaleForZoom();
       if (isSafari) stageLayoutSetSafariZoomMode('steady', { force: true });
       runBatchedZoomRedraw();
-    }, 160);
+    }, debounceDelay);
     setZoomDebounceTimer(timer);
   }
 
