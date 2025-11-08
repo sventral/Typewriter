@@ -261,7 +261,7 @@ export function createPageLifecycleController(context, editingController) {
     const currentOffsetY = Number.isFinite(state.paperOffset?.y) ? state.paperOffset.y : 0;
     const deltaOffset = currentOffsetY - lastPaperOffsetY;
     if (Math.abs(deltaOffset) > 0.1) {
-      lastScrollDirection = deltaOffset > 0 ? 1 : -1;
+      lastScrollDirection = deltaOffset < 0 ? 1 : -1;
     }
     lastPaperOffsetY = currentOffsetY;
 
