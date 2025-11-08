@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node scripts/serve.js",
     "build": "echo \"Static site – nothing to build.\"",
-    "test": "echo \"No automated tests are configured yet.\""
+    "test": "node js/rendering/experimental/detailNoiseCache.test.js && node js/rendering/experimental/stagePipeline.test.js"
   },
   "dependencies": {},
   "devDependencies": {},
