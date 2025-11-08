@@ -21,6 +21,7 @@ export function computeBaseMetrics(app) {
   const DESC = 0;
   const CHAR_W = 0;
   const BASELINE_OFFSET_CELL = 0;
+  const RENDER_SUPERSAMPLE = 1;
 
   return {
     PAGE_W_CSS,
@@ -32,6 +33,7 @@ export function computeBaseMetrics(app) {
     COLORS,
     STORAGE_KEY,
     RENDER_SCALE,
+    RENDER_SUPERSAMPLE,
     FONT_FAMILY,
     FONT_SIZE,
     ASC,

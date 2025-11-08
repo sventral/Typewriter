@@ -567,6 +567,8 @@ context.controllers.layoutAndZoom = createLayoutAndZoomController(
     configureCanvasContext,
     schedulePaint,
     rebuildAllAtlases,
+    getRenderScale: () => metricsStore.RENDER_SCALE,
+    getRenderSupersample: () => metricsStore.RENDER_SUPERSAMPLE,
     setFreezeVirtual: (value) => { freezeVirtual = value; },
     getZooming: () => zooming,
     setZooming: (value) => { zooming = value; },

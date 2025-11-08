@@ -18,6 +18,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     configureCanvasContext,
     schedulePaint,
     rebuildAllAtlases,
+    getRenderScale,
+    getRenderSupersample,
     setFreezeVirtual,
     getZooming,
     setZooming,
@@ -51,6 +53,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let pendingRulerRAF2 = 0;
   let lastRulerSnapshot = null;
   let cachedRulerHostSize = { width: 0, height: 0 };
+  let lastZoomRenderScale = null;
+  let lastZoomSupersample = null;
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
@@ -666,6 +670,28 @@ const normFromZ = (pct) => {
   }
 
   function runBatchedZoomRedraw() {
+    const currentScale = typeof getRenderScale === 'function' ? getRenderScale() : null;
+    const currentSupersample = typeof getRenderSupersample === 'function'
+      ? getRenderSupersample()
+      : null;
+    const numbersClose = (a, b) => {
+      if (a === b) return true;
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+      return Math.abs(a - b) <= Math.max(1, Math.abs(a), Math.abs(b)) * 1e-4;
+    };
+    const scaleChanged = !numbersClose(currentScale, lastZoomRenderScale)
+      || !numbersClose(currentSupersample, lastZoomSupersample);
+
+    if (!scaleChanged) {
+      setFreezeVirtual(false);
+      requestHammerNudge();
+      if (isSafari) syncSafariZoomLayout(true);
+      return;
+    }
+
+    lastZoomRenderScale = currentScale;
+    lastZoomSupersample = currentSupersample;
+
     const seen = new Set();
     const priority = [];
     const rest = [];
