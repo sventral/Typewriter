@@ -829,6 +829,9 @@ function computeMaxRenderScale(){
   return Math.max(1, Math.min(limitW, limitH));
 }
 
+let lastRenderScaleForZoom = null;
+let lastRenderSupersampleForZoom = null;
+
 function setRenderScaleForZoom(){
   const zoom = Math.max(1, Math.min(state.zoom || 1, 4));
   const baseScale = DPR * zoom;
@@ -844,12 +847,25 @@ function setRenderScaleForZoom(){
   const renderScale = headroom >= 1
     ? Math.min(maxScale, baseScale * appliedSupersample)
     : maxScale;
+  const numbersClose = (a, b) => {
+    if (a === b) return true;
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+    const span = Math.max(1, Math.abs(a), Math.abs(b));
+    return Math.abs(a - b) <= span * 1e-4;
+  };
+  const scaleChanged = !numbersClose(renderScale, lastRenderScaleForZoom)
+    || !numbersClose(appliedSupersample, lastRenderSupersampleForZoom);
   metricsStore.RENDER_SCALE = renderScale;
   metricsStore.RENDER_SUPERSAMPLE = appliedSupersample;
+  if (scaleChanged) {
+    lastRenderScaleForZoom = renderScale;
+    lastRenderSupersampleForZoom = appliedSupersample;
+  }
   const desired = baseScale * zoomSupersampleTarget;
   const shortfall = desired > 0 ? desired / Math.max(renderScale, 1) : 1;
   const shouldCrisp = zoom >= HIGH_ZOOM_CSS_THRESHOLD && shortfall > 1.15;
   toggleStageCrispClass(shouldCrisp);
+  return scaleChanged;
 }
 function prewarmFontFace(face){
   const px = Math.max(12, Math.ceil(getTargetPitchPx()));

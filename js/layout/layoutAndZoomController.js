@@ -751,8 +751,17 @@ const normFromZ = (pct) => {
         return;
       }
       setZooming(false);
+      const scaleChanged = setRenderScaleForZoom();
+      if (!scaleChanged) {
+        setFreezeVirtual(false);
+        if (isSafari) {
+          syncSafariZoomLayout(true);
+          stageLayoutSetSafariZoomMode('steady', { force: true });
+        }
+        requestHammerNudge();
+        return;
+      }
       requestHammerNudge();
-      setRenderScaleForZoom();
       if (isSafari) stageLayoutSetSafariZoomMode('steady', { force: true });
       runBatchedZoomRedraw();
     }, 160);
