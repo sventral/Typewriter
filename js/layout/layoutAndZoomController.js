@@ -754,7 +754,17 @@ const normFromZ = (pct) => {
 
   function setZoomPercent(pct) {
     const z = detent(Math.round(Math.max(Z_MIN, Math.min(Z_MAX, pct))));
-    state.zoom = z / 100;
+    const prevZoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+    const nextZoom = z / 100;
+    const prevOffsetX = state.paperOffset.x;
+    const prevOffsetY = state.paperOffset.y;
+    state.zoom = nextZoom;
+    if (prevZoom > 0 && Number.isFinite(prevOffsetX) && Number.isFinite(prevOffsetY)) {
+      const ratio = prevZoom / nextZoom;
+      if (Number.isFinite(ratio) && Math.abs(ratio - 1) > 1e-6) {
+        setPaperOffset(prevOffsetX * ratio, prevOffsetY * ratio);
+      }
+    }
     if (isSafari && !getZooming()) stageLayoutSetSafariZoomMode('steady', { force: true });
     applyZoomCSS();
     reanchorCaretAfterZoomChange();
