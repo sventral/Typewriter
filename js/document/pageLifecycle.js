@@ -176,8 +176,79 @@ export function createPageLifecycleController(context, editingController) {
     positionRulers();
   }
 
+  let lastScrollFocusIndex = 0;
+
   function effectiveVirtualPad() {
-    return state.zoom >= 3 ? 0 : 1;
+    return state.zoom >= 2 ? 0 : 1;
+  }
+
+  function clampIndex(idx) {
+    if (!Number.isInteger(idx)) return 0;
+    if (!state.pages.length) return 0;
+    return Math.max(0, Math.min(state.pages.length - 1, idx));
+  }
+
+  function getAnchorIndex() {
+    if (Number.isInteger(app.activePageIndex)) return clampIndex(app.activePageIndex);
+    if (Number.isInteger(state.caret?.page)) return clampIndex(state.caret.page);
+    return clampIndex(lastScrollFocusIndex);
+  }
+
+  function limitWindowForHighZoom(i0, i1) {
+    const zoom = state.zoom || 1;
+    if (zoom < 2 || !state.pages.length) return [i0, i1];
+    const maxPad = zoom >= 3 ? 0 : 1;
+    const maxSpan = Math.max(0, maxPad * 2);
+    if ((i1 - i0) <= maxSpan) return [i0, i1];
+    const last = state.pages.length - 1;
+    let anchor = clamp(getAnchorIndex(), i0, i1);
+    if (!Number.isInteger(anchor)) anchor = clampIndex(i0);
+    const anchorBase = anchor;
+    let start = anchor;
+    let end = anchor;
+    while ((end - start) < maxSpan) {
+      const canExpandLeft = start > i0;
+      const canExpandRight = end < i1;
+      if (!canExpandLeft && !canExpandRight) break;
+      if (canExpandLeft && canExpandRight) {
+        const leftGap = anchorBase - start;
+        const rightGap = end - anchorBase;
+        if (rightGap <= leftGap) {
+          end++;
+        } else {
+          start--;
+        }
+      } else if (canExpandRight) {
+        end++;
+      } else if (canExpandLeft) {
+        start--;
+      }
+      if ((end - start) >= maxSpan) break;
+    }
+    start = Math.max(0, Math.min(start, last));
+    end = Math.max(start, Math.min(end, last));
+    return [start, end];
+  }
+
+  function applyActiveWindow(i0, i1) {
+    if (!state.pages.length) return;
+    const last = state.pages.length - 1;
+    const start = Math.max(0, Math.min(i0, i1));
+    const end = Math.max(start, Math.min(last, Math.max(i0, i1)));
+    for (let i = 0; i < state.pages.length; i++) {
+      setPageActive(state.pages[i], i >= start && i <= end);
+    }
+  }
+
+  function getForcedZoomWindow() {
+    if (!state.pages.length) return null;
+    const zoom = state.zoom || 1;
+    if (zoom < 2) return null;
+    const pad = zoom >= 3 ? 0 : 1;
+    const anchor = getAnchorIndex();
+    const start = Math.max(0, Math.min(state.pages.length - 1, anchor - pad));
+    const end = Math.max(start, Math.min(state.pages.length - 1, anchor + pad));
+    return [start, end];
   }
 
   function setPageActive(page, active) {
@@ -217,25 +288,33 @@ export function createPageLifecycleController(context, editingController) {
         bestIdx = i;
       }
     }
+    lastScrollFocusIndex = bestIdx;
     const pad = effectiveVirtualPad();
     let i0 = Math.max(0, bestIdx - pad);
     let i1 = Math.min(state.pages.length - 1, bestIdx + pad);
     const cp = state.caret.page;
     i0 = Math.min(i0, cp);
     i1 = Math.max(i1, cp);
-    return [i0, i1];
+    return limitWindowForHighZoom(i0, i1);
   }
 
   function updateVirtualization() {
-    if (getFreezeVirtual()) {
+    if (state.pages.length === 0) return;
+    const freezeVirtual = getFreezeVirtual();
+    const zoom = state.zoom || 1;
+    if (freezeVirtual && zoom >= 2) {
+      const forced = getForcedZoomWindow();
+      if (forced) {
+        applyActiveWindow(forced[0], forced[1]);
+        return;
+      }
+    }
+    if (freezeVirtual) {
       for (let i = 0; i < state.pages.length; i++) setPageActive(state.pages[i], true);
       return;
     }
-    if (state.pages.length === 0) return;
     const [i0, i1] = visibleWindowIndices();
-    for (let i = 0; i < state.pages.length; i++) {
-      setPageActive(state.pages[i], i >= i0 && i <= i1);
-    }
+    applyActiveWindow(i0, i1);
   }
 
   function requestVirtualization() {
