@@ -154,14 +154,21 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     return Number.isFinite(span) && span > 0 ? span : app.PAGE_H;
   }
 
+  function effectiveZoomScale() {
+    const scale = cssScaleFactor();
+    return Number.isFinite(scale) && scale > 1 ? scale : 1;
+  }
+
   function hammerAllowanceX() {
     const span = documentHorizontalSpanPx();
-    return Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_W / 2;
+    const allowance = Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_W / 2;
+    return allowance * effectiveZoomScale();
   }
 
   function hammerAllowanceY() {
     const span = documentVerticalSpanPx();
-    return Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_H / 2;
+    const allowance = Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_H / 2;
+    return allowance * effectiveZoomScale();
   }
 
   function clampPaperOffset(x, y) {
