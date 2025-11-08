@@ -244,6 +244,19 @@ export function createPageLifecycleController(context, editingController) {
     const sp = app.stage.getBoundingClientRect();
     const viewTop = sp.top;
     const viewBottom = sp.bottom;
+    const rawViewHeight = viewBottom - viewTop;
+    const viewportHeight = (typeof window !== 'undefined' && Number.isFinite(window.innerHeight))
+      ? window.innerHeight
+      : rawViewHeight;
+    let padBase = Number.isFinite(viewportHeight) && viewportHeight > 0
+      ? viewportHeight
+      : rawViewHeight;
+    if (!Number.isFinite(padBase) || padBase <= 0) {
+      padBase = Number.isFinite(app.PAGE_H) ? app.PAGE_H : 0;
+    }
+    const viewPadding = Math.max(48, padBase * 0.15);
+    const paddedTop = viewTop - viewPadding;
+    const paddedBottom = viewBottom + viewPadding;
     const scrollCenterY = (viewTop + viewBottom) / 2;
     const currentOffsetY = Number.isFinite(state.paperOffset?.y) ? state.paperOffset.y : 0;
     const deltaOffset = currentOffsetY - lastPaperOffsetY;
@@ -267,7 +280,7 @@ export function createPageLifecycleController(context, editingController) {
         bestDist = d;
         bestIdx = i;
       }
-      const overlap = Math.max(0, Math.min(r.bottom, viewBottom) - Math.max(r.top, viewTop));
+      const overlap = Math.max(0, Math.min(r.bottom, paddedBottom) - Math.max(r.top, paddedTop));
       if (overlap > 0) {
         visibleCandidates.push({ index: i, overlap });
         overlapByIndex.set(i, overlap);
@@ -327,6 +340,11 @@ export function createPageLifecycleController(context, editingController) {
       end = Math.max(start, Math.min(end, lastIndex));
       prevScrollFocusIndex = lastScrollFocusIndex;
       lastScrollFocusIndex = targetIdx;
+      if (lastScrollDirection > 0 && end < lastIndex) {
+        end = Math.min(lastIndex, end + 1);
+      } else if (lastScrollDirection < 0 && start > 0) {
+        start = Math.max(0, start - 1);
+      }
       return [start, end];
     }
 
@@ -344,6 +362,11 @@ export function createPageLifecycleController(context, editingController) {
     lastScrollFocusIndex = bestIdx;
     if (bestIdx !== prevScrollFocusIndex) {
       lastScrollDirection = Math.sign(bestIdx - prevScrollFocusIndex) || lastScrollDirection;
+    }
+    if (lastScrollDirection > 0 && i1 < lastIndex) {
+      i1 = Math.min(lastIndex, i1 + 1);
+    } else if (lastScrollDirection < 0 && i0 > 0) {
+      i0 = Math.max(0, i0 - 1);
     }
     return [i0, i1];
   }
