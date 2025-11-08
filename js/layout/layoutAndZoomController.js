@@ -713,13 +713,15 @@ const normFromZ = (pct) => {
 
     const finalize = () => {
       setFreezeVirtual(false);
+      requestVirtualization();
       requestHammerNudge();
       if (isSafari) syncSafariZoomLayout(true);
     };
 
-    finalize();
-
-    if (!rest.length) return;
+    if (!rest.length) {
+      finalize();
+      return;
+    }
 
     let index = 0;
 
@@ -734,6 +736,8 @@ const normFromZ = (pct) => {
 
       if (index < rest.length) {
         scheduleZoomRedrawFrame(processBatch);
+      } else {
+        finalize();
       }
     };
 
