@@ -80,6 +80,7 @@ export function createPageLifecycleController(context, editingController) {
       marginBoxEl,
       grainCanvas: null,
       grainForSize: { w: 0, h: 0, key: null },
+      zoomPreparedFor: state.zoom || 1,
     };
     const handler = (e) => handlePageClick(e, idx);
     pageEl.addEventListener('mousedown', handler, { capture: false });
@@ -177,9 +178,12 @@ export function createPageLifecycleController(context, editingController) {
   }
 
   let lastScrollFocusIndex = 0;
+  let prevScrollFocusIndex = 0;
+  let lastScrollDirection = 0;
+  let lastPaperOffsetY = 0;
 
   function effectiveVirtualPad() {
-    return state.zoom >= 2 ? 0 : 1;
+    return state.zoom >= 3 ? 0 : 1;
   }
 
   function clampIndex(idx) {
@@ -188,46 +192,16 @@ export function createPageLifecycleController(context, editingController) {
     return Math.max(0, Math.min(state.pages.length - 1, idx));
   }
 
-  function getAnchorIndex() {
-    if (Number.isInteger(app.activePageIndex)) return clampIndex(app.activePageIndex);
-    if (Number.isInteger(state.caret?.page)) return clampIndex(state.caret.page);
-    return clampIndex(lastScrollFocusIndex);
-  }
-
-  function limitWindowForHighZoom(i0, i1) {
-    const zoom = state.zoom || 1;
-    if (zoom < 2 || !state.pages.length) return [i0, i1];
-    const maxPad = zoom >= 3 ? 0 : 1;
-    const maxSpan = Math.max(0, maxPad * 2);
-    if ((i1 - i0) <= maxSpan) return [i0, i1];
-    const last = state.pages.length - 1;
-    let anchor = clamp(getAnchorIndex(), i0, i1);
-    if (!Number.isInteger(anchor)) anchor = clampIndex(i0);
-    const anchorBase = anchor;
-    let start = anchor;
-    let end = anchor;
-    while ((end - start) < maxSpan) {
-      const canExpandLeft = start > i0;
-      const canExpandRight = end < i1;
-      if (!canExpandLeft && !canExpandRight) break;
-      if (canExpandLeft && canExpandRight) {
-        const leftGap = anchorBase - start;
-        const rightGap = end - anchorBase;
-        if (rightGap <= leftGap) {
-          end++;
-        } else {
-          start--;
-        }
-      } else if (canExpandRight) {
-        end++;
-      } else if (canExpandLeft) {
-        start--;
-      }
-      if ((end - start) >= maxSpan) break;
-    }
-    start = Math.max(0, Math.min(start, last));
-    end = Math.max(start, Math.min(end, last));
-    return [start, end];
+  function ensurePagePreparedForCurrentZoom(page) {
+    if (!page) return;
+    const currentZoom = state.zoom || 1;
+    if (page.zoomPreparedFor === currentZoom) return;
+    if (page.canvas) prepareCanvas(page.canvas);
+    if (page.backCanvas) prepareCanvas(page.backCanvas);
+    if (page.ctx) configureCanvasContext(page.ctx);
+    if (page.backCtx) configureCanvasContext(page.backCtx);
+    page.zoomPreparedFor = currentZoom;
+    page.dirtyAll = true;
   }
 
   function applyActiveWindow(i0, i1) {
@@ -240,17 +214,6 @@ export function createPageLifecycleController(context, editingController) {
     }
   }
 
-  function getForcedZoomWindow() {
-    if (!state.pages.length) return null;
-    const zoom = state.zoom || 1;
-    if (zoom < 2) return null;
-    const pad = zoom >= 3 ? 0 : 1;
-    const anchor = getAnchorIndex();
-    const start = Math.max(0, Math.min(state.pages.length - 1, anchor - pad));
-    const end = Math.max(start, Math.min(state.pages.length - 1, anchor + pad));
-    return [start, end];
-  }
-
   function setPageActive(page, active) {
     if (!page || page.active === active) return;
     page.active = active;
@@ -258,6 +221,7 @@ export function createPageLifecycleController(context, editingController) {
       if (page.canvas?.style) {
         page.canvas.style.visibility = 'visible';
       }
+      ensurePagePreparedForCurrentZoom(page);
       const hasPendingRows = page._dirtyRowMinMu !== undefined || page._dirtyRowMaxMu !== undefined;
       if (page.dirtyAll || hasPendingRows) {
         schedulePaint(page);
@@ -276,40 +240,119 @@ export function createPageLifecycleController(context, editingController) {
   }
 
   function visibleWindowIndices() {
+    if (!state.pages.length) return [0, 0];
     const sp = app.stage.getBoundingClientRect();
-    const scrollCenterY = (sp.top + sp.bottom) / 2;
-    let bestIdx = 0;
+    const viewTop = sp.top;
+    const viewBottom = sp.bottom;
+    const scrollCenterY = (viewTop + viewBottom) / 2;
+    const currentOffsetY = Number.isFinite(state.paperOffset?.y) ? state.paperOffset.y : 0;
+    const deltaOffset = currentOffsetY - lastPaperOffsetY;
+    if (Math.abs(deltaOffset) > 0.1) {
+      lastScrollDirection = deltaOffset > 0 ? 1 : -1;
+    }
+    lastPaperOffsetY = currentOffsetY;
+
+    let bestIdx = clampIndex(lastScrollFocusIndex);
     let bestDist = Infinity;
+    const visibleCandidates = [];
+    const overlapByIndex = new Map();
+
     for (let i = 0; i < state.pages.length; i++) {
-      const r = state.pages[i].wrapEl.getBoundingClientRect();
-      const d = Math.abs(((r.top + r.bottom) / 2) - scrollCenterY);
+      const page = state.pages[i];
+      if (!page?.wrapEl) continue;
+      const r = page.wrapEl.getBoundingClientRect();
+      const mid = (r.top + r.bottom) / 2;
+      const d = Math.abs(mid - scrollCenterY);
       if (d < bestDist) {
         bestDist = d;
         bestIdx = i;
       }
+      const overlap = Math.max(0, Math.min(r.bottom, viewBottom) - Math.max(r.top, viewTop));
+      if (overlap > 0) {
+        visibleCandidates.push({ index: i, overlap });
+        overlapByIndex.set(i, overlap);
+      }
     }
-    lastScrollFocusIndex = bestIdx;
+
+    const zoom = state.zoom || 1;
+    const lastIndex = state.pages.length - 1;
+
+    if (zoom >= 2 && visibleCandidates.length) {
+      let targetIdx;
+      if (lastScrollDirection < 0) {
+        targetIdx = visibleCandidates[0].index;
+      } else if (lastScrollDirection > 0) {
+        targetIdx = visibleCandidates[visibleCandidates.length - 1].index;
+      } else {
+        let maxCandidate = visibleCandidates[0];
+        for (let j = 1; j < visibleCandidates.length; j++) {
+          if (visibleCandidates[j].overlap > maxCandidate.overlap) {
+            maxCandidate = visibleCandidates[j];
+          }
+        }
+        targetIdx = maxCandidate.index;
+      }
+      targetIdx = clampIndex(targetIdx);
+      const allowedCount = zoom >= 3 ? 1 : 2;
+      let start = targetIdx;
+      let end = targetIdx;
+      if (allowedCount === 2) {
+        if (lastScrollDirection < 0) {
+          start = Math.max(0, targetIdx - 1);
+          end = targetIdx;
+          if (start === end && targetIdx < lastIndex) {
+            end = Math.min(lastIndex, targetIdx + 1);
+          }
+        } else if (lastScrollDirection > 0) {
+          end = Math.min(lastIndex, targetIdx + 1);
+          start = targetIdx;
+          if (start === end && targetIdx > 0) {
+            start = Math.max(0, targetIdx - 1);
+          }
+        } else {
+          const prev = Math.max(0, targetIdx - 1);
+          const next = Math.min(lastIndex, targetIdx + 1);
+          const prevOverlap = overlapByIndex.get(prev) || 0;
+          const nextOverlap = overlapByIndex.get(next) || 0;
+          if (nextOverlap >= prevOverlap) {
+            end = next;
+            start = Math.max(0, end - 1);
+          } else {
+            start = prev;
+            end = Math.min(lastIndex, start + 1);
+          }
+        }
+      }
+      start = Math.max(0, Math.min(start, end));
+      end = Math.max(start, Math.min(end, lastIndex));
+      prevScrollFocusIndex = lastScrollFocusIndex;
+      lastScrollFocusIndex = targetIdx;
+      return [start, end];
+    }
+
     const pad = effectiveVirtualPad();
     let i0 = Math.max(0, bestIdx - pad);
-    let i1 = Math.min(state.pages.length - 1, bestIdx + pad);
-    const cp = state.caret.page;
-    i0 = Math.min(i0, cp);
-    i1 = Math.max(i1, cp);
-    return limitWindowForHighZoom(i0, i1);
+    let i1 = Math.min(lastIndex, bestIdx + pad);
+    if (visibleCandidates.length) {
+      i0 = Math.min(i0, visibleCandidates[0].index);
+      i1 = Math.max(i1, visibleCandidates[visibleCandidates.length - 1].index);
+    }
+    const caretPage = Number.isInteger(state.caret?.page) ? clampIndex(state.caret.page) : bestIdx;
+    i0 = Math.min(i0, caretPage);
+    i1 = Math.max(i1, caretPage);
+    prevScrollFocusIndex = lastScrollFocusIndex;
+    lastScrollFocusIndex = bestIdx;
+    if (bestIdx !== prevScrollFocusIndex) {
+      lastScrollDirection = Math.sign(bestIdx - prevScrollFocusIndex) || lastScrollDirection;
+    }
+    return [i0, i1];
   }
 
   function updateVirtualization() {
     if (state.pages.length === 0) return;
     const freezeVirtual = getFreezeVirtual();
     const zoom = state.zoom || 1;
-    if (freezeVirtual && zoom >= 2) {
-      const forced = getForcedZoomWindow();
-      if (forced) {
-        applyActiveWindow(forced[0], forced[1]);
-        return;
-      }
-    }
-    if (freezeVirtual) {
+    if (freezeVirtual && zoom < 2) {
       for (let i = 0; i < state.pages.length; i++) setPageActive(state.pages[i], true);
       return;
     }

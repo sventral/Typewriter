@@ -703,6 +703,7 @@ const normFromZ = (pct) => {
       if (page.backCanvas) prepareCanvas(page.backCanvas);
       if (page.ctx) configureCanvasContext(page.ctx);
       if (page.backCtx) configureCanvasContext(page.backCtx);
+      page.zoomPreparedFor = state.zoom || 1;
       page.dirtyAll = true;
       if (page.active) schedulePaint(page);
     };
@@ -711,15 +712,19 @@ const normFromZ = (pct) => {
 
     rebuildAllAtlases();
 
+    let finalized = false;
     const finalize = () => {
+      if (finalized) return;
+      finalized = true;
       setFreezeVirtual(false);
       requestVirtualization();
       requestHammerNudge();
       if (isSafari) syncSafariZoomLayout(true);
     };
 
+    finalize();
+
     if (!rest.length) {
-      finalize();
       return;
     }
 
@@ -736,8 +741,6 @@ const normFromZ = (pct) => {
 
       if (index < rest.length) {
         scheduleZoomRedrawFrame(processBatch);
-      } else {
-        finalize();
       }
     };
 
