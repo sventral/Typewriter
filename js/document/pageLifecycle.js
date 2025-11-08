@@ -338,6 +338,18 @@ export function createPageLifecycleController(context, editingController) {
       }
       start = Math.max(0, Math.min(start, end));
       end = Math.max(start, Math.min(end, lastIndex));
+      if (visibleCandidates.length) {
+        const earliestVisible = clampIndex(visibleCandidates[0].index);
+        const latestVisible = clampIndex(visibleCandidates[visibleCandidates.length - 1].index);
+        if (earliestVisible < start) {
+          start = earliestVisible;
+        }
+        if (latestVisible > end) {
+          end = latestVisible;
+        }
+        start = Math.max(0, Math.min(start, end));
+        end = Math.max(start, Math.min(end, lastIndex));
+      }
       prevScrollFocusIndex = lastScrollFocusIndex;
       lastScrollFocusIndex = targetIdx;
       if (lastScrollDirection > 0 && end < lastIndex) {
