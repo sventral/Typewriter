@@ -131,7 +131,10 @@ export function createDocumentEditingController(context) {
       p.pageEl.appendChild(app.caretEl);
     }
     if (!isZooming()) requestHammerNudge();
-    requestVirtualization();
+    const freezeVirtual = typeof getFreezeVirtual === 'function' ? getFreezeVirtual() : false;
+    if (!freezeVirtual) {
+      requestVirtualization();
+    }
   }
 
   function clampCaretToBounds() {
@@ -305,18 +308,27 @@ function insertStringFast(s) {
 
   function insertText(text) {
     const normalized = (text || '').replace(/\r\n?/g, '\n');
+    const prevFreeze = typeof getFreezeVirtual === 'function' ? getFreezeVirtual() : false;
+    setFreezeVirtual(true);
     beginBatch();
-    for (const ch of normalized) {
-      if (ch === '\n') {
-        handleNewline();
-      } else {
-        const page = state.pages[state.caret.page] || addPage();
-        overtypeCharacter(page, state.caret.rowMu, state.caret.col, ch, state.ink);
-        advanceCaret();
+    try {
+      for (const ch of normalized) {
+        if (ch === '\n') {
+          handleNewline();
+        } else {
+          const page = state.pages[state.caret.page] || addPage();
+          overtypeCharacter(page, state.caret.rowMu, state.caret.col, ch, state.ink);
+          advanceCaret();
+        }
+      }
+      saveStateDebounced();
+    } finally {
+      endBatch();
+      setFreezeVirtual(prevFreeze);
+      if (!prevFreeze) {
+        requestVirtualization();
       }
     }
-    saveStateDebounced();
-    endBatch();
   }
 
   function flattenGridToStreamWithCaret() {
