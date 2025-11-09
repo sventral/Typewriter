@@ -1,7 +1,7 @@
 import { clamp } from '../utils/math.js';
 import { normalizeInkTextureConfig } from '../config/inkConfig.js';
 import { createExperimentalGlyphProcessor } from './experimental/glyphProcessor.js';
-import { computeInsideDistance, computeOutsideDistance, createDistanceMapProvider } from './experimental/distanceMaps.js';
+import { computeInsideDistance, computeOutsideDistance } from './experimental/distanceMaps.js';
 
 export function createGlyphAtlas(options) {
   const {
@@ -86,16 +86,6 @@ function djb2(str) {
   for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
   return h >>> 0;
 }
-
-function hash36FromJSON(obj) {
-  let s;
-  try { s = JSON.stringify(obj); } catch { return '0'; }
-  let h = 5381 >>> 0;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
-  return (h >>> 0).toString(36);
-}
-
-
 
   function hash2(ix, iy, seed) {
     let h = seed | 0;
@@ -410,6 +400,184 @@ function hash36FromJSON(obj) {
       }
       return cached;
     };
+  }
+
+  function createLazyDistanceMapProvider(shape) {
+    if (!shape) return null;
+    const { alpha, width, height } = shape;
+    if (!alpha || !width || !height) return null;
+
+    let insideResult = null;
+    let outsideResult = null;
+    const raw = {};
+
+    const ensureInside = () => {
+      if (insideResult) return;
+      insideResult = computeInsideDistance(alpha, width, height);
+    };
+
+    const ensureOutside = () => {
+      if (outsideResult) return;
+      outsideResult = computeOutsideDistance(alpha, width, height);
+    };
+
+    Object.defineProperty(raw, 'inside', {
+      configurable: false,
+      enumerable: true,
+      get() {
+        ensureInside();
+        return insideResult?.dist || null;
+      },
+    });
+
+    Object.defineProperty(raw, 'outside', {
+      configurable: false,
+      enumerable: true,
+      get() {
+        ensureOutside();
+        return outsideResult?.dist || null;
+      },
+    });
+
+    return {
+      raw,
+      getInside(index) {
+        ensureInside();
+        return insideResult?.dist ? insideResult.dist[index] : 0;
+      },
+      getOutside(index) {
+        ensureOutside();
+        return outsideResult?.dist ? outsideResult.dist[index] : 0;
+      },
+      getMaxInside() {
+        ensureInside();
+        return insideResult?.maxInside || 0;
+      },
+    };
+  }
+
+  const EXPERIMENTAL_STAGE_PARAM_KEYS = Object.freeze({
+    fill: [
+      { path: 'enable.toneCore', section: 'expTone' },
+      { path: 'ink.pressureMid', section: 'expTone', require: 'enable.toneCore' },
+      { path: 'ink.pressureVar', section: 'expTone', require: 'enable.toneCore' },
+      { path: 'ink.inkGamma', section: 'expTone', require: 'enable.toneCore' },
+      { path: 'ink.toneJitter', section: 'expTone', require: 'enable.toneCore' },
+      { path: 'noise.lfScale', section: 'expTone', require: 'enable.toneCore' },
+      { path: 'noise.hfScale', section: 'expTone', require: 'enable.toneCore' },
+      { path: 'enable.vBias', section: 'expTone' },
+      { path: 'bias.vertical', section: 'expTone', require: 'enable.vBias' },
+      { path: 'bias.amount', section: 'expTone', require: 'enable.vBias' },
+      { path: 'ribbon.amp', section: 'expTone' },
+      { path: 'ribbon.period', section: 'expTone' },
+      { path: 'ribbon.sharp', section: 'expTone' },
+      { path: 'ribbon.phase', section: 'expTone' },
+      { path: 'enable.rim', section: 'expEdge' },
+      { path: 'ink.rim', section: 'expEdge', require: 'enable.rim' },
+      { path: 'ink.rimCurve', section: 'expEdge', require: 'enable.rim' },
+    ],
+    centerEdge: [
+      { path: 'enable.centerEdge', section: 'expTone' },
+      { path: 'centerEdge.center', section: 'expTone', require: 'enable.centerEdge' },
+      { path: 'centerEdge.edge', section: 'expTone', require: 'enable.centerEdge' },
+    ],
+    texture: [
+      { path: 'enable.grainSpeck', section: 'expGrain' },
+      { path: 'ink.mottling', section: 'expGrain', require: 'enable.grainSpeck' },
+      { path: 'ink.speckDark', section: 'expGrain', require: 'enable.grainSpeck' },
+      { path: 'ink.speckLight', section: 'expGrain', require: 'enable.grainSpeck' },
+      { path: 'ink.speckGrayBias', section: 'expGrain', require: 'enable.grainSpeck' },
+    ],
+    dropouts: [
+      { path: 'enable.dropouts', section: 'expDefects' },
+      { path: 'dropouts.amount', section: 'expDefects', require: 'enable.dropouts' },
+      { path: 'dropouts.width', section: 'expDefects', require: 'enable.dropouts' },
+      { path: 'dropouts.scale', section: 'expDefects', require: 'enable.dropouts' },
+      { path: 'dropouts.pinhole', section: 'expDefects', require: 'enable.dropouts' },
+      { path: 'dropouts.streakDensity', section: 'expDefects', require: 'enable.dropouts' },
+      { path: 'dropouts.pinholeWeight', section: 'expDefects', require: 'enable.dropouts' },
+    ],
+    punch: [
+      { path: 'enable.punch', section: 'expDefects' },
+      { path: 'punch.chance', section: 'expDefects', require: 'enable.punch' },
+      { path: 'punch.count', section: 'expDefects', require: 'enable.punch' },
+      { path: 'punch.rMin', section: 'expDefects', require: 'enable.punch' },
+      { path: 'punch.rMax', section: 'expDefects', require: 'enable.punch' },
+      { path: 'punch.edgeBias', section: 'expDefects', require: 'enable.punch' },
+      { path: 'punch.soft', section: 'expDefects', require: 'enable.punch' },
+      { path: 'punch.intensity', section: 'expDefects', require: 'enable.punch' },
+    ],
+    fuzz: [
+      { path: 'enable.edgeFuzz', section: 'expEdge' },
+      { path: 'edgeFuzz.opacity', section: 'expEdge', require: 'enable.edgeFuzz' },
+      { path: 'edgeFuzz.inBand', section: 'expEdge', require: 'enable.edgeFuzz' },
+      { path: 'edgeFuzz.outBand', section: 'expEdge', require: 'enable.edgeFuzz' },
+      { path: 'edgeFuzz.rough', section: 'expEdge', require: 'enable.edgeFuzz' },
+      { path: 'edgeFuzz.scale', section: 'expEdge', require: 'enable.edgeFuzz' },
+      { path: 'edgeFuzz.mix', section: 'expEdge', require: 'enable.edgeFuzz' },
+    ],
+    smudge: [
+      { path: 'enable.smudge', section: 'expDefects' },
+      { path: 'smudge.strength', section: 'expDefects', require: 'enable.smudge' },
+      { path: 'smudge.radius', section: 'expDefects', require: 'enable.smudge' },
+      { path: 'smudge.falloff', section: 'expDefects', require: 'enable.smudge' },
+      { path: 'smudge.scale', section: 'expDefects', require: 'enable.smudge' },
+      { path: 'smudge.density', section: 'expDefects', require: 'enable.smudge' },
+      { path: 'smudge.dirDeg', section: 'expDefects', require: 'enable.smudge' },
+      { path: 'smudge.spread', section: 'expDefects', require: 'enable.smudge' },
+    ],
+  });
+
+  function getConfigValueAtPath(obj, path) {
+    if (!obj || typeof obj !== 'object' || typeof path !== 'string') return undefined;
+    const segments = path.split('.');
+    let current = obj;
+    for (const segment of segments) {
+      if (!current || typeof current !== 'object') return undefined;
+      current = current[segment];
+    }
+    return current;
+  }
+
+  function encodeExperimentalKeyValue(value) {
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return 'nan';
+      return value.toFixed(4);
+    }
+    if (typeof value === 'boolean') return value ? '1' : '0';
+    if (value === null) return 'null';
+    if (value === undefined) return 'u';
+    return String(value);
+  }
+
+  function buildExperimentalStageConfigSignature(stages, config, sectionEnabled) {
+    if (!Array.isArray(stages) || !stages.length || !config) return '';
+    const parts = [];
+    stages.forEach(stageId => {
+      const entries = EXPERIMENTAL_STAGE_PARAM_KEYS[stageId];
+      if (!entries || !entries.length) {
+        parts.push(stageId);
+        return;
+      }
+      const stageParts = [];
+      entries.forEach((entry, idx) => {
+        if (entry.section && sectionEnabled && sectionEnabled[entry.section] === false) {
+          return;
+        }
+        if (entry.require) {
+          const prereq = getConfigValueAtPath(config, entry.require);
+          if (!prereq) return;
+        }
+        const value = getConfigValueAtPath(config, entry.path);
+        stageParts.push(`${idx}:${encodeExperimentalKeyValue(value)}`);
+      });
+      if (stageParts.length) {
+        parts.push(`${stageId}[${stageParts.join(',')}]`);
+      } else {
+        parts.push(stageId);
+      }
+    });
+    return parts.join('~');
   }
 
   const GLYPH_PIPELINE_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed'];
@@ -1283,27 +1451,27 @@ function hash36FromJSON(obj) {
     const hasExperimentalStages = Array.isArray(pipelineStages) && pipelineStages.length > 0;
 
     // BEGIN: config snapshot + hash (no name collisions)
-    const baseCfgForHash = getExperimentalEffectsConfigFn() || {};
-    const snapshot = {
-      effectsAllowed,
-      overall: overallStrength,
-      order: pipelineStages,
-      params: {
-        // keep this lean; only numbers/booleans used by stages
-        ink: { inkGamma: baseCfgForHash.ink?.inkGamma | 0, toneJitter: baseCfgForHash.ink?.toneJitter | 0 },
-        ribbon: { amp: baseCfgForHash.ribbon?.amp | 0, period: baseCfgForHash.ribbon?.period | 0, sharp: baseCfgForHash.ribbon?.sharp | 0 },
-        centerEdge: { centerThickenPct: baseCfgForHash.centerEdge?.centerThickenPct | 0, edgeThinPct: baseCfgForHash.centerEdge?.edgeThinPct | 0 },
-        dropouts: { chance: baseCfgForHash.dropouts?.chance | 0, max: baseCfgForHash.dropouts?.max | 0 },
-        edgeFuzz: { radius: baseCfgForHash.edgeFuzz?.radius | 0, jitter: baseCfgForHash.edgeFuzz?.jitter | 0 },
-        smudge: { radius: baseCfgForHash.smudge?.radius | 0, scale: baseCfgForHash.smudge?.scale | 0, strength: baseCfgForHash.smudge?.strength | 0 },
-        punch: { intensity: baseCfgForHash.punch?.intensity | 0, count: baseCfgForHash.punch?.count | 0 },
-      },
+    const baseExperimentalConfig = getExperimentalEffectsConfigFn() || {};
+    const sectionEnabled = {
+      expTone: !!isInkSectionEnabledFn('expTone'),
+      expEdge: !!isInkSectionEnabledFn('expEdge'),
+      expGrain: !!isInkSectionEnabledFn('expGrain'),
+      expDefects: !!isInkSectionEnabledFn('expDefects'),
     };
-    const cfgHash = hash36FromJSON(snapshot);
-    // END: config snapshot + hash
-
     const orderKey = hasExperimentalStages ? pipelineStages.join('-') : 'none';
-    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|ord${orderKey}|h${cfgHash}`;
+    const stageSignature = buildExperimentalStageConfigSignature(pipelineStages, baseExperimentalConfig, sectionEnabled);
+    const overallKey = Math.round(overallStrength * 1000);
+    const keyParts = [
+      ink,
+      `v${variantIdx | 0}`,
+      `fx${effectsAllowed ? 1 : 0}`,
+      `ov${overallKey}`,
+      `ord${orderKey}`,
+    ];
+    if (stageSignature) {
+      keyParts.push(`cfg${stageSignature}`);
+    }
+    const key = keyParts.join('|');
     let atlas = experimentalAtlases.get(key);
     if (atlas) return atlas;
 
@@ -1433,11 +1601,15 @@ function hash36FromJSON(obj) {
             const glyphWidth = glyphCanvas.width;
             const glyphHeight = glyphCanvas.height;
             const alpha = new Uint8Array(glyphWidth * glyphHeight);
-            for (let i = 0, k = 0; i < alpha.length; i++, k += 4) alpha[i] = basePixels[k + 3];
-            const inside = computeInsideDistance(alpha, glyphWidth, glyphHeight);
-            const outside = computeOutsideDistance(alpha, glyphWidth, glyphHeight);
-            const canRun = !!(inside?.dist && outside?.dist && inside.maxInside > 0);
-            if (canRun && (stagePipeline || typeof processor.runGlyphPipeline === 'function')) {
+            let inkPixelCount = 0;
+            for (let i = 0, k = 0; i < alpha.length; i++, k += 4) {
+              const value = basePixels[k + 3];
+              alpha[i] = value;
+              if (value > 0) inkPixelCount++;
+            }
+            const hasProcessor = stagePipeline || typeof processor.runGlyphPipeline === 'function';
+            const canRun = hasProcessor && inkPixelCount > 0;
+            if (canRun) {
               const params = cloneParams();
               const fontPxRaw = getFontSizeFn() || FONT_SIZE || 48;
               const fontPx = Number.isFinite(fontPxRaw) && fontPxRaw > 0 ? fontPxRaw : 48;
@@ -1449,10 +1621,10 @@ function hash36FromJSON(obj) {
               params.smul = (fontPx / 72) * supersample;
               params.ink = { ...(params.ink || {}), colorRgb };
               const dpPerCss = Math.max(1e-6, (Number(RENDER_SCALE) || 1) * (Number(sampleScale) || 1));
-              const dm = createDistanceMapProvider({
-                insideDist: inside.dist,
-                outsideDist: outside.dist,
-                maxInside: inside.maxInside,
+              const dm = createLazyDistanceMapProvider({
+                alpha,
+                width: glyphWidth,
+                height: glyphHeight,
               });
               const context = {
                 w: glyphWidth,
