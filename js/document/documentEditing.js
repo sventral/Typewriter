@@ -131,7 +131,7 @@ export function createDocumentEditingController(context) {
       p.pageEl.appendChild(app.caretEl);
     }
     if (!isZooming()) requestHammerNudge();
-    requestVirtualization();
+    if (!getFreezeVirtual()) requestVirtualization();
   }
 
   function clampCaretToBounds() {
@@ -260,7 +260,7 @@ function insertStringFast(s) {
           state.caret.page++;
           const np = state.pages[state.caret.page] || addPage();
           app.activePageIndex = np.index;
-          requestVirtualization();
+          if (!getFreezeVirtual()) requestVirtualization();
           state.caret.rowMu = bounds.Tmu;
           state.caret.col = bounds.L;
           positionRulers();
@@ -278,7 +278,7 @@ function insertStringFast(s) {
       state.caret.page++;
       const np = state.pages[state.caret.page] || addPage();
       app.activePageIndex = np.index;
-      requestVirtualization();
+      if (!getFreezeVirtual()) requestVirtualization();
       state.caret.rowMu = bounds.Tmu;
       state.caret.col = bounds.L;
       positionRulers();
@@ -305,18 +305,29 @@ function insertStringFast(s) {
 
   function insertText(text) {
     const normalized = (text || '').replace(/\r\n?/g, '\n');
+    const prevFreeze = getFreezeVirtual();
+    let contentChanged = false;
     beginBatch();
-    for (const ch of normalized) {
-      if (ch === '\n') {
-        handleNewline();
-      } else {
-        const page = state.pages[state.caret.page] || addPage();
-        overtypeCharacter(page, state.caret.rowMu, state.caret.col, ch, state.ink);
-        advanceCaret();
+    setFreezeVirtual(true);
+    try {
+      for (const ch of normalized) {
+        contentChanged = true;
+        if (ch === '\n') {
+          handleNewline();
+        } else {
+          const page = state.pages[state.caret.page] || addPage();
+          overtypeCharacter(page, state.caret.rowMu, state.caret.col, ch, state.ink);
+          advanceCaret();
+        }
       }
+      saveStateDebounced();
+    } finally {
+      setFreezeVirtual(prevFreeze);
+      endBatch();
     }
-    saveStateDebounced();
-    endBatch();
+    if (contentChanged) {
+      requestVirtualization();
+    }
   }
 
   function flattenGridToStreamWithCaret() {
