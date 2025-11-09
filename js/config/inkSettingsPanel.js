@@ -8,7 +8,7 @@ Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
-const DEFAULT_INK_EFFECT_MODE = 'classic';
+const DEFAULT_INK_EFFECT_MODE = 'experimental';
 const INK_EFFECT_MODE_LABELS = {
   classic: 'Legacy effects',
   experimental: 'Experimental effects',
@@ -491,7 +491,6 @@ const panelState = {
   sectionsRoot: null,
   sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   dragState: null,
-  modeRadios: [],
   currentMode: DEFAULT_INK_EFFECT_MODE,
 };
 
@@ -882,16 +881,18 @@ function getInkEffectsModeFromState() {
   const appState = getAppState();
   if (!appState) return DEFAULT_INK_EFFECT_MODE;
   const mode = normalizeInkEffectsMode(appState.inkEffectsMode);
-  appState.inkEffectsMode = mode;
-  return mode;
+  const enforced = mode === 'experimental' ? mode : DEFAULT_INK_EFFECT_MODE;
+  appState.inkEffectsMode = enforced;
+  return enforced;
 }
 
 function setInkEffectsModeOnState(mode) {
   const appState = getAppState();
   if (!appState) return DEFAULT_INK_EFFECT_MODE;
   const normalized = normalizeInkEffectsMode(mode);
-  appState.inkEffectsMode = normalized;
-  return normalized;
+  const enforced = normalized === 'experimental' ? normalized : DEFAULT_INK_EFFECT_MODE;
+  appState.inkEffectsMode = enforced;
+  return enforced;
 }
 
 function getSectionOrderFromState() {
@@ -1592,24 +1593,9 @@ function setMetaModeDisabled(meta, disabled) {
   }
 }
 
-function syncInkEffectsModeRadios(mode) {
-  const normalized = normalizeInkEffectsMode(mode);
-  if (!Array.isArray(panelState.modeRadios)) return;
-  panelState.modeRadios.forEach(radio => {
-    if (!radio) return;
-    const radioMode = normalizeInkEffectsMode(radio.value);
-    const shouldCheck = radioMode === normalized;
-    if (radio.checked !== shouldCheck) {
-      radio.checked = shouldCheck;
-    }
-    radio.setAttribute('aria-checked', String(shouldCheck));
-  });
-}
-
 function syncInkEffectsModeUI(mode = getInkEffectsModeFromState()) {
   const normalized = normalizeInkEffectsMode(mode);
   panelState.currentMode = normalized;
-  syncInkEffectsModeRadios(normalized);
   if (!Array.isArray(panelState.metas)) return;
   panelState.metas.forEach(meta => {
     if (!meta) return;
@@ -2320,7 +2306,6 @@ function applySavedStyle(styleId) {
     panelState.styleNameInput.value = style.name;
     panelState.styleNameInput.classList.remove('input-error');
   }
-  syncInkEffectsModeRadios(panelState.currentMode);
   persistPanelState();
   renderSavedStylesList();
 }
@@ -2573,31 +2558,7 @@ export function setupInkSettingsPanel(options = {}) {
   setSectionOrderOnState(panelState.sectionOrder);
 
   panelState.currentMode = getInkEffectsModeFromState();
-  const modeRadios = Array.from(document.querySelectorAll('input[name="inkEffectsMode"]'));
-  panelState.modeRadios = modeRadios;
-  modeRadios.forEach(radio => {
-    if (!radio) return;
-    const radioMode = normalizeInkEffectsMode(radio.value);
-    if (INK_EFFECT_MODE_LABELS[radioMode]) {
-      radio.setAttribute('aria-label', INK_EFFECT_MODE_LABELS[radioMode]);
-    }
-    radio.addEventListener('change', () => {
-      if (!radio.checked) return;
-      const requested = normalizeInkEffectsMode(radio.value);
-      const current = getInkEffectsModeFromState();
-      if (requested === current) {
-        syncInkEffectsModeRadios(current);
-        return;
-      }
-      const applied = setInkEffectsModeOnState(requested);
-      panelState.currentMode = applied;
-      syncInkEffectsModeUI(applied);
-      persistPanelState();
-      scheduleGlyphRefresh(true);
-      scheduleGrainRefresh();
-    });
-  });
-  syncInkEffectsModeRadios(panelState.currentMode);
+  syncInkEffectsModeUI(panelState.currentMode);
 
   syncFillConfigValues();
 
