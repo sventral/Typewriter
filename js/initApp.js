@@ -21,6 +21,7 @@ import {
   getInkSectionStrength,
   getInkSectionOrder,
   getExperimentalEffectsConfig,
+  getExperimentalQualitySettings,
   isInkSectionEnabled,
   setupInkSettingsPanel,
 } from './config/inkSettingsPanel.js';
@@ -455,6 +456,7 @@ const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion, invalidateGrain
   getInkSectionStrength,
   getInkSectionOrder,
   getExperimentalEffectsConfig,
+  getExperimentalQualitySettings,
   isInkSectionEnabled,
   inkTextureConfig: () => INK_TEXTURE,
   edgeFuzzConfig: () => EDGE_FUZZ,

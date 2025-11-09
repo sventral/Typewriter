@@ -355,6 +355,17 @@ const SECTION_DEFS = [
   },
 ];
 
+const EFFECT_QUALITY_DEFAULT = 100;
+const EFFECT_QUALITY_MIN = 0;
+const EFFECT_QUALITY_MAX = 200;
+
+const SECTION_QUALITY_CONFIG = Object.freeze({
+  expTone: { stateKey: 'expToneQuality', label: 'Tone & ribbon quality' },
+  expEdge: { stateKey: 'expEdgeQuality', label: 'Edge shaping quality' },
+  expGrain: { stateKey: 'expGrainQuality', label: 'Texture quality' },
+  expDefects: { stateKey: 'expDefectsQuality', label: 'Defects quality' },
+});
+
 const DEFAULT_SECTION_ORDER = SECTION_DEFS.map(def => def.id);
 const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
   acc[def.id] = def;
@@ -600,6 +611,9 @@ function normalizeStyleRecord(style, index = 0) {
         strength,
         config: deepCloneValue(configSource == null ? def.config : configSource),
       };
+      if (SECTION_QUALITY_CONFIG[def.id]) {
+        record.sections[def.id].quality = clampQualityValue(section?.quality ?? EFFECT_QUALITY_DEFAULT);
+      }
     });
     return record;
   } catch (error) {
@@ -674,10 +688,14 @@ function createStyleSnapshot(name, existingId = null) {
     const strengthValue = def.stateKey
       ? getPercentFromState(def.stateKey, def.defaultStrength ?? 0)
       : (Number.isFinite(def.defaultStrength) ? def.defaultStrength : 100);
-    base.sections[def.id] = {
+    const sectionRecord = {
       strength: strengthValue,
       config: deepCloneValue(configSource),
     };
+    if (SECTION_QUALITY_CONFIG[def.id]) {
+      sectionRecord.quality = getSectionQualityPercent(def.id, EFFECT_QUALITY_DEFAULT);
+    }
+    base.sections[def.id] = sectionRecord;
   });
   return normalizeStyleRecord(base);
 }
@@ -1161,6 +1179,25 @@ function setScalarOnState(key, value, min = 0, max = 100) {
   appState[key] = clamp(next, min, max);
 }
 
+function clampQualityValue(value, fallback = EFFECT_QUALITY_DEFAULT) {
+  const raw = Number.isFinite(Number(value)) ? Number(value) : Number(fallback);
+  return clamp(Math.round(Number.isFinite(raw) ? raw : EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
+}
+
+function getSectionQualityPercent(sectionId, fallback = EFFECT_QUALITY_DEFAULT) {
+  const cfg = SECTION_QUALITY_CONFIG[sectionId];
+  if (!cfg) return clampQualityValue(fallback);
+  return getScalarFromState(cfg.stateKey, clampQualityValue(fallback), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
+}
+
+function setSectionQualityPercent(sectionId, value) {
+  const cfg = SECTION_QUALITY_CONFIG[sectionId];
+  if (!cfg) return EFFECT_QUALITY_DEFAULT;
+  const normalized = clampQualityValue(value);
+  setScalarOnState(cfg.stateKey, normalized, EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
+  return normalized;
+}
+
 function normalizedPercent(value) {
   return clamp((Number(value) || 0) / 100, 0, 1);
 }
@@ -1600,6 +1637,48 @@ function setSectionCollapsed(meta, collapsed) {
   }
 }
 
+function createQualityControl(meta, container) {
+  if (!meta || !container) return null;
+  const cfg = SECTION_QUALITY_CONFIG[meta.id];
+  if (!cfg) return null;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'ink-section-quality';
+  const labels = document.createElement('div');
+  labels.className = 'ink-section-quality-labels';
+  const mainLabel = document.createElement('span');
+  mainLabel.className = 'ink-section-quality-label';
+  mainLabel.textContent = cfg.label || 'Quality';
+  const hint = document.createElement('span');
+  hint.className = 'ink-section-quality-hint';
+  hint.textContent = 'Performance ↔ Fidelity';
+  labels.appendChild(mainLabel);
+  labels.appendChild(hint);
+  const controls = document.createElement('div');
+  controls.className = 'ink-section-controls ink-section-quality-controls';
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = String(EFFECT_QUALITY_MIN);
+  slider.max = String(EFFECT_QUALITY_MAX);
+  slider.step = '5';
+  const numberInput = document.createElement('input');
+  numberInput.type = 'number';
+  numberInput.min = slider.min;
+  numberInput.max = slider.max;
+  numberInput.step = slider.step;
+  numberInput.setAttribute('aria-label', `${cfg.label || 'Quality'} value`);
+  controls.appendChild(slider);
+  controls.appendChild(numberInput);
+  wrapper.appendChild(labels);
+  wrapper.appendChild(controls);
+  container.appendChild(wrapper);
+  return {
+    stateKey: cfg.stateKey,
+    slider,
+    numberInput,
+    wrapper,
+  };
+}
+
 function buildSection(def, root) {
   const sectionEl = document.createElement('section');
   sectionEl.className = 'ink-section';
@@ -1681,6 +1760,7 @@ function buildSection(def, root) {
     defaultStrength: def.defaultStrength ?? 0,
     hasStrengthControl,
     mode,
+    qualityControl: null,
   };
 
   dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
@@ -1714,6 +1794,15 @@ function buildSection(def, root) {
     registerMetaInput(meta, path, input);
   });
 
+  if (SECTION_QUALITY_CONFIG[def.id]) {
+    meta.qualityControl = createQualityControl(meta, body);
+    if (meta.qualityControl) {
+      const startQuality = getSectionQualityPercent(meta.id, EFFECT_QUALITY_DEFAULT);
+      meta.qualityControl.slider.value = String(startQuality);
+      meta.qualityControl.numberInput.value = String(startQuality);
+    }
+  }
+
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
   panelState.metas.push(meta);
@@ -1738,6 +1827,27 @@ function buildSection(def, root) {
       const pct = getPercentFromState(meta.stateKey, fallback);
       applySectionStrength(meta, pct, { silent: true });
     });
+  }
+
+  if (meta.qualityControl) {
+    const qc = meta.qualityControl;
+    if (qc.slider) {
+      qc.slider.addEventListener('input', () => {
+        applySectionQuality(meta, Number.parseFloat(qc.slider.value));
+      });
+    }
+    if (qc.numberInput) {
+      qc.numberInput.addEventListener('input', () => {
+        const raw = Number.parseFloat(qc.numberInput.value);
+        if (!Number.isFinite(raw)) return;
+        applySectionQuality(meta, raw);
+      });
+      qc.numberInput.addEventListener('blur', () => {
+        if (qc.numberInput.value !== '') return;
+        const fallback = getSectionQualityPercent(meta.id, EFFECT_QUALITY_DEFAULT);
+        applySectionQuality(meta, fallback, { silent: true });
+      });
+    }
   }
 
   setSectionCollapsed(meta, true);
@@ -1827,6 +1937,37 @@ function applySectionStrength(meta, percent, options = {}) {
   }
   scheduleRefreshForMeta(meta);
   persistPanelState();
+}
+
+function applySectionQuality(meta, value, options = {}) {
+  if (!meta || !meta.qualityControl) return;
+  const qc = meta.qualityControl;
+  const normalized = clampQualityValue(value);
+  if (options.syncInputs !== false) {
+    if (qc.slider && qc.slider.value !== String(normalized)) {
+      qc.slider.value = String(normalized);
+    }
+    if (qc.numberInput && qc.numberInput.value !== String(normalized)) {
+      qc.numberInput.value = String(normalized);
+    }
+  }
+  if (options.silent) return normalized;
+  setSectionQualityPercent(meta.id, normalized);
+  scheduleGlyphRefresh(true);
+  persistPanelState();
+  return normalized;
+}
+
+function syncQualityControl(meta) {
+  if (!meta || !meta.qualityControl) return;
+  const qc = meta.qualityControl;
+  const value = getSectionQualityPercent(meta.id, EFFECT_QUALITY_DEFAULT);
+  if (qc.slider && qc.slider.value !== String(value)) {
+    qc.slider.value = String(value);
+  }
+  if (qc.numberInput && qc.numberInput.value !== String(value)) {
+    qc.numberInput.value = String(value);
+  }
 }
 
 function syncInputs(meta) {
@@ -2170,6 +2311,9 @@ function applySavedStyle(styleId) {
     if (meta.hasStrengthControl && Number.isFinite(strength)) {
       applySectionStrength(meta, strength);
     }
+    if (meta.qualityControl && Number.isFinite(section?.quality)) {
+      applySectionQuality(meta, section.quality);
+    }
   });
   panelState.lastLoadedStyleId = styleId;
   if (panelState.styleNameInput) {
@@ -2279,6 +2423,14 @@ export function getExperimentalEffectsConfig() {
   return EXPERIMENTAL_EFFECTS_CONFIG;
 }
 
+export function getExperimentalQualitySettings() {
+  const settings = {};
+  Object.keys(SECTION_QUALITY_CONFIG).forEach(sectionId => {
+    settings[sectionId] = getSectionQualityPercent(sectionId, EFFECT_QUALITY_DEFAULT);
+  });
+  return settings;
+}
+
 function syncOverallStrengthUI() {
   const pct = getPercentFromState('effectsOverallStrength', 100);
   if (panelState.overallSlider && panelState.overallSlider.value !== String(pct)) {
@@ -2359,6 +2511,7 @@ export function syncInkStrengthDisplays(sectionId) {
       const fallback = meta.defaultStrength ?? 0;
       const pct = getPercentFromState(meta.stateKey, fallback);
       applySectionStrength(meta, pct, { silent: true });
+      syncQualityControl(meta);
     });
     return;
   }
@@ -2374,6 +2527,7 @@ export function syncInkStrengthDisplays(sectionId) {
     const fallback = meta.defaultStrength ?? 0;
     const pct = getPercentFromState(meta.stateKey, fallback);
     applySectionStrength(meta, pct, { silent: true });
+    syncQualityControl(meta);
     return;
   }
   const meta = findMetaById(sectionId);
@@ -2381,6 +2535,7 @@ export function syncInkStrengthDisplays(sectionId) {
   const fallback = meta.defaultStrength ?? 0;
   const pct = getPercentFromState(meta.stateKey, fallback);
   applySectionStrength(meta, pct, { silent: true });
+  syncQualityControl(meta);
 }
 
 export function setupInkSettingsPanel(options = {}) {

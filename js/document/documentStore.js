@@ -25,6 +25,9 @@ const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
 
 const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'];
 const DEFAULT_INK_EFFECT_MODE = 'classic';
+const EFFECT_QUALITY_DEFAULT = 100;
+const EFFECT_QUALITY_MIN = 0;
+const EFFECT_QUALITY_MAX = 200;
 
 function sanitizeInkEffectsMode(mode, fallback = DEFAULT_INK_EFFECT_MODE) {
   if (typeof mode !== 'string') return fallback;
@@ -236,6 +239,10 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     expEdgeStrength: clamp(Number(state.expEdgeStrength ?? 100), 0, 100),
     expGrainStrength: clamp(Number(state.expGrainStrength ?? 100), 0, 100),
     expDefectsStrength: clamp(Number(state.expDefectsStrength ?? 100), 0, 100),
+    expToneQuality: clamp(Number(state.expToneQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expEdgeQuality: clamp(Number(state.expEdgeQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expGrainQuality: clamp(Number(state.expGrainQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expDefectsQuality: clamp(Number(state.expDefectsQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
     grainSeed: state.grainSeed >>> 0,
     altSeed: state.altSeed >>> 0,
     inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
@@ -455,6 +462,26 @@ export function deserializeDocumentState(data, context) {
       Number(data.expDefectsStrength ?? state.expDefectsStrength ?? 100),
       0,
       100,
+    ),
+    expToneQuality: clamp(
+      Number(data.expToneQuality ?? state.expToneQuality ?? EFFECT_QUALITY_DEFAULT),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expEdgeQuality: clamp(
+      Number(data.expEdgeQuality ?? state.expEdgeQuality ?? EFFECT_QUALITY_DEFAULT),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expGrainQuality: clamp(
+      Number(data.expGrainQuality ?? state.expGrainQuality ?? EFFECT_QUALITY_DEFAULT),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expDefectsQuality: clamp(
+      Number(data.expDefectsQuality ?? state.expDefectsQuality ?? EFFECT_QUALITY_DEFAULT),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
     ),
     grainSeed: (data.grainSeed >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
     altSeed:
