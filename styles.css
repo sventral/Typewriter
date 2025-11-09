@@ -8,7 +8,7 @@
     --stage-height-px: calc(var(--page-height-px) * var(--stage-height-mult));
     --stage-bg-light:#d1d1d3;
     --stage-bg-dark:#343639;
-    --page-bg-light:#ffffff;
+    --page-bg-light:#f7f5ee;
     --page-bg-dark:#1f2024;
     --ui:#ffffff;
     --ui-border:#d0d0d0;
@@ -279,7 +279,7 @@ body[data-page-tone='dark']{
   .btn:hover{ background:var(--btn-hover) } .btn:active{ background:var(--btn-active) }
   .btn[data-active="true"]{ outline:2px solid var(--active-outline); outline-offset:1px }
   .sw{display:inline-block;width:16px;height:16px;border:1px solid rgba(0,0,0,.25);border-radius:3px}
-  .sw.black{background:#1f2024} .sw.red{background:#b00000} .sw.white{background:#fff}
+  .sw.black{background:#1f2024} .sw.red{background:#b00000} .sw.white{background:#f7f5ee}
 
   .ink-control-group { position: relative; }
   .ink-slider-popup {

@@ -162,7 +162,7 @@ export function createPageRenderer(options) {
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
     backCtx.globalAlpha = 1;
-    backCtx.fillStyle = state.pageFillColor || '#ffffff';
+    backCtx.fillStyle = state.pageFillColor || '#f7f5ee';
     backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
     backCtx.restore();
     if (grainPlacement.before && state.grainPct > 0) {
@@ -201,7 +201,7 @@ export function createPageRenderer(options) {
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
     backCtx.globalAlpha = 1;
-    backCtx.fillStyle = state.pageFillColor || '#ffffff';
+    backCtx.fillStyle = state.pageFillColor || '#f7f5ee';
     backCtx.fillRect(0, bandTopCss, app.PAGE_W, bandHCss);
     backCtx.restore();
 

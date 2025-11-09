@@ -185,7 +185,7 @@ export function createPageLifecycleController(context, editingController) {
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
     backCtx.globalAlpha = 1;
-    backCtx.fillStyle = '#ffffff';
+    backCtx.fillStyle = state.pageFillColor || '#f7f5ee';
     backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
     backCtx.restore();
     const page = {
