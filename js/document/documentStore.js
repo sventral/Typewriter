@@ -24,24 +24,9 @@ const CENTER_THICKEN_BOUNDS = resolveIntensityBounds('centerThicken');
 const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
 
 const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'];
-const DEFAULT_INK_EFFECT_MODE = 'experimental';
-const LEGACY_INK_EFFECT_MODES = new Set(['classic']);
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
 const EFFECT_QUALITY_MAX = 200;
-
-function sanitizeInkEffectsMode(mode, fallback = DEFAULT_INK_EFFECT_MODE) {
-  if (typeof mode !== 'string') return fallback;
-  const normalized = mode.trim().toLowerCase();
-  if (!normalized) return fallback;
-  if (normalized === DEFAULT_INK_EFFECT_MODE) {
-    return normalized;
-  }
-  if (LEGACY_INK_EFFECT_MODES.has(normalized)) {
-    return DEFAULT_INK_EFFECT_MODE;
-  }
-  return fallback;
-}
 
 function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
   const base = Array.isArray(order) ? order : [];
@@ -100,7 +85,6 @@ function sanitizeSavedInkStyle(style, index = 0) {
       overall: 100,
       sections: {},
       sectionOrder: KNOWN_INK_SECTIONS.slice(),
-      inkEffectsMode: DEFAULT_INK_EFFECT_MODE,
     };
   }
   const id = typeof style.id === 'string' && style.id.trim()
@@ -123,14 +107,12 @@ function sanitizeSavedInkStyle(style, index = 0) {
     });
   }
   const sectionOrder = normalizeInkSectionOrder(style.sectionOrder);
-  const inkEffectsMode = sanitizeInkEffectsMode(style.inkEffectsMode ?? style.effectsMode, DEFAULT_INK_EFFECT_MODE);
   return {
     id,
     name,
     overall,
     sections,
     sectionOrder,
-    inkEffectsMode,
   };
 }
 
@@ -218,7 +200,6 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     inkOpacity: state.inkOpacity,
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
-    inkEffectsMode: sanitizeInkEffectsMode(state.inkEffectsMode, DEFAULT_INK_EFFECT_MODE),
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
     inkFillStrength: clamp(Number(state.inkFillStrength ?? 100), 0, 100),
     centerThickenPct: clamp(
@@ -515,10 +496,6 @@ export function deserializeDocumentState(data, context) {
   });
   state.savedInkStyles = sanitizeSavedInkStyles(data.savedInkStyles);
   state.inkSectionOrder = normalizeInkSectionOrder(data.inkSectionOrder, state.inkSectionOrder);
-  state.inkEffectsMode = sanitizeInkEffectsMode(
-    data.inkEffectsMode ?? state.inkEffectsMode,
-    state.inkEffectsMode ?? DEFAULT_INK_EFFECT_MODE,
-  );
   if (typeof data.documentId === 'string' && data.documentId.trim()) {
     state.documentId = data.documentId.trim();
   }

@@ -23,7 +23,6 @@ export function createGlyphAtlas(options) {
     getInkEffectFactor,
     getInkSectionStrength,
     getInkSectionOrder,
-    getInkEffectsMode,
     isInkSectionEnabled,
     getExperimentalEffectsConfig,
     getExperimentalQualitySettings,
@@ -61,9 +60,6 @@ export function createGlyphAtlas(options) {
     : (() => true);
   const getCenterThickenFactorFn = typeof getCenterThickenFactorOpt === 'function' ? getCenterThickenFactorOpt : (() => 1);
   const getEdgeThinFactorFn = typeof getEdgeThinFactorOpt === 'function' ? getEdgeThinFactorOpt : (() => 1);
-  const getInkEffectsModeFn = typeof getInkEffectsMode === 'function'
-    ? getInkEffectsMode
-    : (() => state.inkEffectsMode || 'classic');
   const getExperimentalEffectsConfigFn = typeof getExperimentalEffectsConfig === 'function'
     ? getExperimentalEffectsConfig
     : (() => ({}));
@@ -71,7 +67,6 @@ export function createGlyphAtlas(options) {
     ? getExperimentalQualitySettings
     : (() => ({}));
   const ALT_VARIANTS = 9;
-  const classicAtlases = new Map();
   const experimentalAtlases = new Map();
   const experimentalProcessorCache = new Map();
   const grainBaseCache = new Map();
@@ -79,7 +74,6 @@ export function createGlyphAtlas(options) {
   window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
 
   function rebuildAllAtlases() {
-    classicAtlases.clear();
     experimentalAtlases.clear();
     experimentalProcessorCache.clear();
     window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
@@ -616,8 +610,6 @@ function djb2(str) {
     return parts.join('~');
   }
 
-  const GLYPH_PIPELINE_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed'];
-
   const EXPERIMENTAL_SECTION_IDS = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
   const EXPERIMENTAL_SECTION_STAGE_MAP = {
     expTone: ['fill', 'centerEdge'],
@@ -742,7 +734,7 @@ function djb2(str) {
     };
   }
 
-  // Mirror the classic order normalization but limit it to experimental sections only.
+  // Normalize the requested experimental section order while preserving fallbacks.
   function normalizeExperimentalSectionOrder(order) {
     const base = Array.isArray(order) ? order : [];
     const seen = new Set();
@@ -761,12 +753,6 @@ function djb2(str) {
       normalized.push(id);
     });
     return normalized;
-  }
-
-  function normalizePipelineMode(mode) {
-    if (typeof mode !== 'string') return 'classic';
-    const trimmed = mode.trim().toLowerCase();
-    return trimmed === 'experimental' ? 'experimental' : 'classic';
   }
 
   function resolveExperimentalStages(order) {
@@ -813,26 +799,6 @@ function djb2(str) {
     });
     experimentalProcessorCache.set(key, processor);
     return processor;
-  }
-
-  function normalizePipelineOrder(order) {
-    const base = Array.isArray(order) ? order : [];
-    const seen = new Set();
-    const normalized = [];
-    base.forEach(id => {
-      if (typeof id !== 'string') return;
-      const trimmed = id.trim();
-      if (!trimmed || seen.has(trimmed)) return;
-      if (!GLYPH_PIPELINE_SECTIONS.includes(trimmed)) return;
-      seen.add(trimmed);
-      normalized.push(trimmed);
-    });
-    GLYPH_PIPELINE_SECTIONS.forEach(id => {
-      if (seen.has(id)) return;
-      seen.add(id);
-      normalized.push(id);
-    });
-    return normalized;
   }
 
   function generateNoiseField(width, height, dpPerCss, jitterX, jitterY, charWidth, noiseCfg, smoothing) {
@@ -1273,291 +1239,6 @@ function djb2(str) {
     ctx.putImageData(imageData, 0, 0);
   }
 
-  function ensureClassicAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
-    const preferWhiteEffects = !!state.inkEffectsPreferWhite;
-    let effectsAllowed =
-      ink === 'w' ? preferWhiteEffects :
-      ink === 'b' ? !preferWhiteEffects :
-      true;
-
-    if (effectOverride === 'disabled') {
-      effectsAllowed = false;
-    } else if (effectOverride === 'enabled') {
-      effectsAllowed = true;
-    }
-
-    const overallStrength = clamp(getInkEffectFactor(), 0, 1);
-    const fillSectionStrength = clamp(getInkSectionStrengthFn('fill'), 0, 1);
-    const textureSectionStrength = clamp(getInkSectionStrengthFn('texture'), 0, 1);
-    const fuzzSectionStrength = clamp(getInkSectionStrengthFn('fuzz'), 0, 1);
-    const bleedSectionStrength = clamp(getInkSectionStrengthFn('bleed'), 0, 1);
-    const rawOrder = normalizePipelineOrder(getInkSectionOrderFn());
-    const fuzzKey = (effectsAllowed && fuzzSectionStrength > 0 && isInkSectionEnabledFn('fuzz'))
-      ? Math.round(fuzzSectionStrength * 100)
-      : 0;
-    const fillKey = (effectsAllowed && fillSectionStrength > 0 && isInkSectionEnabledFn('fill'))
-      ? Math.round(fillSectionStrength * 100)
-      : 0;
-    const orderKey = rawOrder.join('-');
-    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|fz${fuzzKey}|fl${fillKey}|ord${orderKey}`;
-    let atlas = classicAtlases.get(key);
-    if (atlas) return atlas;
-
-    const ASC = getAscFn();
-    const DESC = getDescFn();
-    const CHAR_W = getCharWidthFn();
-    const FONT_SIZE = getFontSizeFn();
-    const ACTIVE_FONT_NAME = getActiveFontNameFn();
-    const RENDER_SCALE = getRenderScaleFn();
-
-    const COLORS = colors;
-    const INK_TEXTURE = inkTextureConfig();
-    const EDGE_FUZZ = edgeFuzzConfig ? edgeFuzzConfig() : {};
-    const EDGE_BLEED = edgeBleedConfig();
-
-    const ASCII_START = 32;
-    const ASCII_END = 126;
-    const ATLAS_COLS = 32;
-
-    const GLYPH_BLEED = Math.ceil((ASC + DESC) * 0.5);
-    const ORIGIN_Y_CSS = ASC + GLYPH_BLEED;
-    const CELL_W_CSS = CHAR_W;
-    const CELL_H_CSS = Math.ceil(ASC + DESC + 2 * GLYPH_BLEED);
-    const GUTTER_DP = 1;
-    const GUTTER_CSS = GUTTER_DP / RENDER_SCALE;
-    const cellW_draw_dp = Math.round(CELL_W_CSS * RENDER_SCALE);
-    const cellH_draw_dp = Math.ceil(CELL_H_CSS * RENDER_SCALE);
-    const cellW_pack_dp = cellW_draw_dp + 2 * GUTTER_DP;
-    const cellH_pack_dp = cellH_draw_dp + 2 * GUTTER_DP;
-    const ATLAS_ROWS = Math.ceil((ASCII_END - ASCII_START + 1) / ATLAS_COLS);
-    const width_dp = Math.max(1, ATLAS_COLS * cellW_pack_dp);
-    const height_dp = Math.max(1, ATLAS_ROWS * cellH_pack_dp);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width_dp;
-    canvas.height = height_dp;
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, width_dp / RENDER_SCALE, height_dp / RENDER_SCALE);
-    ctx.fillStyle = COLORS[ink] || '#000';
-    ctx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.globalCompositeOperation = 'source-over';
-
-    const rectDpByCode = [];
-    const advCache = new Float32Array(ASCII_END + 1);
-    const SHIFT_EPS = 0.5;
-
-    const textureAllowed = INK_TEXTURE.enabled && effectsAllowed && textureSectionStrength > 0 && isInkSectionEnabledFn('texture');
-    const useTexture = textureAllowed;
-    const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
-    const textureSupersample = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
-    const sampleScale = Math.max(safariSupersample, textureSupersample);
-    const fillEnabled = effectsAllowed
-      && fillSectionStrength > 0
-      && isInkSectionEnabledFn('fill');
-    const bleedEnabled = EDGE_BLEED.enabled
-      && effectsAllowed
-      && bleedSectionStrength > 0
-      && isInkSectionEnabledFn('bleed')
-      && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
-    const fuzzEnabled = EDGE_FUZZ.enabled
-      && effectsAllowed
-      && fuzzSectionStrength > 0
-      && isInkSectionEnabledFn('fuzz')
-      && (!Array.isArray(EDGE_FUZZ.inks) || EDGE_FUZZ.inks.includes(ink));
-    const pipelineOrder = rawOrder;
-    const pipelineStages = [];
-    pipelineOrder.forEach(id => {
-      if (id === 'fill' && fillEnabled) pipelineStages.push('fill');
-      else if (id === 'texture' && useTexture) pipelineStages.push('texture');
-      else if (id === 'fuzz' && fuzzEnabled) pipelineStages.push('fuzz');
-      else if (id === 'bleed' && bleedEnabled) pipelineStages.push('bleed');
-    });
-    const needsPipeline = useTexture || bleedEnabled || fuzzEnabled || fillEnabled || sampleScale > 1;
-
-    let glyphCanvas = null;
-    let glyphCtx = null;
-    if (needsPipeline) {
-      glyphCanvas = document.createElement('canvas');
-      glyphCanvas.width = Math.max(1, cellW_draw_dp * sampleScale);
-      glyphCanvas.height = Math.max(1, cellH_draw_dp * sampleScale);
-      glyphCtx = glyphCanvas.getContext('2d', { willReadFrequently: true });
-      glyphCtx.imageSmoothingEnabled = false;
-    }
-
-    const atlasSeed = ((state.altSeed >>> 0) ^ Math.imul((variantIdx | 0) + 1, 0x9E3779B1) ^ Math.imul((ink.charCodeAt(0) || 0) + 0x51, 0x85EBCA77)) >>> 0;
-
-    let code = ASCII_START;
-    for (let row = 0; row < ATLAS_ROWS; row++) {
-      for (let col = 0; col < ATLAS_COLS; col++) {
-        if (code > ASCII_END) break;
-        const packX_css = (col * cellW_pack_dp) / RENDER_SCALE;
-        const packY_css = (row * cellH_pack_dp) / RENDER_SCALE;
-        const ch = String.fromCharCode(code);
-        const n = (variantIdx | 0) + 1;
-        const adv = advCache[code] || (advCache[code] = Math.max(0.01, ctx.measureText(ch).width));
-        const text = variantIdx ? ch.repeat(n) : ch;
-        const destX_dp = col * cellW_pack_dp + GUTTER_DP;
-        const destY_dp = row * cellH_pack_dp + GUTTER_DP;
-        const snapFactor = RENDER_SCALE * (needsPipeline ? sampleScale : 1);
-        const baseLocalX = -(n - 1) * adv - SHIFT_EPS;
-        const baseLocalY = ORIGIN_Y_CSS;
-        const localXSnapped = Math.round(baseLocalX * snapFactor) / snapFactor;
-        const localYSnapped = Math.round(baseLocalY * snapFactor) / snapFactor;
-        if (needsPipeline) {
-          const glyphSeed = (atlasSeed ^ Math.imul((code + 1) | 0, 0xC2B2AE3D)) >>> 0;
-          glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
-          glyphCtx.globalCompositeOperation = 'source-over';
-          glyphCtx.globalAlpha = 1;
-          glyphCtx.clearRect(0, 0, glyphCanvas.width, glyphCanvas.height);
-          glyphCtx.save();
-          glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
-          glyphCtx.fillStyle = COLORS[ink] || '#000';
-          glyphCtx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
-          glyphCtx.textAlign = 'left';
-          glyphCtx.textBaseline = 'alphabetic';
-          glyphCtx.imageSmoothingEnabled = false;
-          glyphCtx.beginPath();
-          glyphCtx.rect(0, 0, CELL_W_CSS, CELL_H_CSS);
-          glyphCtx.clip();
-          glyphCtx.fillText(text, localXSnapped, localYSnapped);
-          glyphCtx.restore();
-
-          let glyphData = null;
-          let glyphDataDirty = false;
-          const glyphWidth = glyphCanvas.width;
-          const glyphHeight = glyphCanvas.height;
-          if (needsPipeline) {
-            glyphData = glyphCtx.getImageData(0, 0, glyphWidth, glyphHeight);
-          }
-          const distanceProvider = glyphData ? createLegacyDistanceMapProviderFactory(glyphData) : null;
-
-          const hasGlyphStageAfter = index => {
-            for (let i = index + 1; i < pipelineStages.length; i++) {
-              const stage = pipelineStages[i];
-              if (stage === 'texture' || stage === 'fuzz' || stage === 'fill') {
-                return true;
-              }
-            }
-            return false;
-          };
-
-          for (let i = 0; i < pipelineStages.length; i++) {
-            const stage = pipelineStages[i];
-            if (stage === 'fill') {
-              if (glyphData) {
-                applyFillAdjustments(glyphData, {
-                  overallStrength,
-                  sectionStrength: fillSectionStrength,
-                  getDistanceMaps: distanceProvider,
-                });
-                glyphDataDirty = true;
-              }
-              continue;
-            }
-            if (stage === 'texture') {
-              if (glyphData) {
-                applyInkTexture(glyphData, {
-                  config: INK_TEXTURE,
-                  renderScale: RENDER_SCALE,
-                  sampleScale,
-                  charWidth: CHAR_W,
-                  seed: glyphSeed,
-                  overallStrength,
-                  sectionStrength: textureSectionStrength,
-                  getDistanceMaps: distanceProvider,
-                });
-                glyphDataDirty = true;
-              }
-              continue;
-            }
-            if (stage === 'fuzz') {
-              if (glyphData) {
-                applyEdgeFuzz(glyphData, {
-                  config: EDGE_FUZZ,
-                  renderScale: RENDER_SCALE,
-                  sampleScale,
-                  color: COLORS[ink] || '#000',
-                  baseSeed: glyphSeed,
-                  overallStrength,
-                  sectionStrength: fuzzSectionStrength,
-                  getDistanceMaps: distanceProvider,
-                });
-                glyphDataDirty = true;
-              }
-              continue;
-            }
-            if (stage === 'bleed') {
-              if (glyphData && glyphDataDirty) {
-                glyphCtx.putImageData(glyphData, 0, 0);
-                glyphDataDirty = false;
-              }
-              applyEdgeBleed(glyphCtx, {
-                config: EDGE_BLEED,
-                color: COLORS[ink] || '#000',
-                baseSeed: glyphSeed,
-                overallStrength,
-                sectionStrength: bleedSectionStrength,
-                renderScale: RENDER_SCALE,
-                sampleScale,
-                charWidth: CHAR_W,
-                getDistanceMaps: distanceProvider,
-              });
-              if (glyphData && hasGlyphStageAfter(i)) {
-                glyphData = glyphCtx.getImageData(0, 0, glyphWidth, glyphHeight);
-                glyphDataDirty = false;
-              }
-            }
-          }
-
-          if (glyphData && glyphDataDirty) {
-            glyphCtx.putImageData(glyphData, 0, 0);
-            glyphDataDirty = false;
-          }
-
-          glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
-          let finalImageData;
-          if (sampleScale === 1) {
-            finalImageData = glyphCtx.getImageData(0, 0, cellW_draw_dp, cellH_draw_dp);
-          } else {
-            const hiData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
-            finalImageData = downsampleImageData(hiData, sampleScale, cellW_draw_dp, cellH_draw_dp);
-          }
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-          ctx.putImageData(finalImageData, destX_dp, destY_dp);
-          ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
-          ctx.imageSmoothingEnabled = false;
-          ctx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'alphabetic';
-        } else {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, CELL_W_CSS, CELL_H_CSS);
-          ctx.clip();
-          const x0 = packX_css + GUTTER_CSS + localXSnapped;
-          const y0 = packY_css + GUTTER_CSS + localYSnapped;
-          ctx.fillText(text, x0, y0);
-          ctx.restore();
-        }
-        rectDpByCode[code] = {
-          sx_dp: col * cellW_pack_dp + GUTTER_DP,
-          sy_dp: row * cellH_pack_dp + GUTTER_DP,
-          sw_dp: cellW_draw_dp,
-          sh_dp: cellH_draw_dp,
-        };
-        code++;
-      }
-    }
-    atlas = { canvas, cellW_css: CELL_W_CSS, cellH_css: CELL_H_CSS, cellW_draw_dp, cellH_draw_dp, originY_css: ORIGIN_Y_CSS, rectDpByCode };
-    classicAtlases.set(key, atlas);
-    window.atlasStats.builds++;
-    return atlas;
-  }
-
   function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const preferWhiteEffects = !!state.inkEffectsPreferWhite;
     let effectsAllowed =
@@ -1846,11 +1527,7 @@ function djb2(str) {
   }
 
   function ensureAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
-    const mode = normalizePipelineMode(getInkEffectsModeFn());
-    if (mode === 'experimental') {
-      return ensureExperimentalAtlas(ink, variantIdx, effectOverride);
-    }
-    return ensureClassicAtlas(ink, variantIdx, effectOverride);
+    return ensureExperimentalAtlas(ink, variantIdx, effectOverride);
   }
 
   function variantIndexForCell(pageIndex, rowMu, col) {
