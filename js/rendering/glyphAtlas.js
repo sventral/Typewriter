@@ -1263,34 +1263,35 @@ function hash36FromJSON(obj) {
       effectsAllowed = true;
     }
 
-const overallStrength = clamp(getInkEffectFactor(), 0, 1);
-const rawOrder = getInkSectionOrderFn();
-const pipelineStages = resolveExperimentalStages(rawOrder);
+    const overallStrength = clamp(getInkEffectFactor(), 0, 1);
+    const rawOrder = getInkSectionOrderFn();
+    const pipelineStages = resolveExperimentalStages(rawOrder);
+    const hasExperimentalStages = Array.isArray(pipelineStages) && pipelineStages.length > 0;
 
-// BEGIN: config snapshot + hash (no name collisions)
-const baseCfgForHash = getExperimentalEffectsConfigFn() || {};
-const snapshot = {
-  effectsAllowed,
-  overall: overallStrength,
-  order: pipelineStages,
-  params: {
-    // keep this lean; only numbers/booleans used by stages
-    ink: { inkGamma: baseCfgForHash.ink?.inkGamma|0, toneJitter: baseCfgForHash.ink?.toneJitter|0 },
-    ribbon: { amp: baseCfgForHash.ribbon?.amp|0, period: baseCfgForHash.ribbon?.period|0, sharp: baseCfgForHash.ribbon?.sharp|0 },
-    centerEdge: { centerThickenPct: baseCfgForHash.centerEdge?.centerThickenPct|0, edgeThinPct: baseCfgForHash.centerEdge?.edgeThinPct|0 },
-    dropouts: { chance: baseCfgForHash.dropouts?.chance|0, max: baseCfgForHash.dropouts?.max|0 },
-    edgeFuzz: { radius: baseCfgForHash.edgeFuzz?.radius|0, jitter: baseCfgForHash.edgeFuzz?.jitter|0 },
-    smudge: { radius: baseCfgForHash.smudge?.radius|0, scale: baseCfgForHash.smudge?.scale|0, strength: baseCfgForHash.smudge?.strength|0 },
-    punch: { intensity: baseCfgForHash.punch?.intensity|0, count: baseCfgForHash.punch?.count|0 },
-  },
-};
-const cfgHash = hash36FromJSON(snapshot);
-// END: config snapshot + hash
+    // BEGIN: config snapshot + hash (no name collisions)
+    const baseCfgForHash = getExperimentalEffectsConfigFn() || {};
+    const snapshot = {
+      effectsAllowed,
+      overall: overallStrength,
+      order: pipelineStages,
+      params: {
+        // keep this lean; only numbers/booleans used by stages
+        ink: { inkGamma: baseCfgForHash.ink?.inkGamma | 0, toneJitter: baseCfgForHash.ink?.toneJitter | 0 },
+        ribbon: { amp: baseCfgForHash.ribbon?.amp | 0, period: baseCfgForHash.ribbon?.period | 0, sharp: baseCfgForHash.ribbon?.sharp | 0 },
+        centerEdge: { centerThickenPct: baseCfgForHash.centerEdge?.centerThickenPct | 0, edgeThinPct: baseCfgForHash.centerEdge?.edgeThinPct | 0 },
+        dropouts: { chance: baseCfgForHash.dropouts?.chance | 0, max: baseCfgForHash.dropouts?.max | 0 },
+        edgeFuzz: { radius: baseCfgForHash.edgeFuzz?.radius | 0, jitter: baseCfgForHash.edgeFuzz?.jitter | 0 },
+        smudge: { radius: baseCfgForHash.smudge?.radius | 0, scale: baseCfgForHash.smudge?.scale | 0, strength: baseCfgForHash.smudge?.strength | 0 },
+        punch: { intensity: baseCfgForHash.punch?.intensity | 0, count: baseCfgForHash.punch?.count | 0 },
+      },
+    };
+    const cfgHash = hash36FromJSON(snapshot);
+    // END: config snapshot + hash
 
-const orderKey = pipelineStages.join('-');
-const key = `${ink}|v${variantIdx|0}|fx${effectsAllowed?1:0}|ord${orderKey}|h${cfgHash}`;
-let atlas = experimentalAtlases.get(key);
-if (atlas) return atlas;
+    const orderKey = hasExperimentalStages ? pipelineStages.join('-') : 'none';
+    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|ord${orderKey}|h${cfgHash}`;
+    let atlas = experimentalAtlases.get(key);
+    if (atlas) return atlas;
 
 
 
@@ -1338,10 +1339,12 @@ if (atlas) return atlas;
     const SHIFT_EPS = 0.5;
     const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
     const sampleScale = Math.max(1, safariSupersample);
+    const needsEffectsPipeline = effectsAllowed && overallStrength > 0 && hasExperimentalStages;
+    const needsPipeline = needsEffectsPipeline || sampleScale > 1;
 
     let glyphCanvas = null;
     let glyphCtx = null;
-    if (effectsAllowed || sampleScale > 1) {
+    if (needsPipeline) {
       glyphCanvas = document.createElement('canvas');
       glyphCanvas.width = Math.max(1, cellW_draw_dp * sampleScale);
       glyphCanvas.height = Math.max(1, cellH_draw_dp * sampleScale);
@@ -1367,10 +1370,10 @@ if (atlas) return atlas;
       smudge: { ...(baseConfig.smudge || {}) },
       punch: { ...(baseConfig.punch || {}) },
     });
-    const hasExperimentalStages = Array.isArray(pipelineStages) && pipelineStages.length > 0;
     const processor = hasExperimentalStages ? getExperimentalProcessorForOrder(pipelineStages) : null;
     const stagePipeline = processor?.stagePipeline;
     const effectiveOrder = hasExperimentalStages ? pipelineStages : null;
+    const runExperimentalEffects = needsEffectsPipeline && Array.isArray(effectiveOrder) && effectiveOrder.length;
 
     let code = ASCII_START;
     for (let row = 0; row < ATLAS_ROWS; row++) {
@@ -1412,7 +1415,7 @@ if (atlas) return atlas;
           let glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
           const basePixels = glyphData.data;
 
-          if (effectsAllowed && overallStrength > 0 && Array.isArray(effectiveOrder) && effectiveOrder.length) {
+          if (runExperimentalEffects) {
             const glyphWidth = glyphCanvas.width;
             const glyphHeight = glyphCanvas.height;
             const alpha = new Uint8Array(glyphWidth * glyphHeight);
