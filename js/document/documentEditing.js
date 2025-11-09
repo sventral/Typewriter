@@ -423,7 +423,7 @@ function insertStringFast(s) {
       destPageIndex++;
       const np = state.pages[destPageIndex] || addPage();
       app.activePageIndex = np.index;
-      requestVirtualization();
+      if (!getFreezeVirtual()) requestVirtualization();
       destRowMu = bounds.Tmu;
       positionRulers();
     }
@@ -474,7 +474,7 @@ function insertStringFast(s) {
         pageIndex++;
         page = state.pages[pageIndex] || addPage();
         app.activePageIndex = page.index;
-        requestVirtualization();
+        if (!getFreezeVirtual()) requestVirtualization();
         rowMu = bounds.Tmu;
         col = bounds.L;
         positionRulers();

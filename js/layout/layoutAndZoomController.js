@@ -221,18 +221,45 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   }
 
   const OFFSET_EPSILON = 1e-4;
+  const OFFSET_VIRT_IDLE_DELAY_MS = 24;
+  const OFFSET_VIRT_MAX_DELAY_MS = 160;
   let pendingOffsetVirtRAF = 0;
+  let offsetVirtLastChangeTs = 0;
+  let offsetVirtFirstChangeTs = 0;
+
+  function nowMs() {
+    if (typeof performance === 'object' && typeof performance.now === 'function') {
+      return performance.now();
+    }
+    return Date.now();
+  }
+
+  function scheduleOffsetVirtualizationPass() {
+    pendingOffsetVirtRAF = requestAnimationFrame(() => {
+      pendingOffsetVirtRAF = 0;
+      const now = nowMs();
+      const idleFor = now - offsetVirtLastChangeTs;
+      const elapsed = now - offsetVirtFirstChangeTs;
+      if (idleFor < OFFSET_VIRT_IDLE_DELAY_MS && elapsed < OFFSET_VIRT_MAX_DELAY_MS) {
+        scheduleOffsetVirtualizationPass();
+        return;
+      }
+      offsetVirtLastChangeTs = 0;
+      offsetVirtFirstChangeTs = 0;
+      requestVirtualization();
+    });
+  }
 
   function requestVirtualizationAfterOffsetChange() {
     if (typeof requestAnimationFrame !== 'function') {
       requestVirtualization();
       return;
     }
+    const now = nowMs();
+    offsetVirtLastChangeTs = now;
+    if (!offsetVirtFirstChangeTs) offsetVirtFirstChangeTs = now;
     if (pendingOffsetVirtRAF) return;
-    pendingOffsetVirtRAF = requestAnimationFrame(() => {
-      pendingOffsetVirtRAF = 0;
-      requestVirtualization();
-    });
+    scheduleOffsetVirtualizationPass();
   }
 
   function setPaperOffset(x, y) {
