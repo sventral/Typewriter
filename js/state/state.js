@@ -60,7 +60,7 @@ export function createMainState(app, gridDiv = 8) {
     wordWrap: true,
     themeMode: 'auto',
     darkPageInDarkMode: false,
-    pageFillColor: '#ffffff',
+    pageFillColor: '#f7f5ee',
     inkEffectsPreferWhite: false,
     savedInkStyles: [],
   };

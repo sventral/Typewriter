@@ -1,4 +1,5 @@
 const DARK_PAGE_HEX = '#1f2024';
+const LIGHT_PAGE_HEX = '#f7f5ee';
 const LIGHT_EFFECT_INKS = ['b', 'r'];
 const DARK_EFFECT_INKS = ['w', 'r'];
 const LIGHT_EFFECT_INKS_SORTED = [...LIGHT_EFFECT_INKS].sort();
@@ -61,7 +62,7 @@ export function createThemeController({
   }
 
   function readPageFillColor() {
-    let fill = '#ffffff';
+    let fill = LIGHT_PAGE_HEX;
     try {
       let target = app.firstPage;
       if (!target || !target.isConnected) {
@@ -116,8 +117,8 @@ export function createThemeController({
       colors.b = DARK_PAGE_HEX;
       changed = true;
     }
-    if (colors.w !== '#ffffff') {
-      colors.w = '#ffffff';
+    if (colors.w !== LIGHT_PAGE_HEX) {
+      colors.w = LIGHT_PAGE_HEX;
       changed = true;
     }
     if (colors.r !== nextRed) {

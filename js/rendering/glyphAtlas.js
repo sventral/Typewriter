@@ -1737,7 +1737,7 @@ function djb2(str) {
     if (blendMode === 'destination-out') {
       ctx.globalCompositeOperation = 'destination-over';
       ctx.globalAlpha = 1;
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = (state && state.pageFillColor) || '#f7f5ee';
       ctx.fillRect(0, sy, app.PAGE_W, sh);
     }
     ctx.restore();
