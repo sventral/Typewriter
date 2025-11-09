@@ -55,6 +55,9 @@ export function createGlyphAtlas(options) {
   const getInkSectionOrderFn = typeof getInkSectionOrder === 'function'
     ? getInkSectionOrder
     : (() => ['fill', 'texture', 'fuzz', 'bleed', 'grain']);
+  const isInkSectionEnabledFn = typeof isInkSectionEnabled === 'function'
+    ? isInkSectionEnabled
+    : (() => true);
   const getCenterThickenFactorFn = typeof getCenterThickenFactorOpt === 'function' ? getCenterThickenFactorOpt : (() => 1);
   const getEdgeThinFactorFn = typeof getEdgeThinFactorOpt === 'function' ? getEdgeThinFactorOpt : (() => 1);
   const getInkEffectsModeFn = typeof getInkEffectsMode === 'function'
@@ -423,24 +426,35 @@ function hash36FromJSON(obj) {
   function getExperimentalStageActivity() {
     const cfg = getExperimentalEffectsConfigFn() || {};
     const enable = cfg.enable && typeof cfg.enable === 'object' ? cfg.enable : {};
-    const activity = {
-      fill: false,
-      dropouts: !!enable.dropouts,
-      texture: !!enable.grainSpeck,
-      centerEdge: !!enable.centerEdge,
-      punch: !!enable.punch,
-      fuzz: !!enable.edgeFuzz,
-      smudge: !!enable.smudge,
+    const sectionActive = {
+      expTone: isInkSectionEnabledFn('expTone'),
+      expEdge: isInkSectionEnabledFn('expEdge'),
+      expGrain: isInkSectionEnabledFn('expGrain'),
+      expDefects: isInkSectionEnabledFn('expDefects'),
     };
-    const toneEnabled = !!(enable.toneCore || enable.vBias || enable.rim);
-    const needsFill = activity.centerEdge
-      || activity.dropouts
-      || activity.texture
-      || activity.punch
-      || activity.fuzz
-      || activity.smudge;
-    activity.fill = toneEnabled || needsFill;
-    return activity;
+    const toneCoreActive = sectionActive.expTone && !!(enable.toneCore || enable.vBias || enable.rim);
+    const centerEdgeActive = sectionActive.expTone && !!enable.centerEdge;
+    const textureActive = sectionActive.expGrain && !!enable.grainSpeck;
+    const fuzzActive = sectionActive.expEdge && !!enable.edgeFuzz;
+    const dropoutsActive = sectionActive.expDefects && !!enable.dropouts;
+    const punchActive = sectionActive.expDefects && !!enable.punch;
+    const smudgeActive = sectionActive.expDefects && !!enable.smudge;
+    const needsFill = toneCoreActive
+      || centerEdgeActive
+      || textureActive
+      || dropoutsActive
+      || punchActive
+      || fuzzActive
+      || smudgeActive;
+    return {
+      fill: needsFill,
+      dropouts: dropoutsActive,
+      texture: textureActive,
+      centerEdge: centerEdgeActive,
+      punch: punchActive,
+      fuzz: fuzzActive,
+      smudge: smudgeActive,
+    };
   }
 
   // Mirror the classic order normalization but limit it to experimental sections only.
@@ -613,7 +627,7 @@ function hash36FromJSON(obj) {
     const overall = clamp(Number.isFinite(overallStrength) ? overallStrength : getInkEffectFactor(), 0, 1);
     const section = clamp(Number.isFinite(sectionStrength) ? sectionStrength : getInkSectionStrengthFn('fill'), 0, 1);
     const combined = clamp(overall * section, 0, 1);
-    if (combined <= 0 || !isInkSectionEnabled('fill')) return;
+    if (combined <= 0 || !isInkSectionEnabledFn('fill')) return;
 
     const centerThickenRaw = Number(getCenterThickenFactorFn());
     const edgeThinRaw = Number(getEdgeThinFactorFn());
@@ -881,7 +895,7 @@ function hash36FromJSON(obj) {
     const overall = clamp(Number.isFinite(overallStrength) ? overallStrength : getInkEffectFactor(), 0, 1);
     const section = clamp(Number.isFinite(sectionStrength) ? sectionStrength : getInkSectionStrengthFn('bleed'), 0, 1);
     const combined = clamp(overall * section, 0, 1);
-    if (combined <= 0 || !isInkSectionEnabled('bleed')) return;
+    if (combined <= 0 || !isInkSectionEnabledFn('bleed')) return;
 
     const widthCss = Math.max(0, Number(config.widthPx) || 0);
     if (widthCss <= 0) return;
@@ -984,10 +998,10 @@ function hash36FromJSON(obj) {
     const fuzzSectionStrength = clamp(getInkSectionStrengthFn('fuzz'), 0, 1);
     const bleedSectionStrength = clamp(getInkSectionStrengthFn('bleed'), 0, 1);
     const rawOrder = normalizePipelineOrder(getInkSectionOrderFn());
-    const fuzzKey = (effectsAllowed && fuzzSectionStrength > 0 && isInkSectionEnabled('fuzz'))
+    const fuzzKey = (effectsAllowed && fuzzSectionStrength > 0 && isInkSectionEnabledFn('fuzz'))
       ? Math.round(fuzzSectionStrength * 100)
       : 0;
-    const fillKey = (effectsAllowed && fillSectionStrength > 0 && isInkSectionEnabled('fill'))
+    const fillKey = (effectsAllowed && fillSectionStrength > 0 && isInkSectionEnabledFn('fill'))
       ? Math.round(fillSectionStrength * 100)
       : 0;
     const orderKey = rawOrder.join('-');
@@ -1042,23 +1056,23 @@ function hash36FromJSON(obj) {
     const advCache = new Float32Array(ASCII_END + 1);
     const SHIFT_EPS = 0.5;
 
-    const textureAllowed = INK_TEXTURE.enabled && effectsAllowed && textureSectionStrength > 0 && isInkSectionEnabled('texture');
+    const textureAllowed = INK_TEXTURE.enabled && effectsAllowed && textureSectionStrength > 0 && isInkSectionEnabledFn('texture');
     const useTexture = textureAllowed;
     const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
     const textureSupersample = useTexture ? Math.max(1, INK_TEXTURE.supersample | 0) : 1;
     const sampleScale = Math.max(safariSupersample, textureSupersample);
     const fillEnabled = effectsAllowed
       && fillSectionStrength > 0
-      && isInkSectionEnabled('fill');
+      && isInkSectionEnabledFn('fill');
     const bleedEnabled = EDGE_BLEED.enabled
       && effectsAllowed
       && bleedSectionStrength > 0
-      && isInkSectionEnabled('bleed')
+      && isInkSectionEnabledFn('bleed')
       && (!Array.isArray(EDGE_BLEED.inks) || EDGE_BLEED.inks.includes(ink));
     const fuzzEnabled = EDGE_FUZZ.enabled
       && effectsAllowed
       && fuzzSectionStrength > 0
-      && isInkSectionEnabled('fuzz')
+      && isInkSectionEnabledFn('fuzz')
       && (!Array.isArray(EDGE_FUZZ.inks) || EDGE_FUZZ.inks.includes(ink));
     const pipelineOrder = rawOrder;
     const pipelineStages = [];
@@ -1570,7 +1584,7 @@ function hash36FromJSON(obj) {
 
   function ensureGrain(page) {
     const cfg = grainConfig();
-    if (!cfg || cfg.enabled === false || !isInkSectionEnabled('grain')) return;
+    if (!cfg || cfg.enabled === false || !isInkSectionEnabledFn('grain')) return;
     const W = app.PAGE_W | 0;
     const H = app.PAGE_H | 0;
     if (!(W > 0) || !(H > 0)) return;
@@ -1708,7 +1722,7 @@ function hash36FromJSON(obj) {
   }
 
   function grainAlpha() {
-    if (!isInkSectionEnabled('grain')) return 0;
+    if (!isInkSectionEnabledFn('grain')) return 0;
     const cfg = grainConfig();
     if (!cfg.enabled) return 0;
     const overall = clamp(getInkEffectFactor(), 0, 1);
