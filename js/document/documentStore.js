@@ -24,15 +24,23 @@ const CENTER_THICKEN_BOUNDS = resolveIntensityBounds('centerThicken');
 const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
 
 const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'];
-const DEFAULT_INK_EFFECT_MODE = 'classic';
+const DEFAULT_INK_EFFECT_MODE = 'experimental';
+const LEGACY_INK_EFFECT_MODES = new Set(['classic']);
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
 const EFFECT_QUALITY_MAX = 200;
 
 function sanitizeInkEffectsMode(mode, fallback = DEFAULT_INK_EFFECT_MODE) {
   if (typeof mode !== 'string') return fallback;
-  const trimmed = mode.trim();
-  return trimmed || fallback;
+  const normalized = mode.trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (normalized === DEFAULT_INK_EFFECT_MODE) {
+    return normalized;
+  }
+  if (LEGACY_INK_EFFECT_MODES.has(normalized)) {
+    return DEFAULT_INK_EFFECT_MODE;
+  }
+  return fallback;
 }
 
 function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
