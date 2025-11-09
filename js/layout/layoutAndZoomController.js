@@ -220,12 +220,34 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   }
 
+  const OFFSET_EPSILON = 1e-4;
+  let pendingOffsetVirtRAF = 0;
+
+  function requestVirtualizationAfterOffsetChange() {
+    if (typeof requestAnimationFrame !== 'function') {
+      requestVirtualization();
+      return;
+    }
+    if (pendingOffsetVirtRAF) return;
+    pendingOffsetVirtRAF = requestAnimationFrame(() => {
+      pendingOffsetVirtRAF = 0;
+      requestVirtualization();
+    });
+  }
+
   function setPaperOffset(x, y) {
+    const prevX = state.paperOffset.x;
+    const prevY = state.paperOffset.y;
     const clamped = clampPaperOffset(x, y);
     const scale = cssScaleFactor();
     const snap = (v) => Math.round(v * DPR) / DPR;
     const snappedX = scale ? snap(clamped.x * scale) / scale : clamped.x;
     const snappedY = scale ? snap(clamped.y * scale) / scale : clamped.y;
+    const deltaX = Math.abs(snappedX - prevX);
+    const deltaY = Math.abs(snappedY - prevY);
+    if (deltaX <= OFFSET_EPSILON && deltaY <= OFFSET_EPSILON) {
+      return;
+    }
     state.paperOffset.x = snappedX;
     state.paperOffset.y = snappedY;
     if (app.stageInner) {
@@ -234,7 +256,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       app.stageInner.style.transform = `translate3d(${tx}px,${ty}px,0)`;
     }
     queueRulerRepositionAfterVisualMove();
-    requestVirtualization();
+    requestVirtualizationAfterOffsetChange();
   }
 
   function caretViewportPos() {
