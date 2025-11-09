@@ -8,12 +8,6 @@ Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
-const DEFAULT_INK_EFFECT_MODE = 'experimental';
-const INK_EFFECT_MODE_LABELS = {
-  classic: 'Legacy effects',
-  experimental: 'Experimental effects',
-};
-
 const INPUT_OVERRIDES = {
   'fill.centerThickenPct': {
     type: 'range',
@@ -263,7 +257,7 @@ const SECTION_DEFS = [
   {
     id: 'fill',
     label: 'Fill',
-    mode: 'classic',
+    hidden: true,
     config: FILL_CFG,
     keyOrder: [
       { path: 'centerThickenPct', label: 'Center thickening' },
@@ -276,7 +270,7 @@ const SECTION_DEFS = [
   {
     id: 'texture',
     label: 'Texture',
-    mode: 'classic',
+    hidden: true,
     config: INK_TEXTURE,
     keyOrder: ['supersample', 'coarseNoise', 'fineNoise', 'noiseSmoothing', 'centerEdgeBias', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
     trigger: 'glyph',
@@ -286,7 +280,7 @@ const SECTION_DEFS = [
   {
     id: 'fuzz',
     label: 'Edge Fuzz',
-    mode: 'classic',
+    hidden: true,
     config: EDGE_FUZZ,
     keyOrder: ['inks', 'widthPx', 'inwardShare', 'roughness', 'frequency', 'opacity', 'seed'],
     trigger: 'glyph',
@@ -296,7 +290,7 @@ const SECTION_DEFS = [
   {
     id: 'bleed',
     label: 'Bleed',
-    mode: 'classic',
+    hidden: true,
     config: EDGE_BLEED,
     keyOrder: ['inks', 'widthPx', 'feather', 'lightnessShift', 'noiseRoughness', 'intensity', 'seed'],
     trigger: 'glyph',
@@ -306,7 +300,7 @@ const SECTION_DEFS = [
   {
     id: 'grain',
     label: 'Grain',
-    mode: 'classic',
+    hidden: true,
     config: GRAIN_CFG,
     keyOrder: ['scale', 'gamma', 'opacity', 'blend_mode', 'tile', 'base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'alpha', 'seeds'],
     trigger: 'grain',
@@ -366,7 +360,8 @@ const SECTION_QUALITY_CONFIG = Object.freeze({
   expDefects: { stateKey: 'expDefectsQuality', label: 'Defects quality' },
 });
 
-const DEFAULT_SECTION_ORDER = SECTION_DEFS.map(def => def.id);
+const VISIBLE_SECTION_DEFS = SECTION_DEFS.filter(def => !def.hidden);
+const DEFAULT_SECTION_ORDER = VISIBLE_SECTION_DEFS.map(def => def.id);
 const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
   acc[def.id] = def;
   return acc;
@@ -380,25 +375,19 @@ function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
     if (typeof id !== 'string') return;
     const trimmed = id.trim();
     if (!trimmed || seen.has(trimmed)) return;
-    if (!Object.prototype.hasOwnProperty.call(SECTION_DEF_MAP, trimmed)) return;
+    const def = SECTION_DEF_MAP[trimmed];
+    if (!def || def.hidden) return;
     seen.add(trimmed);
     normalized.push(trimmed);
   });
   (Array.isArray(fallback) ? fallback : DEFAULT_SECTION_ORDER).forEach(id => {
-    if (!Object.prototype.hasOwnProperty.call(SECTION_DEF_MAP, id)) return;
+    const def = SECTION_DEF_MAP[id];
+    if (!def || def.hidden) return;
     if (seen.has(id)) return;
     seen.add(id);
     normalized.push(id);
   });
   return normalized;
-}
-
-function normalizeInkEffectsMode(mode) {
-  if (typeof mode !== 'string') return DEFAULT_INK_EFFECT_MODE;
-  const trimmed = mode.trim().toLowerCase();
-  return Object.prototype.hasOwnProperty.call(INK_EFFECT_MODE_LABELS, trimmed)
-    ? trimmed
-    : DEFAULT_INK_EFFECT_MODE;
 }
 
 function clampFillPercent(value, limits) {
@@ -491,7 +480,6 @@ const panelState = {
   sectionsRoot: null,
   sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   dragState: null,
-  currentMode: DEFAULT_INK_EFFECT_MODE,
 };
 
 const HEX_MATCH_RE = /seed|hash/i;
@@ -568,7 +556,6 @@ function normalizeStyleRecord(style, index = 0) {
       sections: {},
       sectionOrder: normalizeSectionOrder(style?.sectionOrder),
     };
-    record.inkEffectsMode = normalizeInkEffectsMode(style?.inkEffectsMode ?? style?.effectsMode);
     SECTION_DEFS.forEach(def => {
       const rawSection = style?.sections && typeof style.sections === 'object'
         ? style.sections[def.id]
@@ -633,7 +620,6 @@ function createDefaultStyleRecord(index = 0) {
     edgeThin: EDGE_THIN_LIMITS.defaultPct,
     sections: {},
     sectionOrder: DEFAULT_SECTION_ORDER.slice(),
-    inkEffectsMode: DEFAULT_INK_EFFECT_MODE,
   };
   SECTION_DEFS.forEach(def => {
     record.sections[def.id] = {
@@ -679,7 +665,6 @@ function createStyleSnapshot(name, existingId = null) {
     sectionOrder: Array.isArray(panelState.sectionOrder)
       ? panelState.sectionOrder.slice()
       : DEFAULT_SECTION_ORDER.slice(),
-    inkEffectsMode: getInkEffectsModeFromState(),
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
@@ -875,24 +860,6 @@ function isHexField(path) {
 
 function getAppState() {
   return panelState.appState;
-}
-
-function getInkEffectsModeFromState() {
-  const appState = getAppState();
-  if (!appState) return DEFAULT_INK_EFFECT_MODE;
-  const mode = normalizeInkEffectsMode(appState.inkEffectsMode);
-  const enforced = mode === 'experimental' ? mode : DEFAULT_INK_EFFECT_MODE;
-  appState.inkEffectsMode = enforced;
-  return enforced;
-}
-
-function setInkEffectsModeOnState(mode) {
-  const appState = getAppState();
-  if (!appState) return DEFAULT_INK_EFFECT_MODE;
-  const normalized = normalizeInkEffectsMode(mode);
-  const enforced = normalized === 'experimental' ? normalized : DEFAULT_INK_EFFECT_MODE;
-  appState.inkEffectsMode = enforced;
-  return enforced;
 }
 
 function getSectionOrderFromState() {
@@ -1577,37 +1544,6 @@ function buildObjectControls(meta, container, obj, path, label) {
   container.appendChild(group);
 }
 
-function setMetaModeDisabled(meta, disabled) {
-  if (!meta) return;
-  const shouldDisable = !!disabled;
-  if (meta.slider) meta.slider.disabled = shouldDisable;
-  if (meta.numberInput) meta.numberInput.disabled = shouldDisable;
-  if (meta.inputs && typeof meta.inputs.forEach === 'function') {
-    meta.inputs.forEach(input => {
-      if (!input) return;
-      input.disabled = shouldDisable;
-    });
-  }
-  if (meta.root) {
-    meta.root.classList.toggle('is-mode-disabled', shouldDisable);
-  }
-}
-
-function syncInkEffectsModeUI(mode = getInkEffectsModeFromState()) {
-  const normalized = normalizeInkEffectsMode(mode);
-  panelState.currentMode = normalized;
-  if (!Array.isArray(panelState.metas)) return;
-  panelState.metas.forEach(meta => {
-    if (!meta) return;
-    const metaMode = normalizeInkEffectsMode(meta.mode || 'classic');
-    const disable = metaMode !== normalized;
-    setMetaModeDisabled(meta, disable);
-    if (meta.root) {
-      meta.root.dataset.mode = metaMode;
-    }
-  });
-}
-
 function setSectionCollapsed(meta, collapsed) {
   if (!meta) return;
   const isCollapsed = !!collapsed;
@@ -1666,11 +1602,10 @@ function createQualityControl(meta, container) {
 }
 
 function buildSection(def, root) {
+  if (def?.hidden) return null;
   const sectionEl = document.createElement('section');
   sectionEl.className = 'ink-section';
   sectionEl.dataset.sectionId = def.id;
-  const mode = normalizeInkEffectsMode(def.mode || 'classic');
-  sectionEl.dataset.mode = mode;
 
   const header = document.createElement('div');
   header.className = 'ink-section-header';
@@ -1745,7 +1680,6 @@ function buildSection(def, root) {
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
     hasStrengthControl,
-    mode,
     qualityControl: null,
   };
 
@@ -1839,8 +1773,6 @@ function buildSection(def, root) {
   setSectionCollapsed(meta, true);
   if (hasStrengthControl) {
     applySectionStrength(meta, startPercent, { silent: true, syncSlider: false, syncNumber: false });
-  } else {
-    setMetaModeDisabled(meta, mode !== panelState.currentMode);
   }
   return meta;
 }
@@ -2261,10 +2193,6 @@ function applySavedStyle(styleId) {
   const styles = getSavedStyles();
   const style = styles.find(s => s && s.id === styleId);
   if (!style) return;
-  const mode = normalizeInkEffectsMode(style.inkEffectsMode || style.effectsMode);
-  const appliedMode = setInkEffectsModeOnState(mode);
-  panelState.currentMode = appliedMode;
-  syncInkEffectsModeUI(appliedMode);
   if (Array.isArray(style.sectionOrder) && style.sectionOrder.length) {
     applySectionOrder(style.sectionOrder);
   }
@@ -2398,10 +2326,6 @@ export function getInkSectionOrder() {
     return panelState.sectionOrder.slice();
   }
   return normalizeSectionOrder(getSectionOrderFromState());
-}
-
-export function getInkEffectsMode() {
-  return getInkEffectsModeFromState();
 }
 
 export function getExperimentalEffectsConfig() {
@@ -2557,9 +2481,6 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
   setSectionOrderOnState(panelState.sectionOrder);
 
-  panelState.currentMode = getInkEffectsModeFromState();
-  syncInkEffectsModeUI(panelState.currentMode);
-
   syncFillConfigValues();
 
   if (panelState.styleNameInput) {
@@ -2629,8 +2550,6 @@ export function setupInkSettingsPanel(options = {}) {
     });
     applySectionOrder(panelState.sectionOrder, { skipStateUpdate: true, syncDom: true, silent: true });
   }
-
-  syncInkEffectsModeUI(panelState.currentMode);
 
   panelState.initialized = true;
   syncInkStrengthDisplays();

@@ -613,10 +613,6 @@ body[data-page-tone='dark']{
   .ink-array-item { border: 1px solid rgba(0,0,0,0.08); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
   .ink-array-title { font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 6px; text-transform: uppercase; }
   .ink-section.is-disabled { opacity: 0.55; }
-  .ink-section.is-mode-disabled { opacity: 0.35; }
-  .ink-section.is-mode-disabled .ink-section-body,
-  .ink-section.is-mode-disabled .ink-section-controls,
-  .ink-section.is-mode-disabled .ink-section-drag-handle { pointer-events: none; }
   .ink-section-apply-row .btn { margin-left: 12px; }
   .ink-seed-input { font-family: 'SFMono-Regular', 'SFMono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; }
   .ink-styles-section { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; }
