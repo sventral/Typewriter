@@ -31,6 +31,9 @@ const SPECK_NOISE_WEIGHT_SUM = SPECK_NOISE_OCTAVES.reduce((sum, octave) => sum +
 
 const MIN_DETAIL_DENSITY_CSS = 2;
 const DETAIL_MULTIPLIER = 2.6;
+const MIN_DETAIL_SCALE = 0.05;
+const MIN_STAGE_QUALITY = 0.05;
+const MAX_STAGE_QUALITY = 2;
 const DEFAULT_DETAIL_RESOLUTION = Object.freeze({
   threshold: 2.5,
   scale: 0.5,
@@ -57,8 +60,12 @@ const ensureDetailDensity = ctx => {
 
 const getDetailDensityCss = (ctx, boost = 1) => ensureDetailDensity(ctx).css * boost;
 
+const getStageQualityFromContext = ctx => clampStageQuality(typeof ctx?.stageQuality === 'number' ? ctx.stageQuality : 1);
+
 const clampScale = (value, minValue, maxValue) =>
   Number.isFinite(value) ? clamp(value, minValue, maxValue) : maxValue;
+
+const clampStageQuality = value => clamp(Number.isFinite(value) ? value : 1, MIN_STAGE_QUALITY, MAX_STAGE_QUALITY);
 
 const normalizeDetailResolutionConfig = raw => {
   if (raw === false) return null;
@@ -66,12 +73,14 @@ const normalizeDetailResolutionConfig = raw => {
   const threshold = Number.isFinite(source.threshold)
     ? max(0, source.threshold)
     : DEFAULT_DETAIL_RESOLUTION.threshold;
-  const scale = clampScale(source.scale, 0.1, 1);
+  const scale = clampScale(source.scale, MIN_DETAIL_SCALE, 1);
   if (scale >= 0.999) {
     return {
       threshold,
       scale: 1,
       stages: new Set(),
+      stageScaleMap: new Map(),
+      stageQualityMap: new Map(),
     };
   }
   const stagesArray = Array.isArray(source.stages) && source.stages.length
@@ -86,11 +95,65 @@ const normalizeDetailResolutionConfig = raw => {
   if (!stageSet.size) {
     DEFAULT_DETAIL_RESOLUTION.stages.forEach(stage => stageSet.add(stage));
   }
+  const stageScaleMap = new Map();
+  const rawScaleMap = source.stageScaleMap || source.stageScales;
+  if (rawScaleMap instanceof Map) {
+    rawScaleMap.forEach((value, stageId) => {
+      if (typeof stageId !== 'string' || !stageId) return;
+      stageScaleMap.set(stageId, clampScale(value, MIN_DETAIL_SCALE, 1));
+    });
+  } else if (rawScaleMap && typeof rawScaleMap === 'object') {
+    Object.entries(rawScaleMap).forEach(([stageId, value]) => {
+      if (typeof stageId !== 'string' || !stageId) return;
+      stageScaleMap.set(stageId, clampScale(value, MIN_DETAIL_SCALE, 1));
+    });
+  }
+  if (!stageScaleMap.size) {
+    stageSet.forEach(stageId => {
+      stageScaleMap.set(stageId, scale);
+    });
+  }
+  const stageQualityMap = new Map();
+  const rawQualityMap = source.stageQualityMap || source.stageQuality || source.stageQualities;
+  if (rawQualityMap instanceof Map) {
+    rawQualityMap.forEach((value, stageId) => {
+      if (typeof stageId !== 'string' || !stageId) return;
+      stageQualityMap.set(stageId, clampStageQuality(value));
+    });
+  } else if (rawQualityMap && typeof rawQualityMap === 'object') {
+    Object.entries(rawQualityMap).forEach(([stageId, value]) => {
+      if (typeof stageId !== 'string' || !stageId) return;
+      stageQualityMap.set(stageId, clampStageQuality(value));
+    });
+  }
+  if (!stageQualityMap.size) {
+    stageSet.forEach(stageId => {
+      stageQualityMap.set(stageId, 1);
+    });
+  }
   return {
     threshold,
     scale,
     stages: stageSet,
+    stageScaleMap,
+    stageQualityMap,
   };
+};
+
+const resolveStageScale = (config, stageId) => {
+  if (!config) return 1;
+  if (config.stageScaleMap && config.stageScaleMap.has(stageId)) {
+    return clampScale(config.stageScaleMap.get(stageId), MIN_DETAIL_SCALE, 1);
+  }
+  return clampScale(config.scale, MIN_DETAIL_SCALE, 1);
+};
+
+const resolveStageQuality = (config, stageId) => {
+  if (!config) return 1;
+  if (config.stageQualityMap && config.stageQualityMap.has(stageId)) {
+    return clampStageQuality(config.stageQualityMap.get(stageId));
+  }
+  return 1;
 };
 
 const sampleBilinear = (data, width, height, x, y) => {
@@ -231,6 +294,9 @@ const createDetailResolutionContext = (ctx, coverage, scale) => {
   detailCtx.alpha0 = alphaResult?.data || new Uint8Array(dw * dh);
   detailCtx.dpPerCss = max(1e-6, (ctx.dpPerCss || 1) * scale);
   detailCtx.__detailDensity = undefined;
+  if (typeof ctx.stageQuality === 'number') {
+    detailCtx.stageQuality = ctx.stageQuality;
+  }
   if (detailDm) detailCtx.dm = detailDm;
 
   return { detailCtx, coverageLow, coverageBefore, lowWidth: dw, lowHeight: dh };
@@ -241,14 +307,17 @@ const shouldRunDetailStageLowRes = (stageId, ctx, config) => {
   if (!config.stages.has(stageId)) return false;
   if (!ctx || !ctx.w || !ctx.h) return false;
   const dpPerCss = Math.max(1e-6, ctx.dpPerCss || 1);
-  if (dpPerCss < config.threshold) return false;
-  if (config.scale >= 0.999) return false;
+  const stageScale = resolveStageScale(config, stageId);
+  if (stageScale >= 0.999) return false;
+  const baseScale = clampScale(config.scale, MIN_DETAIL_SCALE, 1);
+  if (dpPerCss < config.threshold && stageScale >= baseScale - 1e-6) return false;
   if (ctx.w <= 2 || ctx.h <= 2) return false;
   return true;
 };
 
-const runDetailStageAtResolution = (stageFn, coverage, ctx, config, clamp01Fn) => {
-  const detail = createDetailResolutionContext(ctx, coverage, config.scale);
+const runDetailStageAtResolution = (stageId, stageFn, coverage, ctx, config, clamp01Fn) => {
+  const stageScale = resolveStageScale(config, stageId);
+  const detail = createDetailResolutionContext(ctx, coverage, stageScale);
   if (!detail) {
     stageFn(coverage, ctx);
     return;
@@ -341,7 +410,9 @@ export function createExperimentalStagePipeline(deps = {}) {
     const { w, h, alpha0, params, seed, gix, smul } = ctx;
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
-    const detailCss = getDetailDensityCss(ctx);
+    const stageQuality = getStageQualityFromContext(ctx);
+    const detailCssRaw = getDetailDensityCss(ctx);
+    const detailCss = Math.max(MIN_DETAIL_DENSITY_CSS, detailCssRaw * stageQuality);
     const lfScale = Math.max(1e-6, (params.noise.lfScale * smul) / detailCss);
     const hfScale = Math.max(1e-6, (params.noise.hfScale * smul) / detailCss);
     const periodPx = Math.max(1e-6, (params.ribbon.period * smul) / detailCss);
@@ -508,12 +579,20 @@ export function createExperimentalStagePipeline(deps = {}) {
     const inside = dm?.raw?.inside;
     const maxInside = dm?.getMaxInside ? dm.getMaxInside() : 0;
     if (!inside || maxInside <= 0) return;
+    const stageQuality = getStageQualityFromContext(ctx);
+    const quantLevels = stageQuality >= 1
+      ? Math.max(8, Math.round(8 + (stageQuality - 1) * 12))
+      : Math.max(2, Math.round(2 + stageQuality * 10));
     const cK = params.centerEdge.center || 0;
     const eK = params.centerEdge.edge || 0;
     if (cK === 0 && eK === 0) return;
     for (let i = 0; i < w * h; i++) {
       if (alpha0[i] === 0) continue;
-      const norm = (inside[i] || 0) / maxInside;
+      let norm = (inside[i] || 0) / maxInside;
+      if (quantLevels > 1) {
+        const steps = quantLevels - 1;
+        norm = clamp((Math.round(norm * steps) / steps) || 0, 0, 1);
+      }
       let mod = 1;
       mod *= clampFn(1 + cK * norm, 0, 2);
       mod *= clampFn(1 - eK * (1 - norm), 0, 2);
@@ -711,17 +790,19 @@ function applySmudgeHalo(coverage, ctx) {
   };
 
   const runPipeline = (coverage, ctx, order = GLYPH_PIPELINE_ORDER) => {
-    const stages = Array.isArray(order) && order.length ? order : GLYPH_PIPELINE_ORDER;
-    for (const id of stages) {
-      const fn = stageRegistry[id];
-      if (typeof fn !== 'function') continue;
-      if (detailResolutionConfig && shouldRunDetailStageLowRes(id, ctx, detailResolutionConfig)) {
-        runDetailStageAtResolution(fn, coverage, ctx, detailResolutionConfig, clamp01Fn);
-      } else {
-        fn(coverage, ctx);
-      }
+  const stages = Array.isArray(order) && order.length ? order : GLYPH_PIPELINE_ORDER;
+  for (const id of stages) {
+    const fn = stageRegistry[id];
+    if (typeof fn !== 'function') continue;
+    ctx.stageQuality = resolveStageQuality(detailResolutionConfig, id);
+    if (detailResolutionConfig && shouldRunDetailStageLowRes(id, ctx, detailResolutionConfig)) {
+      runDetailStageAtResolution(id, fn, coverage, ctx, detailResolutionConfig, clamp01Fn);
+    } else {
+      fn(coverage, ctx);
     }
-  };
+    ctx.stageQuality = undefined;
+  }
+};
 
   return {
     stageRegistry,

@@ -26,6 +26,7 @@ export function createGlyphAtlas(options) {
     getInkEffectsMode,
     isInkSectionEnabled,
     getExperimentalEffectsConfig,
+    getExperimentalQualitySettings,
     inkTextureConfig,
     edgeFuzzConfig,
     edgeBleedConfig,
@@ -65,6 +66,9 @@ export function createGlyphAtlas(options) {
     : (() => state.inkEffectsMode || 'classic');
   const getExperimentalEffectsConfigFn = typeof getExperimentalEffectsConfig === 'function'
     ? getExperimentalEffectsConfig
+    : (() => ({}));
+  const getExperimentalQualitySettingsFn = typeof getExperimentalQualitySettings === 'function'
+    ? getExperimentalQualitySettings
     : (() => ({}));
   const ALT_VARIANTS = 9;
   const classicAtlases = new Map();
@@ -621,6 +625,53 @@ function djb2(str) {
     expGrain: ['texture'],
     expDefects: ['dropouts', 'punch', 'smudge'],
   };
+  const QUALITY_DEFAULT = 100;
+  const QUALITY_MIN = 0;
+  const QUALITY_MAX = 200;
+  const DETAIL_BASE_SCALE = 0.5;
+  const DETAIL_MIN_SCALE = 0.05;
+  const DETAIL_MAX_SCALE = 1;
+  const STAGE_QUALITY_MIN = 0.05;
+  const STAGE_QUALITY_MAX = 2;
+
+  function buildDetailResolutionConfig(qualitySettings) {
+    const stageScaleMap = new Map();
+    const stageQualityMap = new Map();
+    const quality = qualitySettings && typeof qualitySettings === 'object' ? qualitySettings : {};
+    Object.entries(EXPERIMENTAL_SECTION_STAGE_MAP).forEach(([sectionId, stageIds]) => {
+      if (!Array.isArray(stageIds)) return;
+      const raw = Number(quality[sectionId]);
+      const percent = clamp(Number.isFinite(raw) ? raw : QUALITY_DEFAULT, QUALITY_MIN, QUALITY_MAX);
+      const factor = percent / QUALITY_DEFAULT;
+      const stageScale = clamp(DETAIL_BASE_SCALE * factor, DETAIL_MIN_SCALE, DETAIL_MAX_SCALE);
+      const qualityFactor = clamp(factor, STAGE_QUALITY_MIN, STAGE_QUALITY_MAX);
+      stageIds.forEach(stageId => {
+        stageScaleMap.set(stageId, stageScale);
+        stageQualityMap.set(stageId, qualityFactor);
+      });
+    });
+    if (!stageScaleMap.size) {
+      Object.values(EXPERIMENTAL_SECTION_STAGE_MAP).forEach(stageList => {
+        stageList.forEach(stageId => {
+          if (!stageScaleMap.has(stageId)) stageScaleMap.set(stageId, DETAIL_BASE_SCALE);
+        });
+      });
+    }
+    const signatureParts = [];
+    stageScaleMap.forEach((scale, stage) => {
+      const qualityFactor = stageQualityMap.get(stage) ?? 1;
+      signatureParts.push(`${stage}:s${scale.toFixed(3)}:q${qualityFactor.toFixed(3)}`);
+    });
+    signatureParts.sort();
+    return {
+      threshold: 2.5,
+      scale: DETAIL_BASE_SCALE,
+      stages: new Set(stageScaleMap.keys()),
+      stageScaleMap,
+      stageQualityMap,
+      signature: signatureParts.join('|') || 'base',
+    };
+  }
 
   // Determine which experimental stages currently have any visible effect enabled.
   function getExperimentalStageActivity() {
@@ -745,12 +796,21 @@ function djb2(str) {
     return stages;
   }
 
-  function getExperimentalProcessorForOrder(order) {
-    const key = Array.isArray(order) && order.length ? order.join('-') : 'default';
+  function getExperimentalProcessorForOrder(order, options = {}) {
+    const orderKey = Array.isArray(order) && order.length ? order.join('-') : 'default';
+    const resolutionSig = options?.detailResolution?.signature || 'base';
+    const key = `${orderKey}::${resolutionSig}`;
     if (experimentalProcessorCache.has(key)) {
       return experimentalProcessorCache.get(key);
     }
-    const processor = createExperimentalGlyphProcessor({ pipelineOrder: order && order.length ? order : undefined });
+    const stageDeps = {};
+    if (options?.detailResolution) {
+      stageDeps.detailResolution = options.detailResolution;
+    }
+    const processor = createExperimentalGlyphProcessor({
+      pipelineOrder: order && order.length ? order : undefined,
+      stageDeps: Object.keys(stageDeps).length ? stageDeps : undefined,
+    });
     experimentalProcessorCache.set(key, processor);
     return processor;
   }
@@ -1521,6 +1581,9 @@ function djb2(str) {
     const sectionEnabled = getExperimentalSectionEnabledState();
     const orderKey = hasExperimentalStages ? pipelineStages.join('-') : 'none';
     const stageSignature = buildExperimentalStageConfigSignature(pipelineStages, baseExperimentalConfig, sectionEnabled);
+    const qualitySettings = getExperimentalQualitySettingsFn() || {};
+    const detailResolutionConfig = buildDetailResolutionConfig(qualitySettings);
+    const qualitySignature = detailResolutionConfig?.signature || 'base';
     const overallKey = Math.round(overallStrength * 1000);
     const keyParts = [
       ink,
@@ -1532,6 +1595,7 @@ function djb2(str) {
     if (stageSignature) {
       keyParts.push(`cfg${stageSignature}`);
     }
+    keyParts.push(`ql${qualitySignature}`);
     const key = keyParts.join('|');
     let atlas = experimentalAtlases.get(key);
     if (atlas) return atlas;
@@ -1613,7 +1677,9 @@ function djb2(str) {
       smudge: { ...(baseConfig.smudge || {}) },
       punch: { ...(baseConfig.punch || {}) },
     });
-    const processor = hasExperimentalStages ? getExperimentalProcessorForOrder(pipelineStages) : null;
+    const processor = hasExperimentalStages
+      ? getExperimentalProcessorForOrder(pipelineStages, { detailResolution: detailResolutionConfig })
+      : null;
     const stagePipeline = processor?.stagePipeline;
     const effectiveOrder = hasExperimentalStages ? pipelineStages : null;
     const runExperimentalEffects = needsEffectsPipeline && Array.isArray(effectiveOrder) && effectiveOrder.length;
