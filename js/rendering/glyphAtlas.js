@@ -2,7 +2,6 @@ import { clamp } from '../utils/math.js';
 import { normalizeInkTextureConfig } from '../config/inkConfig.js';
 import { createExperimentalGlyphProcessor } from './experimental/glyphProcessor.js';
 import { computeInsideDistance, computeOutsideDistance, createDistanceMapProvider } from './experimental/distanceMaps.js';
-import { GLYPH_PIPELINE_ORDER as EXPERIMENTAL_STAGE_ORDER } from './experimental/stagePipeline.js';
 
 export function createGlyphAtlas(options) {
   const {
@@ -420,6 +419,51 @@ function hash36FromJSON(obj) {
     expDefects: ['dropouts', 'punch', 'smudge'],
   };
 
+  // Determine which experimental stages currently have any visible effect enabled.
+  function getExperimentalStageActivity() {
+    const cfg = getExperimentalEffectsConfigFn() || {};
+    const enable = cfg.enable && typeof cfg.enable === 'object' ? cfg.enable : {};
+    const activity = {
+      fill: false,
+      dropouts: !!enable.dropouts,
+      texture: !!enable.grainSpeck,
+      centerEdge: !!enable.centerEdge,
+      punch: !!enable.punch,
+      fuzz: !!enable.edgeFuzz,
+      smudge: !!enable.smudge,
+    };
+    const toneEnabled = !!(enable.toneCore || enable.vBias || enable.rim);
+    const needsFill = activity.centerEdge
+      || activity.dropouts
+      || activity.texture
+      || activity.punch
+      || activity.fuzz
+      || activity.smudge;
+    activity.fill = toneEnabled || needsFill;
+    return activity;
+  }
+
+  // Mirror the classic order normalization but limit it to experimental sections only.
+  function normalizeExperimentalSectionOrder(order) {
+    const base = Array.isArray(order) ? order : [];
+    const seen = new Set();
+    const normalized = [];
+    base.forEach(id => {
+      if (typeof id !== 'string') return;
+      const trimmed = id.trim();
+      if (!trimmed || seen.has(trimmed)) return;
+      if (!Object.prototype.hasOwnProperty.call(EXPERIMENTAL_SECTION_STAGE_MAP, trimmed)) return;
+      seen.add(trimmed);
+      normalized.push(trimmed);
+    });
+    EXPERIMENTAL_SECTION_IDS.forEach(id => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      normalized.push(id);
+    });
+    return normalized;
+  }
+
   function normalizePipelineMode(mode) {
     if (typeof mode !== 'string') return 'classic';
     const trimmed = mode.trim().toLowerCase();
@@ -427,20 +471,30 @@ function hash36FromJSON(obj) {
   }
 
   function resolveExperimentalStages(order) {
-    const sectionOrder = Array.isArray(order) ? order : [];
-    const requestedStages = new Set();
-    sectionOrder.forEach(id => {
-      const stages = EXPERIMENTAL_SECTION_STAGE_MAP[id];
-      if (!stages) return;
-      stages.forEach(stage => requestedStages.add(stage));
+    const stageActivity = getExperimentalStageActivity();
+    const normalizedSections = normalizeExperimentalSectionOrder(order);
+    const seenStages = new Set();
+    const stages = [];
+
+    const addStageIfActive = stageId => {
+      if (!stageActivity[stageId]) return;
+      if (seenStages.has(stageId)) return;
+      seenStages.add(stageId);
+      stages.push(stageId);
+    };
+
+    normalizedSections.forEach(sectionId => {
+      const stageIds = EXPERIMENTAL_SECTION_STAGE_MAP[sectionId];
+      if (!stageIds || !stageIds.length) return;
+      stageIds.forEach(addStageIfActive);
     });
-    EXPERIMENTAL_SECTION_IDS.forEach(id => {
-      const stages = EXPERIMENTAL_SECTION_STAGE_MAP[id];
-      if (!stages) return;
-      stages.forEach(stage => requestedStages.add(stage));
-    });
-    const finalOrder = EXPERIMENTAL_STAGE_ORDER.filter(stage => requestedStages.has(stage));
-    return finalOrder.length ? finalOrder : EXPERIMENTAL_STAGE_ORDER.slice();
+
+    if (stageActivity.fill && !seenStages.has('fill')) {
+      stages.unshift('fill');
+      seenStages.add('fill');
+    }
+
+    return stages;
   }
 
   function getExperimentalProcessorForOrder(order) {
@@ -1313,11 +1367,10 @@ if (atlas) return atlas;
       smudge: { ...(baseConfig.smudge || {}) },
       punch: { ...(baseConfig.punch || {}) },
     });
-    const processor = getExperimentalProcessorForOrder(pipelineStages);
+    const hasExperimentalStages = Array.isArray(pipelineStages) && pipelineStages.length > 0;
+    const processor = hasExperimentalStages ? getExperimentalProcessorForOrder(pipelineStages) : null;
     const stagePipeline = processor?.stagePipeline;
-    const effectiveOrder = Array.isArray(pipelineStages) && pipelineStages.length
-      ? pipelineStages
-      : processor?.pipelineOrder || EXPERIMENTAL_STAGE_ORDER;
+    const effectiveOrder = hasExperimentalStages ? pipelineStages : null;
 
     let code = ASCII_START;
     for (let row = 0; row < ATLAS_ROWS; row++) {
