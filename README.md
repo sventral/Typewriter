@@ -39,6 +39,11 @@ Typewriter/
 └── scripts/serve.js   # Minimal static dev server used by `npm start`
 ```
 
+## Manual test checklist
+- Open the app in a browser that supports OffscreenCanvas (Chrome, Edge) and enable experimental ink effects. Type a few lines with black, red, and erase inks to confirm glyphs render once the worker-built atlas returns.
+- Scroll several pages while zooming in and out; ensure characters remain crisp and no rows are skipped while atlases stream in from the worker.
+- Toggle between experimental and classic ink pipelines (or rebuild atlases via the theme controls) to verify the worker cache resets cleanly without leaving stale glyphs.
+
 ## License
 The project is currently distributed without a declared license (marked `UNLICENSED` in `package.json`).
 
