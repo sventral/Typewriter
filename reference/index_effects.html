@@ -25,9 +25,18 @@ const {min,max,abs,ceil,floor,round,sin,cos,PI,hypot,imul,pow,sign}=Math;
 const TAU=PI*2, clamp=(x,a,b)=>x<a?a:x>b?b:x, clamp01=v=>v<0?0:v>1?1:v;
 
 /* ===== UI (unchanged names/order/defaults) ===== */
+const SECTION_REGISTRY=new Map(PANEL_SCHEMA.map(section=>[section.id,section]));
+const CONTROL_SECTION_INDEX=new Map();
 const labelOf=id=>id.replace(/^enable/,'').replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase()).replace(/\bVbias\b/i,'Vertical bias').trim();
 const PANEL_SCHEMA=[
-  ['fieldset','Fill',[
+  {
+    type:'fieldset',
+    id:'fill',
+    label:'Fill',
+    trigger:'glyph',
+    debounceMs:50,
+    defaultStrength:1,
+    items:[
     ['check','enableToneCore',true],
     ['range','pressureMid',0,1.6,.01,.83],
     ['range','pressureVar',0,.8,.01,.32],
@@ -42,8 +51,16 @@ const PANEL_SCHEMA=[
     ['check','enableCenterEdge',false],
     ['range','centerThicken',0,1,.01,.28],
     ['range','edgeThin',0,1,.01,0]
-  ]],
-  ['fieldset','Edge',[
+    ]
+  },
+  {
+    type:'fieldset',
+    id:'edge',
+    label:'Edge',
+    trigger:'glyph',
+    debounceMs:50,
+    defaultStrength:1,
+    items:[
     ['check','enableRim',false],
     ['range','rim',0,.8,.01,.27],
     ['range','rimCurve',.4,3,.01,2.21],
@@ -54,15 +71,31 @@ const PANEL_SCHEMA=[
     ['range','fuzzRough',0,1,.01,.63],
     ['number','fuzzScale',2,64,1,6],
     ['range','fuzzMix',0,1,.01,.38]
-  ]],
-  ['fieldset','Grain',[
+    ]
+  },
+  {
+    type:'fieldset',
+    id:'grain',
+    label:'Grain',
+    trigger:'grain',
+    debounceMs:40,
+    defaultStrength:0,
+    items:[
     ['check','enableGrainSpeck',true],
     ['range','mottling',0,.8,.01,.11],
     ['range','speckDark',0,1,.01,.21],
     ['range','speckLight',0,1,.01,.53],
     ['range','speckGrayBias',0,1,.01,.51]
-  ]],
-  ['fieldset','Defects',[
+    ]
+  },
+  {
+    type:'fieldset',
+    id:'defects',
+    label:'Defects',
+    trigger:'glyph',
+    debounceMs:50,
+    defaultStrength:1,
+    items:[
     ['check','enableDropouts',true],
     ['range','gapAmount',0,2,.01,.57],
     ['number','gapWidth',0,12,.25,10],
@@ -86,20 +119,35 @@ const PANEL_SCHEMA=[
     ['range','punchEdgeBias',-1,1,.01,.8],
     ['range','punchSoft',0,.4,.005,.295],
     ['range','punchIntensity',0,1.5,.01,.96]
-  ]],
-  ['fieldset','Meta',[
+    ]
+  },
+  {
+    type:'fieldset',
+    id:'meta',
+    label:'Meta',
+    trigger:'glyph',
+    debounceMs:80,
+    defaultStrength:1,
+    items:[
     ['number','fontSize',8,96,1,80],
     ['number','seed',0,0xffffffff,1,2654435769],
     ['textarea','text',`THE QUICK BROWN FOX\njumps over the lazy dog.\n0123456789 &?!`]
-  ]]
+    ]
+  }
 ];
 function build(){
   const form=$('pf'), frag=document.createDocumentFragment();
-  for(const block of PANEL_SCHEMA){
-    const title=block[1], items=block[2];
-    const fs=ce('fieldset'), lg=ce('legend'); lg.textContent=title; fs.appendChild(lg);
+  for(const section of PANEL_SCHEMA){
+    const title=section.label, items=section.items||[];
+    const fs=ce(section.type||'fieldset');
+    if(title){
+      const lg=ce('legend');
+      lg.textContent=title;
+      fs.appendChild(lg);
+    }
     for(const it of items){
       const t=it[0], id=it[1];
+      if(id) CONTROL_SECTION_INDEX.set(id, section.id);
       const row=ce('div'); row.className='row';
       const lab=ce('label'); const labTxt=labelOf(id);
       if(t==='check'){
@@ -145,9 +193,16 @@ function getCfg(){
   const font=`${fontPx}px 'TT2020 Style E', 'Courier New', monospace`;
   const SS=clamp(round(EM/max(8,fontPx)),1,4);
   const smul=(fontPx/EM)*SS;
+  const grainOverlay={
+    enabled:!!UI.enableGrainSpeck.checked,
+    mottling:+UI.mottling.value,
+    speckDark:+UI.speckDark.value,
+    speckLight:+UI.speckLight.value,
+    speckGrayBias:+UI.speckGrayBias.value
+  };
   return{
     font,fontPx,ss:SS,smul,text:UI.text.value,
-    ink:{rim:+UI.rim.value,rimCurve:+UI.rimCurve.value,pressureMid:+UI.pressureMid.value,pressureVar:+UI.pressureVar.value,inkGamma:+UI.inkGamma.value,toneJitter:+UI.toneJitter.value,mottling:+UI.mottling.value,speckDark:+UI.speckDark.value,speckLight:+UI.speckLight.value,speckGrayBias:+UI.speckGrayBias.value},
+    ink:{rim:+UI.rim.value,rimCurve:+UI.rimCurve.value,pressureMid:+UI.pressureMid.value,pressureVar:+UI.pressureVar.value,inkGamma:+UI.inkGamma.value,toneJitter:+UI.toneJitter.value,mottling:grainOverlay.mottling,speckDark:grainOverlay.speckDark,speckLight:grainOverlay.speckLight,speckGrayBias:grainOverlay.speckGrayBias},
     ribbon:{amp:+UI.ribbon.value,period:+UI.ribbonPeriod.value,sharp:+UI.ribbonSharp.value,phase:0},
     bias:{vertical:+UI.verticalBias.value,amount:+UI.vBiasAmt.value},
     noise:{lfScale:22,hfScale:1},
@@ -157,7 +212,8 @@ function getCfg(){
     edgeFuzz:{opacity:(+UI.fuzzOpacity.value)*.75,inBand:+(UI.fuzzIn.value||0),outBand:+(UI.fuzzOut.value||0),rough:+UI.fuzzRough.value,scale:+(UI.fuzzScale.value||18),mix:+UI.fuzzMix.value},
     smudge:{strength:+UI.smudgeStrength.value,radius:+(UI.smudgeRadius.value||0),falloff:+UI.smudgeFalloff.value,scale:+(UI.smudgeScale.value||24),density:+UI.smudgeDensity.value,dirDeg:+(UI.smudgeDir.value||0),spread:+(UI.smudgeSpread.value||0)},
     punch:{count:min(((+(UI.punchCount?.value||0))|0),((+(UI.punchCount?.max||10))|0)),rMin:+(UI.punchSizeMin?.value||0),rMax:+(UI.punchSizeMax?.value||0),edgeBias:+(UI.punchEdgeBias?.value||0),soft:+(UI.punchSoft?.value||0),intensity:+(UI.punchIntensity?.value||0),chance:clamp01(+(UI.punchChance?.value||1))},
-    enable:{toneCore:!!UI.enableToneCore.checked,vBias:!!UI.enableVbias.checked,rim:!!UI.enableRim.checked,centerEdge:!!UI.enableCenterEdge.checked,grainSpeck:!!UI.enableGrainSpeck.checked,dropouts:!!UI.enableDropouts.checked,edgeFuzz:!!UI.enableEdgeFuzz.checked,smudge:!!UI.enableSmudge.checked,punch:!!UI.enablePunch?.checked}
+    enable:{toneCore:!!UI.enableToneCore.checked,vBias:!!UI.enableVbias.checked,rim:!!UI.enableRim.checked,centerEdge:!!UI.enableCenterEdge.checked,grainSpeck:!!UI.enableGrainSpeck.checked,grainSpeckPipeline:false,dropouts:!!UI.enableDropouts.checked,edgeFuzz:!!UI.enableEdgeFuzz.checked,smudge:!!UI.enableSmudge.checked,punch:!!UI.enablePunch?.checked},
+    grainOverlay
   }
 }
 
@@ -196,6 +252,7 @@ function getRim(c){const k=c.toFixed(3);let l=LUT_CACHE.rim.get(k);if(!l){l=mkRi
 
 /* ===== Glyph cache & DM provider ===== */
 const glyphCache=new Map();let lastFP=-1,lastSS=-1,lastFont='';
+let glyphSurfaceSnapshot=null;
 function getGlyphShape(cc,font,fontPx,ss,drawGlyph){
   const key=`${cc}:${fontPx}:${ss}`; let g=glyphCache.get(key);
   if(!g){const {img,alpha,w,h}=drawGlyph(cc); const ins=dtInside(alpha,w,h), out=dtOutside(alpha,w,h); g={img,alpha,w,h,insideDist:ins.dist,maxInside:ins.maxInside,outsideDist:out.dist}; glyphCache.set(key,g)}
@@ -268,7 +325,8 @@ function applyDropoutsMask(coverage, ctx){
 }
 function applyGrainSpeckTexture(coverage, ctx){
   const {w,h,params,seed,alpha0}=ctx;
-  if(!params.enable.grainSpeck) return;
+  const shouldRun=params.enable.grainSpeckPipeline ?? params.enable.grainSpeck;
+  if(!shouldRun) return;
   for(let y=0;y<h;y++){
     for(let x=0;x<w;x++){
       const i=y*w+x; if(alpha0[i]===0) continue;
@@ -431,9 +489,8 @@ function processGlyph(shape,seed,gix,charCode,params){
   return imgOut;
 }
 
-/* ===== Page render (unchanged scaffolding) ===== */
-async function render(){
-  const cfg=getCfg();
+/* ===== Page render (split glyph/grain phases) ===== */
+function renderGlyphLayers(cfg){
   if(cfg.fontPx!==lastFP||cfg.ss!==lastSS||cfg.font!==lastFont){glyphCache.clear();lastFP=cfg.fontPx;lastSS=cfg.ss;lastFont=cfg.font}
   ctx.fillStyle=getComputedStyle(root).getPropertyValue('--bg'); ctx.fillRect(0,0,BW,BH);
   ctx.font=cfg.font; ctx.textBaseline='top';
@@ -450,10 +507,73 @@ async function render(){
     ctx.drawImage(buf,x,y,gw,gh);
     y+=(prng()-.5)*.25; x+=gw-6; gix++;
   } y+=lh }
-  // global subtle grain tint (unchanged)
-  const gimg=ctx.getImageData(0,0,canvas.width,canvas.height), gd=gimg.data;
-  for(let i=0;i<gd.length;i+=4){const n=(mulberry32((i^0xABCDEF)>>>0)()-.5)*2; gd[i]+=n*2; gd[i+1]+=n*2; gd[i+2]+=n*1.5}
-  ctx.putImageData(gimg,0,0);
+  cacheGlyphSurface();
+}
+
+function cacheGlyphSurface(){
+  const snap=ctx.getImageData(0,0,canvas.width,canvas.height);
+  glyphSurfaceSnapshot={width:snap.width,height:snap.height,data:new Uint8ClampedArray(snap.data)};
+}
+
+function applyCanvasGrainOverlay(cfg){
+  if(!glyphSurfaceSnapshot){return;}
+  const overlayFrame=new ImageData(new Uint8ClampedArray(glyphSurfaceSnapshot.data),glyphSurfaceSnapshot.width,glyphSurfaceSnapshot.height);
+  if(cfg?.grainOverlay?.enabled){
+    applyGlobalCanvasGrain(overlayFrame,cfg.grainOverlay,cfg.docSeed);
+  }
+  ctx.putImageData(overlayFrame,0,0);
+}
+
+function applyGlobalCanvasGrain(imageData, overlay, seed){
+  const {data,width,height}=imageData;
+  const rng=mulberry32(((seed||0)^0xABCDEF)>>>0);
+  const mottling=max(0,overlay.mottling||0);
+  const speckDark=max(0,overlay.speckDark||0);
+  const speckLight=max(0,overlay.speckLight||0);
+  const grayBias=clamp01(overlay.speckGrayBias||0);
+  for(let y=0;y<height;y++){
+    for(let x=0;x<width;x++){
+      const i=(y*width+x)*4;
+      const alpha=data[i+3]/255;
+      const texNoise=(hash2(x,y,seed^0xC0FFEE)-.5);
+      const mottled=texNoise*(0.3+mottling*0.9);
+      const rngNoise=(rng()-.5)*2;
+      const delta=(mottled+rngNoise*0.35)*32;
+      data[i]=clampByte(data[i]+delta*(0.4+speckDark*0.6));
+      data[i+1]=clampByte(data[i+1]+delta*(0.35+grayBias*0.3));
+      data[i+2]=clampByte(data[i+2]+delta*(0.5+speckLight*0.5));
+      if(alpha>0){
+        const speckMask=hash2(x*3+7,y*3+11,seed^0xBEEFCAFE);
+        const affect=(1-grayBias)+grayBias*(1-alpha);
+        if(speckMask>1-speckLight*0.25){
+          const boost=affect*(8+speckLight*40*speckMask);
+          data[i]=clampByte(data[i]+boost);
+          data[i+1]=clampByte(data[i+1]+boost*0.8);
+          data[i+2]=clampByte(data[i+2]+boost*0.6);
+        }else if(speckMask<speckDark*0.3){
+          const cut=affect*(6+speckDark*35*(1-speckMask));
+          data[i]=clampByte(data[i]-cut);
+          data[i+1]=clampByte(data[i+1]-cut*0.85);
+          data[i+2]=clampByte(data[i+2]-cut*0.7);
+        }
+        const alphaBump=(hash2(x+13,y+19,seed^0x51F1F1F1)-.5);
+        const alphaDelta=alphaBump*(speckDark+speckLight)*0.25;
+        data[i+3]=clampByte((alpha+alphaDelta)*255);
+      }
+    }
+  }
+}
+
+const clampByte=v=>v<0?0:v>255?255:v;
+
+async function render(options={}){
+  const {forceGlyph=false}=options||{};
+  syncVals();
+  const cfg=getCfg();
+  if(forceGlyph||!glyphSurfaceSnapshot){
+    renderGlyphLayers(cfg);
+  }
+  applyCanvasGrainOverlay(cfg);
 }
 
 /* ===== Optional: export SECTION_DEFS-like config for repo integration ===== */
@@ -508,17 +628,41 @@ function exportRepoStyleConfig(){
 }
 
 /* ===== Events (unchanged) ===== */
-const go=()=>{canvas.style.width=BW+'px';canvas.style.height=BH+'px';syncVals();render()};
-const debounce=(fn,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn.apply(this,a),ms)}};
-const rerender=debounce(()=>{syncVals();render()},50);
-const rerenderText=debounce(()=>{render()},80);
-$('p').addEventListener('input',e=>{const t=e.target;if(t.tagName==='TEXTAREA')rerenderText();else if(t.matches('input,select'))rerender()});
+const go=()=>{canvas.style.width=BW+'px';canvas.style.height=BH+'px';render({forceGlyph:true})};
+const DEFAULT_DEBOUNCE_MS=50;
+const createRefreshScheduler=fn=>{
+  let timer=null; let raf=null;
+  return delay=>{
+    const wait=typeof delay==='number'?delay:DEFAULT_DEBOUNCE_MS;
+    if(timer) clearTimeout(timer);
+    timer=setTimeout(()=>{
+      timer=null;
+      if(raf) cancelAnimationFrame(raf);
+      raf=requestAnimationFrame(()=>{raf=null;fn()});
+    },wait);
+  };
+};
+const scheduleGlyphRefresh=createRefreshScheduler(()=>render({forceGlyph:true}));
+const scheduleGrainRefresh=createRefreshScheduler(()=>render({forceGlyph:false}));
+function scheduleRefreshForControl(controlId){
+  const sectionId=CONTROL_SECTION_INDEX.get(controlId);
+  const section=sectionId?SECTION_REGISTRY.get(sectionId):null;
+  const delay=section?.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+  const trigger=section?.trigger || 'glyph';
+  if(trigger==='grain') scheduleGrainRefresh(delay);
+  else scheduleGlyphRefresh(delay);
+}
+$('p').addEventListener('input',e=>{
+  const t=e.target;
+  if(!t||!t.id||!CONTROL_SECTION_INDEX.has(t.id)) return;
+  scheduleRefreshForControl(t.id);
+});
 $('do').addEventListener('click',go);
-$('rnd').addEventListener('click',()=>{UI.seed.value=(Math.random()*0xffffffff>>>0);go()});
+$('rnd').addEventListener('click',()=>{UI.seed.value=(Math.random()*0xffffffff>>>0);render({forceGlyph:true})});
 function collectUI(){const o={__version:VER}; $$('#p input,#p textarea,#p select').forEach(el=>{if(!el.id)return; if(el.type==='checkbox')o[el.id]=!!el.checked; else if(el.type==='number'||el.type==='range'){const v=(typeof el.valueAsNumber==='number'&&!Number.isNaN(el.valueAsNumber))?el.valueAsNumber:Number(el.value); o[el.id]=Number.isFinite(v)?v:0;} else o[el.id]=String(el.value)}); return o;}
 function applyUI(cfg){if(!cfg||typeof cfg!=='object')return; Object.keys(cfg).forEach(k=>{if(k==='__version')return; const el=UI[k]; if(!el)return; if(el.type==='checkbox') el.checked=!!cfg[k]; else if(el.type==='number'||el.type==='range'){let v=Number(cfg[k]); if(Number.isNaN(v))return; if(el.min!==''&&!Number.isNaN(+el.min))v=max(+el.min,v); if(el.max!==''&&!Number.isNaN(+el.max))v=min(+el.max,v); el.value=String(v);} else el.value=String(cfg[k])}); syncVals();}
 function exportConfig(){return JSON.stringify(collectUI(),null,2)}
-function importConfig(text){let parsed=null;try{parsed=JSON.parse(text)}catch(e){alert('Invalid JSON');return false} applyUI(parsed); render(); return true}
+function importConfig(text){let parsed=null;try{parsed=JSON.parse(text)}catch(e){alert('Invalid JSON');return false} applyUI(parsed); render({forceGlyph:true}); return true}
 const cfgEl=$('cfg');
 $('xCfg').addEventListener('click',()=>{cfgEl.value=exportConfig();cfgEl.select()});
 $('cCfg').addEventListener('click',async()=>{const txt=cfgEl.value||exportConfig();try{await navigator.clipboard.writeText(txt)}catch(e){}});
