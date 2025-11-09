@@ -1,11 +1,19 @@
 import { buildExperimentalAtlas } from '../rendering/experimental/experimentalAtlasBuilder.js';
+import { canLoadFontFace, ensureFontFace } from '../rendering/fontLoader.js';
 
-self.onmessage = event => {
+self.onmessage = async event => {
   const data = event?.data;
   if (!data || typeof data !== 'object') return;
   if (data.type === 'buildAtlas') {
     const { key, params, generation } = data;
     try {
+      const fontName = params?.fontMetrics?.fontName;
+      if (fontName) {
+        if (!canLoadFontFace()) {
+          throw new Error('FontFace API unavailable for worker atlas rendering');
+        }
+        await ensureFontFace(fontName);
+      }
       const result = buildExperimentalAtlas(params);
       const offscreen = new OffscreenCanvas(result.width, result.height);
       const ctx = offscreen.getContext('2d');

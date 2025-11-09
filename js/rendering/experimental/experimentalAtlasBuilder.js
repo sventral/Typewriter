@@ -75,7 +75,7 @@ export function buildExperimentalAtlas({
   const DESC = Number.isFinite(fontMetrics.desc) ? fontMetrics.desc : 12;
   const CHAR_W = Number.isFinite(fontMetrics.charWidth) ? fontMetrics.charWidth : 24;
   const FONT_SIZE = Number.isFinite(fontMetrics.fontSize) ? fontMetrics.fontSize : 48;
-  const ACTIVE_FONT_NAME = fontMetrics.fontName || 'Courier';
+  const ACTIVE_FONT_NAME = fontMetrics.fontName || 'TT2020StyleE';
   const RENDER_SCALE = Number.isFinite(renderScale) && renderScale > 0 ? renderScale : 1;
   const colorRgb = parseColorToRgb(inkColor || '#000');
 
