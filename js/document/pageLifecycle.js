@@ -521,8 +521,10 @@ export function createPageLifecycleController(context, editingController) {
     if (state.pages.length === 0) return;
     const freezeVirtual = getFreezeVirtual();
     const zoom = state.zoom || 1;
-    if (freezeVirtual && zoom < 2) {
-      for (let i = 0; i < state.pages.length; i++) setPageActive(state.pages[i], true);
+    if (freezeVirtual) {
+      if (zoom < 2) {
+        for (let i = 0; i < state.pages.length; i++) setPageActive(state.pages[i], true);
+      }
       return;
     }
     const [i0, i1] = visibleWindowIndices();
