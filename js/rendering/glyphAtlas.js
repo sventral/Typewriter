@@ -456,6 +456,38 @@ function djb2(str) {
     };
   }
 
+  function getExperimentalSectionEnabledState() {
+    return {
+      expTone: !!isInkSectionEnabledFn('expTone'),
+      expEdge: !!isInkSectionEnabledFn('expEdge'),
+      expGrain: !!isInkSectionEnabledFn('expGrain'),
+      expDefects: !!isInkSectionEnabledFn('expDefects'),
+    };
+  }
+
+  function applySectionEnableMask(params, sectionEnabled) {
+    if (!params || !sectionEnabled) return params;
+    const enable = params.enable = { ...(params.enable || {}) };
+    if (!sectionEnabled.expTone) {
+      enable.toneCore = false;
+      enable.vBias = false;
+      enable.centerEdge = false;
+      enable.rim = false;
+    }
+    if (!sectionEnabled.expEdge) {
+      enable.edgeFuzz = false;
+    }
+    if (!sectionEnabled.expGrain) {
+      enable.grainSpeck = false;
+    }
+    if (!sectionEnabled.expDefects) {
+      enable.dropouts = false;
+      enable.punch = false;
+      enable.smudge = false;
+    }
+    return params;
+  }
+
   const EXPERIMENTAL_STAGE_PARAM_KEYS = Object.freeze({
     fill: [
       { path: 'enable.toneCore', section: 'expTone' },
@@ -594,19 +626,53 @@ function djb2(str) {
   function getExperimentalStageActivity() {
     const cfg = getExperimentalEffectsConfigFn() || {};
     const enable = cfg.enable && typeof cfg.enable === 'object' ? cfg.enable : {};
-    const sectionActive = {
-      expTone: isInkSectionEnabledFn('expTone'),
-      expEdge: isInkSectionEnabledFn('expEdge'),
-      expGrain: isInkSectionEnabledFn('expGrain'),
-      expDefects: isInkSectionEnabledFn('expDefects'),
-    };
-    const toneCoreActive = sectionActive.expTone && !!(enable.toneCore || enable.vBias || enable.rim);
-    const centerEdgeActive = sectionActive.expTone && !!enable.centerEdge;
-    const textureActive = sectionActive.expGrain && !!enable.grainSpeck;
-    const fuzzActive = sectionActive.expEdge && !!enable.edgeFuzz;
-    const dropoutsActive = sectionActive.expDefects && !!enable.dropouts;
-    const punchActive = sectionActive.expDefects && !!enable.punch;
-    const smudgeActive = sectionActive.expDefects && !!enable.smudge;
+    const sectionActive = getExperimentalSectionEnabledState();
+    const hasPositive = (value, epsilon = 1e-3) => Number.isFinite(value) && Math.abs(value) > epsilon;
+
+    const inkCfg = cfg.ink || {};
+    const ribbonCfg = cfg.ribbon || {};
+    const noiseCfg = cfg.noise || {};
+    const biasCfg = cfg.bias || {};
+    const centerEdgeCfg = cfg.centerEdge || {};
+    const edgeFuzzCfg = cfg.edgeFuzz || {};
+    const dropoutsCfg = cfg.dropouts || {};
+    const smudgeCfg = cfg.smudge || {};
+    const punchCfg = cfg.punch || {};
+
+    const toneCoreModulesActive = (
+      (!!enable.toneCore && sectionActive.expTone && (
+        hasPositive(inkCfg.pressureVar)
+        || hasPositive(inkCfg.toneJitter)
+        || hasPositive(ribbonCfg.amp)
+        || hasPositive(noiseCfg.lfScale)
+        || hasPositive(noiseCfg.hfScale)
+      ))
+      || (!!enable.vBias && sectionActive.expTone && hasPositive(biasCfg.amount))
+      || (!!enable.rim && sectionActive.expTone && hasPositive(inkCfg.rim))
+    );
+    const toneCoreActive = toneCoreModulesActive;
+    const centerEdgeActive = sectionActive.expTone
+      && !!enable.centerEdge
+      && (hasPositive(centerEdgeCfg.center) || hasPositive(centerEdgeCfg.edge));
+    const textureActive = sectionActive.expGrain
+      && !!enable.grainSpeck
+      && (hasPositive(inkCfg.speckDark) || hasPositive(inkCfg.speckLight));
+    const fuzzActive = sectionActive.expEdge
+      && !!enable.edgeFuzz
+      && hasPositive(edgeFuzzCfg.opacity)
+      && (hasPositive(edgeFuzzCfg.inBand) || hasPositive(edgeFuzzCfg.outBand));
+    const dropoutsActive = sectionActive.expDefects
+      && !!enable.dropouts
+      && hasPositive(dropoutsCfg.amount)
+      && hasPositive(dropoutsCfg.width);
+    const punchActive = sectionActive.expDefects
+      && !!enable.punch
+      && hasPositive(punchCfg.intensity)
+      && (Number.isFinite(punchCfg.count) ? punchCfg.count > 0 : true);
+    const smudgeActive = sectionActive.expDefects
+      && !!enable.smudge
+      && hasPositive(smudgeCfg.strength)
+      && hasPositive(smudgeCfg.radius);
     const needsFill = toneCoreActive
       || centerEdgeActive
       || textureActive
@@ -1452,12 +1518,7 @@ function djb2(str) {
 
     // BEGIN: config snapshot + hash (no name collisions)
     const baseExperimentalConfig = getExperimentalEffectsConfigFn() || {};
-    const sectionEnabled = {
-      expTone: !!isInkSectionEnabledFn('expTone'),
-      expEdge: !!isInkSectionEnabledFn('expEdge'),
-      expGrain: !!isInkSectionEnabledFn('expGrain'),
-      expDefects: !!isInkSectionEnabledFn('expDefects'),
-    };
+    const sectionEnabled = getExperimentalSectionEnabledState();
     const orderKey = hasExperimentalStages ? pipelineStages.join('-') : 'none';
     const stageSignature = buildExperimentalStageConfigSignature(pipelineStages, baseExperimentalConfig, sectionEnabled);
     const overallKey = Math.round(overallStrength * 1000);
@@ -1610,7 +1671,7 @@ function djb2(str) {
             const hasProcessor = stagePipeline || typeof processor.runGlyphPipeline === 'function';
             const canRun = hasProcessor && inkPixelCount > 0;
             if (canRun) {
-              const params = cloneParams();
+              const params = applySectionEnableMask(cloneParams(), sectionEnabled);
               const fontPxRaw = getFontSizeFn() || FONT_SIZE || 48;
               const fontPx = Number.isFinite(fontPxRaw) && fontPxRaw > 0 ? fontPxRaw : 48;
               const supersample = clamp(
