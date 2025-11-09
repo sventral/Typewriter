@@ -288,6 +288,8 @@ function setSaveTimerValue(value) {
 }
 
 let pendingVirtualization = false;
+let deferredVirtualization = false;
+let virtualizationSuspended = false;
 
 function getLifecycleController() {
   return context.controllers.lifecycle;
@@ -301,6 +303,10 @@ const addPage = (...args) => getLifecycleController()?.addPage(...args);
 const bootstrapFirstPage = (...args) => getLifecycleController()?.bootstrapFirstPage(...args);
 const resetPagesBlankPreserveSettings = (...args) => getLifecycleController()?.resetPagesBlankPreserveSettings(...args);
 const requestVirtualization = (...args) => {
+  if (virtualizationSuspended || freezeVirtual) {
+    deferredVirtualization = true;
+    return;
+  }
   const controller = getLifecycleController();
   if (!controller) {
     pendingVirtualization = true;
@@ -308,6 +314,22 @@ const requestVirtualization = (...args) => {
   }
   return controller.requestVirtualization(...args);
 };
+
+function flushDeferredVirtualization() {
+  if (!deferredVirtualization) return;
+  if (virtualizationSuspended || freezeVirtual) return;
+  deferredVirtualization = false;
+  requestVirtualization();
+}
+
+function setFreezeVirtualValue(value) {
+  const next = Boolean(value);
+  if (freezeVirtual === next) return;
+  freezeVirtual = next;
+  if (!freezeVirtual) {
+    flushDeferredVirtualization();
+  }
+}
 
 const rendererHooks = {};
 
@@ -327,7 +349,7 @@ const editingController = createDocumentEditingController({
   },
   touchedPages,
   getFreezeVirtual: () => freezeVirtual,
-  setFreezeVirtual: (value) => { freezeVirtual = value; },
+  setFreezeVirtual: setFreezeVirtualValue,
   requestVirtualization,
   positionRulers,
   saveStateDebounced,
@@ -567,7 +589,7 @@ context.controllers.layoutAndZoom = createLayoutAndZoomController(
     configureCanvasContext,
     schedulePaint,
     rebuildAllAtlases,
-    setFreezeVirtual: (value) => { freezeVirtual = value; },
+    setFreezeVirtual: setFreezeVirtualValue,
     getZooming: () => zooming,
     setZooming: (value) => { zooming = value; },
     getZoomDebounceTimer: () => zoomDebounceTimer,
@@ -774,8 +796,14 @@ function endBatch(){
 }
 function beginTypingFrameBatch(){
   if (batchDepth === 0) beginBatch();
+  virtualizationSuspended = true;
   if (!typingBatchRAF){
-    typingBatchRAF = requestAnimationFrame(()=>{ typingBatchRAF = 0; endBatch(); });
+    typingBatchRAF = requestAnimationFrame(()=>{
+      typingBatchRAF = 0;
+      virtualizationSuspended = false;
+      flushDeferredVirtualization();
+      endBatch();
+    });
   }
 }
 function getTargetPitchPx(){ return app.PAGE_W / state.colsAcross; }

@@ -131,7 +131,10 @@ export function createDocumentEditingController(context) {
       p.pageEl.appendChild(app.caretEl);
     }
     if (!isZooming()) requestHammerNudge();
-    requestVirtualization();
+    const caretPageRecord = state.pages[state.caret.page];
+    if (!caretPageRecord || !caretPageRecord.active) {
+      requestVirtualization();
+    }
   }
 
   function clampCaretToBounds() {
