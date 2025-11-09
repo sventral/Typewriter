@@ -1,8 +1,8 @@
 import { clamp } from '../utils/math.js';
 import { normalizeInkTextureConfig } from '../config/inkConfig.js';
-import { createExperimentalGlyphProcessor } from './experimental/glyphProcessor.js';
-import { computeInsideDistance, computeOutsideDistance, createDistanceMapProvider } from './experimental/distanceMaps.js';
-import { GLYPH_PIPELINE_ORDER as EXPERIMENTAL_STAGE_ORDER } from './experimental/stagePipeline.js';
+import { buildExperimentalAtlas, resolveExperimentalStages } from './experimental/experimentalAtlasBuilder.js';
+import { downsampleImageData, lightenHexColor } from './imageUtils.js';
+import { parseColorToRgb } from './colorUtils.js';
 
 export function createGlyphAtlas(options) {
   const {
@@ -67,15 +67,156 @@ export function createGlyphAtlas(options) {
   const ALT_VARIANTS = 9;
   const classicAtlases = new Map();
   const experimentalAtlases = new Map();
-  const experimentalProcessorCache = new Map();
+  const experimentalAtlasPendingBuilds = new Map();
+  const experimentalAtlasPendingPages = new Map();
   const grainBaseCache = new Map();
   const grainPageCache = new Map();
+  let experimentalAtlasWorker = null;
+  let experimentalAtlasWorkerGeneration = 0;
+  let workerDisabled = false;
+  const supportsAtlasWorker = typeof Worker === 'function'
+    && typeof OffscreenCanvas === 'function'
+    && typeof ImageBitmap === 'function';
   window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
+
+  function releaseAtlasImage(atlas) {
+    if (!atlas) return;
+    if (atlas.bitmap && typeof atlas.bitmap.close === 'function') {
+      atlas.bitmap.close();
+    }
+  }
+
+  function clearExperimentalAtlasState() {
+    for (const atlas of experimentalAtlases.values()) {
+      releaseAtlasImage(atlas);
+    }
+    experimentalAtlases.clear();
+    experimentalAtlasPendingBuilds.clear();
+    experimentalAtlasPendingPages.clear();
+  }
+
+  function notifyAtlasReady(key) {
+    const pages = experimentalAtlasPendingPages.get(key);
+    experimentalAtlasPendingPages.delete(key);
+    if (!pages || !pages.size) return;
+    const schedulePaint = context?.getCallback ? context.getCallback('schedulePaint') : null;
+    for (const pageIndex of pages) {
+      const page = Array.isArray(state.pages) ? state.pages[pageIndex] : null;
+      if (!page) continue;
+      page.dirtyAll = true;
+      if (typeof schedulePaint === 'function' && page.active) {
+        schedulePaint(page);
+      }
+    }
+  }
+
+  function trackPendingAtlasUsage(key, pageIndex) {
+    if (!Number.isFinite(pageIndex)) return;
+    if (!experimentalAtlasPendingPages.has(key)) {
+      experimentalAtlasPendingPages.set(key, new Set());
+    }
+    const set = experimentalAtlasPendingPages.get(key);
+    set.add(pageIndex);
+  }
+
+  function handleAtlasWorkerError(event) {
+    workerDisabled = true;
+    if (experimentalAtlasWorker) {
+      experimentalAtlasWorker.terminate();
+      experimentalAtlasWorker = null;
+    }
+    if (event?.error) {
+      console.error('Experimental atlas worker failed:', event.error);
+    }
+  }
+
+  function handleAtlasWorkerMessage(event) {
+    const data = event?.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'atlasReady') {
+      if (data.generation !== experimentalAtlasWorkerGeneration) {
+        if (data.bitmap && typeof data.bitmap.close === 'function') {
+          data.bitmap.close();
+        }
+        return;
+      }
+      const atlas = {
+        key: data.key,
+        ready: true,
+        bitmap: data.bitmap,
+        rectDpByCode: data.rectDpByCode || [],
+        cellW_css: data.cellW_css,
+        cellH_css: data.cellH_css,
+        cellW_draw_dp: data.cellW_draw_dp,
+        cellH_draw_dp: data.cellH_draw_dp,
+        originY_css: data.originY_css,
+        sampleScale: data.sampleScale || 1,
+      };
+      const previous = experimentalAtlases.get(data.key);
+      if (previous && previous !== atlas) {
+        releaseAtlasImage(previous);
+      }
+      experimentalAtlases.set(data.key, atlas);
+      experimentalAtlasPendingBuilds.delete(data.key);
+      notifyAtlasReady(data.key);
+      window.atlasStats.builds++;
+    } else if (data.type === 'atlasError') {
+      experimentalAtlasPendingBuilds.delete(data.key);
+      const placeholder = experimentalAtlases.get(data.key);
+      if (placeholder) {
+        experimentalAtlases.delete(data.key);
+      }
+      if (experimentalAtlasWorker) {
+        experimentalAtlasWorker.terminate();
+        experimentalAtlasWorker = null;
+      }
+      workerDisabled = true;
+      console.error('Experimental atlas worker error:', data.error);
+      notifyAtlasReady(data.key);
+    }
+  }
+
+  function ensureAtlasWorker() {
+    if (!supportsAtlasWorker || workerDisabled) return null;
+    if (!experimentalAtlasWorker) {
+      try {
+        const workerUrl = new URL('../workers/atlasWorker.js', import.meta.url);
+        experimentalAtlasWorker = new Worker(workerUrl, { type: 'module' });
+        experimentalAtlasWorker.onmessage = handleAtlasWorkerMessage;
+        experimentalAtlasWorker.onerror = handleAtlasWorkerError;
+        experimentalAtlasWorker.onmessageerror = handleAtlasWorkerError;
+      } catch (err) {
+        workerDisabled = true;
+        console.error('Failed to start experimental atlas worker:', err);
+        experimentalAtlasWorker = null;
+      }
+    }
+    return experimentalAtlasWorker;
+  }
+
+  function requestExperimentalAtlasBuild(key, params) {
+    const worker = ensureAtlasWorker();
+    if (!worker) return false;
+    const generation = experimentalAtlasWorkerGeneration;
+    experimentalAtlasPendingBuilds.set(key, generation);
+    worker.postMessage({
+      type: 'buildAtlas',
+      key,
+      generation,
+      params,
+    });
+    return true;
+  }
 
   function rebuildAllAtlases() {
     classicAtlases.clear();
-    experimentalAtlases.clear();
-    experimentalProcessorCache.clear();
+    clearExperimentalAtlasState();
+    grainBaseCache.clear();
+    grainPageCache.clear();
+    experimentalAtlasWorkerGeneration++;
+    if (experimentalAtlasWorker && !workerDisabled) {
+      experimentalAtlasWorker.postMessage({ type: 'reset', generation: experimentalAtlasWorkerGeneration });
+    }
     window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
   }
 
@@ -241,85 +382,6 @@ function hash36FromJSON(obj) {
     return { x: x / len, y: y / len };
   }
 
-  function downsampleImageData(imageData, scale, outW, outH) {
-    const width = imageData.width;
-    const height = imageData.height;
-    const src = imageData.data;
-    if (scale <= 1) return new ImageData(new Uint8ClampedArray(src), width, height);
-    const out = new Uint8ClampedArray(outW * outH * 4);
-    const inv = 1 / (scale * scale);
-    let dst = 0;
-    for (let y = 0; y < outH; y++) {
-      for (let x = 0; x < outW; x++) {
-        let r = 0;
-        let g = 0;
-        let b = 0;
-        let a = 0;
-        const srcY = y * scale;
-        const srcX = x * scale;
-        for (let sy = 0; sy < scale; sy++) {
-          let idx = ((srcY + sy) * width + srcX) * 4;
-          for (let sx = 0; sx < scale; sx++) {
-            r += src[idx];
-            g += src[idx + 1];
-            b += src[idx + 2];
-            a += src[idx + 3];
-            idx += 4;
-          }
-        }
-        out[dst++] = Math.round(r * inv);
-        out[dst++] = Math.round(g * inv);
-        out[dst++] = Math.round(b * inv);
-        out[dst++] = Math.round(a * inv);
-      }
-    }
-    return new ImageData(out, outW, outH);
-  }
-
-  function lightenHexColor(hex, factor) {
-    if (typeof hex !== 'string' || !hex.startsWith('#')) return hex;
-    const norm = hex.length === 4
-      ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
-      : hex;
-    const num = Number.parseInt(norm.slice(1), 16);
-    if (!Number.isFinite(num)) return hex;
-    const r = (num >> 16) & 0xFF;
-    const g = (num >> 8) & 0xFF;
-    const b = num & 0xFF;
-    const f = clamp(factor, 0, 1);
-    const rn = Math.round(r + (255 - r) * f);
-    const gn = Math.round(g + (255 - g) * f);
-    const bn = Math.round(b + (255 - b) * f);
-    return `rgb(${rn},${gn},${bn})`;
-  }
-
-  function parseColorToRgb(color) {
-    if (typeof color !== 'string') return { r: 0, g: 0, b: 0 };
-    const trimmed = color.trim();
-    if (trimmed.startsWith('#')) {
-      const hex = trimmed.length === 4
-        ? `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`
-        : trimmed;
-      const num = Number.parseInt(hex.slice(1), 16);
-      if (Number.isFinite(num)) {
-        return {
-          r: (num >> 16) & 0xFF,
-          g: (num >> 8) & 0xFF,
-          b: num & 0xFF,
-        };
-      }
-    }
-    const rgbMatch = trimmed.match(/rgb\s*\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i);
-    if (rgbMatch) {
-      return {
-        r: clamp(Number(rgbMatch[1]) || 0, 0, 255),
-        g: clamp(Number(rgbMatch[2]) || 0, 0, 255),
-        b: clamp(Number(rgbMatch[3]) || 0, 0, 255),
-      };
-    }
-    return { r: 0, g: 0, b: 0 };
-  }
-
   function computeDistanceMap(width, height, zeroMask) {
     const size = width * height;
     const dist = new Float32Array(size);
@@ -412,45 +474,10 @@ function hash36FromJSON(obj) {
 
   const GLYPH_PIPELINE_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed'];
 
-  const EXPERIMENTAL_SECTION_IDS = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
-  const EXPERIMENTAL_SECTION_STAGE_MAP = {
-    expTone: ['fill', 'centerEdge'],
-    expEdge: ['fuzz'],
-    expGrain: ['texture'],
-    expDefects: ['dropouts', 'punch', 'smudge'],
-  };
-
   function normalizePipelineMode(mode) {
     if (typeof mode !== 'string') return 'classic';
     const trimmed = mode.trim().toLowerCase();
     return trimmed === 'experimental' ? 'experimental' : 'classic';
-  }
-
-  function resolveExperimentalStages(order) {
-    const sectionOrder = Array.isArray(order) ? order : [];
-    const requestedStages = new Set();
-    sectionOrder.forEach(id => {
-      const stages = EXPERIMENTAL_SECTION_STAGE_MAP[id];
-      if (!stages) return;
-      stages.forEach(stage => requestedStages.add(stage));
-    });
-    EXPERIMENTAL_SECTION_IDS.forEach(id => {
-      const stages = EXPERIMENTAL_SECTION_STAGE_MAP[id];
-      if (!stages) return;
-      stages.forEach(stage => requestedStages.add(stage));
-    });
-    const finalOrder = EXPERIMENTAL_STAGE_ORDER.filter(stage => requestedStages.has(stage));
-    return finalOrder.length ? finalOrder : EXPERIMENTAL_STAGE_ORDER.slice();
-  }
-
-  function getExperimentalProcessorForOrder(order) {
-    const key = Array.isArray(order) && order.length ? order.join('-') : 'default';
-    if (experimentalProcessorCache.has(key)) {
-      return experimentalProcessorCache.get(key);
-    }
-    const processor = createExperimentalGlyphProcessor({ pipelineOrder: order && order.length ? order : undefined });
-    experimentalProcessorCache.set(key, processor);
-    return processor;
   }
 
   function normalizePipelineOrder(order) {
@@ -1190,7 +1217,17 @@ function hash36FromJSON(obj) {
         code++;
       }
     }
-    atlas = { canvas, cellW_css: CELL_W_CSS, cellH_css: CELL_H_CSS, cellW_draw_dp, cellH_draw_dp, originY_css: ORIGIN_Y_CSS, rectDpByCode };
+    atlas = {
+      key,
+      ready: true,
+      canvas,
+      cellW_css: CELL_W_CSS,
+      cellH_css: CELL_H_CSS,
+      cellW_draw_dp,
+      cellH_draw_dp,
+      originY_css: ORIGIN_Y_CSS,
+      rectDpByCode,
+    };
     classicAtlases.set(key, atlas);
     window.atlasStats.builds++;
     return atlas;
@@ -1209,36 +1246,33 @@ function hash36FromJSON(obj) {
       effectsAllowed = true;
     }
 
-const overallStrength = clamp(getInkEffectFactor(), 0, 1);
-const rawOrder = getInkSectionOrderFn();
-const pipelineStages = resolveExperimentalStages(rawOrder);
+    const overallStrength = clamp(getInkEffectFactor(), 0, 1);
+    const rawOrder = getInkSectionOrderFn();
+    const pipelineStages = resolveExperimentalStages(rawOrder);
 
-// BEGIN: config snapshot + hash (no name collisions)
-const baseCfgForHash = getExperimentalEffectsConfigFn() || {};
-const snapshot = {
-  effectsAllowed,
-  overall: overallStrength,
-  order: pipelineStages,
-  params: {
-    // keep this lean; only numbers/booleans used by stages
-    ink: { inkGamma: baseCfgForHash.ink?.inkGamma|0, toneJitter: baseCfgForHash.ink?.toneJitter|0 },
-    ribbon: { amp: baseCfgForHash.ribbon?.amp|0, period: baseCfgForHash.ribbon?.period|0, sharp: baseCfgForHash.ribbon?.sharp|0 },
-    centerEdge: { centerThickenPct: baseCfgForHash.centerEdge?.centerThickenPct|0, edgeThinPct: baseCfgForHash.centerEdge?.edgeThinPct|0 },
-    dropouts: { chance: baseCfgForHash.dropouts?.chance|0, max: baseCfgForHash.dropouts?.max|0 },
-    edgeFuzz: { radius: baseCfgForHash.edgeFuzz?.radius|0, jitter: baseCfgForHash.edgeFuzz?.jitter|0 },
-    smudge: { radius: baseCfgForHash.smudge?.radius|0, scale: baseCfgForHash.smudge?.scale|0, strength: baseCfgForHash.smudge?.strength|0 },
-    punch: { intensity: baseCfgForHash.punch?.intensity|0, count: baseCfgForHash.punch?.count|0 },
-  },
-};
-const cfgHash = hash36FromJSON(snapshot);
-// END: config snapshot + hash
+    const baseCfgForHash = getExperimentalEffectsConfigFn() || {};
+    const snapshot = {
+      effectsAllowed,
+      overall: overallStrength,
+      order: pipelineStages,
+      params: {
+        ink: { inkGamma: baseCfgForHash.ink?.inkGamma | 0, toneJitter: baseCfgForHash.ink?.toneJitter | 0 },
+        ribbon: { amp: baseCfgForHash.ribbon?.amp | 0, period: baseCfgForHash.ribbon?.period | 0, sharp: baseCfgForHash.ribbon?.sharp | 0 },
+        centerEdge: { centerThickenPct: baseCfgForHash.centerEdge?.centerThickenPct | 0, edgeThinPct: baseCfgForHash.centerEdge?.edgeThinPct | 0 },
+        dropouts: { chance: baseCfgForHash.dropouts?.chance | 0, max: baseCfgForHash.dropouts?.max | 0 },
+        edgeFuzz: { radius: baseCfgForHash.edgeFuzz?.radius | 0, jitter: baseCfgForHash.edgeFuzz?.jitter | 0 },
+        smudge: { radius: baseCfgForHash.smudge?.radius | 0, scale: baseCfgForHash.smudge?.scale | 0, strength: baseCfgForHash.smudge?.strength | 0 },
+        punch: { intensity: baseCfgForHash.punch?.intensity | 0, count: baseCfgForHash.punch?.count | 0 },
+      },
+    };
+    const cfgHash = hash36FromJSON(snapshot);
+    const orderKey = pipelineStages.join('-');
+    const key = `${ink}|v${variantIdx | 0}|fx${effectsAllowed ? 1 : 0}|ord${orderKey}|h${cfgHash}`;
 
-const orderKey = pipelineStages.join('-');
-const key = `${ink}|v${variantIdx|0}|fx${effectsAllowed?1:0}|ord${orderKey}|h${cfgHash}`;
-let atlas = experimentalAtlases.get(key);
-if (atlas) return atlas;
-
-
+    let atlas = experimentalAtlases.get(key);
+    if (atlas && atlas.ready) {
+      return atlas;
+    }
 
     const ASC = getAscFn();
     const DESC = getDescFn();
@@ -1247,235 +1281,89 @@ if (atlas) return atlas;
     const ACTIVE_FONT_NAME = getActiveFontNameFn();
     const RENDER_SCALE = getRenderScaleFn();
     const COLORS = colors;
-
-    const ASCII_START = 32;
-    const ASCII_END = 126;
-    const ATLAS_COLS = 32;
-
-    const GLYPH_BLEED = Math.ceil((ASC + DESC) * 0.5);
-    const ORIGIN_Y_CSS = ASC + GLYPH_BLEED;
-    const CELL_W_CSS = CHAR_W;
-    const CELL_H_CSS = Math.ceil(ASC + DESC + 2 * GLYPH_BLEED);
-    const GUTTER_DP = 1;
-    const GUTTER_CSS = GUTTER_DP / RENDER_SCALE;
-    const cellW_draw_dp = Math.round(CELL_W_CSS * RENDER_SCALE);
-    const cellH_draw_dp = Math.ceil(CELL_H_CSS * RENDER_SCALE);
-    const cellW_pack_dp = cellW_draw_dp + 2 * GUTTER_DP;
-    const cellH_pack_dp = cellH_draw_dp + 2 * GUTTER_DP;
-    const ATLAS_ROWS = Math.ceil((ASCII_END - ASCII_START + 1) / ATLAS_COLS);
-    const width_dp = Math.max(1, ATLAS_COLS * cellW_pack_dp);
-    const height_dp = Math.max(1, ATLAS_ROWS * cellH_pack_dp);
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width_dp;
-    canvas.height = height_dp;
-    const ctx = canvas.getContext('2d');
-    ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, width_dp / RENDER_SCALE, height_dp / RENDER_SCALE);
-    ctx.fillStyle = COLORS[ink] || '#000';
-    ctx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.globalCompositeOperation = 'source-over';
-
-    const rectDpByCode = [];
-    const advCache = new Float32Array(ASCII_END + 1);
-    const SHIFT_EPS = 0.5;
     const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
     const sampleScale = Math.max(1, safariSupersample);
 
-    let glyphCanvas = null;
-    let glyphCtx = null;
-    if (effectsAllowed || sampleScale > 1) {
-      glyphCanvas = document.createElement('canvas');
-      glyphCanvas.width = Math.max(1, cellW_draw_dp * sampleScale);
-      glyphCanvas.height = Math.max(1, cellH_draw_dp * sampleScale);
-      glyphCtx = glyphCanvas.getContext('2d', { willReadFrequently: true });
-      glyphCtx.imageSmoothingEnabled = false;
-    }
+    const baseConfigRaw = getExperimentalEffectsConfigFn() || {};
+    const baseConfig = {
+      enable: { ...(baseConfigRaw.enable || {}) },
+      ink: { ...(baseConfigRaw.ink || {}) },
+      ribbon: { ...(baseConfigRaw.ribbon || {}) },
+      bias: { ...(baseConfigRaw.bias || {}) },
+      noise: { ...(baseConfigRaw.noise || {}) },
+      centerEdge: { ...(baseConfigRaw.centerEdge || {}) },
+      dropouts: { ...(baseConfigRaw.dropouts || {}) },
+      edgeFuzz: { ...(baseConfigRaw.edgeFuzz || {}) },
+      smudge: { ...(baseConfigRaw.smudge || {}) },
+      punch: { ...(baseConfigRaw.punch || {}) },
+    };
 
-    const atlasSeed = ((state.altSeed >>> 0)
-      ^ Math.imul((variantIdx | 0) + 1, 0x9E3779B1)
-      ^ Math.imul((ink.charCodeAt(0) || 0) + 0x51, 0x85EBCA77)) >>> 0;
+    const buildParams = {
+      ink,
+      variantIdx,
+      effectsAllowed,
+      overallStrength,
+      pipelineStages,
+      baseConfig,
+      fontMetrics: {
+        asc: ASC,
+        desc: DESC,
+        charWidth: CHAR_W,
+        fontSize: FONT_SIZE,
+        fontName: ACTIVE_FONT_NAME,
+      },
+      renderScale: RENDER_SCALE,
+      sampleScale,
+      altSeed: state.altSeed >>> 0,
+      inkColor: COLORS[ink] || '#000',
+    };
 
-    const colorRgb = parseColorToRgb(COLORS[ink] || '#000');
-    const baseConfig = getExperimentalEffectsConfigFn() || {};
-    const cloneParams = () => ({
-      enable: { ...(baseConfig.enable || {}) },
-      ink: { ...(baseConfig.ink || {}) },
-      ribbon: { ...(baseConfig.ribbon || {}) },
-      bias: { ...(baseConfig.bias || {}) },
-      noise: { ...(baseConfig.noise || {}) },
-      centerEdge: { ...(baseConfig.centerEdge || {}) },
-      dropouts: { ...(baseConfig.dropouts || {}) },
-      edgeFuzz: { ...(baseConfig.edgeFuzz || {}) },
-      smudge: { ...(baseConfig.smudge || {}) },
-      punch: { ...(baseConfig.punch || {}) },
-    });
-    const processor = getExperimentalProcessorForOrder(pipelineStages);
-    const stagePipeline = processor?.stagePipeline;
-    const effectiveOrder = Array.isArray(pipelineStages) && pipelineStages.length
-      ? pipelineStages
-      : processor?.pipelineOrder || EXPERIMENTAL_STAGE_ORDER;
-
-    let code = ASCII_START;
-    for (let row = 0; row < ATLAS_ROWS; row++) {
-      for (let col = 0; col < ATLAS_COLS; col++) {
-        if (code > ASCII_END) break;
-        const packX_css = (col * cellW_pack_dp) / RENDER_SCALE;
-        const packY_css = (row * cellH_pack_dp) / RENDER_SCALE;
-        const ch = String.fromCharCode(code);
-        const n = (variantIdx | 0) + 1;
-        const adv = advCache[code] || (advCache[code] = Math.max(0.01, ctx.measureText(ch).width));
-        const text = variantIdx ? ch.repeat(n) : ch;
-        const destX_dp = col * cellW_pack_dp + GUTTER_DP;
-        const destY_dp = row * cellH_pack_dp + GUTTER_DP;
-        const snapFactor = RENDER_SCALE * (glyphCanvas ? sampleScale : 1);
-        const baseLocalX = -(n - 1) * adv - SHIFT_EPS;
-        const baseLocalY = ORIGIN_Y_CSS;
-        const localXSnapped = Math.round(baseLocalX * snapFactor) / snapFactor;
-        const localYSnapped = Math.round(baseLocalY * snapFactor) / snapFactor;
-
-        if (glyphCtx) {
-          const glyphSeed = (atlasSeed ^ Math.imul((code + 1) | 0, 0xC2B2AE3D)) >>> 0;
-          glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
-          glyphCtx.globalCompositeOperation = 'source-over';
-          glyphCtx.globalAlpha = 1;
-          glyphCtx.clearRect(0, 0, glyphCanvas.width, glyphCanvas.height);
-          glyphCtx.save();
-          glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
-          glyphCtx.fillStyle = COLORS[ink] || '#000';
-          glyphCtx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
-          glyphCtx.textAlign = 'left';
-          glyphCtx.textBaseline = 'alphabetic';
-          glyphCtx.imageSmoothingEnabled = false;
-          glyphCtx.beginPath();
-          glyphCtx.rect(0, 0, CELL_W_CSS, CELL_H_CSS);
-          glyphCtx.clip();
-          glyphCtx.fillText(text, localXSnapped, localYSnapped);
-          glyphCtx.restore();
-
-          let glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
-          const basePixels = glyphData.data;
-
-          if (effectsAllowed && overallStrength > 0 && Array.isArray(effectiveOrder) && effectiveOrder.length) {
-            const glyphWidth = glyphCanvas.width;
-            const glyphHeight = glyphCanvas.height;
-            const alpha = new Uint8Array(glyphWidth * glyphHeight);
-            for (let i = 0, k = 0; i < alpha.length; i++, k += 4) alpha[i] = basePixels[k + 3];
-            const inside = computeInsideDistance(alpha, glyphWidth, glyphHeight);
-            const outside = computeOutsideDistance(alpha, glyphWidth, glyphHeight);
-            const canRun = !!(inside?.dist && outside?.dist && inside.maxInside > 0);
-            if (canRun && (stagePipeline || typeof processor.runGlyphPipeline === 'function')) {
-              const params = cloneParams();
-              const fontPxRaw = getFontSizeFn() || FONT_SIZE || 48;
-              const fontPx = Number.isFinite(fontPxRaw) && fontPxRaw > 0 ? fontPxRaw : 48;
-              const supersample = clamp(
-                Math.round(72 / Math.max(8, fontPx)),
-                1,
-                4,
-              );
-              params.smul = (fontPx / 72) * supersample;
-              params.ink = { ...(params.ink || {}), colorRgb };
-              const dpPerCss = Math.max(1e-6, (Number(RENDER_SCALE) || 1) * (Number(sampleScale) || 1));
-              const dm = createDistanceMapProvider({
-                insideDist: inside.dist,
-                outsideDist: outside.dist,
-                maxInside: inside.maxInside,
-              });
-              const context = {
-                w: glyphWidth,
-                h: glyphHeight,
-                alpha0: alpha,
-                params,
-                seed: glyphSeed,
-                gix: variantIdx | 0,
-                smul: params.smul || 1,
-                dm,
-                dpPerCss,
-              };
-              const coverage = new Float32Array(glyphWidth * glyphHeight);
-              if (typeof processor.runGlyphPipeline === 'function') {
-                processor.runGlyphPipeline({ ...context, coverage }, effectiveOrder);
-              } else {
-                stagePipeline.runPipeline(coverage, context, effectiveOrder);
-              }
-              for (let i = 0, k = 0; i < coverage.length; i++, k += 4) {
-                const baseAlpha = basePixels[k + 3] / 255;
-                const cov = coverage[i];
-                const coverageAlpha = Number.isFinite(cov) ? clamp(cov, 0, 1) : baseAlpha;
-                const mixedAlpha = clamp(baseAlpha + (coverageAlpha - baseAlpha) * overallStrength, 0, 1);
-                basePixels[k] = colorRgb.r;
-                basePixels[k + 1] = colorRgb.g;
-                basePixels[k + 2] = colorRgb.b;
-                basePixels[k + 3] = Math.round(mixedAlpha * 255);
-              }
-            } else {
-              for (let k = 0; k < basePixels.length; k += 4) {
-                basePixels[k] = colorRgb.r;
-                basePixels[k + 1] = colorRgb.g;
-                basePixels[k + 2] = colorRgb.b;
-              }
-            }
-          } else {
-            for (let k = 0; k < basePixels.length; k += 4) {
-              basePixels[k] = colorRgb.r;
-              basePixels[k + 1] = colorRgb.g;
-              basePixels[k + 2] = colorRgb.b;
-            }
-          }
-
-          glyphCtx.putImageData(glyphData, 0, 0);
-          let finalImageData;
-          if (sampleScale === 1) {
-            finalImageData = glyphCtx.getImageData(0, 0, cellW_draw_dp, cellH_draw_dp);
-          } else {
-            const hiData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
-            finalImageData = downsampleImageData(hiData, sampleScale, cellW_draw_dp, cellH_draw_dp);
-          }
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-          ctx.putImageData(finalImageData, destX_dp, destY_dp);
-          ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
-          ctx.imageSmoothingEnabled = false;
-          ctx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'alphabetic';
-        } else {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, CELL_W_CSS, CELL_H_CSS);
-          ctx.clip();
-          const x0 = packX_css + GUTTER_CSS + localXSnapped;
-          const y0 = packY_css + GUTTER_CSS + localYSnapped;
-          ctx.fillText(text, x0, y0);
-          ctx.restore();
-        }
-
-        rectDpByCode[code] = {
-          sx_dp: col * cellW_pack_dp + GUTTER_DP,
-          sy_dp: row * cellH_pack_dp + GUTTER_DP,
-          sw_dp: cellW_draw_dp,
-          sh_dp: cellH_draw_dp,
-        };
-        code++;
+    if (supportsAtlasWorker && !workerDisabled) {
+      if (!atlas) {
+        atlas = { key, ready: false };
+        experimentalAtlases.set(key, atlas);
       }
+      if (!experimentalAtlasPendingBuilds.has(key)) {
+        if (!requestExperimentalAtlasBuild(key, buildParams)) {
+          workerDisabled = true;
+          experimentalAtlasPendingBuilds.delete(key);
+          experimentalAtlases.delete(key);
+          return ensureExperimentalAtlas(ink, variantIdx, effectOverride);
+        }
+      }
+      return atlas;
     }
+
+    const createDomCanvas = (width, height) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      return canvas;
+    };
+
+    const buildResult = buildExperimentalAtlas({ ...buildParams, createCanvas: createDomCanvas });
+    const canvas = document.createElement('canvas');
+    canvas.width = buildResult.width;
+    canvas.height = buildResult.height;
+    const ctx = canvas.getContext('2d');
+    ctx.putImageData(buildResult.imageData, 0, 0);
 
     atlas = {
+      key,
+      ready: true,
       canvas,
-      cellW_css: CELL_W_CSS,
-      cellH_css: CELL_H_CSS,
-      cellW_draw_dp,
-      cellH_draw_dp,
-      originY_css: ORIGIN_Y_CSS,
-      rectDpByCode,
+      rectDpByCode: buildResult.rectDpByCode,
+      cellW_css: buildResult.cellW_css,
+      cellH_css: buildResult.cellH_css,
+      cellW_draw_dp: buildResult.cellW_draw_dp,
+      cellH_draw_dp: buildResult.cellH_draw_dp,
+      originY_css: buildResult.originY_css,
+      sampleScale: buildResult.sampleScale,
     };
     experimentalAtlases.set(key, atlas);
     window.atlasStats.builds++;
     return atlas;
   }
-
   function ensureAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const mode = normalizePipelineMode(getInkEffectsModeFn());
     if (mode === 'experimental') {
@@ -1496,9 +1384,18 @@ if (atlas) return atlas;
 
   function drawGlyph(ctx, ch, ink, x_css, baselineY_css, layerIndex, totalLayers, pageIndex, rowMu, col, effectsOverride = 'auto') {
     const atlas = ensureAtlas(ink, variantIndexForCell(pageIndex | 0, rowMu | 0, col | 0), effectsOverride);
-    const fallback = atlas.rectDpByCode['?'.charCodeAt(0)];
-    const rect = atlas.rectDpByCode[ch.charCodeAt(0)] || fallback;
+    if (!atlas || !atlas.ready) {
+      if (atlas?.key !== undefined) {
+        trackPendingAtlasUsage(atlas.key, pageIndex);
+      }
+      return;
+    }
+    const rectTable = atlas.rectDpByCode || [];
+    const fallback = rectTable['?'.charCodeAt(0)];
+    const rect = rectTable[ch.charCodeAt(0)] || fallback;
     if (!rect) return;
+    const source = atlas.bitmap || atlas.canvas;
+    if (!source) return;
     const RENDER_SCALE = getRenderScale();
     const dx_css = Math.round(x_css * RENDER_SCALE) / RENDER_SCALE;
     const dy_css = Math.round((baselineY_css - atlas.originY_css) * RENDER_SCALE) / RENDER_SCALE;
@@ -1507,7 +1404,7 @@ if (atlas) return atlas;
     const finalAlpha = (ink === 'w') ? baseOpacity : baseOpacity * layerFalloff;
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = finalAlpha;
-    ctx.drawImage(atlas.canvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, atlas.cellW_css, atlas.cellH_css);
+    ctx.drawImage(source, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, atlas.cellW_css, atlas.cellH_css);
     window.atlasStats.draws++;
     window.atlasStats.perInk[ink] = (window.atlasStats.perInk[ink] || 0) + 1;
   }
@@ -1651,6 +1548,17 @@ if (atlas) return atlas;
     grainPageCache.clear();
   }
 
+  function disposeAtlases() {
+    classicAtlases.clear();
+    clearExperimentalAtlasState();
+    grainBaseCache.clear();
+    grainPageCache.clear();
+    if (experimentalAtlasWorker) {
+      experimentalAtlasWorker.terminate();
+      experimentalAtlasWorker = null;
+    }
+  }
+
   function grainAlpha() {
     if (!isInkSectionEnabled('grain')) return 0;
     const cfg = grainConfig();
@@ -1700,7 +1608,8 @@ if (atlas) return atlas;
   if (context?.setCallback) {
     context.setCallback('rebuildAllAtlases', rebuildAllAtlases);
     context.setCallback('invalidateGrainCache', invalidateGrainCache);
+    context.setCallback('disposeAtlases', disposeAtlases);
   }
 
-  return { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion, invalidateGrainCache };
+  return { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion, invalidateGrainCache, disposeAtlases };
 }
