@@ -309,7 +309,7 @@ const SECTION_DEFS = [
   },
   {
     id: 'expTone',
-    label: 'Experimental tone & ribbon',
+    label: 'Tone & ribbon',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_TONE_KEYS,
@@ -319,7 +319,7 @@ const SECTION_DEFS = [
   },
   {
     id: 'expEdge',
-    label: 'Experimental edge shaping',
+    label: 'Edge shaping',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_EDGE_KEYS,
@@ -329,7 +329,7 @@ const SECTION_DEFS = [
   },
   {
     id: 'expGrain',
-    label: 'Experimental texture',
+    label: 'Texture',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_GRAIN_KEYS,
@@ -339,7 +339,7 @@ const SECTION_DEFS = [
   },
   {
     id: 'expDefects',
-    label: 'Experimental defects',
+    label: 'Defects',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_DEFECT_KEYS,
@@ -1635,29 +1635,20 @@ function buildSection(def, root) {
   header.appendChild(topLine);
 
   const hasStrengthControl = typeof def.stateKey === 'string' && def.stateKey.length > 0;
-  let slider = null;
-  let numberInput = null;
+  let checkbox = null;
   let startPercent = def.defaultStrength ?? 0;
   if (hasStrengthControl) {
-    const strengthWrap = document.createElement('div');
-    strengthWrap.className = 'ink-section-controls';
-    slider = document.createElement('input');
-    slider.type = 'range';
-    slider.min = '0';
-    slider.max = '100';
-    slider.step = '1';
     startPercent = getPercentFromState(def.stateKey, def.defaultStrength ?? 0);
-    slider.value = String(startPercent);
-    strengthWrap.appendChild(slider);
-    numberInput = document.createElement('input');
-    numberInput.type = 'number';
-    numberInput.min = '0';
-    numberInput.max = '100';
-    numberInput.step = '1';
-    numberInput.value = String(startPercent);
-    numberInput.setAttribute('aria-label', `${def.label} strength`);
-    strengthWrap.appendChild(numberInput);
-    header.appendChild(strengthWrap);
+    const checkboxWrap = document.createElement('div');
+    checkboxWrap.className = 'ink-section-enable';
+    checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'ink-section-enable-checkbox';
+    checkbox.checked = startPercent > 0;
+    checkbox.setAttribute('aria-label', `Enable ${def.label}`);
+    checkbox.title = `Enable ${def.label}`;
+    checkboxWrap.appendChild(checkbox);
+    topLine.appendChild(checkboxWrap);
   }
 
   sectionEl.appendChild(header);
@@ -1674,8 +1665,7 @@ function buildSection(def, root) {
     stateKey: def.stateKey,
     root: sectionEl,
     inputs: new Map(),
-    slider,
-    numberInput,
+    checkbox,
     body,
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
@@ -1730,22 +1720,11 @@ function buildSection(def, root) {
   toggleBtn.addEventListener('click', () => {
     setSectionCollapsed(meta, !meta.isCollapsed);
   });
-  if (slider) {
-    slider.addEventListener('input', () => {
-      applySectionStrength(meta, Number.parseFloat(slider.value) || 0);
-    });
-  }
-  if (numberInput) {
-    numberInput.addEventListener('input', () => {
-      const raw = Number.parseFloat(numberInput.value);
-      if (!Number.isFinite(raw)) return;
-      applySectionStrength(meta, raw);
-    });
-    numberInput.addEventListener('blur', () => {
-      if (numberInput.value !== '') return;
-      const fallback = meta.defaultStrength ?? 0;
-      const pct = getPercentFromState(meta.stateKey, fallback);
-      applySectionStrength(meta, pct, { silent: true });
+  if (checkbox) {
+    checkbox.addEventListener('change', () => {
+      const enabledStrength = meta.defaultStrength > 0 ? meta.defaultStrength : 100;
+      const targetValue = checkbox.checked ? enabledStrength : 0;
+      applySectionStrength(meta, targetValue);
     });
   }
 
@@ -1834,11 +1813,12 @@ function syncGrainInputField(pct) {
 function applySectionStrength(meta, percent, options = {}) {
   if (!meta) return;
   const pct = clamp(Math.round(Number(percent) || 0), 0, 100);
-  if (options.syncSlider !== false && meta.slider && meta.slider.value !== String(pct)) {
-    meta.slider.value = String(pct);
-  }
-  if (options.syncNumber !== false && meta.numberInput && meta.numberInput.value !== String(pct)) {
-    meta.numberInput.value = String(pct);
+  const shouldSyncCheckbox = options.syncCheckbox !== false && options.syncSlider !== false;
+  if (shouldSyncCheckbox && meta.checkbox) {
+    const shouldCheck = pct > 0;
+    if (meta.checkbox.checked !== shouldCheck) {
+      meta.checkbox.checked = shouldCheck;
+    }
   }
   if (meta.root) {
     meta.root.classList.toggle('is-disabled', pct <= 0);

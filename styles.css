@@ -569,15 +569,17 @@ body[data-page-tone='dark']{
     margin-top: 4px;
   }
   .ink-section-header { display: grid; grid-template-columns: var(--ink-heading-width) minmax(0, 1fr); column-gap: 12px; row-gap: 6px; margin-bottom: 8px; }
-  .ink-section-topline { grid-column: 1 / span 2; display: flex; }
+  .ink-section-topline { grid-column: 1 / span 2; display: flex; align-items: center; column-gap: 8px; width: 100%; flex-wrap: nowrap; }
   .ink-section-drag-handle { appearance: none; border: none; background: none; color: inherit; display: inline-flex; align-items: center; justify-content: center; cursor: grab; padding: 0 6px 0 0; font-size: 14px; opacity: 0.7; }
   .ink-section-drag-handle:active { cursor: grabbing; }
   .ink-section-drag-handle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; opacity: 1; }
   .ink-section-drag-handle span { pointer-events: none; }
-  .ink-section-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; justify-self: stretch; justify-content: flex-start; white-space: nowrap; }
+  .ink-section-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; justify-self: stretch; justify-content: flex-start; white-space: nowrap; flex: 1; min-width: 0; }
   .ink-section-toggle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
   .ink-section-toggle-icon { display: inline-flex; width: 16px; justify-content: center; transition: transform 0.18s ease; transform: rotate(90deg); font-size: 16px; line-height: 1; }
   .ink-section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.75; }
+  .ink-section-enable { margin-left: auto; display: flex; align-items: center; }
+  .ink-section-enable-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-color); }
   .ink-section.is-collapsed .ink-section-toggle-icon { transform: rotate(0deg); }
   .ink-section.is-collapsed .ink-section-body { display: none; }
   .ink-section-controls { grid-column: 1 / span 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; }
