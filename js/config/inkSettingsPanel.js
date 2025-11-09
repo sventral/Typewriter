@@ -320,7 +320,7 @@ const SECTION_DEFS = [
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_TONE_KEYS,
     trigger: 'glyph',
-    stateKey: null,
+    stateKey: 'expToneStrength',
     defaultStrength: 100,
   },
   {
@@ -330,7 +330,7 @@ const SECTION_DEFS = [
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_EDGE_KEYS,
     trigger: 'glyph',
-    stateKey: null,
+    stateKey: 'expEdgeStrength',
     defaultStrength: 100,
   },
   {
@@ -340,7 +340,7 @@ const SECTION_DEFS = [
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_GRAIN_KEYS,
     trigger: 'glyph',
-    stateKey: null,
+    stateKey: 'expGrainStrength',
     defaultStrength: 100,
   },
   {
@@ -350,7 +350,7 @@ const SECTION_DEFS = [
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_DEFECT_KEYS,
     trigger: 'glyph',
-    stateKey: null,
+    stateKey: 'expDefectsStrength',
     defaultStrength: 100,
   },
 ];
@@ -2238,6 +2238,14 @@ export function getInkSectionStrength(sectionId) {
       return normalizedPercent(getPercentFromState('edgeBleedStrength', EDGE_BLEED.enabled === false ? 0 : 100));
     case 'grain':
       return normalizedPercent(getPercentFromState('grainPct', GRAIN_CFG.enabled === false ? 0 : 100));
+    case 'expTone':
+      return normalizedPercent(getPercentFromState('expToneStrength', 100));
+    case 'expEdge':
+      return normalizedPercent(getPercentFromState('expEdgeStrength', 100));
+    case 'expGrain':
+      return normalizedPercent(getPercentFromState('expGrainStrength', 100));
+    case 'expDefects':
+      return normalizedPercent(getPercentFromState('expDefectsStrength', 100));
     default:
       return 1;
   }
@@ -2250,6 +2258,9 @@ export function isInkSectionEnabled(sectionId) {
   if (sectionId === 'texture') return strength > 0 && INK_TEXTURE.enabled !== false;
   if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
   if (sectionId === 'bleed') return strength > 0 && EDGE_BLEED.enabled !== false;
+  if (sectionId === 'expTone' || sectionId === 'expEdge' || sectionId === 'expGrain' || sectionId === 'expDefects') {
+    return strength > 0;
+  }
   return strength > 0;
 }
 

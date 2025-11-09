@@ -232,6 +232,10 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       0,
       100,
     ),
+    expToneStrength: clamp(Number(state.expToneStrength ?? 100), 0, 100),
+    expEdgeStrength: clamp(Number(state.expEdgeStrength ?? 100), 0, 100),
+    expGrainStrength: clamp(Number(state.expGrainStrength ?? 100), 0, 100),
+    expDefectsStrength: clamp(Number(state.expDefectsStrength ?? 100), 0, 100),
     grainSeed: state.grainSeed >>> 0,
     altSeed: state.altSeed >>> 0,
     inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
@@ -429,6 +433,26 @@ export function deserializeDocumentState(data, context) {
           ?? state.grainPct
           ?? (GRAIN_CFG.enabled === false ? 0 : 100)
       ),
+      0,
+      100,
+    ),
+    expToneStrength: clamp(
+      Number(data.expToneStrength ?? state.expToneStrength ?? 100),
+      0,
+      100,
+    ),
+    expEdgeStrength: clamp(
+      Number(data.expEdgeStrength ?? state.expEdgeStrength ?? 100),
+      0,
+      100,
+    ),
+    expGrainStrength: clamp(
+      Number(data.expGrainStrength ?? state.expGrainStrength ?? 100),
+      0,
+      100,
+    ),
+    expDefectsStrength: clamp(
+      Number(data.expDefectsStrength ?? state.expDefectsStrength ?? 100),
       0,
       100,
     ),
