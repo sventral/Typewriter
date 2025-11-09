@@ -221,11 +221,10 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   }
 
   const OFFSET_EPSILON = 1e-4;
-  const OFFSET_VIRT_IDLE_DELAY_MS = 24;
-  const OFFSET_VIRT_MAX_DELAY_MS = 160;
-  let pendingOffsetVirtRAF = 0;
-  let offsetVirtLastChangeTs = 0;
-  let offsetVirtFirstChangeTs = 0;
+  const OFFSET_VIRT_MIN_INTERVAL_MS = 36;
+  const OFFSET_VIRT_MAX_DELAY_MS = 96;
+  let offsetVirtTimer = 0;
+  let offsetVirtLastFlushTs = -Infinity;
 
   function nowMs() {
     if (typeof performance === 'object' && typeof performance.now === 'function') {
@@ -234,32 +233,38 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     return Date.now();
   }
 
-  function scheduleOffsetVirtualizationPass() {
-    pendingOffsetVirtRAF = requestAnimationFrame(() => {
-      pendingOffsetVirtRAF = 0;
-      const now = nowMs();
-      const idleFor = now - offsetVirtLastChangeTs;
-      const elapsed = now - offsetVirtFirstChangeTs;
-      if (idleFor < OFFSET_VIRT_IDLE_DELAY_MS && elapsed < OFFSET_VIRT_MAX_DELAY_MS) {
-        scheduleOffsetVirtualizationPass();
-        return;
-      }
-      offsetVirtLastChangeTs = 0;
-      offsetVirtFirstChangeTs = 0;
-      requestVirtualization();
-    });
+  function clearOffsetVirtTimer() {
+    if (!offsetVirtTimer) return;
+    clearTimeout(offsetVirtTimer);
+    offsetVirtTimer = 0;
+  }
+
+  function flushOffsetVirtualization() {
+    clearOffsetVirtTimer();
+    offsetVirtLastFlushTs = nowMs();
+    requestVirtualization();
   }
 
   function requestVirtualizationAfterOffsetChange() {
-    if (typeof requestAnimationFrame !== 'function') {
-      requestVirtualization();
+    const now = nowMs();
+    const sinceLast = now - offsetVirtLastFlushTs;
+    if (sinceLast >= OFFSET_VIRT_MIN_INTERVAL_MS) {
+      flushOffsetVirtualization();
       return;
     }
-    const now = nowMs();
-    offsetVirtLastChangeTs = now;
-    if (!offsetVirtFirstChangeTs) offsetVirtFirstChangeTs = now;
-    if (pendingOffsetVirtRAF) return;
-    scheduleOffsetVirtualizationPass();
+    if (offsetVirtTimer) return;
+    const delay = Math.min(
+      Math.max(OFFSET_VIRT_MIN_INTERVAL_MS - sinceLast, 8),
+      OFFSET_VIRT_MAX_DELAY_MS,
+    );
+    offsetVirtTimer = setTimeout(() => {
+      offsetVirtTimer = 0;
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => flushOffsetVirtualization());
+      } else {
+        flushOffsetVirtualization();
+      }
+    }, delay);
   }
 
   function setPaperOffset(x, y) {
