@@ -226,6 +226,13 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const snap = (v) => Math.round(v * DPR) / DPR;
     const snappedX = scale ? snap(clamped.x * scale) / scale : clamped.x;
     const snappedY = scale ? snap(clamped.y * scale) / scale : clamped.y;
+    const prevX = state.paperOffset.x;
+    const prevY = state.paperOffset.y;
+    const deltaX = Math.abs(snappedX - prevX);
+    const deltaY = Math.abs(snappedY - prevY);
+    if (deltaX < 1e-4 && deltaY < 1e-4) {
+      return;
+    }
     state.paperOffset.x = snappedX;
     state.paperOffset.y = snappedY;
     if (app.stageInner) {
