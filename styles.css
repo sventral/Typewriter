@@ -510,6 +510,16 @@ body[data-page-tone='dark']{
   .appearance-options input[type="radio"] { margin: 0; }
   .appearance-dark-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: 0.8; margin-left: 24px; }
   .appearance-dark-toggle input[type="checkbox"] { margin: 0; }
+  .low-res-zoom-controls { display: flex; flex-direction: column; gap: 12px; margin-left: 24px; padding: 12px 0 0; border-top: 1px solid rgba(0,0,0,0.08); }
+  body.dark .low-res-zoom-controls { border-color: rgba(255,255,255,0.1); }
+  .low-res-zoom-toggle { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+  .low-res-zoom-toggle input[type="checkbox"] { margin: 0; }
+  .low-res-zoom-copy span { display: block; font-weight: 600; }
+  .low-res-zoom-copy small { display: block; font-size: 11px; opacity: 0.7; }
+  .low-res-zoom-fields { display: flex; flex-wrap: wrap; gap: 12px; padding-left: 28px; }
+  .low-res-zoom-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; flex: 1 1 140px; }
+  .low-res-zoom-fields input { width: 100%; }
+  .low-res-zoom-controls.disabled { opacity: 0.6; }
   .ink-settings-content h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.75; }
   .ink-settings-content { --ink-heading-width: 160px; }
   .settings-section {

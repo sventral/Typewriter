@@ -7,6 +7,12 @@ import {
   cloneGlyphJitterRange,
 } from '../config/glyphJitterConfig.js';
 import { EDGE_BLEED, GRAIN_CFG, INK_INTENSITY } from '../config/inkConfig.js';
+import {
+  LOW_RES_ZOOM_DEFAULTS,
+  normalizeLowResZoomSettings,
+  ZOOM_SLIDER_MAX_PCT,
+  ZOOM_SLIDER_MIN_PCT,
+} from '../config/lowResZoom.js';
 
 const resolveIntensityBounds = (key) => {
   const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
@@ -176,6 +182,14 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
   const glyphJitterAmount = normalizeGlyphJitterAmount(state.glyphJitterAmountPct, GLYPH_JITTER_DEFAULTS.amountPct);
   const glyphJitterFrequency = normalizeGlyphJitterFrequency(state.glyphJitterFrequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
   const glyphJitterSeed = normalizeGlyphJitterSeed(state.glyphJitterSeed, GLYPH_JITTER_DEFAULTS.seed);
+  const lowResZoom = normalizeLowResZoomSettings(
+    {
+      softCapPct: state.lowResZoomSoftCapPct,
+      marginPct: state.lowResZoomMarginPct,
+    },
+    { maxZoomPct: ZOOM_SLIDER_MAX_PCT, minSoftCapPct: ZOOM_SLIDER_MIN_PCT },
+  );
+  const lowResZoomEnabled = state.lowResZoomEnabled !== false;
 
   return {
     v: 25,
@@ -247,6 +261,11 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       amountPct: cloneGlyphJitterRange(glyphJitterAmount),
       frequencyPct: cloneGlyphJitterRange(glyphJitterFrequency),
       seed: glyphJitterSeed,
+    },
+    lowResZoom: {
+      enabled: lowResZoomEnabled,
+      softCapPct: lowResZoom.softCapPct ?? LOW_RES_ZOOM_DEFAULTS.softCapPct,
+      marginPct: lowResZoom.marginPct ?? LOW_RES_ZOOM_DEFAULTS.marginPct,
     },
     pages,
   };
@@ -376,6 +395,15 @@ export function deserializeDocumentState(data, context) {
   const sanitizedJitterAmount = normalizeGlyphJitterAmount(jitterBlock?.amountPct, fallbackAmount);
   const sanitizedJitterFrequency = normalizeGlyphJitterFrequency(jitterBlock?.frequencyPct, fallbackFrequency);
   const sanitizedJitterSeed = normalizeGlyphJitterSeed(jitterBlock?.seed, state.glyphJitterSeed ?? GLYPH_JITTER_DEFAULTS.seed);
+  const lowResZoomBlock = (data.lowResZoom && typeof data.lowResZoom === 'object') ? data.lowResZoom : {};
+  const normalizedLowResZoom = normalizeLowResZoomSettings(
+    {
+      softCapPct: lowResZoomBlock.softCapPct,
+      marginPct: lowResZoomBlock.marginPct,
+    },
+    { maxZoomPct: ZOOM_SLIDER_MAX_PCT, minSoftCapPct: ZOOM_SLIDER_MIN_PCT },
+  );
+  const lowResZoomEnabled = lowResZoomBlock.enabled !== false;
 
   Object.assign(state, {
     marginL: data.margins?.L ?? state.marginL,
@@ -396,6 +424,9 @@ export function deserializeDocumentState(data, context) {
       ? data.lineHeightFactor
       : 1.5,
     zoom: typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4 ? data.zoom : 1.0,
+    lowResZoomEnabled,
+    lowResZoomSoftCapPct: normalizedLowResZoom.softCapPct ?? LOW_RES_ZOOM_DEFAULTS.softCapPct,
+    lowResZoomMarginPct: normalizedLowResZoom.marginPct ?? LOW_RES_ZOOM_DEFAULTS.marginPct,
     effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
     inkFillStrength: clamp(
       Number(data.inkFillStrength ?? state.inkFillStrength ?? 100),

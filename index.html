@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.14.2b</div>
+  <div class="app-version">v.14.3b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -335,6 +335,25 @@
               <input type="checkbox" id="darkPageToggle" />
               <span>Dark page while in dark mode</span>
             </label>
+            <div class="low-res-zoom-controls">
+              <label class="low-res-zoom-toggle">
+                <input type="checkbox" id="lowResZoomToggle" checked />
+                <div class="low-res-zoom-copy">
+                  <span>Low res zoom</span>
+                  <small>Soft-cap rendering above the limit</small>
+                </div>
+              </label>
+              <div class="low-res-zoom-fields">
+                <label>
+                  <span>Soft cap (%)</span>
+                  <input type="number" id="lowResZoomSoftCap" min="50" max="400" step="10" value="200" />
+                </label>
+                <label>
+                  <span>Zoom margin (%)</span>
+                  <input type="number" id="lowResZoomMargin" min="0" max="200" step="5" value="20" />
+                </label>
+              </div>
+            </div>
           </div>
         </div>
       </details>

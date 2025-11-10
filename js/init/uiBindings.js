@@ -16,6 +16,12 @@ import {
   persistDocuments,
 } from '../document/documentStore.js';
 import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../state/saveRevision.js';
+import {
+  LOW_RES_ZOOM_DEFAULTS,
+  normalizeLowResZoomSettings,
+  ZOOM_SLIDER_MAX_PCT,
+  ZOOM_SLIDER_MIN_PCT,
+} from '../config/lowResZoom.js';
 
 export function setupUIBindings(context, controllers) {
   const {
@@ -37,6 +43,7 @@ export function setupUIBindings(context, controllers) {
     positionRulers,
     requestVirtualization,
     schedulePaint,
+    setRenderScaleForZoom,
     setZoomPercent,
     applyDefaultMargins,
     computeColsFromCpi,
@@ -77,6 +84,7 @@ export function setupUIBindings(context, controllers) {
     onZoomPointerMove,
     onZoomPointerUp,
     setMarginBoxesVisible,
+    scheduleZoomCrispRedraw,
   } = layout;
 
   const {
@@ -631,6 +639,93 @@ export function setupUIBindings(context, controllers) {
     }
   }
 
+  function sanitizeLowResZoomInputs() {
+    const normalized = normalizeLowResZoomSettings({
+      softCapPct: Number.parseFloat(app.lowResZoomSoftCap?.value),
+      marginPct: Number.parseFloat(app.lowResZoomMargin?.value),
+    });
+    state.lowResZoomSoftCapPct = normalized.softCapPct;
+    state.lowResZoomMarginPct = normalized.marginPct;
+    if (app.lowResZoomSoftCap) {
+      app.lowResZoomSoftCap.value = String(normalized.softCapPct);
+      app.lowResZoomSoftCap.min = String(ZOOM_SLIDER_MIN_PCT);
+      app.lowResZoomSoftCap.max = String(ZOOM_SLIDER_MAX_PCT);
+    }
+    if (app.lowResZoomMargin) {
+      const marginMax = Math.max(0, ZOOM_SLIDER_MAX_PCT - normalized.softCapPct);
+      app.lowResZoomMargin.value = String(normalized.marginPct);
+      app.lowResZoomMargin.min = '0';
+      app.lowResZoomMargin.max = String(marginMax);
+    }
+    return normalized;
+  }
+
+  function syncLowResZoomUI() {
+    if (typeof state.lowResZoomEnabled !== 'boolean') {
+      state.lowResZoomEnabled = LOW_RES_ZOOM_DEFAULTS.enabled;
+    }
+    const normalized = normalizeLowResZoomSettings({
+      softCapPct: state.lowResZoomSoftCapPct,
+      marginPct: state.lowResZoomMarginPct,
+    });
+    state.lowResZoomSoftCapPct = normalized.softCapPct;
+    state.lowResZoomMarginPct = normalized.marginPct;
+    const enabled = state.lowResZoomEnabled !== false;
+    if (app.lowResZoomToggle) {
+      app.lowResZoomToggle.checked = enabled;
+    }
+    if (app.lowResZoomSoftCap) {
+      app.lowResZoomSoftCap.value = String(normalized.softCapPct);
+      app.lowResZoomSoftCap.disabled = !enabled;
+      app.lowResZoomSoftCap.min = String(ZOOM_SLIDER_MIN_PCT);
+      app.lowResZoomSoftCap.max = String(ZOOM_SLIDER_MAX_PCT);
+    }
+    if (app.lowResZoomMargin) {
+      const marginMax = Math.max(0, ZOOM_SLIDER_MAX_PCT - normalized.softCapPct);
+      app.lowResZoomMargin.value = String(normalized.marginPct);
+      app.lowResZoomMargin.disabled = !enabled;
+      app.lowResZoomMargin.min = '0';
+      app.lowResZoomMargin.max = String(marginMax);
+    }
+    if (app.lowResZoomControls) {
+      app.lowResZoomControls.classList.toggle('disabled', !enabled);
+    }
+    return normalized;
+  }
+
+  function applyLowResZoomEffects() {
+    if (typeof setRenderScaleForZoom === 'function') {
+      setRenderScaleForZoom();
+    }
+    if (typeof scheduleZoomCrispRedraw === 'function') {
+      scheduleZoomCrispRedraw();
+    }
+  }
+
+  function bindLowResZoomControls() {
+    if (app.lowResZoomToggle) {
+      app.lowResZoomToggle.addEventListener('change', () => {
+        state.lowResZoomEnabled = !!app.lowResZoomToggle.checked;
+        syncLowResZoomUI();
+        queueDirtySave();
+        applyLowResZoomEffects();
+      });
+    }
+    [app.lowResZoomSoftCap, app.lowResZoomMargin].forEach((input) => {
+      if (!input) return;
+      input.addEventListener('change', () => {
+        sanitizeLowResZoomInputs();
+        syncLowResZoomUI();
+        queueDirtySave();
+        applyLowResZoomEffects();
+      });
+      input.addEventListener('blur', () => {
+        sanitizeLowResZoomInputs();
+        syncLowResZoomUI();
+      });
+    });
+  }
+
   function bindStageSizeInputs() {
     const updateStageBounds = (allowEmpty) => {
       const widthFactor = sanitizeStageInput(app.stageWidthPct, state.stageWidthFactor, allowEmpty, true);
@@ -911,6 +1006,7 @@ export function setupUIBindings(context, controllers) {
     bindToolbarInputs();
     bindGlyphJitterControls();
     bindAppearanceControls();
+    bindLowResZoomControls();
     bindRulerInteractions();
     bindZoomControls();
     bindGlobalListeners();
@@ -1026,6 +1122,7 @@ export function setupUIBindings(context, controllers) {
     if (app.appearanceDark) app.appearanceDark.checked = state.themeMode === 'dark';
     if (app.darkPageToggle) app.darkPageToggle.checked = !!state.darkPageInDarkMode;
     if (app.darkPageToggle) app.darkPageToggle.disabled = state.themeMode === 'light';
+    syncLowResZoomUI();
 
     if (!loaded) {
       state.cpi = 10;

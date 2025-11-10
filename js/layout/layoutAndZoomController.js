@@ -15,6 +15,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     requestVirtualization,
     saveStateDebounced,
     setRenderScaleForZoom,
+    getEffectiveRenderZoom,
     prepareCanvas,
     configureCanvasContext,
     schedulePaint,
@@ -772,7 +773,10 @@ const normFromZ = (pct) => {
       if (page.backCanvas) prepareCanvas(page.backCanvas);
       if (page.ctx) configureCanvasContext(page.ctx);
       if (page.backCtx) configureCanvasContext(page.backCtx);
-      page.zoomPreparedFor = state.zoom || 1;
+      const effectiveZoom = typeof getEffectiveRenderZoom === 'function'
+        ? getEffectiveRenderZoom()
+        : (state.zoom || 1);
+      page.zoomPreparedFor = effectiveZoom;
       page.dirtyAll = true;
       if (page.active) schedulePaint(page);
     };

@@ -65,6 +65,9 @@ export function createMainState(app, gridDiv = 8) {
     pageFillColor: '#f7f5ee',
     inkEffectsPreferWhite: false,
     savedInkStyles: [],
+    lowResZoomEnabled: true,
+    lowResZoomSoftCapPct: 200,
+    lowResZoomMarginPct: 20,
   };
 }
 
