@@ -1,27 +1,7 @@
-import { clamp } from '../utils/math.js';
-import { sanitizeIntegerField } from '../utils/forms.js';
-import { refreshSavedInkStylesUI, syncInkStrengthDisplays } from '../config/inkSettingsPanel.js';
-import {
-  GLYPH_JITTER_DEFAULTS,
-  normalizeGlyphJitterAmount,
-  normalizeGlyphJitterFrequency,
-} from '../config/glyphJitterConfig.js';
-import {
-  DEFAULT_DOCUMENT_TITLE,
-  normalizeDocumentTitle,
-  generateDocumentId,
-  createDocumentRecord,
-  loadDocumentIndexFromStorage,
-  migrateLegacyDocument,
-  persistDocuments,
-} from '../document/documentStore.js';
-import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../state/saveRevision.js';
-import {
-  LOW_RES_ZOOM_DEFAULTS,
-  normalizeLowResZoomSettings,
-  ZOOM_SLIDER_MAX_PCT,
-  ZOOM_SLIDER_MIN_PCT,
-} from '../config/lowResZoom.js';
+import { markDocumentDirty } from '../state/saveRevision.js';
+import { createDocumentControls } from './ui/documentControls.js';
+import { createInkControls } from './ui/inkControls.js';
+import { createMeasurementControls } from './ui/measurementControls.js';
 
 export function setupUIBindings(context, controllers) {
   const {
@@ -61,19 +41,8 @@ export function setupUIBindings(context, controllers) {
     gridDiv,
   } = context;
 
-  const {
-    editing,
-    layout,
-    input,
-    theme,
-  } = controllers;
-
-  const {
-    setInk,
-    createNewDocument,
-    serializeState,
-    deserializeState,
-  } = editing;
+  const { editing, layout, input, theme } = controllers;
+  const { setInk, createNewDocument, serializeState, deserializeState } = editing;
 
   const {
     handleWheelPan,
@@ -87,1077 +56,117 @@ export function setupUIBindings(context, controllers) {
     scheduleZoomCrispRedraw,
   } = layout;
 
-  const {
-    handleKeyDown,
-    handlePaste,
-  } = input;
+  const { handleKeyDown, handlePaste } = input;
 
-  const docState = { documents: [], activeId: null };
-  const docMenuState = { open: false };
-  let isEditingTitle = false;
+  const documentControls = createDocumentControls({
+    app,
+    state,
+    storageKey,
+    focusStage,
+    updateStageEnvironment,
+    setZoomPercent,
+    renderMargins,
+    setMarginBoxesVisible,
+    clampCaretToBounds,
+    updateCaretPosition,
+    positionRulers,
+    requestVirtualization,
+    requestHammerNudge,
+    isZooming,
+    createNewDocument,
+    serializeState,
+    deserializeState,
+    getSaveTimer,
+    setSaveTimer,
+  });
+
   const queueDirtySave = () => {
     markDocumentDirty(state);
-    saveStateDebounced();
+    documentControls.saveStateDebounced();
   };
 
-  function formatNumberForInput(value, fractionDigits = 2) {
-    if (!Number.isFinite(value)) return '';
-    if (fractionDigits <= 0) {
-      return String(Math.round(value));
-    }
-    const factor = 10 ** fractionDigits;
-    const rounded = Math.round(value * factor) / factor;
-    let str = rounded.toFixed(fractionDigits);
-    str = str.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
-    return str;
-  }
+  const inkControls = createInkControls({
+    app,
+    state,
+    setInk,
+    schedulePaint,
+    queueDirtySave,
+    toggleInkSettingsPanel,
+    loadFontAndApply,
+    focusStage,
+    theme,
+  });
 
-  function setGlyphJitterInputsDisabled(disabled) {
-    [
-      app.glyphJitterAmountMin,
-      app.glyphJitterAmountMax,
-      app.glyphJitterFrequencyMin,
-      app.glyphJitterFrequencyMax,
-    ].forEach((el) => {
-      if (el) el.disabled = disabled;
-    });
-    if (app.shuffleGlyphJitterSeedBtn) {
-      app.shuffleGlyphJitterSeedBtn.disabled = disabled;
-    }
-  }
-
-  const docUpdatedFormatter = (() => {
-    if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
-      return null;
-    }
-    try {
-      return new Intl.DateTimeFormat(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return null;
-    }
-  })();
-
-  function formatUpdatedAt(ts) {
-    if (!Number.isFinite(ts) || ts <= 0) return '';
-    if (!docUpdatedFormatter) return '';
-    try {
-      return docUpdatedFormatter.format(new Date(ts));
-    } catch {
-      return '';
-    }
-  }
-
-  function sortDocumentsInPlace() {
-    docState.documents.sort((a, b) => {
-      const au = Number(a?.updatedAt) || 0;
-      const bu = Number(b?.updatedAt) || 0;
-      return bu - au;
-    });
-  }
-
-  function persistDocumentIndex() {
-    sortDocumentsInPlace();
-    persistDocuments(storageKey, docState);
-  }
-
-  function renderDocumentList() {
-    if (!app.docMenuList) return;
-    sortDocumentsInPlace();
-    app.docMenuList.innerHTML = '';
-    if (!docState.documents.length) {
-      const empty = document.createElement('div');
-      empty.className = 'doc-menu-empty';
-      empty.textContent = 'No documents yet';
-      app.docMenuList.appendChild(empty);
-      return;
-    }
-    docState.documents.forEach(doc => {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'doc-list-item';
-      item.setAttribute('role', 'menuitem');
-      item.dataset.id = doc.id;
-      if (doc.id === docState.activeId) {
-        item.classList.add('is-active');
-      }
-      const titleSpan = document.createElement('span');
-      titleSpan.textContent = doc.title || DEFAULT_DOCUMENT_TITLE;
-      item.appendChild(titleSpan);
-      const updatedText = formatUpdatedAt(doc.updatedAt);
-      if (updatedText) {
-        const meta = document.createElement('span');
-        meta.className = 'doc-updated';
-        meta.textContent = updatedText;
-        item.appendChild(meta);
-      }
-      app.docMenuList.appendChild(item);
-    });
-  }
-
-  function ensureDocumentTitleInput() {
-    if (!app.docTitleInput || isEditingTitle) return;
-    app.docTitleInput.value = state.documentTitle || '';
-  }
-
-  function openDocMenu() {
-    if (!app.docMenuPopup || docMenuState.open) return;
-    app.docMenuPopup.classList.add('open');
-    if (app.docMenuBtn) app.docMenuBtn.setAttribute('aria-expanded', 'true');
-    docMenuState.open = true;
-  }
-
-  function closeDocMenu() {
-    if (!app.docMenuPopup || !docMenuState.open) return;
-    app.docMenuPopup.classList.remove('open');
-    if (app.docMenuBtn) app.docMenuBtn.setAttribute('aria-expanded', 'false');
-    docMenuState.open = false;
-  }
-
-  function toggleDocMenu() {
-    if (docMenuState.open) {
-      closeDocMenu();
-    } else {
-      openDocMenu();
-    }
-  }
-
-  function getActiveDocument() {
-    if (!docState.activeId) return null;
-    return docState.documents.find(doc => doc.id === docState.activeId) || null;
-  }
-
-  function refreshDocumentEnvironment() {
-    updateStageEnvironment();
-    setZoomPercent(Math.round((state.zoom || 1) * 100) || 100);
-    renderMargins();
-    setMarginBoxesVisible(state.showMarginBox);
-    clampCaretToBounds();
-    updateCaretPosition();
-    positionRulers();
-    document.body.classList.toggle('rulers-off', !state.showRulers);
-    requestVirtualization();
-  }
-
-  function syncDocumentUi() {
-    ensureDocumentTitleInput();
-    renderDocumentList();
-  }
-
-  function applyDocumentRecord(doc) {
-    if (!doc) return;
-    doc.title = normalizeDocumentTitle(doc.title);
-    let loaded = false;
-    if (doc.data) {
-      try {
-        loaded = deserializeState(doc.data);
-      } catch {
-        loaded = false;
-      }
-    }
-    if (!loaded) {
-      createNewDocument({ documentId: doc.id, documentTitle: doc.title, skipSave: true });
-    } else {
-      state.documentId = doc.id;
-      state.documentTitle = doc.title;
-    }
-    docState.activeId = doc.id;
-    populateInitialUI({ loaded: true, documents: docState.documents, activeDocumentId: doc.id });
-    refreshDocumentEnvironment();
-    syncDocumentUi();
-    if (!loaded) {
-      queueDirtySave();
-    }
-    focusStage();
-  }
-
-  function handleDocumentSelection(id) {
-    if (!id || docState.activeId === id) {
-      closeDocMenu();
-      return;
-    }
-    saveStateNow();
-    const nextDoc = docState.documents.find(record => record.id === id);
-    if (!nextDoc) {
-      closeDocMenu();
-      return;
-    }
-    applyDocumentRecord(nextDoc);
-    closeDocMenu();
-  }
-
-  function handleCreateDocument() {
-    saveStateNow();
-    const now = Date.now();
-    const existingIds = new Set(docState.documents.map(doc => doc.id));
-    const newId = generateDocumentId(existingIds);
-    const newDoc = createDocumentRecord({
-      id: newId,
-      title: DEFAULT_DOCUMENT_TITLE,
-      createdAt: now,
-      updatedAt: now,
-      data: null,
-    }, existingIds);
-    docState.documents.push(newDoc);
-    docState.activeId = newId;
-    createNewDocument({ documentId: newId, documentTitle: newDoc.title, skipSave: true });
-    newDoc.data = serializeState();
-    persistDocumentIndex();
-    applyDocumentRecord(newDoc);
-    markDocumentDirty(state);
-    saveStateNow();
-    closeDocMenu();
-  }
-
-  function handleDeleteDocument() {
-    const active = getActiveDocument();
-    if (!active) return;
-    const idx = docState.documents.findIndex(doc => doc.id === active.id);
-    if (idx < 0) return;
-    docState.documents.splice(idx, 1);
-    if (!docState.documents.length) {
-      const existingIds = new Set(docState.documents.map(doc => doc.id));
-      const blankId = generateDocumentId(existingIds);
-      const blank = createDocumentRecord({ id: blankId, title: DEFAULT_DOCUMENT_TITLE }, existingIds);
-      docState.documents.push(blank);
-      docState.activeId = blank.id;
-      createNewDocument({ documentId: blank.id, documentTitle: blank.title, skipSave: true });
-      blank.data = serializeState();
-      blank.createdAt = Date.now();
-      blank.updatedAt = blank.createdAt;
-      persistDocumentIndex();
-      populateInitialUI({ loaded: true, documents: docState.documents, activeDocumentId: blank.id });
-      refreshDocumentEnvironment();
-      syncDocumentUi();
-      markDocumentDirty(state);
-      saveStateNow();
-      closeDocMenu();
-      return;
-    }
-    const nextDoc = docState.documents[Math.min(idx, docState.documents.length - 1)];
-    docState.activeId = nextDoc.id;
-    persistDocumentIndex();
-    applyDocumentRecord(nextDoc);
-    closeDocMenu();
-  }
-
-  function handleDocumentTitleInput() {
-    if (!app.docTitleInput) return;
-    const raw = app.docTitleInput.value.slice(0, 200);
-    state.documentTitle = raw;
-    const active = getActiveDocument();
-    if (active) {
-      active.title = raw;
-    }
-    renderDocumentList();
-  }
-
-  function commitDocumentTitle() {
-    if (!app.docTitleInput) return;
-    const sanitized = normalizeDocumentTitle(app.docTitleInput.value);
-    app.docTitleInput.value = sanitized;
-    const active = getActiveDocument();
-    state.documentTitle = sanitized;
-    let changed = false;
-    if (active) {
-      const prev = normalizeDocumentTitle(active.title);
-      if (prev !== sanitized) {
-        active.title = sanitized;
-        active.updatedAt = Date.now();
-        changed = true;
-      } else {
-        active.title = sanitized;
-      }
-    }
-    syncDocumentUi();
-    if (changed) {
-      markDocumentDirty(state);
-      saveStateNow();
-    } else {
-      persistDocumentIndex();
-    }
-  }
-  function saveStateNow(options = {}) {
-    const force = typeof options === 'object' && options !== null ? !!options.force : false;
-    if (!force && !hasPendingDocumentChanges(state)) {
-      return;
-    }
-    try {
-      const serialized = serializeState();
-      const activeId = typeof state.documentId === 'string' && state.documentId.trim()
-        ? state.documentId.trim()
-        : (docState.activeId || generateDocumentId(new Set(docState.documents.map(doc => doc.id))));
-      const title = normalizeDocumentTitle(serialized.documentTitle || state.documentTitle);
-      const now = Date.now();
-      let doc = docState.documents.find(d => d.id === activeId);
-      if (!doc) {
-        doc = {
-          id: activeId,
-          title,
-          createdAt: now,
-          updatedAt: now,
-          data: serialized,
-        };
-        docState.documents.push(doc);
-      } else {
-        doc.title = title;
-        doc.updatedAt = now;
-        doc.data = serialized;
-        if (!Number.isFinite(doc.createdAt)) {
-          doc.createdAt = now;
-        }
-      }
-      state.documentId = activeId;
-      state.documentTitle = title;
-      docState.activeId = activeId;
-      persistDocumentIndex();
-      syncDocumentUi();
-      syncSavedRevision(state);
-    } catch {}
-  }
-
-  function saveStateDebounced(options = {}) {
-    const force = typeof options === 'object' && options !== null ? !!options.force : false;
-    if (!force && !hasPendingDocumentChanges(state)) {
-      return;
-    }
-    const timer = getSaveTimer();
-    if (timer) clearTimeout(timer);
-    const newTimer = setTimeout(() => {
-      setSaveTimer(0);
-      saveStateNow();
-    }, 400);
-    setSaveTimer(newTimer);
-  }
-
-  function exportToTextFile() {
-    const out = [];
-    for (let p = 0; p < state.pages.length; p++) {
-      const page = state.pages[p];
-      if (!page) {
-        out.push('');
-        continue;
-      }
-      const rows = Array.from(page.grid.keys()).sort((a, b) => a - b);
-      if (!rows.length) {
-        out.push('');
-        continue;
-      }
-      for (let i = 0; i < rows.length; i++) {
-        const rmu = rows[i];
-        const rowMap = page.grid.get(rmu);
-        let minCol = Infinity;
-        let maxCol = -1;
-        for (const c of rowMap.keys()) {
-          if (c < minCol) minCol = c;
-          if (c > maxCol) maxCol = c;
-        }
-        if (!isFinite(minCol) || maxCol < 0) {
-          out.push('');
-          continue;
-        }
-        let line = '';
-        for (let c = minCol; c <= maxCol; c++) {
-          const st = rowMap?.get(c);
-          line += st && st.length ? st[st.length - 1].char : ' ';
-        }
-        out.push(line.replace(/\s+$/, ''));
-      }
-      if (p < state.pages.length - 1) out.push('');
-    }
-    const txt = out.join('\n');
-    const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'typewriter.txt';
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(a.href);
-    a.remove();
-  }
-
-  function updateColsPreviewUI() {
-    const cpi = parseFloat(app.cpiSelect?.value) || 10;
-    const { cols2 } = computeColsFromCpi(cpi);
-    if (app.colsPreviewSpan) {
-      app.colsPreviewSpan.textContent = `Columns: ${cols2.toFixed(2)}`;
-    }
-  }
-
-  function bindOpacitySliders() {
-    const onOpacitySliderInput = (key, sliderEl, valueEl) => {
-      const v = parseInt(sliderEl.value, 10);
-      valueEl.textContent = `${v}%`;
-      state.inkOpacity[key] = v;
-      queueDirtySave();
-      for (const p of state.pages) {
-        if (p.active) {
-          p.dirtyAll = true;
-          schedulePaint(p);
-        }
-      }
-    };
-
-    app.inkOpacityBSlider.addEventListener('input', () => onOpacitySliderInput('b', app.inkOpacityBSlider, app.inkOpacityBValue));
-    app.inkOpacityRSlider.addEventListener('input', () => onOpacitySliderInput('r', app.inkOpacityRSlider, app.inkOpacityRValue));
-    app.inkOpacityWSlider.addEventListener('input', () => onOpacitySliderInput('w', app.inkOpacityWSlider, app.inkOpacityWValue));
-  }
-
-  function bindInkButtons() {
-    const LONG_PRESS_DURATION = 500;
-
-    const setupInkButton = (btn, ink, popup) => {
-      let pressTimer = null;
-      let isLongPress = false;
-      const startPress = () => {
-        isLongPress = false;
-        if (pressTimer) {
-          clearTimeout(pressTimer);
-        }
-        pressTimer = setTimeout(() => {
-          isLongPress = true;
-          const allPopups = [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup];
-          allPopups.forEach(p => { if (p !== popup) p.classList.remove('active'); });
-          popup.classList.add('active');
-        }, LONG_PRESS_DURATION);
-      };
-      const endPress = () => {
-        if (pressTimer) {
-          clearTimeout(pressTimer);
-          pressTimer = null;
-        }
-        if (!isLongPress) {
-          setInk(ink);
-          const allPopups = [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup];
-          allPopups.forEach(p => p.classList.remove('active'));
-        }
-      };
-      const cancelPress = () => {
-        if (pressTimer) {
-          clearTimeout(pressTimer);
-          pressTimer = null;
-        }
-      };
-      btn.addEventListener('pointerdown', startPress);
-      btn.addEventListener('pointerup', endPress);
-      btn.addEventListener('pointerleave', cancelPress);
-      btn.addEventListener('pointercancel', cancelPress);
-      popup.addEventListener('pointerdown', e => e.stopPropagation());
-    };
-
-    setupInkButton(app.inkBlackBtn, 'b', app.inkBlackSliderPopup);
-    setupInkButton(app.inkRedBtn, 'r', app.inkRedSliderPopup);
-    setupInkButton(app.inkWhiteBtn, 'w', app.inkWhiteSliderPopup);
-
-    document.body.addEventListener('pointerdown', () => {
-      [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup].forEach(p => p.classList.remove('active'));
-    });
-  }
-
-  function bindGrainInput() {
-    if (!app.grainInput) return;
-    app.grainInput.addEventListener('input', () => {
-      const v = clamp(parseInt(app.grainInput.value || '0', 10), 0, 100);
-      app.grainInput.value = String(v);
-      state.grainPct = v;
-      queueDirtySave();
-      for (const p of state.pages) {
-        if (p.active) {
-          p.dirtyAll = true;
-          schedulePaint(p);
-        }
-      }
-      syncInkStrengthDisplays('grain');
-    });
-  }
-
-  function bindDialogToggles() {
-    if (app.inkSettingsBtn) app.inkSettingsBtn.onclick = toggleInkSettingsPanel;
-    window.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
-      }
-    });
-
-    app.fontRadios().forEach(radio => {
-      radio.addEventListener('change', async () => {
-        if (radio.checked) {
-          await loadFontAndApply(radio.value);
-          focusStage();
-        }
-      });
-    });
-  }
-
-  function bindMarginInputs() {
-    const applyMm = () => {
-      state.marginL = pxX(Math.max(0, Number(app.mmLeft?.value) || 0));
-      state.marginR = app.PAGE_W - pxX(Math.max(0, Number(app.mmRight?.value) || 0));
-      state.marginTop = pxY(Math.max(0, Number(app.mmTop?.value) || 0));
-      state.marginBottom = pxY(Math.max(0, Number(app.mmBottom?.value) || 0));
-      renderMargins();
-      clampCaretToBounds();
-      updateCaretPosition();
-      positionRulers();
-      queueDirtySave();
-    };
-
-    [app.mmLeft, app.mmRight, app.mmTop, app.mmBottom].forEach(inp => {
-      if (!inp) return;
-      inp.addEventListener('input', () => {
-        sanitizeIntegerField(inp, { min: 0, allowEmpty: true });
-        applyMm();
-      });
-      inp.addEventListener('change', () => {
-        sanitizeIntegerField(inp, { min: 0, allowEmpty: false, fallbackValue: 0 });
-        applyMm();
-        focusStage();
-      });
-    });
-  }
-
-  function bindAppearanceControls() {
-    const themeApi = theme || {};
-    if (typeof themeApi.setThemeModePreference === 'function') {
-      const radios = typeof app.appearanceRadios === 'function' ? app.appearanceRadios() : [];
-      radios.forEach(radio => {
-        radio.addEventListener('change', () => {
-          if (radio.checked) {
-            themeApi.setThemeModePreference(radio.value);
-          }
-        });
-      });
-    }
-    if (app.darkPageToggle && typeof themeApi.setDarkPagePreference === 'function') {
-      app.darkPageToggle.addEventListener('change', () => {
-        themeApi.setDarkPagePreference(!!app.darkPageToggle.checked);
-      });
-    }
-  }
-
-  function sanitizeLowResZoomInputs() {
-    const normalized = normalizeLowResZoomSettings({
-      softCapPct: Number.parseFloat(app.lowResZoomSoftCap?.value),
-      marginPct: Number.parseFloat(app.lowResZoomMargin?.value),
-    });
-    state.lowResZoomSoftCapPct = normalized.softCapPct;
-    state.lowResZoomMarginPct = normalized.marginPct;
-    if (app.lowResZoomSoftCap) {
-      app.lowResZoomSoftCap.value = String(normalized.softCapPct);
-      app.lowResZoomSoftCap.min = String(ZOOM_SLIDER_MIN_PCT);
-      app.lowResZoomSoftCap.max = String(ZOOM_SLIDER_MAX_PCT);
-    }
-    if (app.lowResZoomMargin) {
-      const marginMax = Math.max(0, ZOOM_SLIDER_MAX_PCT - normalized.softCapPct);
-      app.lowResZoomMargin.value = String(normalized.marginPct);
-      app.lowResZoomMargin.min = '0';
-      app.lowResZoomMargin.max = String(marginMax);
-    }
-    return normalized;
-  }
-
-  function syncLowResZoomUI() {
-    if (typeof state.lowResZoomEnabled !== 'boolean') {
-      state.lowResZoomEnabled = LOW_RES_ZOOM_DEFAULTS.enabled;
-    }
-    const normalized = normalizeLowResZoomSettings({
-      softCapPct: state.lowResZoomSoftCapPct,
-      marginPct: state.lowResZoomMarginPct,
-    });
-    state.lowResZoomSoftCapPct = normalized.softCapPct;
-    state.lowResZoomMarginPct = normalized.marginPct;
-    const enabled = state.lowResZoomEnabled !== false;
-    if (app.lowResZoomToggle) {
-      app.lowResZoomToggle.checked = enabled;
-    }
-    if (app.lowResZoomSoftCap) {
-      app.lowResZoomSoftCap.value = String(normalized.softCapPct);
-      app.lowResZoomSoftCap.disabled = !enabled;
-      app.lowResZoomSoftCap.min = String(ZOOM_SLIDER_MIN_PCT);
-      app.lowResZoomSoftCap.max = String(ZOOM_SLIDER_MAX_PCT);
-    }
-    if (app.lowResZoomMargin) {
-      const marginMax = Math.max(0, ZOOM_SLIDER_MAX_PCT - normalized.softCapPct);
-      app.lowResZoomMargin.value = String(normalized.marginPct);
-      app.lowResZoomMargin.disabled = !enabled;
-      app.lowResZoomMargin.min = '0';
-      app.lowResZoomMargin.max = String(marginMax);
-    }
-    if (app.lowResZoomControls) {
-      app.lowResZoomControls.classList.toggle('disabled', !enabled);
-    }
-    return normalized;
-  }
-
-  function applyLowResZoomEffects() {
-    if (typeof setRenderScaleForZoom === 'function') {
-      setRenderScaleForZoom();
-    }
-    if (typeof scheduleZoomCrispRedraw === 'function') {
-      scheduleZoomCrispRedraw();
-    }
-  }
-
-  function bindLowResZoomControls() {
-    if (app.lowResZoomToggle) {
-      app.lowResZoomToggle.addEventListener('change', () => {
-        state.lowResZoomEnabled = !!app.lowResZoomToggle.checked;
-        syncLowResZoomUI();
-        queueDirtySave();
-        applyLowResZoomEffects();
-      });
-    }
-    [app.lowResZoomSoftCap, app.lowResZoomMargin].forEach((input) => {
-      if (!input) return;
-      input.addEventListener('change', () => {
-        sanitizeLowResZoomInputs();
-        syncLowResZoomUI();
-        queueDirtySave();
-        applyLowResZoomEffects();
-      });
-      input.addEventListener('blur', () => {
-        sanitizeLowResZoomInputs();
-        syncLowResZoomUI();
-      });
-    });
-  }
-
-  function bindStageSizeInputs() {
-    const updateStageBounds = (allowEmpty) => {
-      const widthFactor = sanitizeStageInput(app.stageWidthPct, state.stageWidthFactor, allowEmpty, true);
-      const heightFactor = sanitizeStageInput(app.stageHeightPct, state.stageHeightFactor, allowEmpty, false);
-      if (widthFactor !== null) state.stageWidthFactor = widthFactor;
-      if (heightFactor !== null) state.stageHeightFactor = heightFactor;
-      updateStageEnvironment();
-      queueDirtySave();
-      requestVirtualization();
-    };
-
-    [app.stageWidthPct, app.stageHeightPct].forEach(inp => {
-      if (!inp) return;
-      inp.addEventListener('input', () => updateStageBounds(true));
-      inp.addEventListener('change', () => {
-        updateStageBounds(false);
-        focusStage();
-      });
-    });
-  }
-
-  function bindToolbarInputs() {
-    if (app.sizeInput) {
-      app.sizeInput.addEventListener('input', () => {
-        sanitizeIntegerField(app.sizeInput, { min: 1, max: 150, allowEmpty: true });
-      });
-      app.sizeInput.addEventListener('change', () => {
-        sanitizeIntegerField(app.sizeInput, { min: 1, max: 150, allowEmpty: false, fallbackValue: state.inkWidthPct || 95 });
-        applySubmittedChanges();
-        focusStage();
-      });
-      const applyOnEnter = (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          applySubmittedChanges();
-        }
-      };
-      app.sizeInput.addEventListener('keydown', applyOnEnter);
-    }
-
-    if (app.lhInput) {
-      app.lhInput.addEventListener('input', () => { app.lhInput.value = String(readStagedLH()); });
-      app.lhInput.addEventListener('change', () => {
-        applyLineHeight();
-      });
-    }
-    if (app.showMarginBoxCb) {
-      app.showMarginBoxCb.addEventListener('change', () => {
-        state.showMarginBox = !!app.showMarginBoxCb.checked;
-        setMarginBoxesVisible(state.showMarginBox);
-        renderMargins();
-        queueDirtySave();
-        focusStage();
-      });
-    }
-    if (app.cpiSelect) {
-      app.cpiSelect.addEventListener('change', () => {
-        updateColsPreviewUI();
-        applySubmittedChanges();
-        focusStage();
-      });
-    }
-    if (app.wordWrapCb) {
-      app.wordWrapCb.addEventListener('change', () => {
-        state.wordWrap = !!app.wordWrapCb.checked;
-        queueDirtySave();
-        focusStage();
-      });
-    }
-  }
-
-  function bindGlyphJitterControls() {
-    const markGlyphJitterDirty = () => {
-      for (const p of state.pages) {
-        if (!p) continue;
-        p.dirtyAll = true;
-        if (p.active) schedulePaint(p);
-      }
-    };
-
-    const sanitizeAmountInputs = () => {
-      if (!app.glyphJitterAmountMin || !app.glyphJitterAmountMax) return null;
-      const raw = {
-        min: Number.parseFloat(app.glyphJitterAmountMin.value),
-        max: Number.parseFloat(app.glyphJitterAmountMax.value),
-      };
-      const fallback = state.glyphJitterAmountPct || GLYPH_JITTER_DEFAULTS.amountPct;
-      const sanitized = normalizeGlyphJitterAmount(raw, fallback);
-      state.glyphJitterAmountPct = sanitized;
-      app.glyphJitterAmountMin.value = formatNumberForInput(sanitized.min, 2);
-      app.glyphJitterAmountMax.value = formatNumberForInput(sanitized.max, 2);
-      return sanitized;
-    };
-
-    const sanitizeFrequencyInputs = () => {
-      if (!app.glyphJitterFrequencyMin || !app.glyphJitterFrequencyMax) return null;
-      const raw = {
-        min: Number.parseFloat(app.glyphJitterFrequencyMin.value),
-        max: Number.parseFloat(app.glyphJitterFrequencyMax.value),
-      };
-      const fallback = state.glyphJitterFrequencyPct || GLYPH_JITTER_DEFAULTS.frequencyPct;
-      const sanitized = normalizeGlyphJitterFrequency(raw, fallback);
-      state.glyphJitterFrequencyPct = sanitized;
-      app.glyphJitterFrequencyMin.value = formatNumberForInput(sanitized.min, 1);
-      app.glyphJitterFrequencyMax.value = formatNumberForInput(sanitized.max, 1);
-      return sanitized;
-    };
-
-    if (app.glyphJitterToggle) {
-      app.glyphJitterToggle.checked = !!state.glyphJitterEnabled;
-      app.glyphJitterToggle.addEventListener('change', () => {
-        state.glyphJitterEnabled = !!app.glyphJitterToggle.checked;
-        setGlyphJitterInputsDisabled(!state.glyphJitterEnabled);
-        queueDirtySave();
-        markGlyphJitterDirty();
-        focusStage();
-      });
-    }
-
-    [app.glyphJitterAmountMin, app.glyphJitterAmountMax].forEach((input) => {
-      if (!input) return;
-      input.addEventListener('change', () => {
-        sanitizeAmountInputs();
-        queueDirtySave();
-        markGlyphJitterDirty();
-        focusStage();
-      });
-      input.addEventListener('blur', () => { sanitizeAmountInputs(); });
-    });
-
-    [app.glyphJitterFrequencyMin, app.glyphJitterFrequencyMax].forEach((input) => {
-      if (!input) return;
-      input.addEventListener('change', () => {
-        sanitizeFrequencyInputs();
-        queueDirtySave();
-        markGlyphJitterDirty();
-        focusStage();
-      });
-      input.addEventListener('blur', () => { sanitizeFrequencyInputs(); });
-    });
-
-    if (app.shuffleGlyphJitterSeedBtn) {
-      app.shuffleGlyphJitterSeedBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
-        queueDirtySave();
-        markGlyphJitterDirty();
-        focusStage();
-      });
-    }
-
-    if (state.glyphJitterAmountPct) sanitizeAmountInputs();
-    if (state.glyphJitterFrequencyPct) sanitizeFrequencyInputs();
-    setGlyphJitterInputsDisabled(!state.glyphJitterEnabled);
-  }
-
-  function bindRulerInteractions() {
-    app.rulerH_stops_container.addEventListener('pointerdown', e => {
-      const tri = e.target.closest('.tri');
-      if (!tri) return;
-      e.preventDefault();
-      setDrag({ kind: 'h', side: tri.classList.contains('left') ? 'left' : 'right', pointerId: e.pointerId });
-      setMarginBoxesVisible(false);
-      tri.setPointerCapture?.(e.pointerId);
-      document.addEventListener('pointermove', handleHorizontalMarginDrag);
-      document.addEventListener('pointerup', endMarginDrag, true);
-      document.addEventListener('pointercancel', endMarginDrag, true);
-    }, { passive: false });
-
-    app.rulerV_stops_container.addEventListener('pointerdown', e => {
-      const tri = e.target.closest('.tri-v');
-      if (!tri) return;
-      e.preventDefault();
-      setDrag({ kind: 'v', side: tri.classList.contains('top') ? 'top' : 'bottom', pointerId: e.pointerId });
-      setMarginBoxesVisible(false);
-      tri.setPointerCapture?.(e.pointerId);
-      document.addEventListener('pointermove', handleVerticalMarginDrag);
-      document.addEventListener('pointerup', endMarginDrag, true);
-      document.addEventListener('pointercancel', endMarginDrag, true);
-    }, { passive: false });
-  }
-
-  function bindZoomControls() {
-    app.zoomSlider.addEventListener('pointerdown', onZoomPointerDown, { passive: false });
-    window.addEventListener('pointermove', onZoomPointerMove, { passive: true });
-    window.addEventListener('pointerup', onZoomPointerUp, { passive: true });
-    app.zoomIndicator.addEventListener('dblclick', () => setZoomPercent(100));
-  }
+  const measurementControls = createMeasurementControls({
+    app,
+    state,
+    pxX,
+    pxY,
+    mmX,
+    mmY,
+    focusStage,
+    renderMargins,
+    clampCaretToBounds,
+    updateCaretPosition,
+    positionRulers,
+    queueDirtySave,
+    sanitizeStageInput,
+    sanitizedStageWidthFactor,
+    sanitizedStageHeightFactor,
+    updateStageEnvironment,
+    requestVirtualization,
+    applySubmittedChanges,
+    applyLineHeight,
+    readStagedLH,
+    toggleRulers,
+    setMarginBoxesVisible,
+    setRenderScaleForZoom,
+    scheduleZoomCrispRedraw,
+    setDrag,
+    handleHorizontalMarginDrag,
+    handleVerticalMarginDrag,
+    endMarginDrag,
+    onZoomPointerDown,
+    onZoomPointerMove,
+    onZoomPointerUp,
+    setZoomPercent,
+    handleWheelPan,
+    requestHammerNudge,
+    isZooming,
+    applyDefaultMargins,
+    computeColsFromCpi,
+    gridDiv,
+  });
 
   function bindGlobalListeners() {
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     window.addEventListener('paste', handlePaste, { capture: true });
-    app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
-    window.addEventListener('resize', () => {
-      positionRulers();
-      if (!isZooming()) requestHammerNudge();
-      requestVirtualization();
-    }, { passive: true });
-    window.addEventListener('beforeunload', saveStateNow);
+    window.addEventListener('beforeunload', documentControls.saveStateNow);
     window.addEventListener('click', () => window.focus(), { passive: true });
   }
 
-  function bindPrimaryControls() {
-    app.toggleMarginsBtn.onclick = toggleRulers;
-    app.exportBtn.addEventListener('click', exportToTextFile);
-    if (app.newDocBtn) {
-      app.newDocBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        handleCreateDocument();
-      });
-    }
-  }
-
-  function bindDocumentControls() {
-    if (app.docMenuBtn) {
-      app.docMenuBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleDocMenu();
-      });
-    }
-    if (app.docMenuPopup) {
-      app.docMenuPopup.addEventListener('pointerdown', e => e.stopPropagation());
-    }
-    if (app.docMenuList) {
-      app.docMenuList.addEventListener('click', (e) => {
-        const item = e.target.closest('.doc-list-item');
-        if (!item) return;
-        e.preventDefault();
-        handleDocumentSelection(item.dataset.id || '');
-      });
-    }
-    if (app.docTitleInput) {
-      app.docTitleInput.addEventListener('focus', () => {
-        isEditingTitle = true;
-      });
-      app.docTitleInput.addEventListener('blur', () => {
-        isEditingTitle = false;
-        commitDocumentTitle();
-      });
-      app.docTitleInput.addEventListener('input', handleDocumentTitleInput);
-      app.docTitleInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          app.docTitleInput.blur();
-        }
-      });
-    }
-    if (app.deleteDocBtn) {
-      app.deleteDocBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        handleDeleteDocument();
-      });
-    }
-    document.addEventListener('pointerdown', (e) => {
-      if (!docMenuState.open) return;
-      if (app.docMenuPopup?.contains(e.target) || app.docMenuBtn?.contains(e.target)) return;
-      closeDocMenu();
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeDocMenu();
-      }
-    });
-  }
-
   function bindEventListeners() {
-    bindPrimaryControls();
-    bindDocumentControls();
-    bindOpacitySliders();
-    bindInkButtons();
-    bindGrainInput();
-    bindDialogToggles();
-    bindMarginInputs();
-    bindStageSizeInputs();
-    bindToolbarInputs();
-    bindGlyphJitterControls();
-    bindAppearanceControls();
-    bindLowResZoomControls();
-    bindRulerInteractions();
-    bindZoomControls();
+    documentControls.bindDocumentControls();
+    measurementControls.bindMeasurementControls();
+    inkControls.bindInkControls();
     bindGlobalListeners();
   }
 
   function loadPersistedState() {
-    let savedFont = null;
-    let loaded = false;
-    const { documents, activeId } = loadDocumentIndexFromStorage(storageKey);
-    docState.documents = documents;
-    sortDocumentsInPlace();
-    docState.activeId = activeId || (documents[0]?.id ?? null);
-
-    let activeDoc = getActiveDocument();
-    if (!activeDoc && docState.documents.length) {
-      activeDoc = docState.documents[0];
-      docState.activeId = activeDoc.id;
-    }
-
-    if (!activeDoc) {
-      const migrated = migrateLegacyDocument(storageKey);
-      if (migrated) {
-        docState.documents.push(migrated);
-        docState.activeId = migrated.id;
-        activeDoc = migrated;
-        persistDocumentIndex();
-      }
-    }
-
-    if (activeDoc && activeDoc.data) {
-      try {
-        loaded = deserializeState(activeDoc.data);
-        savedFont = activeDoc.data.fontName || null;
-      } catch {
-        loaded = false;
-      }
-    }
-
-    if (!activeDoc) {
-      const existingIds = new Set(docState.documents.map(doc => doc.id));
-      const blankId = generateDocumentId(existingIds);
-      const blank = createDocumentRecord({ id: blankId, title: DEFAULT_DOCUMENT_TITLE }, existingIds);
-      docState.documents.push(blank);
-      docState.activeId = blank.id;
-      createNewDocument({ documentId: blank.id, documentTitle: blank.title, skipSave: true });
-      blank.data = serializeState();
-      blank.createdAt = Date.now();
-      blank.updatedAt = blank.createdAt;
-      persistDocumentIndex();
-      loaded = false;
-      state.documentId = blank.id;
-      state.documentTitle = blank.title;
-    } else if (!loaded) {
-      createNewDocument({ documentId: activeDoc.id, documentTitle: activeDoc.title, skipSave: true });
-      state.documentId = activeDoc.id;
-      state.documentTitle = normalizeDocumentTitle(activeDoc.title);
-    } else {
-      state.documentId = activeDoc.id;
-      state.documentTitle = normalizeDocumentTitle(activeDoc.title);
-    }
-
-    renderDocumentList();
-    ensureDocumentTitleInput();
-
-    return {
-      loaded,
-      savedFont,
-      documents: docState.documents.map(doc => ({ ...doc })),
-      activeDocumentId: docState.activeId,
-    };
+    return documentControls.loadPersistedState();
   }
 
-  function populateInitialUI({ loaded, documents, activeDocumentId } = {}) {
-    if (Array.isArray(documents)) {
-      docState.documents = documents.map(doc => ({ ...doc }));
-      sortDocumentsInPlace();
-    }
-    if (activeDocumentId) {
-      docState.activeId = activeDocumentId;
-    }
-    syncDocumentUi();
-    if (app.inkOpacityBSlider) app.inkOpacityBSlider.value = String(state.inkOpacity.b);
-    if (app.inkOpacityRSlider) app.inkOpacityRSlider.value = String(state.inkOpacity.r);
-    if (app.inkOpacityWSlider) app.inkOpacityWSlider.value = String(state.inkOpacity.w);
-    if (app.inkOpacityBValue) app.inkOpacityBValue.textContent = `${state.inkOpacity.b}%`;
-    if (app.inkOpacityRValue) app.inkOpacityRValue.textContent = `${state.inkOpacity.r}%`;
-    if (app.inkOpacityWValue) app.inkOpacityWValue.textContent = `${state.inkOpacity.w}%`;
-
-    if (app.cpiSelect) app.cpiSelect.value = String(state.cpi || 10);
-    updateColsPreviewUI();
-    if (app.sizeInput) app.sizeInput.value = String(clamp(Math.round(state.inkWidthPct ?? 95), 1, 150));
-    if (app.lhInput) app.lhInput.value = String(state.lineHeightFactor);
-    const jitterAmount = normalizeGlyphJitterAmount(state.glyphJitterAmountPct, GLYPH_JITTER_DEFAULTS.amountPct);
-    const jitterFrequency = normalizeGlyphJitterFrequency(state.glyphJitterFrequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
-    state.glyphJitterAmountPct = jitterAmount;
-    state.glyphJitterFrequencyPct = jitterFrequency;
-    if (app.glyphJitterToggle) app.glyphJitterToggle.checked = !!state.glyphJitterEnabled;
-    if (app.glyphJitterAmountMin) app.glyphJitterAmountMin.value = formatNumberForInput(jitterAmount.min, 2);
-    if (app.glyphJitterAmountMax) app.glyphJitterAmountMax.value = formatNumberForInput(jitterAmount.max, 2);
-    if (app.glyphJitterFrequencyMin) app.glyphJitterFrequencyMin.value = formatNumberForInput(jitterFrequency.min, 1);
-    if (app.glyphJitterFrequencyMax) app.glyphJitterFrequencyMax.value = formatNumberForInput(jitterFrequency.max, 1);
-    setGlyphJitterInputsDisabled(!state.glyphJitterEnabled);
-    if (app.showMarginBoxCb) app.showMarginBoxCb.checked = !!state.showMarginBox;
-    if (app.wordWrapCb) app.wordWrapCb.checked = !!state.wordWrap;
-    if (app.mmLeft) app.mmLeft.value = Math.round(mmX(state.marginL));
-    if (app.mmRight) app.mmRight.value = Math.round(mmX(app.PAGE_W - state.marginR));
-    if (app.mmTop) app.mmTop.value = Math.round(mmY(state.marginTop));
-    if (app.mmBottom) app.mmBottom.value = Math.round(mmY(state.marginBottom));
-    if (app.stageWidthPct) app.stageWidthPct.value = String(Math.round(sanitizedStageWidthFactor() * 100));
-    if (app.stageHeightPct) app.stageHeightPct.value = String(Math.round(sanitizedStageHeightFactor() * 100));
-    if (app.appearanceAuto) app.appearanceAuto.checked = !['light', 'dark'].includes(state.themeMode);
-    if (app.appearanceLight) app.appearanceLight.checked = state.themeMode === 'light';
-    if (app.appearanceDark) app.appearanceDark.checked = state.themeMode === 'dark';
-    if (app.darkPageToggle) app.darkPageToggle.checked = !!state.darkPageInDarkMode;
-    if (app.darkPageToggle) app.darkPageToggle.disabled = state.themeMode === 'light';
-    syncLowResZoomUI();
-
-    if (!loaded) {
-      state.cpi = 10;
-      state.colsAcross = computeColsFromCpi(10).cols2;
-      state.inkWidthPct = 95;
-      state.lineHeightFactor = 1.5;
-      const baseGridDiv = Number.isFinite(gridDiv) ? gridDiv : 8;
-      state.lineStepMu = Math.round(state.lineHeightFactor * baseGridDiv);
-      state.inkOpacity = { b: 100, r: 100, w: 100 };
-      state.edgeFuzzStrength = 100;
-      state.grainPct = 100;
-      state.grainSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
-      state.altSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
-      state.glyphJitterEnabled = GLYPH_JITTER_DEFAULTS.enabled;
-      state.glyphJitterAmountPct = normalizeGlyphJitterAmount(GLYPH_JITTER_DEFAULTS.amountPct, GLYPH_JITTER_DEFAULTS.amountPct);
-      state.glyphJitterFrequencyPct = normalizeGlyphJitterFrequency(GLYPH_JITTER_DEFAULTS.frequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
-      state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
-      state.wordWrap = true;
-      applyDefaultMargins();
-    }
-    if (app.grainInput) {
-      const sanitizedGrain = clamp(Math.round(Number(state.grainPct ?? 0)), 0, 100);
-      state.grainPct = sanitizedGrain;
-      app.grainInput.value = String(sanitizedGrain);
-    }
-
-    refreshSavedInkStylesUI();
-    syncInkStrengthDisplays();
+  function populateInitialUI(payload = {}) {
+    documentControls.populateDocumentUI(payload);
+    measurementControls.populateMeasurementUI({ loaded: payload.loaded });
+    inkControls.populateInkUI({ loaded: payload.loaded });
   }
 
   bindEventListeners();
 
   return {
-    saveStateNow,
-    saveStateDebounced,
+    saveStateNow: documentControls.saveStateNow,
+    saveStateDebounced: documentControls.saveStateDebounced,
     serializeState,
     deserializeState,
     loadPersistedState,
