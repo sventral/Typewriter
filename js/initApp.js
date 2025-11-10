@@ -114,8 +114,6 @@ const context = createAppContext({ app, state, metrics, ephemeral });
 const metricsStore = context.scalars;
 const { callbacks: contextCallbacks } = context;
 
-const HIGH_ZOOM_CSS_THRESHOLD = 3.75;
-let stageCrispClassApplied = false;
 
 const metricsOptions = {
   state,
@@ -810,13 +808,6 @@ async function resolveAvailableFace(preferredFace){
   return 'monospace';
 }
 
-function toggleStageCrispClass(active) {
-  if (!app?.stage?.classList) return;
-  if (stageCrispClassApplied === active) return;
-  stageCrispClassApplied = active;
-  app.stage.classList.toggle('high-zoom-crisp', active);
-}
-
 function computeMaxRenderScale(){
   const capW = (canvasDimensionLimit && Number.isFinite(canvasDimensionLimit.width))
     ? canvasDimensionLimit.width
@@ -846,10 +837,6 @@ function setRenderScaleForZoom(){
     : maxScale;
   metricsStore.RENDER_SCALE = renderScale;
   metricsStore.RENDER_SUPERSAMPLE = appliedSupersample;
-  const desired = baseScale * zoomSupersampleTarget;
-  const shortfall = desired > 0 ? desired / Math.max(renderScale, 1) : 1;
-  const shouldCrisp = zoom >= HIGH_ZOOM_CSS_THRESHOLD && shortfall > 1.15;
-  toggleStageCrispClass(shouldCrisp);
 }
 function prewarmFontFace(face){
   const px = Math.max(12, Math.ceil(getTargetPitchPx()));
