@@ -6,6 +6,7 @@ export function createPageLifecycleController(context, editingController) {
     state,
     layoutZoomFactor,
     getRenderScale,
+    getEffectiveRenderZoom,
     getFontSize,
     getActiveFontName,
     exactFontString,
@@ -263,7 +264,9 @@ export function createPageLifecycleController(context, editingController) {
       marginBoxEl,
       grainCanvas: null,
       grainForSize: { w: 0, h: 0, key: null },
-      zoomPreparedFor: state.zoom || 1,
+      zoomPreparedFor: (typeof getEffectiveRenderZoom === 'function'
+        ? getEffectiveRenderZoom()
+        : (state.zoom || 1)),
       geometry: { baseTop: 0, baseHeight: app.PAGE_H, dirty: true },
     };
     const handler = (e) => handlePageClick(e, idx);
@@ -408,7 +411,9 @@ export function createPageLifecycleController(context, editingController) {
 
   function ensurePagePreparedForCurrentZoom(page) {
     if (!page) return;
-    const currentZoom = state.zoom || 1;
+    const currentZoom = typeof getEffectiveRenderZoom === 'function'
+      ? getEffectiveRenderZoom()
+      : (state.zoom || 1);
     if (page.zoomPreparedFor === currentZoom) return;
     if (page.canvas) prepareCanvas(page.canvas);
     if (page.backCanvas) prepareCanvas(page.backCanvas);

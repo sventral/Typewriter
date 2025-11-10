@@ -42,6 +42,10 @@ export function createDomRefs() {
   app.appearanceLight = document.getElementById('appearanceLight');
   app.appearanceDark = document.getElementById('appearanceDark');
   app.darkPageToggle = document.getElementById('darkPageToggle');
+  app.lowResZoomControls = document.querySelector('.low-res-zoom-controls');
+  app.lowResZoomToggle = document.getElementById('lowResZoomToggle');
+  app.lowResZoomSoftCap = document.getElementById('lowResZoomSoftCap');
+  app.lowResZoomMargin = document.getElementById('lowResZoomMargin');
   app.appearanceRadios = () => Array.from(document.querySelectorAll('input[name="appearanceMode"]'));
   app.grainInput = document.getElementById('grainPct');
   app.stageWidthPct = document.getElementById('stageWidthPct');

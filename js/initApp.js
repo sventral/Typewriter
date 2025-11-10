@@ -31,6 +31,13 @@ import { createPageLifecycleController } from './document/pageLifecycle.js';
 import { setupUIBindings } from './init/uiBindings.js';
 import { createAppContext } from './init/appContext.js';
 import { createThemeController } from './config/themeController.js';
+import {
+  LOW_RES_ZOOM_DEFAULTS,
+  normalizeLowResZoomSettings,
+  resolveEffectiveZoomPct,
+  ZOOM_SLIDER_MAX_PCT,
+  ZOOM_SLIDER_MIN_PCT,
+} from './config/lowResZoom.js';
 
 const DEFAULT_CANVAS_DIMENSION_CAP = 8192;
 const MIN_CANVAS_DIMENSION_CAP = 1024;
@@ -48,6 +55,9 @@ const CANVAS_DIMENSION_CANDIDATES = [
   6144,
   4096,
 ];
+
+const ZOOM_SLIDER_MIN_FACTOR = ZOOM_SLIDER_MIN_PCT / 100;
+const ZOOM_SLIDER_MAX_FACTOR = ZOOM_SLIDER_MAX_PCT / 100;
 
 let cachedCanvasDimensionLimit = null;
 
@@ -109,6 +119,7 @@ const canvasDimensionLimit = detectCanvasDimensionLimit();
 const { DPR, GRID_DIV, COLORS, STORAGE_KEY, A4_WIDTH_IN, PPI, LPI, LINE_H_RAW } = metrics;
 
 const state = createMainState(app, GRID_DIV);
+ensureLowResZoomState();
 
 const ephemeral = createEphemeralState();
 const context = createAppContext({ app, state, metrics, ephemeral });
@@ -411,6 +422,7 @@ const lifecycleContext = {
   state,
   layoutZoomFactor: () => layoutZoomFactorRef(),
   getRenderScale: () => metricsStore.RENDER_SCALE,
+  getEffectiveRenderZoom,
   getFontSize: () => metricsStore.FONT_SIZE,
   getActiveFontName: () => metricsStore.ACTIVE_FONT_NAME,
   exactFontString,
@@ -562,6 +574,7 @@ context.controllers.layoutAndZoom = createLayoutAndZoomController(
     requestVirtualization,
     saveStateDebounced,
     setRenderScaleForZoom,
+    getEffectiveRenderZoom,
     prepareCanvas,
     configureCanvasContext,
     schedulePaint,
@@ -603,6 +616,7 @@ const uiBindings = setupUIBindings(
     positionRulers,
     requestVirtualization,
     schedulePaint,
+    setRenderScaleForZoom,
     setZoomPercent,
     applyDefaultMargins,
     computeColsFromCpi,
@@ -635,6 +649,7 @@ const uiBindings = setupUIBindings(
       onZoomPointerMove,
       onZoomPointerUp,
       setMarginBoxesVisible,
+      scheduleZoomCrispRedraw: () => getLayoutAndZoomApi().scheduleZoomCrispRedraw?.(),
     },
     input: inputController,
     theme: themeController,
@@ -823,8 +838,51 @@ function computeMaxRenderScale(){
   return Math.max(1, Math.min(limitW, limitH));
 }
 
+function ensureLowResZoomState() {
+  if (typeof state.lowResZoomEnabled !== 'boolean') {
+    state.lowResZoomEnabled = LOW_RES_ZOOM_DEFAULTS.enabled;
+  }
+  const normalized = normalizeLowResZoomSettings(
+    {
+      softCapPct: state.lowResZoomSoftCapPct,
+      marginPct: state.lowResZoomMarginPct,
+    },
+    { maxZoomPct: ZOOM_SLIDER_MAX_PCT, minSoftCapPct: ZOOM_SLIDER_MIN_PCT },
+  );
+  state.lowResZoomSoftCapPct = normalized.softCapPct;
+  state.lowResZoomMarginPct = normalized.marginPct;
+  return normalized;
+}
+
+function getRequestedZoomPct() {
+  const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+  return clamp(zoom * 100, ZOOM_SLIDER_MIN_PCT, ZOOM_SLIDER_MAX_PCT);
+}
+
+function getEffectiveRenderZoomPct() {
+  const normalized = ensureLowResZoomState();
+  const requestedPct = getRequestedZoomPct();
+  return resolveEffectiveZoomPct(
+    requestedPct,
+    {
+      enabled: state.lowResZoomEnabled !== false,
+      softCapPct: normalized.softCapPct,
+      marginPct: normalized.marginPct,
+    },
+    {
+      maxZoomPct: ZOOM_SLIDER_MAX_PCT,
+      minZoomPct: ZOOM_SLIDER_MIN_PCT,
+    },
+  );
+}
+
+function getEffectiveRenderZoom() {
+  const pct = getEffectiveRenderZoomPct();
+  return clamp(pct / 100, ZOOM_SLIDER_MIN_FACTOR, ZOOM_SLIDER_MAX_FACTOR);
+}
+
 function setRenderScaleForZoom(){
-  const zoom = Math.max(1, Math.min(state.zoom || 1, 4));
+  const zoom = getEffectiveRenderZoom();
   const baseScale = DPR * zoom;
   const zoomSupersampleTarget = zoom <= 1.5
     ? 1
