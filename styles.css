@@ -6,6 +6,10 @@
     --stage-height-mult: 1.2;
     --stage-width-px: calc(var(--page-width-px) * var(--stage-width-mult));
     --stage-height-px: calc(var(--page-height-px) * var(--stage-height-mult));
+    --margin-top-px: 0px;
+    --margin-right-px: 0px;
+    --margin-bottom-px: 0px;
+    --margin-left-px: 0px;
     --stage-bg-light:#d1d1d3;
     --stage-bg-dark:#343639;
     --page-bg-light:#f7f5ee;
@@ -376,7 +380,13 @@ body[data-page-tone='dark']{
   }
   .page-wrap{ width:calc(var(--page-w) * 1px); margin:0 auto 16px; position:relative; }
   .page{ width:100%; background:var(--page-bg); box-shadow:var(--page-shadow); position:relative; overflow:hidden; }
-  .margin-box{ position:absolute; border:1px dashed rgba(0,0,0,0.25); pointer-events:none; visibility:hidden; }
+  .margin-box{
+    position:absolute;
+    border:1px dashed rgba(0,0,0,0.25);
+    pointer-events:none;
+    visibility:hidden;
+    inset: var(--margin-top-px) var(--margin-right-px) var(--margin-bottom-px) var(--margin-left-px);
+  }
   @media (prefers-color-scheme: dark){ :root:not([data-theme='light']) .margin-box{ border-color: rgba(255,255,255,0.35); } }
   :root[data-theme='dark'] .margin-box{ border-color: rgba(255,255,255,0.35); }
   body[data-page-tone='dark'] .margin-box{ border-color: rgba(255,255,255,0.35); }

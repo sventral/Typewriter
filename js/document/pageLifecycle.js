@@ -37,6 +37,11 @@ export function createPageLifecycleController(context, editingController) {
     initialized: false,
   };
 
+  const supportsPageVisibilityObserver = typeof IntersectionObserver === 'function';
+  const visiblePageIndices = new Set();
+  let pageVisibilityObserver = null;
+  const PAGE_VISIBILITY_ROOT_MARGIN = '96px 0px 96px 0px';
+
   const pageResizeObserver = (typeof ResizeObserver === 'function')
     ? new ResizeObserver((entries) => {
         for (const entry of entries) {
@@ -58,6 +63,56 @@ export function createPageLifecycleController(context, editingController) {
     try {
       stageResizeObserver.observe(app.stageInner);
     } catch {}
+  }
+
+  function handlePageVisibilityEntries(entries) {
+    for (const entry of entries) {
+      const pageIndex = Number.parseInt(entry.target?.dataset?.page ?? '', 10);
+      if (!Number.isInteger(pageIndex)) continue;
+      if (entry.isIntersecting || (entry.intersectionRatio ?? 0) > 0) {
+        visiblePageIndices.add(pageIndex);
+      } else {
+        visiblePageIndices.delete(pageIndex);
+      }
+    }
+  }
+
+  function ensurePageVisibilityObserver() {
+    if (!supportsPageVisibilityObserver) return null;
+    if (!pageVisibilityObserver) {
+      try {
+        pageVisibilityObserver = new IntersectionObserver(handlePageVisibilityEntries, {
+          root: app.stage instanceof Element ? app.stage : null,
+          rootMargin: PAGE_VISIBILITY_ROOT_MARGIN,
+          threshold: [0, 0.01],
+        });
+      } catch (err) {
+        pageVisibilityObserver = null;
+        return null;
+      }
+      for (const page of state.pages) {
+        observePageVisibility(page);
+      }
+    }
+    return pageVisibilityObserver;
+  }
+
+  function observePageVisibility(page) {
+    if (!page?.wrapEl) return;
+    const observer = ensurePageVisibilityObserver();
+    if (!observer) return;
+    try {
+      observer.observe(page.wrapEl);
+    } catch {}
+  }
+
+  function resetVisiblePageTracking({ disconnectObserver = false } = {}) {
+    visiblePageIndices.clear();
+    if (disconnectObserver && pageVisibilityObserver) {
+      try {
+        pageVisibilityObserver.disconnect();
+      } catch {}
+    }
   }
 
   function markPageGeometryDirty(page) {
@@ -174,6 +229,9 @@ export function createPageLifecycleController(context, editingController) {
   }
 
   function makePageRecord(idx, wrapEl, pageEl, canvas, marginBoxEl) {
+    if (!state.pages.length && visiblePageIndices.size) {
+      resetVisiblePageTracking({ disconnectObserver: true });
+    }
     try { pageEl.style.cursor = 'text'; } catch {}
     prepareCanvas(canvas);
     const ctx = canvas.getContext('2d');
@@ -215,6 +273,7 @@ export function createPageLifecycleController(context, editingController) {
       try { pageResizeObserver.observe(wrapEl); } catch {}
     }
     pageByWrap.set(wrapEl, page);
+    observePageVisibility(page);
     return page;
   }
 
@@ -255,6 +314,7 @@ export function createPageLifecycleController(context, editingController) {
   }
 
   function resetPagesBlankPreserveSettings() {
+    resetVisiblePageTracking({ disconnectObserver: true });
     state.pages = [];
     app.stageInner.innerHTML = '';
     const wrap = document.createElement('div');
@@ -317,6 +377,27 @@ export function createPageLifecycleController(context, editingController) {
 
   function effectiveVirtualPad() {
     return state.zoom >= 3 ? 0 : 1;
+  }
+
+  function getPrefilteredVisibleIndices() {
+    if (!pageVisibilityObserver || !visiblePageIndices.size || !state.pages.length) {
+      return null;
+    }
+    const candidateSet = new Set();
+    let hasObserverHits = false;
+    for (const rawIndex of visiblePageIndices) {
+      if (!Number.isInteger(rawIndex)) continue;
+      hasObserverHits = true;
+      const clamped = clampIndex(rawIndex);
+      candidateSet.add(clamped);
+      if (clamped > 0) candidateSet.add(clampIndex(clamped - 1));
+      if (clamped < state.pages.length - 1) candidateSet.add(clampIndex(clamped + 1));
+    }
+    if (!hasObserverHits || !candidateSet.size) return null;
+    const caretIdx = Number.isInteger(state.caret?.page) ? clampIndex(state.caret.page) : null;
+    if (Number.isInteger(caretIdx)) candidateSet.add(caretIdx);
+    candidateSet.add(clampIndex(lastScrollFocusIndex));
+    return Array.from(candidateSet).sort((a, b) => a - b);
   }
 
   function clampIndex(idx) {
@@ -404,9 +485,9 @@ export function createPageLifecycleController(context, editingController) {
     const visibleCandidates = [];
     const overlapByIndex = new Map();
 
-    for (let i = 0; i < state.pages.length; i++) {
+    const evaluatePageIndex = (i) => {
       const page = state.pages[i];
-      if (!page?.wrapEl) continue;
+      if (!page?.wrapEl) return;
       const r = getPageViewportRect(page, viewportCtx);
       const mid = (r.top + r.bottom) / 2;
       const d = Math.abs(mid - scrollCenterY);
@@ -418,6 +499,17 @@ export function createPageLifecycleController(context, editingController) {
       if (overlap > 0) {
         visibleCandidates.push({ index: i, overlap });
         overlapByIndex.set(i, overlap);
+      }
+    };
+
+    const prefilteredIndices = getPrefilteredVisibleIndices();
+    if (prefilteredIndices && prefilteredIndices.length) {
+      for (const idx of prefilteredIndices) {
+        evaluatePageIndex(idx);
+      }
+    } else {
+      for (let i = 0; i < state.pages.length; i++) {
+        evaluatePageIndex(i);
       }
     }
 

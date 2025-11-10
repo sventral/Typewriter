@@ -1,5 +1,6 @@
 import { clamp } from '../utils/math.js';
 import { recalcMetrics as recalcMetricsForContext } from '../config/metrics.js';
+import { markDocumentDirty } from '../state/saveRevision.js';
 import {
   DEFAULT_DOCUMENT_TITLE,
   normalizeDocumentTitle,
@@ -243,6 +244,7 @@ function insertStringFast(s) {
     updateCaretPosition();
     positionRulers();
     requestVirtualization();
+    markDocumentDirty(state);
     saveStateDebounced();
   }
 }
@@ -315,6 +317,7 @@ function insertStringFast(s) {
         advanceCaret();
       }
     }
+    markDocumentDirty(state);
     saveStateDebounced();
     endBatch();
   }
@@ -535,6 +538,7 @@ function insertStringFast(s) {
     updateCaretPosition();
     positionRulers();
     requestVirtualization();
+    markDocumentDirty(state);
     saveStateDebounced();
     endBatch();
   }
@@ -616,7 +620,10 @@ function insertStringFast(s) {
     document.body.classList.toggle('rulers-off', !state.showRulers);
     positionRulers();
     requestVirtualization();
-    if (!skipSave) saveStateNow();
+    if (!skipSave) {
+      markDocumentDirty(state);
+      saveStateNow();
+    }
     endBatch();
     return state.documentId;
   }
@@ -626,6 +633,7 @@ function insertStringFast(s) {
     app.inkBlackBtn.dataset.active = String(ink === 'b');
     app.inkRedBtn.dataset.active = String(ink === 'r');
     app.inkWhiteBtn.dataset.active = String(ink === 'w');
+    markDocumentDirty(state);
     saveStateDebounced();
   }
 

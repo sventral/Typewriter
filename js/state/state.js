@@ -18,6 +18,8 @@ export function createMainState(app, gridDiv = 8) {
     caret: { page:0, rowMu:0, col:0 },
     documentId: null,
     documentTitle: 'Untitled Document',
+    saveRevision: 0,
+    lastSavedRevision: 0,
     marginL: 0, marginR: app.PAGE_W, marginTop: 0, marginBottom: 0,
     ink: 'b',
     showRulers: true,

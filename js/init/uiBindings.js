@@ -15,6 +15,7 @@ import {
   migrateLegacyDocument,
   persistDocuments,
 } from '../document/documentStore.js';
+import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../state/saveRevision.js';
 
 export function setupUIBindings(context, controllers) {
   const {
@@ -86,6 +87,10 @@ export function setupUIBindings(context, controllers) {
   const docState = { documents: [], activeId: null };
   const docMenuState = { open: false };
   let isEditingTitle = false;
+  const queueDirtySave = () => {
+    markDocumentDirty(state);
+    saveStateDebounced();
+  };
 
   function formatNumberForInput(value, fractionDigits = 2) {
     if (!Number.isFinite(value)) return '';
@@ -222,6 +227,7 @@ export function setupUIBindings(context, controllers) {
     updateStageEnvironment();
     setZoomPercent(Math.round((state.zoom || 1) * 100) || 100);
     renderMargins();
+    setMarginBoxesVisible(state.showMarginBox);
     clampCaretToBounds();
     updateCaretPosition();
     positionRulers();
@@ -255,7 +261,9 @@ export function setupUIBindings(context, controllers) {
     populateInitialUI({ loaded: true, documents: docState.documents, activeDocumentId: doc.id });
     refreshDocumentEnvironment();
     syncDocumentUi();
-    saveStateDebounced();
+    if (!loaded) {
+      queueDirtySave();
+    }
     focusStage();
   }
 
@@ -292,6 +300,7 @@ export function setupUIBindings(context, controllers) {
     newDoc.data = serializeState();
     persistDocumentIndex();
     applyDocumentRecord(newDoc);
+    markDocumentDirty(state);
     saveStateNow();
     closeDocMenu();
   }
@@ -316,6 +325,7 @@ export function setupUIBindings(context, controllers) {
       populateInitialUI({ loaded: true, documents: docState.documents, activeDocumentId: blank.id });
       refreshDocumentEnvironment();
       syncDocumentUi();
+      markDocumentDirty(state);
       saveStateNow();
       closeDocMenu();
       return;
@@ -357,12 +367,17 @@ export function setupUIBindings(context, controllers) {
     }
     syncDocumentUi();
     if (changed) {
+      markDocumentDirty(state);
       saveStateNow();
     } else {
       persistDocumentIndex();
     }
   }
-  function saveStateNow() {
+  function saveStateNow(options = {}) {
+    const force = typeof options === 'object' && options !== null ? !!options.force : false;
+    if (!force && !hasPendingDocumentChanges(state)) {
+      return;
+    }
     try {
       const serialized = serializeState();
       const activeId = typeof state.documentId === 'string' && state.documentId.trim()
@@ -393,13 +408,21 @@ export function setupUIBindings(context, controllers) {
       docState.activeId = activeId;
       persistDocumentIndex();
       syncDocumentUi();
+      syncSavedRevision(state);
     } catch {}
   }
 
-  function saveStateDebounced() {
+  function saveStateDebounced(options = {}) {
+    const force = typeof options === 'object' && options !== null ? !!options.force : false;
+    if (!force && !hasPendingDocumentChanges(state)) {
+      return;
+    }
     const timer = getSaveTimer();
     if (timer) clearTimeout(timer);
-    const newTimer = setTimeout(saveStateNow, 400);
+    const newTimer = setTimeout(() => {
+      setSaveTimer(0);
+      saveStateNow();
+    }, 400);
     setSaveTimer(newTimer);
   }
 
@@ -462,7 +485,7 @@ export function setupUIBindings(context, controllers) {
       const v = parseInt(sliderEl.value, 10);
       valueEl.textContent = `${v}%`;
       state.inkOpacity[key] = v;
-      saveStateDebounced();
+      queueDirtySave();
       for (const p of state.pages) {
         if (p.active) {
           p.dirtyAll = true;
@@ -520,7 +543,7 @@ export function setupUIBindings(context, controllers) {
       const v = clamp(parseInt(app.grainInput.value || '0', 10), 0, 100);
       app.grainInput.value = String(v);
       state.grainPct = v;
-      saveStateDebounced();
+      queueDirtySave();
       for (const p of state.pages) {
         if (p.active) {
           p.dirtyAll = true;
@@ -559,7 +582,7 @@ export function setupUIBindings(context, controllers) {
       clampCaretToBounds();
       updateCaretPosition();
       positionRulers();
-      saveStateDebounced();
+      queueDirtySave();
     };
 
     [app.mmLeft, app.mmRight, app.mmTop, app.mmBottom].forEach(inp => {
@@ -602,7 +625,7 @@ export function setupUIBindings(context, controllers) {
       if (widthFactor !== null) state.stageWidthFactor = widthFactor;
       if (heightFactor !== null) state.stageHeightFactor = heightFactor;
       updateStageEnvironment();
-      saveStateDebounced();
+      queueDirtySave();
       requestVirtualization();
     };
 
@@ -644,8 +667,9 @@ export function setupUIBindings(context, controllers) {
     if (app.showMarginBoxCb) {
       app.showMarginBoxCb.addEventListener('change', () => {
         state.showMarginBox = !!app.showMarginBoxCb.checked;
+        setMarginBoxesVisible(state.showMarginBox);
         renderMargins();
-        saveStateDebounced();
+        queueDirtySave();
         focusStage();
       });
     }
@@ -659,7 +683,7 @@ export function setupUIBindings(context, controllers) {
     if (app.wordWrapCb) {
       app.wordWrapCb.addEventListener('change', () => {
         state.wordWrap = !!app.wordWrapCb.checked;
-        saveStateDebounced();
+        queueDirtySave();
         focusStage();
       });
     }
@@ -707,7 +731,7 @@ export function setupUIBindings(context, controllers) {
       app.glyphJitterToggle.addEventListener('change', () => {
         state.glyphJitterEnabled = !!app.glyphJitterToggle.checked;
         setGlyphJitterInputsDisabled(!state.glyphJitterEnabled);
-        saveStateDebounced();
+        queueDirtySave();
         markGlyphJitterDirty();
         focusStage();
       });
@@ -717,7 +741,7 @@ export function setupUIBindings(context, controllers) {
       if (!input) return;
       input.addEventListener('change', () => {
         sanitizeAmountInputs();
-        saveStateDebounced();
+        queueDirtySave();
         markGlyphJitterDirty();
         focusStage();
       });
@@ -728,7 +752,7 @@ export function setupUIBindings(context, controllers) {
       if (!input) return;
       input.addEventListener('change', () => {
         sanitizeFrequencyInputs();
-        saveStateDebounced();
+        queueDirtySave();
         markGlyphJitterDirty();
         focusStage();
       });
@@ -739,7 +763,7 @@ export function setupUIBindings(context, controllers) {
       app.shuffleGlyphJitterSeedBtn.addEventListener('click', (e) => {
         e.preventDefault();
         state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
-        saveStateDebounced();
+        queueDirtySave();
         markGlyphJitterDirty();
         focusStage();
       });
