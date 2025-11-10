@@ -1,4 +1,5 @@
 import { clamp } from '../utils/math.js';
+import { markDocumentDirty } from '../state/saveRevision.js';
 
 export function createLayoutAndZoomController(context, pageLifecycle, editingController) {
   const {
@@ -51,6 +52,15 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let pendingRulerRAF2 = 0;
   let lastRulerSnapshot = null;
   let cachedRulerHostSize = { width: 0, height: 0 };
+  const MIN_PAPER_OFFSET_DELTA_PX = 1 / 8;
+  const initialPaperOffset = state.paperOffset || { x: 0, y: 0 };
+  let lastSnappedPaperOffset = {
+    x: Number.isFinite(initialPaperOffset.x) ? initialPaperOffset.x : 0,
+    y: Number.isFinite(initialPaperOffset.y) ? initialPaperOffset.y : 0,
+  };
+  let pendingPaperOffsetWorkRAF = 0;
+  const lastMarginInsets = { top: null, right: null, bottom: null, left: null };
+  let lastPageHeightPx = '';
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
   let zoomMeasurements = null;
@@ -228,13 +238,34 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const snappedY = scale ? snap(clamped.y * scale) / scale : clamped.y;
     state.paperOffset.x = snappedX;
     state.paperOffset.y = snappedY;
+    const prevX = Number.isFinite(lastSnappedPaperOffset.x) ? lastSnappedPaperOffset.x : snappedX;
+    const prevY = Number.isFinite(lastSnappedPaperOffset.y) ? lastSnappedPaperOffset.y : snappedY;
+    const movedX = Math.abs(snappedX - prevX);
+    const movedY = Math.abs(snappedY - prevY);
+    if (movedX < MIN_PAPER_OFFSET_DELTA_PX && movedY < MIN_PAPER_OFFSET_DELTA_PX) {
+      return;
+    }
+    lastSnappedPaperOffset = { x: snappedX, y: snappedY };
     if (app.stageInner) {
       const tx = Math.round(snappedX * 1000) / 1000;
       const ty = Math.round(snappedY * 1000) / 1000;
       app.stageInner.style.transform = `translate3d(${tx}px,${ty}px,0)`;
     }
-    queueRulerRepositionAfterVisualMove();
-    requestVirtualization();
+    schedulePostPaperOffsetWork();
+  }
+
+  function schedulePostPaperOffsetWork() {
+    if (typeof requestAnimationFrame !== 'function') {
+      queueRulerRepositionAfterVisualMove();
+      requestVirtualization();
+      return;
+    }
+    if (pendingPaperOffsetWorkRAF) return;
+    pendingPaperOffsetWorkRAF = requestAnimationFrame(() => {
+      pendingPaperOffsetWorkRAF = 0;
+      queueRulerRepositionAfterVisualMove();
+      requestVirtualization();
+    });
   }
 
   function caretViewportPos() {
@@ -374,18 +405,39 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   function renderMargins() {
     const snap = computeSnappedVisualMargins();
     const layoutScale = layoutZoomFactor();
-    for (const p of state.pages) {
-      if (!p?.marginBoxEl) continue;
-      if (p.pageEl) p.pageEl.style.height = `${app.PAGE_H * layoutScale}px`;
-      const leftPx = Math.round(snap.leftPx * layoutScale);
-      const rightPx = Math.round((app.PAGE_W - snap.rightPx) * layoutScale);
-      const topPx = Math.round(snap.topPx * layoutScale);
-      const bottomPx = Math.round(snap.bottomPx * layoutScale);
-      p.marginBoxEl.style.left = `${leftPx}px`;
-      p.marginBoxEl.style.right = `${rightPx}px`;
-      p.marginBoxEl.style.top = `${topPx}px`;
-      p.marginBoxEl.style.bottom = `${bottomPx}px`;
-      p.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
+    const scaledInsets = {
+      left: Math.round(snap.leftPx * layoutScale),
+      right: Math.round((app.PAGE_W - snap.rightPx) * layoutScale),
+      top: Math.round(snap.topPx * layoutScale),
+      bottom: Math.round(snap.bottomPx * layoutScale),
+    };
+    const rootStyle = document?.documentElement?.style;
+    if (rootStyle) {
+      if (lastMarginInsets.top !== scaledInsets.top) {
+        rootStyle.setProperty('--margin-top-px', `${scaledInsets.top}px`);
+        lastMarginInsets.top = scaledInsets.top;
+      }
+      if (lastMarginInsets.right !== scaledInsets.right) {
+        rootStyle.setProperty('--margin-right-px', `${scaledInsets.right}px`);
+        lastMarginInsets.right = scaledInsets.right;
+      }
+      if (lastMarginInsets.bottom !== scaledInsets.bottom) {
+        rootStyle.setProperty('--margin-bottom-px', `${scaledInsets.bottom}px`);
+        lastMarginInsets.bottom = scaledInsets.bottom;
+      }
+      if (lastMarginInsets.left !== scaledInsets.left) {
+        rootStyle.setProperty('--margin-left-px', `${scaledInsets.left}px`);
+        lastMarginInsets.left = scaledInsets.left;
+      }
+    }
+    const pageHeightPx = `${app.PAGE_H * layoutScale}px`;
+    if (pageHeightPx !== lastPageHeightPx) {
+      for (const p of state.pages) {
+        if (p?.pageEl && p.pageEl.style.height !== pageHeightPx) {
+          p.pageEl.style.height = pageHeightPx;
+        }
+      }
+      lastPageHeightPx = pageHeightPx;
     }
   }
 
@@ -560,10 +612,14 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     });
   }
 
+  let lastMarginBoxesVisible = null;
   function setMarginBoxesVisible(show) {
+    const shouldShow = !!(show && state.showMarginBox);
+    if (shouldShow === lastMarginBoxesVisible) return;
+    lastMarginBoxesVisible = shouldShow;
     for (const p of state.pages) {
       if (p?.marginBoxEl) {
-        p.marginBoxEl.style.visibility = show && state.showMarginBox ? 'visible' : 'hidden';
+        p.marginBoxEl.style.visibility = shouldShow ? 'visible' : 'hidden';
       }
     }
   }
@@ -620,6 +676,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     renderMargins();
     positionRulers();
     clampCaretToBounds();
+    markDocumentDirty(state);
     saveStateDebounced();
     app.guideV.style.display = 'none';
     app.guideH.style.display = 'none';
@@ -809,6 +866,7 @@ const normFromZ = (pct) => {
     reanchorCaretAfterZoomChange();
     scheduleZoomCrispRedraw();
     updateZoomUIFromState();
+    markDocumentDirty(state);
     saveStateDebounced();
   }
 

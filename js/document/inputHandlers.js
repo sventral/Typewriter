@@ -1,3 +1,5 @@
+import { markDocumentDirty } from '../state/saveRevision.js';
+
 const NUM_INPUT_KEYS = new Set([
   'ArrowUp',
   'ArrowDown',
@@ -166,6 +168,7 @@ export function createInputController({
       e.preventDefault();
       resetTypedRun();
       handleNewline();
+      markDocumentDirty(state);
       saveStateDebounced();
       return;
     }
@@ -181,6 +184,7 @@ export function createInputController({
       beginTypingFrameBatch();
       handleBackspace();
       resetTypedRun();
+      markDocumentDirty(state);
       saveStateDebounced();
       return;
     }
@@ -221,6 +225,7 @@ export function createInputController({
       e.preventDefault();
       resetTypedRun();
       for (let i = 0; i < 5; i += 1) advanceCaret();
+      markDocumentDirty(state);
       saveStateDebounced();
       return;
     }
@@ -244,6 +249,7 @@ export function createInputController({
       const page = state.pages[state.caret.page] || addPage();
       overtypeCharacter(page, state.caret.rowMu, state.caret.col, key, state.ink);
       advanceCaret();
+      markDocumentDirty(state);
       saveStateDebounced();
     }
   }

@@ -1,3 +1,5 @@
+import { markDocumentDirty } from '../state/saveRevision.js';
+
 const DARK_PAGE_HEX = '#1f2024';
 const LIGHT_PAGE_HEX = '#f7f5ee';
 const LIGHT_EFFECT_INKS = ['b', 'r'];
@@ -202,6 +204,7 @@ export function createThemeController({
     if (app.appearanceDark) app.appearanceDark.checked = normalized === 'dark';
     if (app.darkPageToggle) app.darkPageToggle.disabled = normalized === 'light';
     applyAppearance();
+    markDocumentDirty(state);
     saveStateDebounced();
     focusStage();
   }
@@ -213,6 +216,7 @@ export function createThemeController({
     }
     if (app.darkPageToggle) app.darkPageToggle.checked = normalized;
     applyAppearance();
+    markDocumentDirty(state);
     saveStateDebounced();
     focusStage();
   }

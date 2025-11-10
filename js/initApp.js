@@ -6,6 +6,7 @@ import {
   scheduleMetricsUpdate as scheduleMetricsUpdateForContext,
 } from './config/metrics.js';
 import { createMainState, createEphemeralState } from './state/state.js';
+import { markDocumentDirty } from './state/saveRevision.js';
 import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE } from './config/inkConfig.js';
 import { clamp } from './utils/math.js';
 import { sanitizeIntegerField } from './utils/forms.js';
@@ -697,6 +698,7 @@ function applySubmittedChanges(){
     updateCaretPosition();
     positionRulers();
     requestVirtualization();
+    markDocumentDirty(state);
     saveStateDebounced();
     endBatch();
     focusStage();
@@ -711,6 +713,7 @@ function setLineHeightFactor(f){
   clampCaretToBounds();
   updateCaretPosition();
   positionRulers();
+  markDocumentDirty(state);
   saveStateDebounced();
 }
 
@@ -923,6 +926,7 @@ function applyMetricsNow(full=false){
   updateCaretPosition();
   positionRulers();
   requestVirtualization();
+  markDocumentDirty(state);
   saveStateDebounced();
   endBatch();
 }
@@ -948,16 +952,21 @@ function toggleRulers(){
   state.showRulers = !state.showRulers;
   document.body.classList.toggle('rulers-off', !state.showRulers);
   positionRulers();
+  markDocumentDirty(state);
   saveStateDebounced();
 }
 
 async function initialize() {
+  const persistInkSettings = () => {
+    markDocumentDirty(state);
+    saveStateDebounced();
+  };
   setupInkSettingsPanel({
     state,
     app,
     refreshGlyphs: refreshGlyphEffects,
     refreshGrain: refreshGrainEffects,
-    saveState: saveStateDebounced,
+    saveState: persistInkSettings,
   });
   bootstrapFirstPage();
   const persistedState = loadPersistedState();
