@@ -507,6 +507,9 @@ export function setupUIBindings(context, controllers) {
       let isLongPress = false;
       const startPress = () => {
         isLongPress = false;
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+        }
         pressTimer = setTimeout(() => {
           isLongPress = true;
           const allPopups = [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup];
@@ -515,16 +518,26 @@ export function setupUIBindings(context, controllers) {
         }, LONG_PRESS_DURATION);
       };
       const endPress = () => {
-        clearTimeout(pressTimer);
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
         if (!isLongPress) {
           setInk(ink);
           const allPopups = [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup];
           allPopups.forEach(p => p.classList.remove('active'));
         }
       };
+      const cancelPress = () => {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+      };
       btn.addEventListener('pointerdown', startPress);
       btn.addEventListener('pointerup', endPress);
-      btn.addEventListener('pointerleave', () => clearTimeout(pressTimer));
+      btn.addEventListener('pointerleave', cancelPress);
+      btn.addEventListener('pointercancel', cancelPress);
       popup.addEventListener('pointerdown', e => e.stopPropagation());
     };
 
@@ -986,7 +999,6 @@ export function setupUIBindings(context, controllers) {
     if (app.inkOpacityRValue) app.inkOpacityRValue.textContent = `${state.inkOpacity.r}%`;
     if (app.inkOpacityWValue) app.inkOpacityWValue.textContent = `${state.inkOpacity.w}%`;
 
-    if (app.grainInput) app.grainInput.value = String(state.grainPct);
     if (app.cpiSelect) app.cpiSelect.value = String(state.cpi || 10);
     updateColsPreviewUI();
     if (app.sizeInput) app.sizeInput.value = String(clamp(Math.round(state.inkWidthPct ?? 95), 1, 150));
@@ -1034,9 +1046,14 @@ export function setupUIBindings(context, controllers) {
       state.wordWrap = true;
       applyDefaultMargins();
     }
+    if (app.grainInput) {
+      const sanitizedGrain = clamp(Math.round(Number(state.grainPct ?? 0)), 0, 100);
+      state.grainPct = sanitizedGrain;
+      app.grainInput.value = String(sanitizedGrain);
+    }
+
     refreshSavedInkStylesUI();
     syncInkStrengthDisplays();
-    refreshSavedInkStylesUI();
   }
 
   bindEventListeners();

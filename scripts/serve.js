@@ -43,7 +43,21 @@ const server = http.createServer(async (req, res) => {
   }
 
   const requestUrl = new URL(req.url, `http://${req.headers.host}`);
-  let filePath = path.join(ROOT, decodeURIComponent(requestUrl.pathname));
+
+  let filePath;
+  try {
+    const decodedPath = decodeURIComponent(requestUrl.pathname || '/');
+    const resolvedPath = path.resolve(ROOT, `.${decodedPath}`);
+    const relative = path.relative(ROOT, resolvedPath);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      sendError(res, 403, 'Forbidden');
+      return;
+    }
+    filePath = resolvedPath;
+  } catch {
+    sendError(res, 400, 'Bad Request');
+    return;
+  }
 
   try {
     let fileStats = await stat(filePath);
