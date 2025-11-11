@@ -267,8 +267,8 @@ export function createPageRenderer(options) {
     }
   }
 
-  if (context?.setCallback) {
-    context.setCallback('schedulePaint', schedulePaint);
+  if (typeof context?.registerRendererApi === 'function') {
+    context.registerRendererApi({ schedulePaint });
   }
 
   return {

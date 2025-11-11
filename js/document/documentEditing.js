@@ -37,7 +37,6 @@ export function createDocumentEditingController(context) {
     configureCanvasContext,
     resetPagesBlankPreserveSettings,
     metricsOptions,
-    rebuildAllAtlases,
     setPaperOffset,
     applyDefaultMargins,
     computeColsFromCpi,
@@ -45,6 +44,7 @@ export function createDocumentEditingController(context) {
     layoutZoomFactor,
     requestHammerNudge,
     isZooming,
+    rendererApi,
     viewAdapter,
   } = context;
 
@@ -126,6 +126,8 @@ export function createDocumentEditingController(context) {
     if (app.inkRedBtn) app.inkRedBtn.dataset.active = String(ink === 'r');
     if (app.inkWhiteBtn) app.inkWhiteBtn.dataset.active = String(ink === 'w');
   };
+
+  const rendererBridge = rendererApi || {};
 
   const recalcMetrics = (face) => recalcMetricsForContext(face, metricsOptions || {});
 
@@ -675,7 +677,9 @@ function insertStringFast(s) {
     state.pages.push(page);
     applyDefaultMargins();
     recalcMetrics(getActiveFontName());
-    rebuildAllAtlases();
+    if (typeof rendererBridge.rebuildAllAtlases === 'function') {
+      rendererBridge.rebuildAllAtlases();
+    }
     for (const p of state.pages) {
       p.grainCanvas = null;
       p.grainForSize = { w: 0, h: 0, key: null };

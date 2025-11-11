@@ -1743,9 +1743,8 @@ function djb2(str) {
     ctx.restore();
   }
 
-  if (context?.setCallback) {
-    context.setCallback('rebuildAllAtlases', rebuildAllAtlases);
-    context.setCallback('invalidateGrainCache', invalidateGrainCache);
+  if (typeof context?.registerRendererApi === 'function') {
+    context.registerRendererApi({ rebuildAllAtlases, invalidateGrainCache });
   }
 
   return { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion, invalidateGrainCache };
