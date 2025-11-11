@@ -469,7 +469,6 @@ function djb2(str) {
     if (!sectionEnabled.expTone) {
       enable.toneCore = false;
       enable.toneDynamics = false;
-      enable.vBias = false;
       enable.centerEdge = false;
       enable.ribbonBands = false;
       enable.rim = false;
@@ -508,9 +507,6 @@ function djb2(str) {
       { path: 'ribbon.delta', section: 'expTone', require: 'enable.ribbonBands' },
       { path: 'ribbon.fade', section: 'expTone', require: 'enable.ribbonBands' },
       { path: 'ribbon.wobble', section: 'expTone', require: 'enable.ribbonBands' },
-      { path: 'enable.vBias', section: 'expTone' },
-      { path: 'bias.vertical', section: 'expTone', require: 'enable.vBias' },
-      { path: 'bias.amount', section: 'expTone', require: 'enable.vBias' },
       { path: 'enable.rim', section: 'expEdge' },
       { path: 'ink.rim', section: 'expEdge', require: 'enable.rim' },
       { path: 'ink.rimCurve', section: 'expEdge', require: 'enable.rim' },
@@ -684,7 +680,6 @@ function djb2(str) {
     const inkCfg = cfg.ink || {};
     const ribbonCfg = cfg.ribbon || {};
     const noiseCfg = cfg.noise || {};
-    const biasCfg = cfg.bias || {};
     const centerEdgeCfg = cfg.centerEdge || {};
     const edgeFuzzCfg = cfg.edgeFuzz || {};
     const dropoutsCfg = cfg.dropouts || {};
@@ -716,7 +711,6 @@ function djb2(str) {
     const toneCoreModulesActive = (
       toneDynamicsActive
       || ribbonBandsActive
-      || (!!enable.vBias && sectionActive.expTone && hasPositive(biasCfg.amount))
       || (!!enable.rim && sectionActive.expTone && hasPositive(inkCfg.rim))
     );
     const toneCoreActive = toneCoreModulesActive;
@@ -1376,7 +1370,6 @@ function djb2(str) {
       enable: { ...(baseConfig.enable || {}) },
       ink: { ...(baseConfig.ink || {}) },
       ribbon: { ...(baseConfig.ribbon || {}) },
-      bias: { ...(baseConfig.bias || {}) },
       noise: { ...(baseConfig.noise || {}) },
       centerEdge: { ...(baseConfig.centerEdge || {}) },
       dropouts: { ...(baseConfig.dropouts || {}) },
