@@ -661,7 +661,6 @@ function insertStringFast(s) {
     setPaperOffset(0, 0);
     state.pages = [];
     state.caret = { page: 0, rowMu: 0, col: 0 };
-    state.grainSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
     state.altSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
     state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
     state.savedInkStyles = [];
@@ -684,8 +683,6 @@ function insertStringFast(s) {
       rendererBridge.rebuildAllAtlases();
     }
     for (const p of state.pages) {
-      p.grainCanvas = null;
-      p.grainForSize = { w: 0, h: 0, key: null };
       configureCanvasContext(p.ctx);
       configureCanvasContext(p.backCtx);
       p.dirtyAll = true;

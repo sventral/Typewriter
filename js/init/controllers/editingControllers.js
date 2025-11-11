@@ -540,8 +540,6 @@ export function registerEditingControllers(options) {
     }
     for (const p of state.pages) {
       if (!p) continue;
-      p.grainCanvas = null;
-      p.grainForSize = { w: 0, h: 0, key: null };
       configureCanvasContext(p.ctx);
       configureCanvasContext(p.backCtx);
       p.dirtyAll = true;
