@@ -53,16 +53,6 @@ export const edgeMask = (alpha, w, h, x, y) => {
   return min(1, g / 255);
 };
 
-export const ribbonShape = (y, period, sharp, phase) => {
-  const s = sin(y / period + phase) * 0.5 + 0.5;
-  if (sharp <= 0) return s;
-  const k = max(0.0001, 1 - sharp);
-  if (s < 0.5) {
-    return pow(s * 2, k) * 0.5;
-  }
-  return 1 - pow((1 - s) * 2, k) * 0.5;
-};
-
 export const superellipseMask = (nx, ny, ax, ay, rot, powN) => {
   const c = cos(rot);
   const s = sin(rot);

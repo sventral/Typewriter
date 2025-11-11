@@ -4,7 +4,6 @@ import {
   clamp01,
   noise2,
   edgeMask,
-  ribbonShape,
   superellipseMask,
   gradOut,
   dot,
@@ -45,6 +44,44 @@ const SPECK_SUBPIXEL_OFFSETS = Object.freeze([
   [0.1666667, 0.6666667],
   [0.6666667, 0.6666667],
 ]);
+
+const DEFAULT_RIBBON_BAND = Object.freeze({
+  height: 0.35,
+  position: 0.55,
+  delta: 0.12,
+  fade: 0.65,
+  wobble: 0.25,
+});
+
+const clampBandHeight = value => clamp(Number.isFinite(value) ? value : DEFAULT_RIBBON_BAND.height, 0.02, 1);
+const clampBandDelta = value => clamp(Number.isFinite(value) ? value : DEFAULT_RIBBON_BAND.delta, -0.6, 0.6);
+const clamp01WithFallback = (value, fallback) => clamp01(Number.isFinite(value) ? value : fallback);
+
+function normalizeRibbonBandConfig(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const candidate = source.band && typeof source.band === 'object' ? source.band : source;
+  const hasModernKeys = ['height', 'position', 'delta', 'fade', 'wobble'].some(
+    key => typeof candidate[key] === 'number',
+  );
+  if (!hasModernKeys) {
+    const legacyPeriod = clamp(Number.isFinite(candidate.period) ? candidate.period : 12, 3, 30);
+    const legacySharp = clamp01WithFallback(candidate.sharp, 0.15);
+    return {
+      height: clampBandHeight(legacyPeriod / 30),
+      position: clamp01WithFallback(candidate.position, DEFAULT_RIBBON_BAND.position),
+      delta: clampBandDelta(candidate.amp),
+      fade: clamp01WithFallback(1 - legacySharp, DEFAULT_RIBBON_BAND.fade),
+      wobble: clamp01WithFallback(candidate.wobble, DEFAULT_RIBBON_BAND.wobble),
+    };
+  }
+  return {
+    height: clampBandHeight(candidate.height),
+    position: clamp01WithFallback(candidate.position, DEFAULT_RIBBON_BAND.position),
+    delta: clampBandDelta(candidate.delta),
+    fade: clamp01WithFallback(candidate.fade, DEFAULT_RIBBON_BAND.fade),
+    wobble: clamp01WithFallback(candidate.wobble, DEFAULT_RIBBON_BAND.wobble),
+  };
+}
 
 const ensureDetailDensity = ctx => {
   if (!ctx) {
@@ -386,7 +423,6 @@ export function createExperimentalStagePipeline(deps = {}) {
     clamp01: clamp01Fn = clamp01,
     noise2: noise2Fn = noise2,
     edgeMask: edgeMaskFn = edgeMask,
-    ribbonShape: ribbonShapeFn = ribbonShape,
     superellipseMask: superellipseMaskFn = superellipseMask,
     gradOut: gradOutFn = gradOut,
     dot: dotFn = dot,
@@ -415,7 +451,6 @@ export function createExperimentalStagePipeline(deps = {}) {
     const detailCss = Math.max(MIN_DETAIL_DENSITY_CSS, detailCssRaw * stageQuality);
     const lfScale = Math.max(1e-6, (params.noise.lfScale * smul) / detailCss);
     const hfScale = Math.max(1e-6, (params.noise.hfScale * smul) / detailCss);
-    const periodPx = Math.max(1e-6, (params.ribbon.period * smul) / detailCss);
     const gammaLUT = getGamma(params.ink.inkGamma);
     const rimLUT = getRim(params.ink.rimCurve);
     const toneCoreEn = !!params.enable.toneCore;
@@ -423,7 +458,6 @@ export function createExperimentalStagePipeline(deps = {}) {
     const ribbonEn = toneCoreEn && params.enable.ribbonBands !== false;
     const vBiasEn = !!params.enable.vBias;
     const rimEn = !!params.enable.rim;
-    const rPhase = (params.ribbon.phase + (gix % 37) * 0.25) % tauConst;
     const rhythm = 1 + 0.08 * sin((gix % 23) / 23 * tauConst);
     const baseTile = toneDynamicsEn ? detailNoiseCache.getTile({
       detailCss,
@@ -447,8 +481,27 @@ export function createExperimentalStagePipeline(deps = {}) {
       xOffset: seed,
       yOffset: -seed,
     }) : null;
-    const ribbonAmp = ribbonEn ? params.ribbon.amp : 0;
-    const applyRibbon = ribbonEn && ribbonAmp > 0;
+    const glyphHeightCss = Math.max(1e-6, h * invDp);
+    const ribbonBandCfg = ribbonEn ? normalizeRibbonBandConfig(params.ribbon) : DEFAULT_RIBBON_BAND;
+    const bandStrength = ribbonEn ? ribbonBandCfg.delta : 0;
+    const applyRibbon = ribbonEn && Math.abs(bandStrength) > 1e-3;
+    const bandHalfCss = Math.max(1e-4, ribbonBandCfg.height * glyphHeightCss * 0.5);
+    const fadeWidthCss = Math.max(bandHalfCss * 0.05, bandHalfCss * ribbonBandCfg.fade);
+    const innerRadius = Math.max(0, bandHalfCss - fadeWidthCss);
+    const edgeSpan = Math.max(1e-4, bandHalfCss - innerRadius);
+    const baseBandCenterCss = clamp01(ribbonBandCfg.position) * glyphHeightCss;
+    const wobbleAmount = ribbonBandCfg.wobble;
+    const wobbleRangeCss = applyRibbon && wobbleAmount > 0 ? bandHalfCss * 0.8 * wobbleAmount : 0;
+    const ribbonTile = wobbleRangeCss > 0 ? detailNoiseCache.getTile({
+      detailCss,
+      width: w,
+      height: h,
+      dpPerCss,
+      scale: Math.max(1e-6, (glyphHeightCss / Math.max(0.1, ribbonBandCfg.height)) * 0.35),
+      seed: seed ^ 0xD15EA5E,
+      xOffset: (gix || 0) * 17,
+      yOffset: (gix || 0) * 5,
+    }) : null;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
@@ -458,14 +511,30 @@ export function createExperimentalStagePipeline(deps = {}) {
         const e = edgeMaskFn(alpha0, w, h, x, y);
         const p = toneDynamicsEn ? baseTile.data[i] : 0.5;
         const m = toneDynamicsEn ? microTile.data[i] : 0.5;
-        const rBand = applyRibbon ? ribbonShapeFn(yCss, periodPx, params.ribbon.sharp, rPhase) : 0.5;
+        const wobbleOffset = ribbonTile ? (ribbonTile.data[i] - 0.5) * wobbleRangeCss * 2 : 0;
+        const bandCenterCss = baseBandCenterCss + wobbleOffset;
         let press = toneDynamicsEn
           ? params.ink.pressureMid + params.ink.pressureVar * (p - 0.5) * 2
           : 1;
         press = clampFn(press, 0.05, 1.6);
         let cov = a * press;
         if (toneDynamicsEn) cov *= 1 + params.ink.toneJitter * ((m - 0.5) * 2);
-        if (applyRibbon) cov *= 1 + ribbonAmp * ((rBand - 0.5) * 2);
+        if (applyRibbon) {
+          const dist = Math.abs(yCss - bandCenterCss);
+          let bandWeight = 0;
+          if (dist < bandHalfCss) {
+            if (dist <= innerRadius) {
+              bandWeight = 1;
+            } else {
+              const t = clamp01Fn((dist - innerRadius) / edgeSpan);
+              bandWeight = 1 - smoothStep(t);
+            }
+          }
+          if (bandWeight > 0) {
+            const modifier = 1 + bandStrength * bandWeight;
+            cov *= modifier <= 0 ? 0 : modifier;
+          }
+        }
         if (vBiasEn) {
           const vBiasNorm = y / (h - 1) - 0.5;
           const vb = vBiasNorm * (1 + 0.5 * signFn(vBiasNorm) * vBiasNorm * vBiasNorm);

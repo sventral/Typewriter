@@ -503,13 +503,14 @@ function djb2(str) {
       { path: 'noise.lfScale', section: 'expTone', require: 'enable.toneDynamics' },
       { path: 'noise.hfScale', section: 'expTone', require: 'enable.toneDynamics' },
       { path: 'enable.ribbonBands', section: 'expTone', require: 'enable.toneCore' },
-      { path: 'ribbon.amp', section: 'expTone', require: 'enable.ribbonBands' },
-      { path: 'ribbon.period', section: 'expTone', require: 'enable.ribbonBands' },
-      { path: 'ribbon.sharp', section: 'expTone', require: 'enable.ribbonBands' },
+      { path: 'ribbon.height', section: 'expTone', require: 'enable.ribbonBands' },
+      { path: 'ribbon.position', section: 'expTone', require: 'enable.ribbonBands' },
+      { path: 'ribbon.delta', section: 'expTone', require: 'enable.ribbonBands' },
+      { path: 'ribbon.fade', section: 'expTone', require: 'enable.ribbonBands' },
+      { path: 'ribbon.wobble', section: 'expTone', require: 'enable.ribbonBands' },
       { path: 'enable.vBias', section: 'expTone' },
       { path: 'bias.vertical', section: 'expTone', require: 'enable.vBias' },
       { path: 'bias.amount', section: 'expTone', require: 'enable.vBias' },
-      { path: 'ribbon.phase', section: 'expTone', require: 'enable.ribbonBands' },
       { path: 'enable.rim', section: 'expEdge' },
       { path: 'ink.rim', section: 'expEdge', require: 'enable.rim' },
       { path: 'ink.rimCurve', section: 'expEdge', require: 'enable.rim' },
@@ -701,11 +702,16 @@ function djb2(str) {
         || hasPositive(noiseCfg.hfScale)
       )
     );
+    const ribbonBandStrength = Number.isFinite(ribbonCfg.delta)
+      ? ribbonCfg.delta
+      : Number.isFinite(ribbonCfg.amp)
+        ? ribbonCfg.amp
+        : 0;
     const ribbonBandsActive = (
       !!enable.toneCore
       && !!enable.ribbonBands
       && sectionActive.expTone
-      && hasPositive(ribbonCfg.amp)
+      && Math.abs(ribbonBandStrength) > 1e-3
     );
     const toneCoreModulesActive = (
       toneDynamicsActive
