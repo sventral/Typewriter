@@ -1,17 +1,6 @@
 import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitterConfig.js';
-import { INK_INTENSITY } from '../config/inkConfig.js';
 
-const resolveIntensityDefault = (key) => {
-  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
-  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
-  const max = Number.isFinite(source?.maxPct) ? Math.max(source.maxPct, min) : Math.max(200, min);
-  const value = Number.isFinite(source?.defaultPct) ? source.defaultPct : 100;
-  return Math.min(Math.max(value, min), max);
-};
-
-export const CENTER_THICKEN_DEFAULT = resolveIntensityDefault('centerThicken');
-export const EDGE_THIN_DEFAULT = resolveIntensityDefault('edgeThin');
-export const DEFAULT_INK_SECTION_ORDER = ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'];
+export const DEFAULT_INK_SECTION_ORDER = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
 
 export function createMainState(app, gridDiv = 8) {
   return {
@@ -38,13 +27,6 @@ export function createMainState(app, gridDiv = 8) {
     lineStepMu: Math.round(gridDiv * 1.5),
     zoom: 1.0,
     effectsOverallStrength: 100,
-    inkFillStrength: 100,
-    centerThickenPct: CENTER_THICKEN_DEFAULT,
-    edgeThinPct: EDGE_THIN_DEFAULT,
-    inkTextureStrength: 100,
-    edgeBleedStrength: 0,
-    edgeFuzzStrength: 100,
-    grainPct: 0,
     expToneStrength: 100,
     expEdgeStrength: 100,
     expGrainStrength: 100,
@@ -100,13 +82,6 @@ export function createEphemeralState() {
 export function resetInkEffectsState(state) {
   if (!state) return;
   state.effectsOverallStrength = 100;
-  state.inkFillStrength = 100;
-  state.centerThickenPct = CENTER_THICKEN_DEFAULT;
-  state.edgeThinPct = EDGE_THIN_DEFAULT;
-  state.inkTextureStrength = 100;
-  state.edgeBleedStrength = 0;
-  state.edgeFuzzStrength = 100;
-  state.grainPct = 0;
   state.expToneStrength = 100;
   state.expEdgeStrength = 100;
   state.expGrainStrength = 100;
