@@ -33,7 +33,6 @@ function isToolbarInput(el) {
     id === 'mmRight' ||
     id === 'mmTop' ||
     id === 'mmBottom' ||
-    id === 'grainPct' ||
     id === 'stageWidthPct' ||
     id === 'stageHeightPct' ||
     id.includes('Slider')
