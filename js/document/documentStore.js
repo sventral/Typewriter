@@ -256,6 +256,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     darkPageInDarkMode: !!state.darkPageInDarkMode,
     pageFillColor: state.pageFillColor,
     savedInkStyles: sanitizeSavedInkStyles(state.savedInkStyles),
+    currentInkStyle: state.currentInkStyle ? sanitizeSavedInkStyle(state.currentInkStyle) : null,
     glyphJitter: {
       enabled: !!state.glyphJitterEnabled,
       amountPct: cloneGlyphJitterRange(glyphJitterAmount),
@@ -526,6 +527,9 @@ export function deserializeDocumentState(data, context) {
     glyphJitterSeed: sanitizedJitterSeed,
   });
   state.savedInkStyles = sanitizeSavedInkStyles(data.savedInkStyles);
+  state.currentInkStyle = data.currentInkStyle
+    ? sanitizeSavedInkStyle(data.currentInkStyle)
+    : null;
   state.inkSectionOrder = normalizeInkSectionOrder(data.inkSectionOrder, state.inkSectionOrder);
   if (typeof data.documentId === 'string' && data.documentId.trim()) {
     state.documentId = data.documentId.trim();

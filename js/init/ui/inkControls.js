@@ -1,5 +1,5 @@
 import { clamp } from '../../utils/math.js';
-import { refreshSavedInkStylesUI, syncInkStrengthDisplays } from '../../config/inkSettingsPanel.js';
+import { refreshSavedInkStylesUI, syncInkStrengthDisplays, hydrateInkSettingsFromState } from '../../config/inkSettingsPanel.js';
 import {
   GLYPH_JITTER_DEFAULTS,
   normalizeGlyphJitterAmount,
@@ -313,6 +313,7 @@ export function createInkControls({
     }
 
     refreshSavedInkStylesUI();
+    hydrateInkSettingsFromState({ updateStyleName: true });
     syncInkStrengthDisplays();
   }
 

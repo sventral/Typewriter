@@ -8,6 +8,7 @@ import {
   deserializeDocumentState,
   generateDocumentId,
 } from './documentStore.js';
+import { resetInkEffectsState } from '../state/state.js';
 
 export function createDocumentEditingController(context) {
   const {
@@ -653,6 +654,8 @@ function insertStringFast(s) {
     state.documentId = resolvedId;
     state.documentTitle = normalizeDocumentTitle(documentTitle ?? state.documentTitle);
     state.savedInkStyles = [];
+    state.currentInkStyle = null;
+    resetInkEffectsState(state);
     beginBatch();
     state.paperOffset = { x: 0, y: 0 };
     setPaperOffset(0, 0);

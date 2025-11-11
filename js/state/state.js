@@ -9,8 +9,9 @@ const resolveIntensityDefault = (key) => {
   return Math.min(Math.max(value, min), max);
 };
 
-const CENTER_THICKEN_DEFAULT = resolveIntensityDefault('centerThicken');
-const EDGE_THIN_DEFAULT = resolveIntensityDefault('edgeThin');
+export const CENTER_THICKEN_DEFAULT = resolveIntensityDefault('centerThicken');
+export const EDGE_THIN_DEFAULT = resolveIntensityDefault('edgeThin');
+export const DEFAULT_INK_SECTION_ORDER = ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'];
 
 export function createMainState(app, gridDiv = 8) {
   return {
@@ -54,7 +55,7 @@ export function createMainState(app, gridDiv = 8) {
     expDefectsQuality: 100,
     grainSeed: 0xC0FFEE,
     altSeed: 0x51F15EED,
-    inkSectionOrder: ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'],
+    inkSectionOrder: DEFAULT_INK_SECTION_ORDER.slice(),
     glyphJitterEnabled: GLYPH_JITTER_DEFAULTS.enabled,
     glyphJitterAmountPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.amountPct),
     glyphJitterFrequencyPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.frequencyPct),
@@ -65,6 +66,7 @@ export function createMainState(app, gridDiv = 8) {
     pageFillColor: '#f7f5ee',
     inkEffectsPreferWhite: false,
     savedInkStyles: [],
+    currentInkStyle: null,
     lowResZoomEnabled: true,
     lowResZoomSoftCapPct: 200,
     lowResZoomMarginPct: 20,
@@ -93,4 +95,25 @@ export function createEphemeralState() {
     fontLoadSeq: 0,
     primedMetricsAreFallback: false,
   };
+}
+
+export function resetInkEffectsState(state) {
+  if (!state) return;
+  state.effectsOverallStrength = 100;
+  state.inkFillStrength = 100;
+  state.centerThickenPct = CENTER_THICKEN_DEFAULT;
+  state.edgeThinPct = EDGE_THIN_DEFAULT;
+  state.inkTextureStrength = 100;
+  state.edgeBleedStrength = 0;
+  state.edgeFuzzStrength = 100;
+  state.grainPct = 0;
+  state.expToneStrength = 100;
+  state.expEdgeStrength = 100;
+  state.expGrainStrength = 100;
+  state.expDefectsStrength = 100;
+  state.expToneQuality = 100;
+  state.expEdgeQuality = 100;
+  state.expGrainQuality = 100;
+  state.expDefectsQuality = 100;
+  state.inkSectionOrder = DEFAULT_INK_SECTION_ORDER.slice();
 }

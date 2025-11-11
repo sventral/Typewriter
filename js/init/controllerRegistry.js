@@ -1,9 +1,9 @@
 import { setupUIBindings } from './uiBindings.js';
-import { detectSafariEnvironment } from '../layout/stageLayout.js';
-import { createLayoutBridge, registerLayoutControllers } from './controllers/layoutControllers.js';
-import { registerEditingControllers } from './controllers/editingControllers.js';
-import { registerRenderingControllers } from './controllers/renderingControllers.js';
-import { registerThemeController } from './controllers/themeControllers.js';
+import { createLayoutBridge } from './controllers/layoutControllers.js';
+import { registerEditingDomain } from './registries/editingRegistry.js';
+import { registerRenderingDomain } from './registries/renderingRegistry.js';
+import { registerLayoutDomain } from './registries/layoutRegistry.js';
+import { registerThemeDomain } from './registries/themeRegistry.js';
 
 export function registerControllers({
   app,
@@ -31,7 +31,7 @@ export function registerControllers({
   const layoutBridge = createLayoutBridge(context);
   const saveHooks = { saveStateNow: () => {}, saveStateDebounced: () => {} };
 
-  const editing = registerEditingControllers({
+  const editingDomain = registerEditingDomain({
     app,
     state,
     context,
@@ -50,49 +50,46 @@ export function registerControllers({
     ephemeral,
   });
 
-  const safariEnv = detectSafariEnvironment();
-
-  const rendering = registerRenderingControllers({
+  const renderingDomain = registerRenderingDomain({
     context,
     app,
     state,
     metricsStore,
     gridDiv: GRID_DIV,
     colors: COLORS,
-    editing,
-    safariEnv,
+    editing: editingDomain.rendering,
   });
 
-  const layout = registerLayoutControllers({
+  const layoutDomain = registerLayoutDomain({
     app,
     state,
     context,
     metrics,
     metricsStore,
     layoutBridge,
-    editing,
-    rendering,
-    lifecycleController: editing.lifecycleController,
-    requestVirtualization: editing.requestVirtualization,
-    saveStateDebounced: editing.saveStateDebounced,
+    editing: editingDomain.layout,
+    rendering: renderingDomain.layout,
+    lifecycleController: editingDomain.lifecycleController,
+    requestVirtualization: editingDomain.requestVirtualization,
+    saveStateDebounced: editingDomain.persistence.saveStateDebounced,
     setRenderScaleForZoom,
     getEffectiveRenderZoom,
-    safariEnv,
+    safariEnv: renderingDomain.safariEnv,
   });
 
-  const { themeController, applyAppearance } = registerThemeController({
+  const themeDomain = registerThemeDomain({
     app,
     state,
     colors: COLORS,
-    rebuildAllAtlases: rendering.rebuildAllAtlases,
-    touchPage: editing.touchPage,
-    schedulePaint: rendering.schedulePaint,
-    refreshGlyphEffects: rendering.refreshGlyphEffects,
-    beginBatch: editing.beginBatch,
-    endBatch: editing.endBatch,
-    setInk: editing.setInk,
-    focusStage: editing.focusStage,
-    saveStateDebounced: editing.saveStateDebounced,
+    rebuildAllAtlases: renderingDomain.theme.rebuildAllAtlases,
+    touchPage: editingDomain.theme.touchPage,
+    schedulePaint: renderingDomain.theme.schedulePaint,
+    refreshGlyphEffects: renderingDomain.theme.refreshGlyphEffects,
+    beginBatch: editingDomain.theme.beginBatch,
+    endBatch: editingDomain.theme.endBatch,
+    setInk: editingDomain.theme.setInk,
+    focusStage: editingDomain.theme.focusStage,
+    saveStateDebounced: editingDomain.theme.saveStateDebounced,
   });
 
   const uiBindings = setupUIBindings(
@@ -100,58 +97,58 @@ export function registerControllers({
       app,
       state,
       storageKey: STORAGE_KEY,
-      focusStage: editing.focusStage,
-      pxX: editing.pxX,
-      pxY: editing.pxY,
-      mmX: editing.mmX,
-      mmY: editing.mmY,
-      sanitizeStageInput: layout.sanitizeStageInput,
-      sanitizedStageWidthFactor: layout.sanitizedStageWidthFactor,
-      sanitizedStageHeightFactor: layout.sanitizedStageHeightFactor,
-      updateStageEnvironment: layoutBridge.updateStageEnvironment,
-      renderMargins: layoutBridge.renderMargins,
-      clampCaretToBounds: editing.clampCaretToBounds,
-      updateCaretPosition: editing.updateCaretPosition,
-      positionRulers: layoutBridge.positionRulers,
-      requestVirtualization: editing.requestVirtualization,
-      schedulePaint: rendering.schedulePaint,
+      focusStage: editingDomain.ui.focusStage,
+      pxX: editingDomain.ui.pxX,
+      pxY: editingDomain.ui.pxY,
+      mmX: editingDomain.ui.mmX,
+      mmY: editingDomain.ui.mmY,
+      sanitizeStageInput: layoutDomain.ui.sanitizeStageInput,
+      sanitizedStageWidthFactor: layoutDomain.ui.sanitizedStageWidthFactor,
+      sanitizedStageHeightFactor: layoutDomain.ui.sanitizedStageHeightFactor,
+      updateStageEnvironment: layoutDomain.bridge.updateStageEnvironment,
+      renderMargins: layoutDomain.bridge.renderMargins,
+      clampCaretToBounds: editingDomain.ui.clampCaretToBounds,
+      updateCaretPosition: editingDomain.ui.updateCaretPosition,
+      positionRulers: layoutDomain.bridge.positionRulers,
+      requestVirtualization: editingDomain.requestVirtualization,
+      schedulePaint: renderingDomain.publicApi.schedulePaint,
       setRenderScaleForZoom,
-      setZoomPercent: layoutBridge.setZoomPercent,
-      applyDefaultMargins: editing.applyDefaultMargins,
-      computeColsFromCpi: editing.computeColsFromCpi,
+      setZoomPercent: layoutDomain.bridge.setZoomPercent,
+      applyDefaultMargins: editingDomain.ui.applyDefaultMargins,
+      computeColsFromCpi: editingDomain.ui.computeColsFromCpi,
       gridDiv: GRID_DIV,
-      applySubmittedChanges: editing.applySubmittedChanges,
-      applyLineHeight: editing.applyLineHeight,
-      readStagedLH: editing.readStagedLH,
-      toggleRulers: editing.toggleRulers,
-      toggleInkSettingsPanel: editing.toggleInkSettingsPanel,
-      loadFontAndApply: editing.loadFontAndApply,
-      requestHammerNudge: layoutBridge.requestHammerNudge,
-      isZooming: editing.layoutState.getZooming,
-      setDrag: editing.layoutState.setDrag,
-      getSaveTimer: editing.layoutState.getSaveTimer,
-      setSaveTimer: editing.layoutState.setSaveTimer,
+      applySubmittedChanges: editingDomain.ui.applySubmittedChanges,
+      applyLineHeight: editingDomain.ui.applyLineHeight,
+      readStagedLH: editingDomain.ui.readStagedLH,
+      toggleRulers: editingDomain.ui.toggleRulers,
+      toggleInkSettingsPanel: editingDomain.ui.toggleInkSettingsPanel,
+      loadFontAndApply: editingDomain.ui.loadFontAndApply,
+      requestHammerNudge: layoutDomain.bridge.requestHammerNudge,
+      isZooming: editingDomain.ui.layoutState.getZooming,
+      setDrag: editingDomain.ui.layoutState.setDrag,
+      getSaveTimer: editingDomain.ui.layoutState.getSaveTimer,
+      setSaveTimer: editingDomain.ui.layoutState.setSaveTimer,
     },
     {
       editing: {
-        setInk: editing.setInk,
-        createNewDocument: editing.createNewDocument,
-        serializeState: editing.serializeState,
-        deserializeState: editing.deserializeState,
+        setInk: editingDomain.document.setInk,
+        createNewDocument: editingDomain.document.createNewDocument,
+        serializeState: editingDomain.document.serializeState,
+        deserializeState: editingDomain.document.deserializeState,
       },
       layout: {
-        handleWheelPan: layoutBridge.handleWheelPan,
-        handleHorizontalMarginDrag: layoutBridge.handleHorizontalMarginDrag,
-        handleVerticalMarginDrag: layoutBridge.handleVerticalMarginDrag,
-        endMarginDrag: layoutBridge.endMarginDrag,
-        onZoomPointerDown: layoutBridge.onZoomPointerDown,
-        onZoomPointerMove: layoutBridge.onZoomPointerMove,
-        onZoomPointerUp: layoutBridge.onZoomPointerUp,
-        setMarginBoxesVisible: layoutBridge.setMarginBoxesVisible,
-        scheduleZoomCrispRedraw: layoutBridge.scheduleZoomCrispRedraw,
+        handleWheelPan: layoutDomain.bridge.handleWheelPan,
+        handleHorizontalMarginDrag: layoutDomain.bridge.handleHorizontalMarginDrag,
+        handleVerticalMarginDrag: layoutDomain.bridge.handleVerticalMarginDrag,
+        endMarginDrag: layoutDomain.bridge.endMarginDrag,
+        onZoomPointerDown: layoutDomain.bridge.onZoomPointerDown,
+        onZoomPointerMove: layoutDomain.bridge.onZoomPointerMove,
+        onZoomPointerUp: layoutDomain.bridge.onZoomPointerUp,
+        setMarginBoxesVisible: layoutDomain.bridge.setMarginBoxesVisible,
+        scheduleZoomCrispRedraw: layoutDomain.bridge.scheduleZoomCrispRedraw,
       },
-      input: editing.inputController,
-      theme: themeController,
+      input: editingDomain.document.inputController,
+      theme: themeDomain.controller,
     },
   );
 
@@ -161,29 +158,29 @@ export function registerControllers({
   const { loadPersistedState, populateInitialUI } = uiBindings;
 
   return {
-    saveStateNow: editing.saveStateNow,
-    saveStateDebounced: editing.saveStateDebounced,
-    refreshGlyphEffects: rendering.refreshGlyphEffects,
-    refreshGrainEffects: rendering.refreshGrainEffects,
-    bootstrapFirstPage: editing.bootstrapFirstPage,
+    saveStateNow: editingDomain.persistence.saveStateNow,
+    saveStateDebounced: editingDomain.persistence.saveStateDebounced,
+    refreshGlyphEffects: renderingDomain.publicApi.refreshGlyphEffects,
+    refreshGrainEffects: renderingDomain.publicApi.refreshGrainEffects,
+    bootstrapFirstPage: editingDomain.persistence.bootstrapFirstPage,
     loadPersistedState,
     populateInitialUI,
-    applyAppearance,
-    updateStageEnvironment: layoutBridge.updateStageEnvironment,
-    setZoomPercent: layoutBridge.setZoomPercent,
-    updateZoomUIFromState: layoutBridge.updateZoomUIFromState,
-    setPaperOffset: layoutBridge.setPaperOffset,
-    loadFontAndApply: editing.loadFontAndApply,
-    setLineHeightFactor: editing.setLineHeightFactor,
-    renderMargins: layoutBridge.renderMargins,
-    clampCaretToBounds: editing.clampCaretToBounds,
-    updateCaretPosition: editing.updateCaretPosition,
-    positionRulers: layoutBridge.positionRulers,
-    setInk: editing.setInk,
-    requestVirtualization: editing.requestVirtualization,
-    scheduleMetricsUpdate: editing.scheduleMetricsUpdate,
+    applyAppearance: themeDomain.applyAppearance,
+    updateStageEnvironment: layoutDomain.bridge.updateStageEnvironment,
+    setZoomPercent: layoutDomain.bridge.setZoomPercent,
+    updateZoomUIFromState: layoutDomain.bridge.updateZoomUIFromState,
+    setPaperOffset: layoutDomain.bridge.setPaperOffset,
+    loadFontAndApply: editingDomain.ui.loadFontAndApply,
+    setLineHeightFactor: editingDomain.metrics.setLineHeightFactor,
+    renderMargins: layoutDomain.bridge.renderMargins,
+    clampCaretToBounds: editingDomain.ui.clampCaretToBounds,
+    updateCaretPosition: editingDomain.ui.updateCaretPosition,
+    positionRulers: layoutDomain.bridge.positionRulers,
+    setInk: editingDomain.document.setInk,
+    requestVirtualization: editingDomain.requestVirtualization,
+    scheduleMetricsUpdate: editingDomain.persistence.scheduleMetricsUpdate,
     uiBindings,
-    themeController,
+    themeController: themeDomain.controller,
     layoutAndZoomApi: () => context.controllers.layoutAndZoom,
   };
 }
