@@ -39,7 +39,12 @@ export function registerControllers({
   createMetricsScheduler,
   ephemeral,
 }) {
-  const { callbacks: contextCallbacks } = context;
+const rendererApi = typeof context.getRendererApi === 'function'
+  ? context.getRendererApi()
+  : (context.apis?.renderer || {});
+const layoutApi = typeof context.getLayoutApi === 'function'
+  ? context.getLayoutApi()
+  : (context.apis?.layout || {});
   const { DPR, GRID_DIV, COLORS, STORAGE_KEY, A4_WIDTH_IN, PPI, LPI } = metrics;
 
   primeInitialMetrics();
@@ -165,21 +170,23 @@ function onZoomPointerUp(...args) {
   return getLayoutAndZoomApi().onZoomPointerUp(...args);
 }
 
-context.setCallback('updateStageEnvironment', updateStageEnvironment);
-context.setCallback('renderMargins', renderMargins);
-context.setCallback('positionRulers', positionRulers);
-context.setCallback('setPaperOffset', setPaperOffset);
-context.setCallback('requestHammerNudge', requestHammerNudge);
-context.setCallback('handleWheelPan', handleWheelPan);
-context.setCallback('handleHorizontalMarginDrag', handleHorizontalMarginDrag);
-context.setCallback('handleVerticalMarginDrag', handleVerticalMarginDrag);
-context.setCallback('endMarginDrag', endMarginDrag);
-context.setCallback('setMarginBoxesVisible', setMarginBoxesVisible);
-context.setCallback('setZoomPercent', setZoomPercent);
-context.setCallback('updateZoomUIFromState', updateZoomUIFromState);
-context.setCallback('onZoomPointerDown', onZoomPointerDown);
-context.setCallback('onZoomPointerMove', onZoomPointerMove);
-context.setCallback('onZoomPointerUp', onZoomPointerUp);
+context.registerLayoutApi({
+  updateStageEnvironment,
+  renderMargins,
+  positionRulers,
+  setPaperOffset,
+  requestHammerNudge,
+  handleWheelPan,
+  handleHorizontalMarginDrag,
+  handleVerticalMarginDrag,
+  endMarginDrag,
+  setMarginBoxesVisible,
+  setZoomPercent,
+  updateZoomUIFromState,
+  onZoomPointerDown,
+  onZoomPointerMove,
+  onZoomPointerUp,
+});
 
 function setDragValue(value) {
   drag = value;
@@ -246,7 +253,6 @@ const editingController = createDocumentEditingController({
   prepareCanvas,
   configureCanvasContext,
   metricsOptions,
-  rebuildAllAtlases: (...args) => contextCallbacks.rebuildAllAtlases(...args),
   setPaperOffset,
   applyDefaultMargins,
   computeColsFromCpi,
@@ -255,6 +261,7 @@ const editingController = createDocumentEditingController({
   requestHammerNudge,
   isZooming: () => zooming,
   resetPagesBlankPreserveSettings,
+  rendererApi,
   viewAdapter,
 });
 
@@ -369,8 +376,10 @@ const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion, invalidateGrain
   edgeBleedConfig: () => EDGE_BLEED,
   grainConfig: () => GRAIN_CFG,
 });
-
-context.setCallback('rebuildAllAtlases', rebuildAllAtlases);
+context.registerRendererApi({
+  rebuildAllAtlases,
+  invalidateGrainCache,
+});
 
 const stageLayoutApi = createStageLayoutController({
   context,
@@ -420,6 +429,8 @@ const {
   getBatchDepth: () => batchDepth,
   getInkSectionOrder,
 });
+
+context.registerRendererApi({ schedulePaint });
 
 Object.assign(rendererHooks, { markRowAsDirty, schedulePaint });
 
@@ -788,7 +799,9 @@ function applyMetricsNow(full=false){
     ephemeral.primedMetricsAreFallback = false;
   }
   if (deltaTopMu) shiftDocumentRows(deltaTopMu);
-  contextCallbacks.rebuildAllAtlases();
+  if (typeof rendererApi.rebuildAllAtlases === 'function') {
+    rendererApi.rebuildAllAtlases();
+  }
   for (const p of state.pages){
     p.grainCanvas = null;
     p.grainForSize = { w:0, h:0, key: null };

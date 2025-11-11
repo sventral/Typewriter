@@ -1,3 +1,14 @@
+const noop = () => {};
+
+function assignApi(target, partial) {
+  if (!partial) return;
+  for (const key of Object.keys(target)) {
+    if (typeof partial[key] === 'function') {
+      target[key] = partial[key];
+    }
+  }
+}
+
 export function createAppContext({ app, state, metrics, ephemeral }) {
   const scalars = {
     GRID_H: metrics.GRID_H,
@@ -11,24 +22,28 @@ export function createAppContext({ app, state, metrics, ephemeral }) {
     BASELINE_OFFSET_CELL: metrics.BASELINE_OFFSET_CELL,
   };
 
-  const callbacks = {
-    rebuildAllAtlases: () => {},
-    schedulePaint: () => {},
-    renderMargins: () => {},
-    updateStageEnvironment: () => {},
-    positionRulers: () => {},
-    setPaperOffset: () => {},
-    requestHammerNudge: () => {},
-    handleWheelPan: () => {},
-    handleHorizontalMarginDrag: () => {},
-    handleVerticalMarginDrag: () => {},
-    endMarginDrag: () => {},
-    setMarginBoxesVisible: () => {},
-    setZoomPercent: () => {},
-    updateZoomUIFromState: () => {},
-    onZoomPointerDown: () => {},
-    onZoomPointerMove: () => {},
-    onZoomPointerUp: () => {},
+  const rendererApi = {
+    rebuildAllAtlases: noop,
+    schedulePaint: noop,
+    invalidateGrainCache: noop,
+  };
+
+  const layoutApi = {
+    updateStageEnvironment: noop,
+    renderMargins: noop,
+    positionRulers: noop,
+    setPaperOffset: noop,
+    requestHammerNudge: noop,
+    handleWheelPan: noop,
+    handleHorizontalMarginDrag: noop,
+    handleVerticalMarginDrag: noop,
+    endMarginDrag: noop,
+    setMarginBoxesVisible: noop,
+    setZoomPercent: noop,
+    updateZoomUIFromState: noop,
+    onZoomPointerDown: noop,
+    onZoomPointerMove: noop,
+    onZoomPointerUp: noop,
   };
 
   const context = {
@@ -38,10 +53,13 @@ export function createAppContext({ app, state, metrics, ephemeral }) {
     scalars,
     ephemeral,
     touchedPages: ephemeral?.touchedPages || new Set(),
-    callbacks,
     controllers: {
       layoutAndZoom: null,
       lifecycle: null,
+    },
+    apis: {
+      renderer: rendererApi,
+      layout: layoutApi,
     },
     getScalar(key) {
       return scalars[key];
@@ -49,13 +67,17 @@ export function createAppContext({ app, state, metrics, ephemeral }) {
     setScalar(key, value) {
       scalars[key] = value;
     },
-    setCallback(name, fn) {
-      if (name && Object.prototype.hasOwnProperty.call(callbacks, name)) {
-        callbacks[name] = typeof fn === 'function' ? fn : callbacks[name];
-      }
+    getRendererApi() {
+      return rendererApi;
     },
-    getCallback(name) {
-      return callbacks[name];
+    registerRendererApi(partial) {
+      assignApi(rendererApi, partial);
+    },
+    getLayoutApi() {
+      return layoutApi;
+    },
+    registerLayoutApi(partial) {
+      assignApi(layoutApi, partial);
     },
   };
 
