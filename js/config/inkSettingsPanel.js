@@ -367,6 +367,8 @@ const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
   return acc;
 }, {});
 
+const CURRENT_STYLE_STATE_ID = 'current-style';
+
 function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
   const base = Array.isArray(order) ? order : [];
   const seen = new Set();
@@ -477,9 +479,11 @@ const panelState = {
   exportButton: null,
   importButton: null,
   importInput: null,
+  resetButton: null,
   sectionsRoot: null,
   sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   dragState: null,
+  persistDepth: 0,
 };
 
 const HEX_MATCH_RE = /seed|hash/i;
@@ -628,6 +632,12 @@ function createDefaultStyleRecord(index = 0) {
     };
   });
   return record;
+}
+
+const DEFAULT_STYLE_SNAPSHOT = createDefaultStyleRecord(0);
+
+function cloneDefaultStyleSnapshot() {
+  return deepCloneValue(DEFAULT_STYLE_SNAPSHOT);
 }
 
 function getSavedStyles() {
@@ -860,6 +870,12 @@ function isHexField(path) {
 
 function getAppState() {
   return panelState.appState;
+}
+
+function getCurrentStyleFromState() {
+  const appState = getAppState();
+  if (!appState || !appState.currentInkStyle) return null;
+  return normalizeStyleRecord(appState.currentInkStyle, 0);
 }
 
 function getSectionOrderFromState() {
@@ -1756,7 +1772,31 @@ function buildSection(def, root) {
   return meta;
 }
 
+function snapshotCurrentStyleToState() {
+  const appState = getAppState();
+  if (!appState) return null;
+  const existingId = typeof appState.currentInkStyle?.id === 'string'
+    ? appState.currentInkStyle.id
+    : CURRENT_STYLE_STATE_ID;
+  const snapshot = createStyleSnapshot('Current style', existingId);
+  if (snapshot) {
+    appState.currentInkStyle = snapshot;
+  }
+  return snapshot;
+}
+
+function runWithPersistSuppressed(fn) {
+  panelState.persistDepth = (panelState.persistDepth || 0) + 1;
+  try {
+    return typeof fn === 'function' ? fn() : undefined;
+  } finally {
+    panelState.persistDepth = Math.max(0, (panelState.persistDepth || 0) - 1);
+  }
+}
+
 function persistPanelState() {
+  if (panelState.persistDepth > 0) return;
+  snapshotCurrentStyleToState();
   if (typeof panelState.saveState === 'function') {
     panelState.saveState();
   }
@@ -2169,53 +2209,121 @@ function removeSavedStyle(styleId) {
   renderSavedStylesList();
 }
 
+function resetInkSettingsToDefaults() {
+  const snapshot = cloneDefaultStyleSnapshot();
+  applyStyleSnapshot(snapshot, { persist: true, rememberLoaded: false, updateStyleName: true, refreshList: true });
+}
+
+function handleResetInkSettings() {
+  let confirmed = true;
+  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    confirmed = window.confirm('Reset all ink settings to their default values?');
+  }
+  if (!confirmed) return;
+  resetInkSettingsToDefaults();
+}
+
+function applyStyleSnapshot(style, options = {}) {
+  if (!style) return;
+  const workingStyle = deepCloneValue(style);
+  if (!workingStyle) return;
+  const {
+    persist = true,
+    rememberLoaded = false,
+    updateStyleName = true,
+    refreshList = persist,
+    focusLoadedStyle = rememberLoaded && workingStyle.id ? workingStyle.id : null,
+  } = options;
+
+  const applyCore = () => {
+    if (Array.isArray(workingStyle.sectionOrder) && workingStyle.sectionOrder.length) {
+      applySectionOrder(style.sectionOrder, {
+        syncDom: true,
+        silent: persist ? false : true,
+      });
+    }
+    if (Number.isFinite(workingStyle.overall)) {
+      setOverallStrength(workingStyle.overall);
+    }
+    SECTION_DEFS.forEach((def) => {
+      const meta = findMetaById(def.id);
+      if (!meta) return;
+      const section = workingStyle.sections && workingStyle.sections[def.id];
+      if (def.id === 'fill') {
+        const fillConfig = section && section.config
+          ? normalizeFillConfig(section.config, workingStyle)
+          : normalizeFillConfig(null, workingStyle);
+        applyConfigToTarget(meta.config, fillConfig);
+        applyFillConfigToState(meta.config, { silent: true });
+        syncFillConfigValues();
+        syncInputs(meta);
+        scheduleRefreshForMeta(meta, { forceRebuild: true });
+      } else if (section && section.config) {
+        applyConfigToTarget(meta.config, section.config);
+        syncInputs(meta);
+        scheduleRefreshForMeta(meta, { forceRebuild: true });
+      } else {
+        syncInputs(meta);
+      }
+      const rawStrength = section && section.strength;
+      const strengthSource = def.id === 'fill'
+        ? (rawStrength ?? workingStyle.fillStrength)
+        : rawStrength;
+      const strength = Number(strengthSource);
+      if (meta.hasStrengthControl && Number.isFinite(strength)) {
+        applySectionStrength(meta, strength);
+      }
+      if (meta.qualityControl && Number.isFinite(section?.quality)) {
+        applySectionQuality(meta, section.quality);
+      }
+    });
+    if (rememberLoaded && workingStyle.id) {
+      panelState.lastLoadedStyleId = workingStyle.id;
+    } else if (!rememberLoaded) {
+      panelState.lastLoadedStyleId = null;
+    }
+    if (updateStyleName && panelState.styleNameInput) {
+      panelState.styleNameInput.value = workingStyle.name || 'Current style';
+      panelState.styleNameInput.classList.remove('input-error');
+    }
+  };
+
+  const runAndMaybeRefresh = () => {
+    applyCore();
+    if (refreshList) {
+      renderSavedStylesList({ focusId: focusLoadedStyle });
+    }
+  };
+
+  if (persist) {
+    runAndMaybeRefresh();
+  } else {
+    runWithPersistSuppressed(runAndMaybeRefresh);
+  }
+}
+
 function applySavedStyle(styleId) {
   const styles = getSavedStyles();
   const style = styles.find(s => s && s.id === styleId);
   if (!style) return;
-  if (Array.isArray(style.sectionOrder) && style.sectionOrder.length) {
-    applySectionOrder(style.sectionOrder);
-  }
-  if (Number.isFinite(style.overall)) {
-    setOverallStrength(style.overall);
-  }
-  SECTION_DEFS.forEach(def => {
-    const meta = findMetaById(def.id);
-    if (!meta) return;
-    const section = style.sections && style.sections[def.id];
-    if (def.id === 'fill') {
-      const fillConfig = section && section.config
-        ? normalizeFillConfig(section.config, style)
-        : normalizeFillConfig(null, style);
-      applyConfigToTarget(meta.config, fillConfig);
-      applyFillConfigToState(meta.config, { silent: true });
-      syncFillConfigValues();
-      syncInputs(meta);
-      scheduleRefreshForMeta(meta, { forceRebuild: true });
-    } else if (section && section.config) {
-      applyConfigToTarget(meta.config, section.config);
-      syncInputs(meta);
-      scheduleRefreshForMeta(meta, { forceRebuild: true });
-    }
-    const rawStrength = section && section.strength;
-    const strengthSource = def.id === 'fill'
-      ? (rawStrength ?? style.fillStrength)
-      : rawStrength;
-    const strength = Number(strengthSource);
-    if (meta.hasStrengthControl && Number.isFinite(strength)) {
-      applySectionStrength(meta, strength);
-    }
-    if (meta.qualityControl && Number.isFinite(section?.quality)) {
-      applySectionQuality(meta, section.quality);
-    }
+  applyStyleSnapshot(style, { persist: true, rememberLoaded: true, refreshList: true, focusLoadedStyle: style.id });
+}
+
+export function hydrateInkSettingsFromState(options = {}) {
+  if (!panelState.initialized) return;
+  const fromState = getCurrentStyleFromState();
+  const usedFallback = !fromState;
+  const snapshot = usedFallback ? cloneDefaultStyleSnapshot() : deepCloneValue(fromState);
+  if (!snapshot) return;
+  applyStyleSnapshot(snapshot, {
+    persist: false,
+    rememberLoaded: false,
+    updateStyleName: options.updateStyleName !== false,
+    refreshList: options.refreshList === true,
   });
-  panelState.lastLoadedStyleId = styleId;
-  if (panelState.styleNameInput) {
-    panelState.styleNameInput.value = style.name;
-    panelState.styleNameInput.classList.remove('input-error');
+  if (usedFallback) {
+    snapshotCurrentStyleToState();
   }
-  persistPanelState();
-  renderSavedStylesList();
 }
 
 export function getInkEffectFactor() {
@@ -2456,6 +2564,7 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.exportButton = document.getElementById('inkStyleExportBtn');
   panelState.importButton = document.getElementById('inkStyleImportBtn');
   panelState.importInput = document.getElementById('inkStyleImportInput');
+  panelState.resetButton = document.getElementById('inkStyleResetBtn');
   panelState.sectionsRoot = sectionsRoot;
 
   panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
@@ -2481,6 +2590,9 @@ export function setupInkSettingsPanel(options = {}) {
   if (panelState.importButton && panelState.importInput) {
     panelState.importButton.addEventListener('click', () => panelState.importInput.click());
     panelState.importInput.addEventListener('change', handleImportInputChange);
+  }
+  if (panelState.resetButton) {
+    panelState.resetButton.addEventListener('click', handleResetInkSettings);
   }
 
   if (panelState.appState) {

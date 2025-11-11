@@ -8,6 +8,7 @@ import {
   persistDocuments,
 } from '../../document/documentStore.js';
 import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../../state/saveRevision.js';
+import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/inkSettingsPanel.js';
 
 export function createDocumentControls({
   app,
@@ -173,6 +174,8 @@ export function createDocumentControls({
     }
     docState.activeId = doc.id;
     refreshDocumentEnvironment();
+    refreshSavedInkStylesUI();
+    hydrateInkSettingsFromState({ updateStyleName: true });
     syncDocumentUi();
     if (!loaded) {
       queueDirtySave();
