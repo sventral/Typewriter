@@ -17,9 +17,11 @@ export function exportRepoStyleConfig(config) {
         rim: config.ink?.rim,
         rimCurve: config.ink?.rimCurve,
         ribbon: {
-          amp: config.ribbon?.amp,
-          period: config.ribbon?.period,
-          sharp: config.ribbon?.sharp,
+          height: config.ribbon?.height,
+          position: config.ribbon?.position,
+          delta: config.ribbon?.delta,
+          fade: config.ribbon?.fade,
+          wobble: config.ribbon?.wobble,
         },
         vBias: {
           vertical: config.bias?.vertical,
