@@ -30,7 +30,6 @@ const DOM_ID_GROUPS = {
     inkWhiteBtn: 'inkWhiteBtn',
     inkSettingsBtn: 'inkSettingsBtn',
     inkSettingsPanel: 'inkSettingsPanel',
-    grainInput: 'grainPct',
     inkBlackSliderPopup: 'inkBlackSliderPopup',
     inkRedSliderPopup: 'inkRedSliderPopup',
     inkWhiteSliderPopup: 'inkWhiteSliderPopup',

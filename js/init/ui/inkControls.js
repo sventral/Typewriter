@@ -1,4 +1,3 @@
-import { clamp } from '../../utils/math.js';
 import { refreshSavedInkStylesUI, syncInkStrengthDisplays, hydrateInkSettingsFromState } from '../../config/inkSettingsPanel.js';
 import {
   GLYPH_JITTER_DEFAULTS,
@@ -116,23 +115,6 @@ export function createInkControls({
 
     document.body.addEventListener('pointerdown', () => {
       [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup].forEach((p) => p?.classList.remove('active'));
-    });
-  }
-
-  function bindGrainInput() {
-    if (!app.grainInput) return;
-    app.grainInput.addEventListener('input', () => {
-      const v = clamp(parseInt(app.grainInput.value || '0', 10), 0, 100);
-      app.grainInput.value = String(v);
-      state.grainPct = v;
-      queueDirtySave();
-      for (const p of state.pages) {
-        if (p.active) {
-          p.dirtyAll = true;
-          schedulePaint(p);
-        }
-      }
-      syncInkStrengthDisplays('grain');
     });
   }
 
@@ -259,7 +241,6 @@ export function createInkControls({
   function bindInkControls() {
     bindOpacitySliders();
     bindInkButtons();
-    bindGrainInput();
     bindDialogToggles();
     bindGlyphJitterControls();
     bindAppearanceControls();
@@ -268,10 +249,6 @@ export function createInkControls({
   function applyInkDefaults(loaded) {
     if (loaded) return;
     state.inkOpacity = { b: 100, r: 100, w: 100 };
-    state.edgeFuzzStrength = 100;
-    state.grainPct = 100;
-    state.grainSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
-    state.altSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
     state.glyphJitterEnabled = GLYPH_JITTER_DEFAULTS.enabled;
     state.glyphJitterAmountPct = normalizeGlyphJitterAmount(GLYPH_JITTER_DEFAULTS.amountPct, GLYPH_JITTER_DEFAULTS.amountPct);
     state.glyphJitterFrequencyPct = normalizeGlyphJitterFrequency(GLYPH_JITTER_DEFAULTS.frequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
@@ -297,12 +274,6 @@ export function createInkControls({
     if (app.glyphJitterFrequencyMin) app.glyphJitterFrequencyMin.value = formatNumberForInput(jitterFrequency.min, 1);
     if (app.glyphJitterFrequencyMax) app.glyphJitterFrequencyMax.value = formatNumberForInput(jitterFrequency.max, 1);
     setGlyphJitterInputsDisabled(app, !state.glyphJitterEnabled);
-
-    if (app.grainInput) {
-      const sanitizedGrain = clamp(Math.round(Number(state.grainPct ?? 0)), 0, 100);
-      state.grainPct = sanitizedGrain;
-      app.grainInput.value = String(sanitizedGrain);
-    }
 
     if (app.appearanceAuto) app.appearanceAuto.checked = !['light', 'dark'].includes(state.themeMode);
     if (app.appearanceLight) app.appearanceLight.checked = state.themeMode === 'light';
