@@ -1,4 +1,4 @@
-import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_INTENSITY, INK_TEXTURE, normalizeEdgeBleedConfig, normalizeInkTextureConfig } from './inkConfig.js';
+import { EDGE_BLEED, INK_INTENSITY, INK_TEXTURE, normalizeEdgeBleedConfig, normalizeInkTextureConfig } from './inkConfig.js';
 
 const sanitizedInkTextureDefaults = normalizeInkTextureConfig(INK_TEXTURE);
 Object.assign(INK_TEXTURE, sanitizedInkTextureDefaults);
@@ -271,6 +271,12 @@ const VISIBLE_SECTION_DEFS = SECTION_DEFS.filter(def => !def.hidden);
 const DEFAULT_SECTION_ORDER = VISIBLE_SECTION_DEFS.map(def => def.id);
 const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
   acc[def.id] = def;
+  return acc;
+}, {});
+const SECTION_STATE_KEY_MAP = SECTION_DEFS.reduce((acc, def) => {
+  if (def.stateKey) {
+    acc[def.id] = def.stateKey;
+  }
   return acc;
 }, {});
 
@@ -1604,17 +1610,13 @@ function scheduleGlyphRefresh(rebuild = true) {
 function scheduleRefreshForMeta(meta, options = {}) {
   if (!meta) return;
   if (meta.trigger === 'glyph') {
-    const needsFullRebuild = options.forceRebuild === true
-      ? true
-      : options.forceRebuild === false
-        ? false
-        : meta.id !== 'fuzz';
+    const needsFullRebuild = options.forceRebuild === false ? false : true;
     scheduleGlyphRefresh(needsFullRebuild);
   }
 }
 
 function applySectionStrength(meta, percent, options = {}) {
-  if (!meta) return;
+  if (!meta || !SECTION_STATE_KEY_MAP[meta.id]) return;
   const pct = clamp(Math.round(Number(percent) || 0), 0, 100);
   const shouldSyncCheckbox = options.syncCheckbox !== false && options.syncSlider !== false;
   if (shouldSyncCheckbox && meta.checkbox) {
@@ -2074,14 +2076,6 @@ export function getInkEffectFactor() {
   return normalizedPercent(pct);
 }
 
-function getFillStrengthPercent() {
-  return getPercentFromState('inkFillStrength', 100);
-}
-
-function getFillStrengthFactor() {
-  return normalizedPercent(getFillStrengthPercent());
-}
-
 function getCenterThickenPercent() {
   const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY.centerThicken : null;
   const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
@@ -2106,9 +2100,7 @@ export function getCenterThickenFactor() {
   const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
   const maxBase = Number.isFinite(source?.maxPct) ? source.maxPct : 200;
   const max = Math.max(maxBase, min);
-  const base = clamp(pct / 100, min / 100, max / 100);
-  const strength = getFillStrengthFactor();
-  return 1 + (base - 1) * strength;
+  return clamp(pct / 100, min / 100, max / 100);
 }
 
 export function getEdgeThinFactor() {
@@ -2117,47 +2109,23 @@ export function getEdgeThinFactor() {
   const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
   const maxBase = Number.isFinite(source?.maxPct) ? source.maxPct : 200;
   const max = Math.max(maxBase, min);
-  const base = clamp(pct / 100, min / 100, max / 100);
-  const strength = getFillStrengthFactor();
-  return 1 + (base - 1) * strength;
+  return clamp(pct / 100, min / 100, max / 100);
 }
 
 export function getInkSectionStrength(sectionId) {
-  switch (sectionId) {
-    case 'fill':
-      return getFillStrengthFactor();
-    case 'texture':
-      return normalizedPercent(getPercentFromState('inkTextureStrength', INK_TEXTURE.enabled === false ? 0 : 100));
-    case 'fuzz':
-      return normalizedPercent(getPercentFromState('edgeFuzzStrength', 100));
-    case 'bleed':
-      return normalizedPercent(getPercentFromState('edgeBleedStrength', EDGE_BLEED.enabled === false ? 0 : 100));
-    case 'grain':
-      return normalizedPercent(getPercentFromState('grainPct', GRAIN_CFG.enabled === false ? 0 : 100));
-    case 'expTone':
-      return normalizedPercent(getPercentFromState('expToneStrength', 100));
-    case 'expEdge':
-      return normalizedPercent(getPercentFromState('expEdgeStrength', 100));
-    case 'expGrain':
-      return normalizedPercent(getPercentFromState('expGrainStrength', 100));
-    case 'expDefects':
-      return normalizedPercent(getPercentFromState('expDefectsStrength', 100));
-    default:
-      return 1;
-  }
+  const stateKey = SECTION_STATE_KEY_MAP[sectionId];
+  if (!stateKey) return 1;
+  const fallback = Number.isFinite(SECTION_DEF_MAP[sectionId]?.defaultStrength)
+    ? SECTION_DEF_MAP[sectionId].defaultStrength
+    : 100;
+  return normalizedPercent(getPercentFromState(stateKey, fallback));
 }
 
 export function isInkSectionEnabled(sectionId) {
-  const strength = getInkSectionStrength(sectionId);
-  if (sectionId === 'fill') return strength > 0;
-  if (sectionId === 'grain') return strength > 0 && GRAIN_CFG.enabled !== false;
-  if (sectionId === 'texture') return strength > 0 && INK_TEXTURE.enabled !== false;
-  if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
-  if (sectionId === 'bleed') return strength > 0 && EDGE_BLEED.enabled !== false;
-  if (sectionId === 'expTone' || sectionId === 'expEdge' || sectionId === 'expGrain' || sectionId === 'expDefects') {
-    return strength > 0;
+  if (!SECTION_STATE_KEY_MAP[sectionId]) {
+    return true;
   }
-  return strength > 0;
+  return getInkSectionStrength(sectionId) > 0;
 }
 
 export function getInkSectionOrder() {
