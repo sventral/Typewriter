@@ -1,7 +1,4 @@
-import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_TEXTURE } from '../../config/inkConfig.js';
 import {
-  getCenterThickenFactor,
-  getEdgeThinFactor,
   getInkEffectFactor,
   getInkSectionStrength,
   getInkSectionOrder,
@@ -38,18 +35,12 @@ export function registerRenderingControllers(options) {
     getStateZoom: () => state.zoom,
     isSafari: safariEnv.isSafari,
     safariSupersampleThreshold: safariEnv.supersampleThreshold,
-    getCenterThickenFactor,
-    getEdgeThinFactor,
     getInkEffectFactor,
     getInkSectionStrength,
     getInkSectionOrder,
     getExperimentalEffectsConfig,
     getExperimentalQualitySettings,
     isInkSectionEnabled,
-    inkTextureConfig: () => INK_TEXTURE,
-    edgeFuzzConfig: () => EDGE_FUZZ,
-    edgeBleedConfig: () => EDGE_BLEED,
-    grainConfig: () => GRAIN_CFG,
   });
 
   context.registerRendererApi({
