@@ -9,27 +9,6 @@ Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
 const INPUT_OVERRIDES = {
-  'fill.centerThickenPct': {
-    type: 'range',
-    min: () => CENTER_THICKEN_LIMITS.min,
-    max: () => CENTER_THICKEN_LIMITS.max,
-    step: 1,
-    precision: 0,
-  },
-  'fill.edgeThinPct': {
-    type: 'range',
-    min: () => EDGE_THIN_LIMITS.min,
-    max: () => EDGE_THIN_LIMITS.max,
-    step: 1,
-    precision: 0,
-  },
-  'grain.scale': { type: 'range', min: 0.25, max: 3, step: 0.05, precision: 2 },
-  'grain.gamma': { type: 'range', min: 0.2, max: 3, step: 0.05, precision: 2 },
-  'grain.opacity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'grain.blend_mode': {
-    type: 'enum-range',
-    options: ['destination-out', 'multiply', 'screen', 'overlay', 'soft-light'],
-  },
   'expTone.ink.pressureMid': { type: 'range', min: 0, max: 1.6, step: 0.01, precision: 2 },
   'expTone.ink.pressureVar': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
   'expTone.ink.inkGamma': { type: 'range', min: 0.4, max: 2.5, step: 0.01, precision: 2 },
@@ -91,26 +70,7 @@ function getInputOverride(sectionId, path) {
   return override;
 }
 
-function resolveIntensityConfig(key) {
-  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
-  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
-  const max = Number.isFinite(source?.maxPct) ? Math.max(source.maxPct, min) : Math.max(200, min);
-  const defaultPct = Number.isFinite(source?.defaultPct) ? source.defaultPct : 100;
-  return {
-    min,
-    max,
-    defaultPct: clamp(defaultPct, min, max),
-  };
-}
-
-const CENTER_THICKEN_LIMITS = resolveIntensityConfig('centerThicken');
-const EDGE_THIN_LIMITS = resolveIntensityConfig('edgeThin');
-
-const FILL_CFG = {
-  enabled: true,
-  centerThickenPct: CENTER_THICKEN_LIMITS.defaultPct,
-  edgeThinPct: EDGE_THIN_LIMITS.defaultPct,
-};
+// Classic fill helpers have been removed; experimental sections manage their own config.
 
 const EXPERIMENTAL_EFFECTS_CONFIG = {
   enable: {
@@ -255,59 +215,6 @@ const EXP_DEFECT_KEYS = [
 
 const SECTION_DEFS = [
   {
-    id: 'fill',
-    label: 'Fill',
-    hidden: true,
-    config: FILL_CFG,
-    keyOrder: [
-      { path: 'centerThickenPct', label: 'Center thickening' },
-      { path: 'edgeThinPct', label: 'Edge thinning' },
-    ],
-    trigger: 'glyph',
-    stateKey: 'inkFillStrength',
-    defaultStrength: 100,
-  },
-  {
-    id: 'texture',
-    label: 'Texture',
-    hidden: true,
-    config: INK_TEXTURE,
-    keyOrder: ['supersample', 'coarseNoise', 'fineNoise', 'noiseSmoothing', 'centerEdgeBias', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
-    trigger: 'glyph',
-    stateKey: 'inkTextureStrength',
-    defaultStrength: INK_TEXTURE.enabled === false ? 0 : 100,
-  },
-  {
-    id: 'fuzz',
-    label: 'Edge Fuzz',
-    hidden: true,
-    config: EDGE_FUZZ,
-    keyOrder: ['inks', 'widthPx', 'inwardShare', 'roughness', 'frequency', 'opacity', 'seed'],
-    trigger: 'glyph',
-    stateKey: 'edgeFuzzStrength',
-    defaultStrength: 100,
-  },
-  {
-    id: 'bleed',
-    label: 'Bleed',
-    hidden: true,
-    config: EDGE_BLEED,
-    keyOrder: ['inks', 'widthPx', 'feather', 'lightnessShift', 'noiseRoughness', 'intensity', 'seed'],
-    trigger: 'glyph',
-    stateKey: 'edgeBleedStrength',
-    defaultStrength: EDGE_BLEED.enabled === false ? 0 : 100,
-  },
-  {
-    id: 'grain',
-    label: 'Grain',
-    hidden: true,
-    config: GRAIN_CFG,
-    keyOrder: ['scale', 'gamma', 'opacity', 'blend_mode', 'tile', 'base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'alpha', 'seeds'],
-    trigger: 'grain',
-    stateKey: 'grainPct',
-    defaultStrength: 0,
-  },
-  {
     id: 'expTone',
     label: 'Tone & ribbon',
     mode: 'experimental',
@@ -392,77 +299,11 @@ function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
   return normalized;
 }
 
-function clampFillPercent(value, limits) {
-  const raw = Number(value);
-  const min = limits?.min ?? 0;
-  const max = limits?.max ?? Math.max(min, 200);
-  if (!Number.isFinite(raw)) {
-    return clamp(limits?.defaultPct ?? 100, min, max);
-  }
-  return clamp(Math.round(raw), min, max);
-}
-
-function normalizeFillConfig(config, styleFallback = {}) {
-  const src = config && typeof config === 'object' ? config : {};
-  const fallback = styleFallback && typeof styleFallback === 'object' ? styleFallback : {};
-  const centerFallbacks = [
-    src.centerThicken,
-    src.centerThickenPct,
-    fallback.centerThicken,
-    fallback.centerThickenPct,
-  ];
-  const edgeFallbacks = [
-    src.edgeThin,
-    src.edgeThinPct,
-    fallback.edgeThin,
-    fallback.edgeThinPct,
-  ];
-  const resolveValue = (candidates, limits) => {
-    for (const candidate of candidates) {
-      const num = Number(candidate);
-      if (Number.isFinite(num)) {
-        return clampFillPercent(num, limits);
-      }
-    }
-    return clampFillPercent(limits.defaultPct, limits);
-  };
-  const centerThickenPct = resolveValue(centerFallbacks, CENTER_THICKEN_LIMITS);
-  const edgeThinPct = resolveValue(edgeFallbacks, EDGE_THIN_LIMITS);
-  return {
-    enabled: src.enabled === false ? false : true,
-    centerThickenPct,
-    edgeThinPct,
-  };
-}
-
-function syncFillConfigValues() {
-  FILL_CFG.centerThickenPct = getCenterThickenPercent();
-  FILL_CFG.edgeThinPct = getEdgeThinPercent();
-  FILL_CFG.enabled = getFillStrengthPercent() > 0;
-}
-
-function applyFillConfigToState(config, options = {}) {
-  if (!config || typeof config !== 'object') return;
-  const { silent = false } = options;
-  if (Number.isFinite(Number(config.centerThickenPct))) {
-    setCenterThickenPercent(config.centerThickenPct, { silent: true, updateConfig: false });
-  }
-  if (Number.isFinite(Number(config.edgeThinPct))) {
-    setEdgeThinPercent(config.edgeThinPct, { silent: true, updateConfig: false });
-  }
-  if (!silent) {
-    syncFillConfigValues();
-    scheduleGlyphRefresh();
-    persistPanelState();
-  }
-}
-
 const panelState = {
   appState: null,
   app: null,
   callbacks: {
     refreshGlyphs: null,
-    refreshGrain: null,
   },
   metas: [],
   initialized: false,
@@ -470,7 +311,6 @@ const panelState = {
   overallSlider: null,
   overallNumberInput: null,
   pendingGlyphRAF: 0,
-  pendingGrainRAF: 0,
   pendingGlyphOptions: null,
   styleNameInput: null,
   saveStyleButton: null,
@@ -555,8 +395,6 @@ function normalizeStyleRecord(style, index = 0) {
       id: typeof style?.id === 'string' && style.id.trim() ? style.id.trim() : generateStyleId(),
       name: sanitizeStyleName(style?.name) || `Style ${index + 1}`,
       overall: clamp(Math.round(Number(style?.overall ?? 100)), 0, 100),
-      centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
-      edgeThin: EDGE_THIN_LIMITS.defaultPct,
       sections: {},
       sectionOrder: normalizeSectionOrder(style?.sectionOrder),
     };
@@ -565,38 +403,12 @@ function normalizeStyleRecord(style, index = 0) {
         ? style.sections[def.id]
         : (style && typeof style === 'object' && typeof style[def.id] === 'object' ? style[def.id] : null);
       const section = rawSection && typeof rawSection === 'object' ? rawSection : {};
-      if (def.id === 'fill') {
-        const legacyFill = style && typeof style.fill === 'object' ? style.fill : null;
-        const fillSource = section && Object.keys(section).length ? section : (legacyFill || {});
-        const rawStrength = fillSource?.strength ?? style?.fillStrength ?? legacyFill?.value ?? legacyFill?.percent;
-        const strength = clamp(Math.round(Number.isFinite(Number(rawStrength)) ? Number(rawStrength) : def.defaultStrength ?? 100), 0, 100);
-        const configCandidate = fillSource?.config != null
-          ? fillSource.config
-          : fillSource?.settings != null
-            ? fillSource.settings
-            : ('strength' in fillSource ? null : fillSource);
-        const normalizedFill = normalizeFillConfig(configCandidate, style);
-        normalizedFill.enabled = normalizedFill.enabled && strength > 0;
-        record.centerThicken = normalizedFill.centerThickenPct;
-        record.edgeThin = normalizedFill.edgeThinPct;
-        record.fillStrength = strength;
-        record.sections[def.id] = {
-          strength,
-          config: deepCloneValue(normalizedFill),
-        };
-        return;
-      }
       const strength = clamp(Math.round(Number(section?.strength ?? def.defaultStrength ?? 0)), 0, 100);
       let configSource = section.config != null
         ? section.config
         : section.settings != null
           ? section.settings
           : ('strength' in section ? def.config : section);
-      if (def.id === 'texture') {
-        configSource = normalizeInkTextureConfig(configSource);
-      } else if (def.id === 'bleed') {
-        configSource = normalizeEdgeBleedConfig(configSource);
-      }
       record.sections[def.id] = {
         strength,
         config: deepCloneValue(configSource == null ? def.config : configSource),
@@ -619,9 +431,6 @@ function createDefaultStyleRecord(index = 0) {
     id: generateStyleId(),
     name: index === 0 ? 'Current style' : `Style ${index + 1}`,
     overall: 100,
-    fillStrength: 100,
-    centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
-    edgeThin: EDGE_THIN_LIMITS.defaultPct,
     sections: {},
     sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   };
@@ -668,9 +477,6 @@ function createStyleSnapshot(name, existingId = null) {
     id: existingId || generateStyleId(),
     name,
     overall: getPercentFromState('effectsOverallStrength', 100),
-    fillStrength: getFillStrengthPercent(),
-    centerThicken: getCenterThickenPercent(),
-    edgeThin: getEdgeThinPercent(),
     sections: {},
     sectionOrder: Array.isArray(panelState.sectionOrder)
       ? panelState.sectionOrder.slice()
@@ -1382,33 +1188,9 @@ function parseInputValue(input, path) {
   return input.value;
 }
 
-function attachFillRealtimeHandler(meta, path, input) {
-  if (!meta || meta.id !== 'fill') return false;
-  if (!input || (path !== 'centerThickenPct' && path !== 'edgeThinPct')) return false;
-  const setter = path === 'centerThickenPct' ? setCenterThickenPercent : setEdgeThinPercent;
-  const handleRealtimeUpdate = () => {
-    const value = parseInputValue(input, path);
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return;
-    const pct = setter(numeric);
-    if (Number.isFinite(pct) && input.value !== String(pct)) {
-      input.value = String(pct);
-      if (input.dataset.slider === '1') {
-        updateSliderDisplay(input);
-      }
-    }
-  };
-  input.addEventListener('input', handleRealtimeUpdate);
-  input.addEventListener('change', handleRealtimeUpdate);
-  return true;
-}
-
 function registerMetaInput(meta, path, input) {
   if (!meta || !path || !input) return;
   meta.inputs.set(path, input);
-  if (attachFillRealtimeHandler(meta, path, input)) {
-    return;
-  }
   const applyCurrentSection = () => applySection(meta);
   if (input.type === 'range') {
     input.addEventListener('input', applyCurrentSection);
@@ -1819,14 +1601,6 @@ function scheduleGlyphRefresh(rebuild = true) {
   });
 }
 
-function scheduleGrainRefresh() {
-  if (panelState.pendingGrainRAF || typeof panelState.callbacks.refreshGrain !== 'function') return;
-  panelState.pendingGrainRAF = requestAnimationFrame(() => {
-    panelState.pendingGrainRAF = 0;
-    panelState.callbacks.refreshGrain();
-  });
-}
-
 function scheduleRefreshForMeta(meta, options = {}) {
   if (!meta) return;
   if (meta.trigger === 'glyph') {
@@ -1836,17 +1610,6 @@ function scheduleRefreshForMeta(meta, options = {}) {
         ? false
         : meta.id !== 'fuzz';
     scheduleGlyphRefresh(needsFullRebuild);
-  } else if (meta.trigger === 'grain') {
-    scheduleGrainRefresh();
-  }
-}
-
-function syncGrainInputField(pct) {
-  const app = panelState.app;
-  if (!app || !app.grainInput) return;
-  const normalized = clamp(Math.round(pct), 0, 100);
-  if (app.grainInput.value !== String(normalized)) {
-    app.grainInput.value = String(normalized);
   }
 }
 
@@ -1869,9 +1632,6 @@ function applySectionStrength(meta, percent, options = {}) {
   }
   if (meta.hasStrengthControl && meta.config && typeof meta.config === 'object') {
     meta.config.enabled = pct > 0;
-  }
-  if (meta.id === 'grain') {
-    syncGrainInputField(pct);
   }
   scheduleRefreshForMeta(meta);
   persistPanelState();
@@ -1970,10 +1730,6 @@ function applySection(meta) {
     }
     const value = parseInputValue(input, path);
     setValueByPath(meta.config, path, value);
-  }
-  if (meta.id === 'fill') {
-    applyFillConfigToState(meta.config, { silent: true });
-    syncFillConfigValues();
   }
   scheduleRefreshForMeta(meta, { forceRebuild: true });
   persistPanelState();
@@ -2249,27 +2005,14 @@ function applyStyleSnapshot(style, options = {}) {
       const meta = findMetaById(def.id);
       if (!meta) return;
       const section = workingStyle.sections && workingStyle.sections[def.id];
-      if (def.id === 'fill') {
-        const fillConfig = section && section.config
-          ? normalizeFillConfig(section.config, workingStyle)
-          : normalizeFillConfig(null, workingStyle);
-        applyConfigToTarget(meta.config, fillConfig);
-        applyFillConfigToState(meta.config, { silent: true });
-        syncFillConfigValues();
-        syncInputs(meta);
-        scheduleRefreshForMeta(meta, { forceRebuild: true });
-      } else if (section && section.config) {
+      if (section && section.config) {
         applyConfigToTarget(meta.config, section.config);
         syncInputs(meta);
         scheduleRefreshForMeta(meta, { forceRebuild: true });
       } else {
         syncInputs(meta);
       }
-      const rawStrength = section && section.strength;
-      const strengthSource = def.id === 'fill'
-        ? (rawStrength ?? workingStyle.fillStrength)
-        : rawStrength;
-      const strength = Number(strengthSource);
+      const strength = Number(section?.strength);
       if (meta.hasStrengthControl && Number.isFinite(strength)) {
         applySectionStrength(meta, strength);
       }
@@ -2340,33 +2083,41 @@ function getFillStrengthFactor() {
 }
 
 function getCenterThickenPercent() {
-  return getScalarFromState(
-    'centerThickenPct',
-    CENTER_THICKEN_LIMITS.defaultPct,
-    CENTER_THICKEN_LIMITS.min,
-    CENTER_THICKEN_LIMITS.max,
-  );
+  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY.centerThicken : null;
+  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
+  const maxBase = Number.isFinite(source?.maxPct) ? source.maxPct : 200;
+  const max = Math.max(maxBase, min);
+  const fallback = Number.isFinite(source?.defaultPct) ? clamp(Math.round(source.defaultPct), min, max) : 100;
+  return getScalarFromState('centerThickenPct', fallback, min, max);
 }
 
 function getEdgeThinPercent() {
-  return getScalarFromState(
-    'edgeThinPct',
-    EDGE_THIN_LIMITS.defaultPct,
-    EDGE_THIN_LIMITS.min,
-    EDGE_THIN_LIMITS.max,
-  );
+  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY.edgeThin : null;
+  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
+  const maxBase = Number.isFinite(source?.maxPct) ? source.maxPct : 200;
+  const max = Math.max(maxBase, min);
+  const fallback = Number.isFinite(source?.defaultPct) ? clamp(Math.round(source.defaultPct), min, max) : 100;
+  return getScalarFromState('edgeThinPct', fallback, min, max);
 }
 
 export function getCenterThickenFactor() {
   const pct = getCenterThickenPercent();
-  const base = clamp(pct / 100, CENTER_THICKEN_LIMITS.min / 100, CENTER_THICKEN_LIMITS.max / 100);
+  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY.centerThicken : null;
+  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
+  const maxBase = Number.isFinite(source?.maxPct) ? source.maxPct : 200;
+  const max = Math.max(maxBase, min);
+  const base = clamp(pct / 100, min / 100, max / 100);
   const strength = getFillStrengthFactor();
   return 1 + (base - 1) * strength;
 }
 
 export function getEdgeThinFactor() {
   const pct = getEdgeThinPercent();
-  const base = clamp(pct / 100, EDGE_THIN_LIMITS.min / 100, EDGE_THIN_LIMITS.max / 100);
+  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY.edgeThin : null;
+  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
+  const maxBase = Number.isFinite(source?.maxPct) ? source.maxPct : 200;
+  const max = Math.max(maxBase, min);
+  const base = clamp(pct / 100, min / 100, max / 100);
   const strength = getFillStrengthFactor();
   return 1 + (base - 1) * strength;
 }
@@ -2398,7 +2149,7 @@ export function getInkSectionStrength(sectionId) {
 
 export function isInkSectionEnabled(sectionId) {
   const strength = getInkSectionStrength(sectionId);
-  if (sectionId === 'fill') return strength > 0 && FILL_CFG.enabled !== false;
+  if (sectionId === 'fill') return strength > 0;
   if (sectionId === 'grain') return strength > 0 && GRAIN_CFG.enabled !== false;
   if (sectionId === 'texture') return strength > 0 && INK_TEXTURE.enabled !== false;
   if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
@@ -2443,50 +2194,7 @@ function setOverallStrength(percent) {
   setPercentOnState('effectsOverallStrength', pct);
   syncOverallStrengthUI();
   scheduleGlyphRefresh();
-  scheduleGrainRefresh();
   persistPanelState();
-  return pct;
-}
-
-function setCenterThickenPercent(percent, options = {}) {
-  const { silent = false, updateConfig = true } = options || {};
-  const raw = Number(percent);
-  const pct = clamp(
-    Number.isFinite(raw) ? Math.round(raw) : CENTER_THICKEN_LIMITS.defaultPct,
-    CENTER_THICKEN_LIMITS.min,
-    CENTER_THICKEN_LIMITS.max,
-  );
-  setScalarOnState('centerThickenPct', pct, CENTER_THICKEN_LIMITS.min, CENTER_THICKEN_LIMITS.max);
-  if (updateConfig === false) {
-    syncFillConfigValues();
-  } else {
-    FILL_CFG.centerThickenPct = pct;
-  }
-  if (!silent) {
-    scheduleGlyphRefresh();
-    persistPanelState();
-  }
-  return pct;
-}
-
-function setEdgeThinPercent(percent, options = {}) {
-  const { silent = false, updateConfig = true } = options || {};
-  const raw = Number(percent);
-  const pct = clamp(
-    Number.isFinite(raw) ? Math.round(raw) : EDGE_THIN_LIMITS.defaultPct,
-    EDGE_THIN_LIMITS.min,
-    EDGE_THIN_LIMITS.max,
-  );
-  setScalarOnState('edgeThinPct', pct, EDGE_THIN_LIMITS.min, EDGE_THIN_LIMITS.max);
-  if (updateConfig === false) {
-    syncFillConfigValues();
-  } else {
-    FILL_CFG.edgeThinPct = pct;
-  }
-  if (!silent) {
-    scheduleGlyphRefresh();
-    persistPanelState();
-  }
   return pct;
 }
 
@@ -2499,12 +2207,8 @@ export function syncInkStrengthDisplays(sectionId) {
   if (!panelState.initialized) return;
   if (!sectionId) {
     syncOverallStrengthUI();
-    syncFillConfigValues();
     panelState.metas.forEach(meta => {
       if (!meta) return;
-      if (meta.id === 'fill') {
-        syncInputs(meta);
-      }
       const fallback = meta.defaultStrength ?? 0;
       const pct = getPercentFromState(meta.stateKey, fallback);
       applySectionStrength(meta, pct, { silent: true });
@@ -2514,17 +2218,6 @@ export function syncInkStrengthDisplays(sectionId) {
   }
   if (sectionId === 'overall') {
     syncOverallStrengthUI();
-    return;
-  }
-  if (sectionId === 'fill') {
-    const meta = findMetaById('fill');
-    if (!meta) return;
-    syncFillConfigValues();
-    syncInputs(meta);
-    const fallback = meta.defaultStrength ?? 0;
-    const pct = getPercentFromState(meta.stateKey, fallback);
-    applySectionStrength(meta, pct, { silent: true });
-    syncQualityControl(meta);
     return;
   }
   const meta = findMetaById(sectionId);
@@ -2541,7 +2234,6 @@ export function setupInkSettingsPanel(options = {}) {
     state,
     app,
     refreshGlyphs,
-    refreshGrain,
     saveState,
   } = options || {};
 
@@ -2552,7 +2244,6 @@ export function setupInkSettingsPanel(options = {}) {
     panelState.app = app;
   }
   panelState.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
-  panelState.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
   panelState.saveState = typeof saveState === 'function' ? saveState : null;
 
   const sectionsRoot = document.getElementById('inkSettingsSections');
@@ -2569,8 +2260,6 @@ export function setupInkSettingsPanel(options = {}) {
 
   panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
   setSectionOrderOnState(panelState.sectionOrder);
-
-  syncFillConfigValues();
 
   if (panelState.styleNameInput) {
     panelState.styleNameInput.addEventListener('input', () => panelState.styleNameInput.classList.remove('input-error'));
