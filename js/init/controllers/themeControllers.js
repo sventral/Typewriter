@@ -1,4 +1,3 @@
-import { EDGE_BLEED } from '../../config/inkConfig.js';
 import { createThemeController } from '../../config/themeController.js';
 
 export function registerThemeController(options) {
@@ -25,7 +24,6 @@ export function registerThemeController(options) {
     app,
     state,
     colors,
-    edgeBleed: EDGE_BLEED,
     prefersDarkMedia,
     rebuildAllAtlases,
     touchPage,
