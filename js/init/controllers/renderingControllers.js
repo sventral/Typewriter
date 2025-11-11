@@ -21,7 +21,7 @@ export function registerRenderingControllers(options) {
     safariEnv,
   } = options;
 
-  const { rebuildAllAtlases, drawGlyph, applyGrainOverlayOnRegion, invalidateGrainCache } = createGlyphAtlas({
+  const { rebuildAllAtlases, drawGlyph } = createGlyphAtlas({
     context,
     app,
     state,
@@ -45,12 +45,10 @@ export function registerRenderingControllers(options) {
 
   context.registerRendererApi({
     rebuildAllAtlases,
-    invalidateGrainCache,
   });
 
   const {
     refreshGlyphEffects,
-    refreshGrainEffects,
     markRowAsDirty,
     schedulePaint,
   } = createPageRenderer({
@@ -65,8 +63,6 @@ export function registerRenderingControllers(options) {
     getRenderScale: () => metricsStore.RENDER_SCALE,
     rebuildAllAtlases,
     drawGlyph,
-    applyGrainOverlayOnRegion,
-    invalidateGrainCache,
     lifecycle: context.controllers.lifecycle,
     getCurrentBounds: editing.editingController.getCurrentBounds,
     getBatchDepth: editing.getBatchDepth,
@@ -79,7 +75,6 @@ export function registerRenderingControllers(options) {
 
   return {
     refreshGlyphEffects,
-    refreshGrainEffects,
     schedulePaint,
     rebuildAllAtlases,
   };

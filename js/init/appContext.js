@@ -25,7 +25,6 @@ export function createAppContext({ app, state, metrics, ephemeral }) {
   const rendererApi = {
     rebuildAllAtlases: noop,
     schedulePaint: noop,
-    invalidateGrainCache: noop,
   };
 
   const layoutApi = {

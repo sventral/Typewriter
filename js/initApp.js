@@ -13,7 +13,6 @@ export function initApp() {
     app: environment.app,
     metricsStore: runtime.metricsStore,
     refreshGlyphEffects: controllerBundle.refreshGlyphEffects,
-    refreshGrainEffects: controllerBundle.refreshGrainEffects,
     saveStateDebounced: controllerBundle.saveStateDebounced,
     bootstrapFirstPage: controllerBundle.bootstrapFirstPage,
     loadPersistedState: controllerBundle.loadPersistedState,

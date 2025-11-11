@@ -27,7 +27,6 @@ export function registerRenderingDomain(options) {
     safariEnv,
     publicApi: {
       refreshGlyphEffects: rendering.refreshGlyphEffects,
-      refreshGrainEffects: rendering.refreshGrainEffects,
       schedulePaint: rendering.schedulePaint,
       rebuildAllAtlases: rendering.rebuildAllAtlases,
     },

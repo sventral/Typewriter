@@ -6,7 +6,6 @@ export async function bootstrapUI({
   app,
   metricsStore,
   refreshGlyphEffects,
-  refreshGrainEffects,
   saveStateDebounced,
   bootstrapFirstPage,
   loadPersistedState,
@@ -34,7 +33,6 @@ export async function bootstrapUI({
     state,
     app,
     refreshGlyphs: refreshGlyphEffects,
-    refreshGrain: refreshGrainEffects,
     saveState: persistInkSettings,
   });
 

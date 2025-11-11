@@ -161,7 +161,6 @@ export function registerControllers({
     saveStateNow: editingDomain.persistence.saveStateNow,
     saveStateDebounced: editingDomain.persistence.saveStateDebounced,
     refreshGlyphEffects: renderingDomain.publicApi.refreshGlyphEffects,
-    refreshGrainEffects: renderingDomain.publicApi.refreshGrainEffects,
     bootstrapFirstPage: editingDomain.persistence.bootstrapFirstPage,
     loadPersistedState,
     populateInitialUI,
