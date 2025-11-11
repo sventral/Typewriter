@@ -6,30 +6,13 @@ import {
   normalizeGlyphJitterSeed,
   cloneGlyphJitterRange,
 } from '../config/glyphJitterConfig.js';
-import { EDGE_BLEED, GRAIN_CFG, INK_INTENSITY } from '../config/inkConfig.js';
 import {
   LOW_RES_ZOOM_DEFAULTS,
   normalizeLowResZoomSettings,
   ZOOM_SLIDER_MAX_PCT,
   ZOOM_SLIDER_MIN_PCT,
 } from '../config/lowResZoom.js';
-
-const resolveIntensityBounds = (key) => {
-  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
-  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
-  const max = Number.isFinite(source?.maxPct) ? Math.max(source.maxPct, min) : Math.max(200, min);
-  const value = Number.isFinite(source?.defaultPct) ? source.defaultPct : 100;
-  return {
-    min,
-    max,
-    defaultPct: clamp(value, min, max),
-  };
-};
-
-const CENTER_THICKEN_BOUNDS = resolveIntensityBounds('centerThicken');
-const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
-
-const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'];
+const KNOWN_INK_SECTIONS = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
 const EFFECT_QUALITY_MAX = 200;
@@ -103,15 +86,15 @@ function sanitizeSavedInkStyle(style, index = 0) {
   const sections = {};
   if (style.sections && typeof style.sections === 'object') {
     for (const [sectionId, sectionValue] of Object.entries(style.sections)) {
+      if (!KNOWN_INK_SECTIONS.includes(sectionId)) continue;
       sections[sectionId] = sanitizeStyleSection(sectionValue);
     }
-  } else {
-    KNOWN_INK_SECTIONS.forEach(sectionId => {
-      if (sections[sectionId]) return;
-      if (!style[sectionId] || typeof style[sectionId] !== 'object') return;
-      sections[sectionId] = sanitizeStyleSection(style[sectionId]);
-    });
   }
+  KNOWN_INK_SECTIONS.forEach(sectionId => {
+    if (sections[sectionId]) return;
+    if (!style[sectionId] || typeof style[sectionId] !== 'object') return;
+    sections[sectionId] = sanitizeStyleSection(style[sectionId]);
+  });
   const sectionOrder = normalizeInkSectionOrder(style.sectionOrder);
   return {
     id,
@@ -215,29 +198,6 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
-    inkFillStrength: clamp(Number(state.inkFillStrength ?? 100), 0, 100),
-    centerThickenPct: clamp(
-      Number(state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
-      CENTER_THICKEN_BOUNDS.min,
-      CENTER_THICKEN_BOUNDS.max,
-    ),
-    edgeThinPct: clamp(
-      Number(state.edgeThinPct ?? EDGE_THIN_BOUNDS.defaultPct),
-      EDGE_THIN_BOUNDS.min,
-      EDGE_THIN_BOUNDS.max,
-    ),
-    inkTextureStrength: clamp(Number(state.inkTextureStrength ?? 100), 0, 100),
-    edgeBleedStrength: clamp(
-      Number(state.edgeBleedStrength ?? (EDGE_BLEED.enabled === false ? 0 : 100)),
-      0,
-      100,
-    ),
-    edgeFuzzStrength: clamp(Number(state.edgeFuzzStrength ?? 100), 0, 100),
-    grainPct: clamp(
-      Number(state.grainPct ?? (GRAIN_CFG.enabled === false ? 0 : 100)),
-      0,
-      100,
-    ),
     expToneStrength: clamp(Number(state.expToneStrength ?? 100), 0, 100),
     expEdgeStrength: clamp(Number(state.expEdgeStrength ?? 100), 0, 100),
     expGrainStrength: clamp(Number(state.expGrainStrength ?? 100), 0, 100),
@@ -246,8 +206,6 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     expEdgeQuality: clamp(Number(state.expEdgeQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
     expGrainQuality: clamp(Number(state.expGrainQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
     expDefectsQuality: clamp(Number(state.expDefectsQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    grainSeed: state.grainSeed >>> 0,
-    altSeed: state.altSeed >>> 0,
     inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
     wordWrap: state.wordWrap,
     stageWidthFactor: state.stageWidthFactor,
@@ -429,41 +387,6 @@ export function deserializeDocumentState(data, context) {
     lowResZoomSoftCapPct: normalizedLowResZoom.softCapPct ?? LOW_RES_ZOOM_DEFAULTS.softCapPct,
     lowResZoomMarginPct: normalizedLowResZoom.marginPct ?? LOW_RES_ZOOM_DEFAULTS.marginPct,
     effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
-    inkFillStrength: clamp(
-      Number(data.inkFillStrength ?? state.inkFillStrength ?? 100),
-      0,
-      100,
-    ),
-    centerThickenPct: clamp(
-      Number(data.centerThickenPct ?? state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
-      CENTER_THICKEN_BOUNDS.min,
-      CENTER_THICKEN_BOUNDS.max,
-    ),
-    edgeThinPct: clamp(
-      Number(data.edgeThinPct ?? state.edgeThinPct ?? EDGE_THIN_BOUNDS.defaultPct),
-      EDGE_THIN_BOUNDS.min,
-      EDGE_THIN_BOUNDS.max,
-    ),
-    inkTextureStrength: clamp(Number(data.inkTextureStrength ?? state.inkTextureStrength ?? 100), 0, 100),
-    edgeBleedStrength: clamp(
-      Number(
-        data.edgeBleedStrength
-          ?? state.edgeBleedStrength
-          ?? (EDGE_BLEED.enabled === false ? 0 : 100)
-      ),
-      0,
-      100,
-    ),
-    edgeFuzzStrength: clamp(Number(data.edgeFuzzStrength ?? state.edgeFuzzStrength ?? 100), 0, 100),
-    grainPct: clamp(
-      Number(
-        data.grainPct
-          ?? state.grainPct
-          ?? (GRAIN_CFG.enabled === false ? 0 : 100)
-      ),
-      0,
-      100,
-    ),
     expToneStrength: clamp(
       Number(data.expToneStrength ?? state.expToneStrength ?? 100),
       0,
@@ -504,9 +427,6 @@ export function deserializeDocumentState(data, context) {
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    grainSeed: (data.grainSeed >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
-    altSeed:
-      (data.altSeed >>> 0) || (((data.grainSeed >>> 0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
     wordWrap: data.wordWrap !== false,
     stageWidthFactor: sanitizedStageWidth,
     stageHeightFactor: sanitizedStageHeight,
