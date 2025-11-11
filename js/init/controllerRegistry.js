@@ -18,6 +18,7 @@ import {
   isInkSectionEnabled,
 } from '../config/inkSettingsPanel.js';
 import { createDocumentEditingController } from '../document/documentEditing.js';
+import { createDocumentViewAdapter } from '../document/documentViewAdapter.js';
 import { createInputController } from '../document/inputHandlers.js';
 import { createPageLifecycleController } from '../document/pageLifecycle.js';
 import { setupUIBindings } from './uiBindings.js';
@@ -62,6 +63,7 @@ let {
 } = ephemeral;
 const touchedPages = context.touchedPages;
 let layoutZoomFactorRef = () => 1;
+const viewAdapter = createDocumentViewAdapter({ app });
 
 const saveHooks = {
   saveStateNow: () => {},
@@ -253,6 +255,7 @@ const editingController = createDocumentEditingController({
   requestHammerNudge,
   isZooming: () => zooming,
   resetPagesBlankPreserveSettings,
+  viewAdapter,
 });
 
 const {

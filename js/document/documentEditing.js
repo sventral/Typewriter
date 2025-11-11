@@ -45,7 +45,87 @@ export function createDocumentEditingController(context) {
     layoutZoomFactor,
     requestHammerNudge,
     isZooming,
+    viewAdapter,
   } = context;
+
+  const {
+    updateCaretDom,
+    setActivePageIndex,
+    toggleRulers,
+    rebuildStageForNewDocument,
+    setInkButtonsState,
+  } = viewAdapter || {};
+
+  const viewUpdateCaret = ({ pageEl, left, top, height, width }) => {
+    if (typeof updateCaretDom === 'function') {
+      updateCaretDom({ pageEl, left, top, height, width });
+      return;
+    }
+    const caret = app?.caretEl;
+    if (!caret) return;
+    caret.style.left = left + 'px';
+    caret.style.top = top + 'px';
+    caret.style.height = height + 'px';
+    caret.style.width = width + 'px';
+    if (pageEl && caret.parentNode !== pageEl) {
+      caret.remove();
+      pageEl.appendChild(caret);
+    }
+  };
+
+  const viewSetActivePageIndex = (index) => {
+    if (typeof setActivePageIndex === 'function') {
+      setActivePageIndex(index);
+    } else {
+      app.activePageIndex = index;
+    }
+  };
+
+  const viewToggleRulers = (show) => {
+    if (typeof toggleRulers === 'function') {
+      toggleRulers(show);
+    } else {
+      document.body.classList.toggle('rulers-off', !show);
+    }
+  };
+
+  const viewRebuildStageDom = (options) => {
+    if (typeof rebuildStageForNewDocument === 'function') {
+      return rebuildStageForNewDocument(options);
+    }
+    const { pageIndex = 0, pageHeight, showMarginBox, prepareCanvas: prep } = options || {};
+    if (!app.stageInner) return null;
+    app.stageInner.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'page-wrap';
+    wrap.dataset.page = String(pageIndex);
+    const pageEl = document.createElement('div');
+    pageEl.className = 'page';
+    pageEl.style.height = pageHeight + 'px';
+    const canvas = document.createElement('canvas');
+    if (typeof prep === 'function') prep(canvas);
+    const marginBox = document.createElement('div');
+    marginBox.className = 'margin-box';
+    marginBox.style.visibility = showMarginBox ? 'visible' : 'hidden';
+    pageEl.appendChild(canvas);
+    pageEl.appendChild(marginBox);
+    wrap.appendChild(pageEl);
+    app.stageInner.appendChild(wrap);
+    app.firstPageWrap = wrap;
+    app.firstPage = pageEl;
+    app.marginBox = marginBox;
+    return { wrap, pageEl, canvas, marginBox };
+  };
+
+  const viewSetInkState = (ink) => {
+    if (typeof setInkButtonsState === 'function') {
+      setInkButtonsState(ink);
+      return;
+    }
+    if (app.inkBlackBtn) app.inkBlackBtn.dataset.active = String(ink === 'b');
+    if (app.inkRedBtn) app.inkRedBtn.dataset.active = String(ink === 'r');
+    if (app.inkWhiteBtn) app.inkWhiteBtn.dataset.active = String(ink === 'w');
+  };
 
   const recalcMetrics = (face) => recalcMetricsForContext(face, metricsOptions || {});
 
@@ -122,15 +202,14 @@ export function createDocumentEditingController(context) {
     const caretLeft = state.caret.col * getCharWidth() * layoutScale;
     const caretTop = (state.caret.rowMu * getGridHeight() - getBaselineOffsetCell()) * layoutScale;
     const caretHeight = baseCaretHeightPx() * layoutScale;
-    app.caretEl.style.left = caretLeft + 'px';
-    app.caretEl.style.top = caretTop + 'px';
-    app.caretEl.style.height = caretHeight + 'px';
     const caretWidth = Math.max(1, Math.round(2 * layoutScale));
-    app.caretEl.style.width = caretWidth + 'px';
-    if (app.caretEl.parentNode !== p.pageEl) {
-      app.caretEl.remove();
-      p.pageEl.appendChild(app.caretEl);
-    }
+    viewUpdateCaret({
+      pageEl: p.pageEl,
+      left: caretLeft,
+      top: caretTop,
+      height: caretHeight,
+      width: caretWidth,
+    });
     if (!isZooming()) requestHammerNudge();
     requestVirtualization();
   }
@@ -257,16 +336,16 @@ function insertStringFast(s) {
       const moved = attemptWordWrapAtOverflow(state.caret.rowMu, state.caret.page, bounds, true);
       if (!moved) {
         state.caret.col = bounds.L;
-        state.caret.rowMu += state.lineStepMu;
-        if (state.caret.rowMu > bounds.Bmu) {
-          state.caret.page++;
-          const np = state.pages[state.caret.page] || addPage();
-          app.activePageIndex = np.index;
-          requestVirtualization();
-          state.caret.rowMu = bounds.Tmu;
-          state.caret.col = bounds.L;
-          positionRulers();
-        }
+      state.caret.rowMu += state.lineStepMu;
+      if (state.caret.rowMu > bounds.Bmu) {
+        state.caret.page++;
+        const np = state.pages[state.caret.page] || addPage();
+        viewSetActivePageIndex(np.index);
+        requestVirtualization();
+        state.caret.rowMu = bounds.Tmu;
+        state.caret.col = bounds.L;
+        positionRulers();
+      }
       }
     }
     updateCaretPosition();
@@ -279,7 +358,7 @@ function insertStringFast(s) {
     if (state.caret.rowMu > bounds.Bmu) {
       state.caret.page++;
       const np = state.pages[state.caret.page] || addPage();
-      app.activePageIndex = np.index;
+      viewSetActivePageIndex(np.index);
       requestVirtualization();
       state.caret.rowMu = bounds.Tmu;
       state.caret.col = bounds.L;
@@ -297,7 +376,7 @@ function insertStringFast(s) {
       state.caret.col = bounds.R;
     } else if (state.caret.page > 0) {
       state.caret.page--;
-      app.activePageIndex = state.caret.page;
+      viewSetActivePageIndex(state.caret.page);
       state.caret.rowMu = bounds.Bmu;
       state.caret.col = bounds.R;
       positionRulers();
@@ -414,7 +493,7 @@ function insertStringFast(s) {
     if (destRowMu > bounds.Bmu) {
       destPageIndex++;
       const np = state.pages[destPageIndex] || addPage();
-      app.activePageIndex = np.index;
+      viewSetActivePageIndex(np.index);
       requestVirtualization();
       destRowMu = bounds.Tmu;
       positionRulers();
@@ -465,7 +544,7 @@ function insertStringFast(s) {
       if (rowMu > bounds.Bmu) {
         pageIndex++;
         page = state.pages[pageIndex] || addPage();
-        app.activePageIndex = page.index;
+        viewSetActivePageIndex(page.index);
         requestVirtualization();
         rowMu = bounds.Tmu;
         col = bounds.L;
@@ -581,25 +660,16 @@ function insertStringFast(s) {
     state.altSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
     state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
     state.savedInkStyles = [];
-    app.stageInner.innerHTML = '';
-    const wrap = document.createElement('div');
-    wrap.className = 'page-wrap';
-    wrap.dataset.page = '0';
-    const pageEl = document.createElement('div');
-    pageEl.className = 'page';
-    pageEl.style.height = app.PAGE_H + 'px';
-    const cv = document.createElement('canvas');
-    prepareCanvas(cv);
-    const mb = document.createElement('div');
-    mb.className = 'margin-box';
-    mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
-    pageEl.appendChild(cv);
-    pageEl.appendChild(mb);
-    wrap.appendChild(pageEl);
-    app.stageInner.appendChild(wrap);
-    app.firstPageWrap = wrap;
-    app.firstPage = pageEl;
-    app.marginBox = mb;
+    const primaryPage = viewRebuildStageDom({
+      pageIndex: 0,
+      pageHeight: app.PAGE_H,
+      showMarginBox: state.showMarginBox,
+      prepareCanvas,
+    });
+    const wrap = primaryPage?.wrap;
+    const pageEl = primaryPage?.pageEl;
+    const cv = primaryPage?.canvas;
+    const mb = primaryPage?.marginBox;
     const page = makePageRecord(0, wrap, pageEl, cv, mb);
     page.canvas.style.visibility = 'hidden';
     state.pages.push(page);
@@ -617,7 +687,7 @@ function insertStringFast(s) {
     renderMargins();
     clampCaretToBounds();
     updateCaretPosition();
-    document.body.classList.toggle('rulers-off', !state.showRulers);
+    viewToggleRulers(state.showRulers);
     positionRulers();
     requestVirtualization();
     if (!skipSave) {
@@ -630,9 +700,7 @@ function insertStringFast(s) {
 
   function setInk(ink) {
     state.ink = ink;
-    app.inkBlackBtn.dataset.active = String(ink === 'b');
-    app.inkRedBtn.dataset.active = String(ink === 'r');
-    app.inkWhiteBtn.dataset.active = String(ink === 'w');
+    viewSetInkState(ink);
     markDocumentDirty(state);
     saveStateDebounced();
   }
