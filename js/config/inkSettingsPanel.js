@@ -40,8 +40,6 @@ const INPUT_OVERRIDES = {
   'expTone.ribbon.fade': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expTone.ribbon.wobble': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expTone.noise.lfScale': { type: 'range', min: 8, max: 40, step: 0.5, precision: 2 },
-  'expTone.bias.vertical': { type: 'range', min: -1, max: 1, step: 0.01, precision: 2 },
-  'expTone.bias.amount': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expTone.centerEdge.center': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expTone.centerEdge.edge': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expEdge.ink.rim': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
@@ -118,7 +116,6 @@ const EXPERIMENTAL_EFFECTS_CONFIG = {
   enable: {
     toneCore: true,
     toneDynamics: true,
-    vBias: true,
     ribbonBands: true,
     rim: false,
     centerEdge: false,
@@ -146,10 +143,6 @@ const EXPERIMENTAL_EFFECTS_CONFIG = {
     delta: 0.12,
     fade: 0.65,
     wobble: 0.25,
-  },
-  bias: {
-    vertical: -0.84,
-    amount: 0.36,
   },
   noise: {
     lfScale: 22,
@@ -196,7 +189,6 @@ const EXPERIMENTAL_EFFECTS_CONFIG = {
 };
 
 const EXP_TONE_KEYS = [
-  { path: 'enable.toneCore', label: 'Enable tone core' },
   { path: 'enable.toneDynamics', label: 'Enable tone filters' },
   { path: 'ink.pressureMid', label: 'Pressure mid' },
   { path: 'ink.pressureVar', label: 'Pressure variance' },
@@ -209,9 +201,6 @@ const EXP_TONE_KEYS = [
   { path: 'ribbon.delta', label: 'Band tone shift' },
   { path: 'ribbon.fade', label: 'Band edge fade' },
   { path: 'ribbon.wobble', label: 'Band wobble' },
-  { path: 'enable.vBias', label: 'Enable vertical bias' },
-  { path: 'bias.vertical', label: 'Vertical bias' },
-  { path: 'bias.amount', label: 'Bias amount' },
   { path: 'enable.centerEdge', label: 'Enable center/edge shaping' },
   { path: 'centerEdge.center', label: 'Center boost' },
   { path: 'centerEdge.edge', label: 'Edge boost' },

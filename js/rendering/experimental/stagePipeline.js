@@ -456,7 +456,6 @@ export function createExperimentalStagePipeline(deps = {}) {
     const toneCoreEn = !!params.enable.toneCore;
     const toneDynamicsEn = toneCoreEn && params.enable.toneDynamics !== false;
     const ribbonEn = toneCoreEn && params.enable.ribbonBands !== false;
-    const vBiasEn = !!params.enable.vBias;
     const rimEn = !!params.enable.rim;
     const rhythm = 1 + 0.08 * sin((gix % 23) / 23 * tauConst);
     const baseTile = toneDynamicsEn ? detailNoiseCache.getTile({
@@ -534,11 +533,6 @@ export function createExperimentalStagePipeline(deps = {}) {
             const modifier = 1 + bandStrength * bandWeight;
             cov *= modifier <= 0 ? 0 : modifier;
           }
-        }
-        if (vBiasEn) {
-          const vBiasNorm = y / (h - 1) - 0.5;
-          const vb = vBiasNorm * (1 + 0.5 * signFn(vBiasNorm) * vBiasNorm * vBiasNorm);
-          cov *= 1 + params.bias.vertical * (params.bias.amount || 0) * vb * 1.6;
         }
         cov *= 1 + 0 * rhythm + rhythm - 1;
         const rimBoost = rimLUT[(e * 255) | 0];

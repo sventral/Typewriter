@@ -23,10 +23,6 @@ export function exportRepoStyleConfig(config) {
           fade: config.ribbon?.fade,
           wobble: config.ribbon?.wobble,
         },
-        vBias: {
-          vertical: config.bias?.vertical,
-          amount: config.bias?.amount,
-        },
         centerThickenPct: config.centerEdge?.center,
         edgeThinPct: config.centerEdge?.edge,
       },
