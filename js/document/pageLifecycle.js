@@ -262,8 +262,6 @@ export function createPageLifecycleController(context, editingController) {
       _dirtyRowMinMu: undefined,
       _dirtyRowMaxMu: undefined,
       marginBoxEl,
-      grainCanvas: null,
-      grainForSize: { w: 0, h: 0, key: null },
       zoomPreparedFor: (typeof getEffectiveRenderZoom === 'function'
         ? getEffectiveRenderZoom()
         : (state.zoom || 1)),

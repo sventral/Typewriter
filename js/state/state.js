@@ -35,7 +35,6 @@ export function createMainState(app, gridDiv = 8) {
     expEdgeQuality: 100,
     expGrainQuality: 100,
     expDefectsQuality: 100,
-    grainSeed: 0xC0FFEE,
     altSeed: 0x51F15EED,
     inkSectionOrder: DEFAULT_INK_SECTION_ORDER.slice(),
     glyphJitterEnabled: GLYPH_JITTER_DEFAULTS.enabled,
