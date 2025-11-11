@@ -419,11 +419,13 @@ export function createExperimentalStagePipeline(deps = {}) {
     const gammaLUT = getGamma(params.ink.inkGamma);
     const rimLUT = getRim(params.ink.rimCurve);
     const toneCoreEn = !!params.enable.toneCore;
+    const toneDynamicsEn = toneCoreEn && params.enable.toneDynamics !== false;
+    const ribbonEn = toneCoreEn && params.enable.ribbonBands !== false;
     const vBiasEn = !!params.enable.vBias;
     const rimEn = !!params.enable.rim;
     const rPhase = (params.ribbon.phase + (gix % 37) * 0.25) % tauConst;
     const rhythm = 1 + 0.08 * sin((gix % 23) / 23 * tauConst);
-    const baseTile = detailNoiseCache.getTile({
+    const baseTile = toneDynamicsEn ? detailNoiseCache.getTile({
       detailCss,
       width: w,
       height: h,
@@ -432,8 +434,8 @@ export function createExperimentalStagePipeline(deps = {}) {
       seed,
       xOffset: (gix || 0) * 13,
       yOffset: (gix || 0) * 7,
-    });
-    const microTile = detailNoiseCache.getTile({
+    }) : null;
+    const microTile = toneDynamicsEn ? detailNoiseCache.getTile({
       detailCss,
       width: w,
       height: h,
@@ -444,7 +446,9 @@ export function createExperimentalStagePipeline(deps = {}) {
       yMul: 1.3,
       xOffset: seed,
       yOffset: -seed,
-    });
+    }) : null;
+    const ribbonAmp = ribbonEn ? params.ribbon.amp : 0;
+    const applyRibbon = ribbonEn && ribbonAmp > 0;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
@@ -452,14 +456,16 @@ export function createExperimentalStagePipeline(deps = {}) {
         const yCss = y * invDp;
         const a = alpha0[i] / 255;
         const e = edgeMaskFn(alpha0, w, h, x, y);
-        const p = baseTile.data[i];
-        const m = microTile.data[i];
-        const rBand = ribbonShapeFn(yCss, periodPx, params.ribbon.sharp, rPhase);
-        let press = toneCoreEn ? params.ink.pressureMid + params.ink.pressureVar * (p - 0.5) * 2 : 1;
+        const p = toneDynamicsEn ? baseTile.data[i] : 0.5;
+        const m = toneDynamicsEn ? microTile.data[i] : 0.5;
+        const rBand = applyRibbon ? ribbonShapeFn(yCss, periodPx, params.ribbon.sharp, rPhase) : 0.5;
+        let press = toneDynamicsEn
+          ? params.ink.pressureMid + params.ink.pressureVar * (p - 0.5) * 2
+          : 1;
         press = clampFn(press, 0.05, 1.6);
         let cov = a * press;
-        if (toneCoreEn) cov *= 1 + params.ink.toneJitter * ((m - 0.5) * 2);
-        if (params.ribbon.amp > 0) cov *= 1 + params.ribbon.amp * ((rBand - 0.5) * 2);
+        if (toneDynamicsEn) cov *= 1 + params.ink.toneJitter * ((m - 0.5) * 2);
+        if (applyRibbon) cov *= 1 + ribbonAmp * ((rBand - 0.5) * 2);
         if (vBiasEn) {
           const vBiasNorm = y / (h - 1) - 0.5;
           const vb = vBiasNorm * (1 + 0.5 * signFn(vBiasNorm) * vBiasNorm * vBiasNorm);
@@ -468,7 +474,7 @@ export function createExperimentalStagePipeline(deps = {}) {
         cov *= 1 + 0 * rhythm + rhythm - 1;
         const rimBoost = rimLUT[(e * 255) | 0];
         if (rimEn) cov += params.ink.rim * rimBoost * (1 - cov);
-        if (toneCoreEn) {
+        if (toneDynamicsEn) {
           const idx = (clamp01Fn(cov) * 255) | 0;
           cov = gammaLUT[idx];
         }

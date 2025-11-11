@@ -114,7 +114,9 @@ const FILL_CFG = {
 const EXPERIMENTAL_EFFECTS_CONFIG = {
   enable: {
     toneCore: true,
+    toneDynamics: true,
     vBias: true,
+    ribbonBands: true,
     rim: false,
     centerEdge: false,
     grainSpeck: true,
@@ -191,10 +193,12 @@ const EXPERIMENTAL_EFFECTS_CONFIG = {
 
 const EXP_TONE_KEYS = [
   { path: 'enable.toneCore', label: 'Enable tone core' },
+  { path: 'enable.toneDynamics', label: 'Enable tone filters' },
   { path: 'ink.pressureMid', label: 'Pressure mid' },
   { path: 'ink.pressureVar', label: 'Pressure variance' },
   { path: 'ink.inkGamma', label: 'Ink gamma' },
   { path: 'ink.toneJitter', label: 'Tone jitter' },
+  { path: 'enable.ribbonBands', label: 'Enable ribbon banding' },
   { path: 'ribbon.amp', label: 'Ribbon amplitude' },
   { path: 'ribbon.period', label: 'Ribbon period' },
   { path: 'ribbon.sharp', label: 'Ribbon sharpness' },
