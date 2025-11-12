@@ -1,11 +1,3 @@
-import { EDGE_BLEED, INK_INTENSITY, INK_TEXTURE, normalizeEdgeBleedConfig, normalizeInkTextureConfig } from './inkConfig.js';
-
-const sanitizedInkTextureDefaults = normalizeInkTextureConfig(INK_TEXTURE);
-Object.assign(INK_TEXTURE, sanitizedInkTextureDefaults);
-
-const sanitizedEdgeBleedDefaults = normalizeEdgeBleedConfig(EDGE_BLEED);
-Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
-
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
 const INPUT_OVERRIDES = {
@@ -2076,41 +2068,6 @@ export function getInkEffectFactor() {
   return normalizedPercent(pct);
 }
 
-function getCenterThickenPercent() {
-  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY.centerThicken : null;
-  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
-  const maxBase = Number.isFinite(source?.maxPct) ? source.maxPct : 200;
-  const max = Math.max(maxBase, min);
-  const fallback = Number.isFinite(source?.defaultPct) ? clamp(Math.round(source.defaultPct), min, max) : 100;
-  return getScalarFromState('centerThickenPct', fallback, min, max);
-}
-
-function getEdgeThinPercent() {
-  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY.edgeThin : null;
-  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
-  const maxBase = Number.isFinite(source?.maxPct) ? source.maxPct : 200;
-  const max = Math.max(maxBase, min);
-  const fallback = Number.isFinite(source?.defaultPct) ? clamp(Math.round(source.defaultPct), min, max) : 100;
-  return getScalarFromState('edgeThinPct', fallback, min, max);
-}
-
-export function getCenterThickenFactor() {
-  const pct = getCenterThickenPercent();
-  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY.centerThicken : null;
-  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
-  const maxBase = Number.isFinite(source?.maxPct) ? source.maxPct : 200;
-  const max = Math.max(maxBase, min);
-  return clamp(pct / 100, min / 100, max / 100);
-}
-
-export function getEdgeThinFactor() {
-  const pct = getEdgeThinPercent();
-  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY.edgeThin : null;
-  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
-  const maxBase = Number.isFinite(source?.maxPct) ? source.maxPct : 200;
-  const max = Math.max(maxBase, min);
-  return clamp(pct / 100, min / 100, max / 100);
-}
 
 export function getInkSectionStrength(sectionId) {
   const stateKey = SECTION_STATE_KEY_MAP[sectionId];
