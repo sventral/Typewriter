@@ -41,44 +41,15 @@ export function createPageRenderer(options) {
     ? getInkSectionOrder
     : (() => ['expTone', 'expEdge', 'expGrain', 'expDefects']);
 
-  function computeEffectOverrides(stack) {
-    const preferWhiteEffects = !!state.inkEffectsPreferWhite;
-    if (!preferWhiteEffects || !Array.isArray(stack) || stack.length < 2) {
-      return null;
-    }
-    let seenWhiteAbove = false;
-    let seenDarkAbove = false;
-    let anyOverrides = false;
-    const overrides = new Array(stack.length);
-    for (let i = stack.length - 1; i >= 0; i--) {
-      const glyph = stack[i];
-      if (!glyph) continue;
-      const ink = glyph.ink || 'b';
-      const isDarkInk = ink !== 'w';
-      if (ink === 'w') {
-        if (preferWhiteEffects && seenDarkAbove) {
-          overrides[i] = 'disabled';
-          anyOverrides = true;
-        }
-        seenWhiteAbove = true;
-      } else if (isDarkInk) {
-        seenDarkAbove = true;
-      }
-    }
-    return anyOverrides ? overrides : null;
-  }
-
   function drawGlyphStack(ctx, stack, x, baseline, pageIndex, rowMu, col) {
     if (!Array.isArray(stack) || stack.length === 0) return;
     const gridHeight = getGridHeightFn();
     const jitterOffset = computeGlyphJitterOffset(state, pageIndex, rowMu, col, gridHeight);
     const baselineAdjusted = Number.isFinite(jitterOffset) ? baseline + jitterOffset : baseline;
-    const overrides = computeEffectOverrides(stack);
     for (let k = 0; k < stack.length; k++) {
       const glyph = stack[k];
       if (!glyph) continue;
-      const effectOverride = overrides ? overrides[k] : undefined;
-      drawGlyph(ctx, glyph.char, glyph.ink || 'b', x, baselineAdjusted, k, stack.length, pageIndex, rowMu, col, effectOverride);
+      drawGlyph(ctx, glyph.char, glyph.ink || 'b', x, baselineAdjusted, k, stack.length, pageIndex, rowMu, col, undefined);
     }
   }
 
