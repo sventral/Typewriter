@@ -60,12 +60,10 @@ export function createGlyphAtlas(options) {
   const ALT_VARIANTS = 9;
   const experimentalAtlases = new Map();
   const experimentalProcessorCache = new Map();
-  window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
 
   function rebuildAllAtlases() {
     experimentalAtlases.clear();
     experimentalProcessorCache.clear();
-    window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
   }
 
   function djb2(str) {
@@ -930,7 +928,6 @@ export function createGlyphAtlas(options) {
       rectDpByCode,
     };
     experimentalAtlases.set(key, atlas);
-    window.atlasStats.builds++;
     return atlas;
   }
 
@@ -962,8 +959,6 @@ export function createGlyphAtlas(options) {
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = finalAlpha;
     ctx.drawImage(atlas.canvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, atlas.cellW_css, atlas.cellH_css);
-    window.atlasStats.draws++;
-    window.atlasStats.perInk[ink] = (window.atlasStats.perInk[ink] || 0) + 1;
   }
 
   if (typeof context?.registerRendererApi === 'function') {
