@@ -43,28 +43,44 @@ export function createPageLifecycleController(context, editingController) {
   let pageVisibilityObserver = null;
   const PAGE_VISIBILITY_ROOT_MARGIN = '96px 0px 96px 0px';
 
-  const pageResizeObserver = (typeof ResizeObserver === 'function')
+  const stageResizeTargets = new WeakSet();
+  let currentStageResizeTarget = null;
+
+  const geometryResizeObserver = (typeof ResizeObserver === 'function')
     ? new ResizeObserver((entries) => {
+        let stageResizeDetected = false;
         for (const entry of entries) {
+          if (stageResizeTargets.has(entry.target)) {
+            stageResizeDetected = true;
+            continue;
+          }
           const page = pageByWrap.get(entry.target);
           if (page) {
             markPageGeometryDirty(page);
           }
         }
+        if (stageResizeDetected) {
+          markAllPageGeometryDirty();
+        }
       })
     : null;
 
-  const stageResizeObserver = (typeof ResizeObserver === 'function' && app.stageInner)
-    ? new ResizeObserver(() => {
-        markAllPageGeometryDirty();
-      })
-    : null;
-
-  if (stageResizeObserver && app.stageInner) {
+  function observeStageResizeTarget(target) {
+    if (!geometryResizeObserver || !target || target === currentStageResizeTarget) return;
+    if (currentStageResizeTarget) {
+      try {
+        geometryResizeObserver.unobserve(currentStageResizeTarget);
+      } catch {}
+      stageResizeTargets.delete(currentStageResizeTarget);
+    }
+    stageResizeTargets.add(target);
+    currentStageResizeTarget = target;
     try {
-      stageResizeObserver.observe(app.stageInner);
+      geometryResizeObserver.observe(target);
     } catch {}
   }
+
+  observeStageResizeTarget(app.stageInner);
 
   function handlePageVisibilityEntries(entries) {
     for (const entry of entries) {
@@ -270,8 +286,8 @@ export function createPageLifecycleController(context, editingController) {
     const handler = (e) => handlePageClick(e, idx);
     pageEl.addEventListener('mousedown', handler, { capture: false });
     canvas.addEventListener('mousedown', handler, { capture: false });
-    if (pageResizeObserver && wrapEl) {
-      try { pageResizeObserver.observe(wrapEl); } catch {}
+    if (geometryResizeObserver && wrapEl) {
+      try { geometryResizeObserver.observe(wrapEl); } catch {}
     }
     pageByWrap.set(wrapEl, page);
     observePageVisibility(page);
@@ -294,6 +310,7 @@ export function createPageLifecycleController(context, editingController) {
     pageEl.appendChild(mb);
     wrap.appendChild(pageEl);
     app.stageInner.appendChild(wrap);
+    observeStageResizeTarget(app.stageInner);
     const page = makePageRecord(idx, wrap, pageEl, canvas, mb);
     page.canvas.style.visibility = 'hidden';
     state.pages.push(page);
@@ -307,6 +324,7 @@ export function createPageLifecycleController(context, editingController) {
     const pageEl = app.firstPage;
     pageEl.style.height = app.PAGE_H + 'px';
     const canvas = pageEl.querySelector('canvas');
+    observeStageResizeTarget(app.stageInner);
     const page = makePageRecord(0, app.firstPageWrap, pageEl, canvas, app.marginBox);
     page.canvas.style.visibility = 'hidden';
     page.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
@@ -318,6 +336,7 @@ export function createPageLifecycleController(context, editingController) {
     resetVisiblePageTracking({ disconnectObserver: true });
     state.pages = [];
     app.stageInner.innerHTML = '';
+    observeStageResizeTarget(app.stageInner);
     const wrap = document.createElement('div');
     wrap.className = 'page-wrap';
     wrap.dataset.page = '0';
