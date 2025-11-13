@@ -42,8 +42,10 @@ export function createPageRenderer(options) {
     : (() => ['expTone', 'expEdge', 'expGrain', 'expDefects']);
 
   function computeEffectOverrides(stack) {
-    if (!Array.isArray(stack) || stack.length < 2) return null;
     const preferWhiteEffects = !!state.inkEffectsPreferWhite;
+    if (!preferWhiteEffects || !Array.isArray(stack) || stack.length < 2) {
+      return null;
+    }
     let seenWhiteAbove = false;
     let seenDarkAbove = false;
     let anyOverrides = false;
@@ -60,10 +62,6 @@ export function createPageRenderer(options) {
         }
         seenWhiteAbove = true;
       } else if (isDarkInk) {
-        if (!preferWhiteEffects && seenWhiteAbove) {
-          overrides[i] = 'disabled';
-          anyOverrides = true;
-        }
         seenDarkAbove = true;
       }
     }
