@@ -147,7 +147,6 @@ body[data-page-tone='dark']{
 @font-face{ font-family: "TT2020StyleB"; src: url("./fonts/TT2020StyleB-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face{ font-family: "TT2020StyleD"; src: url("./fonts/TT2020StyleD-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face{ font-family: "TT2020StyleE"; src: url("./fonts/TT2020StyleE-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face{ font-family: "TT2020StyleF"; src: url("./fonts/TT2020StyleF-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face{ font-family: "TT2020StyleG"; src: url("./fonts/TT2020StyleG-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 
   html,body{margin:0;height:100%;background:var(--stage-bg);font:16px system-ui, -apple-system, sans-serif;color:var(--ui-text)}
