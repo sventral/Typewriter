@@ -68,90 +68,12 @@ export function createGlyphAtlas(options) {
     window.atlasStats = { builds: 0, draws: 0, perInk: { b: 0, r: 0, w: 0 } };
   }
 
-function djb2(str) {
-  let h = 5381 >>> 0;
-  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
-  return h >>> 0;
-}
-
-  function hash2(ix, iy, seed) {
-    let h = seed | 0;
-    h ^= Math.imul(ix | 0, 0x9E3779B1);
-    h ^= Math.imul((iy | 0) ^ 0x85EBCA77, 0xC2B2AE3D);
-    h = (h ^ (h >>> 16)) >>> 0;
-    return h / 4294967296;
+  function djb2(str) {
+    let h = 5381 >>> 0;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+    return h >>> 0;
   }
 
-  function smoothstep(t) {
-    return t * t * (3 - 2 * t);
-  }
-
-  function valueNoise2D(x, y, scale, seed) {
-    const gx = x / scale;
-    const gy = y / scale;
-    const x0 = Math.floor(gx);
-    const y0 = Math.floor(gy);
-    const x1 = x0 + 1;
-    const y1 = y0 + 1;
-    const sx = smoothstep(gx - x0);
-    const sy = smoothstep(gy - y0);
-    const n00 = hash2(x0, y0, seed);
-    const n10 = hash2(x1, y0, seed);
-    const n01 = hash2(x0, y1, seed);
-    const n11 = hash2(x1, y1, seed);
-    const nx0 = n00 + (n10 - n00) * sx;
-    const nx1 = n01 + (n11 - n01) * sx;
-    return nx0 + (nx1 - nx0) * sy;
-  }
-
-  function tileableValueNoise2D(x, y, scale, seed, periodX, periodY) {
-    if (!(periodX > 0) || !(periodY > 0)) {
-      return valueNoise2D(x, y, scale, seed);
-    }
-    const wrapX = x - periodX;
-    const wrapY = y - periodY;
-    const blendX = clamp(x / periodX, 0, 1);
-    const blendY = clamp(y / periodY, 0, 1);
-    const n00 = valueNoise2D(x, y, scale, seed);
-    const n10 = valueNoise2D(wrapX, y, scale, seed);
-    const n01 = valueNoise2D(x, wrapY, scale, seed);
-    const n11 = valueNoise2D(wrapX, wrapY, scale, seed);
-    const nx0 = n00 + (n10 - n00) * blendX;
-    const nx1 = n01 + (n11 - n01) * blendX;
-    return nx0 + (nx1 - nx0) * blendY;
-  }
-
-  function tileableHash2(x, y, seed, periodX, periodY) {
-    if (!(periodX > 0) || !(periodY > 0)) {
-      return hash2(Math.floor(x), Math.floor(y), seed);
-    }
-    const wrapX = x - periodX;
-    const wrapY = y - periodY;
-    const blendX = clamp(x / periodX, 0, 1);
-    const blendY = clamp(y / periodY, 0, 1);
-    const h00 = hash2(Math.floor(x), Math.floor(y), seed);
-    const h10 = hash2(Math.floor(wrapX), Math.floor(y), seed);
-    const h01 = hash2(Math.floor(x), Math.floor(wrapY), seed);
-    const h11 = hash2(Math.floor(wrapX), Math.floor(wrapY), seed);
-    const hx0 = h00 + (h10 - h00) * blendX;
-    const hx1 = h01 + (h11 - h01) * blendX;
-    return hx0 + (hx1 - hx0) * blendY;
-  }
-
-  function randomOffset(seed, size, salt) {
-    if (!(size > 0)) return 0;
-    const mix = ((seed >>> 0) ^ (salt >>> 0)) >>> 0;
-    const h = hash2(mix & 0xFFFF, (mix >>> 16) & 0xFFFF, mix ^ 0x9E3779B1);
-    return Math.floor(h * size) % size;
-  }
-
-  function normalizeDirection(dir) {
-    if (!dir) return { x: 1, y: 0 };
-    const x = Number.isFinite(dir.x) ? dir.x : 1;
-    const y = Number.isFinite(dir.y) ? dir.y : 0;
-    const len = Math.hypot(x, y) || 1;
-    return { x: x / len, y: y / len };
-  }
 
   function downsampleImageData(imageData, scale, outW, outH) {
     const width = imageData.width;
@@ -186,23 +108,6 @@ function djb2(str) {
       }
     }
     return new ImageData(out, outW, outH);
-  }
-
-  function lightenHexColor(hex, factor) {
-    if (typeof hex !== 'string' || !hex.startsWith('#')) return hex;
-    const norm = hex.length === 4
-      ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
-      : hex;
-    const num = Number.parseInt(norm.slice(1), 16);
-    if (!Number.isFinite(num)) return hex;
-    const r = (num >> 16) & 0xFF;
-    const g = (num >> 8) & 0xFF;
-    const b = num & 0xFF;
-    const f = clamp(factor, 0, 1);
-    const rn = Math.round(r + (255 - r) * f);
-    const gn = Math.round(g + (255 - g) * f);
-    const bn = Math.round(b + (255 - b) * f);
-    return `rgb(${rn},${gn},${bn})`;
   }
 
   function parseColorToRgb(color) {
