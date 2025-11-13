@@ -271,7 +271,6 @@ export function registerEditingControllers(options) {
     () => 'TT2020StyleB',
     () => 'TT2020StyleD',
     () => 'TT2020StyleE',
-    () => 'TT2020StyleF',
     () => 'TT2020StyleG',
     () => 'Courier New',
     () => 'Courier',
