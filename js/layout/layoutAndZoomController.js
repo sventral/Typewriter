@@ -1,5 +1,7 @@
 import { clamp } from '../utils/math.js';
 import { markDocumentDirty } from '../state/saveRevision.js';
+import { createZoomRenderManager } from './zoomRenderManager.js';
+import { createZoomUiController } from './zoomUiController.js';
 
 export function createLayoutAndZoomController(context, pageLifecycle, editingController) {
   const {
@@ -45,10 +47,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   const { clampCaretToBounds } = editingController;
 
   let hammerNudgeRAF = 0;
-  let zoomDrag = null;
-  let zoomIndicatorTimer = null;
-  let pendingZoomRedrawRAF = 0;
-  let pendingZoomRedrawIsTimeout = false;
   let pendingRulerRAF1 = 0;
   let pendingRulerRAF2 = 0;
   let lastRulerSnapshot = null;
@@ -62,88 +60,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let pendingPaperOffsetWorkRAF = 0;
   const lastMarginInsets = { top: null, right: null, bottom: null, left: null };
   let lastPageHeightPx = '';
-
-  const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
-  let zoomMeasurements = null;
-  let zoomMeasurementsDirty = true;
-  let zoomMeasurementsObserver = null;
-
-  function refreshZoomMeasurements({ force = false } = {}) {
-    if (!force && !zoomMeasurementsDirty && zoomMeasurements && Number.isFinite(zoomMeasurements.height) && zoomMeasurements.height > 0) {
-      return zoomMeasurements;
-    }
-    zoomMeasurementsDirty = false;
-    if (!app.zoomTrack) {
-      zoomMeasurements = null;
-      zoomMeasurementsDirty = true;
-      return null;
-    }
-    const trackRect = app.zoomTrack.getBoundingClientRect();
-    const thumbRect = app.zoomThumb?.getBoundingClientRect();
-    zoomMeasurements = {
-      top: trackRect.top,
-      height: trackRect.height,
-      thumbHeight: thumbRect?.height || DEFAULT_ZOOM_THUMB_HEIGHT,
-    };
-    return zoomMeasurements;
-  }
-
-  function ensureZoomMeasurements() {
-    if (zoomMeasurementsDirty || !zoomMeasurements || !Number.isFinite(zoomMeasurements.height) || zoomMeasurements.height <= 0) {
-      return refreshZoomMeasurements();
-    }
-    return zoomMeasurements;
-  }
-
-  function markZoomMeasurementsDirty() {
-    zoomMeasurementsDirty = true;
-  }
-
-  function setupZoomMeasurementTracking() {
-    if (!app.zoomTrack) {
-      zoomMeasurements = null;
-      markZoomMeasurementsDirty();
-      return;
-    }
-    refreshZoomMeasurements({ force: true });
-    if (typeof ResizeObserver !== 'function' || zoomMeasurementsObserver) return;
-    zoomMeasurementsObserver = new ResizeObserver(() => {
-      markZoomMeasurementsDirty();
-      refreshZoomMeasurements({ force: true });
-      updateZoomUIFromState();
-    });
-    zoomMeasurementsObserver.observe(app.zoomTrack);
-    if (app.zoomThumb) zoomMeasurementsObserver.observe(app.zoomThumb);
-  }
-
-  function clearPendingZoomRedrawFrame() {
-    if (!pendingZoomRedrawRAF) return;
-    if (pendingZoomRedrawIsTimeout) {
-      clearTimeout(pendingZoomRedrawRAF);
-    } else if (typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(pendingZoomRedrawRAF);
-    }
-    pendingZoomRedrawRAF = 0;
-    pendingZoomRedrawIsTimeout = false;
-  }
-
-  function scheduleZoomRedrawFrame(callback) {
-    if (typeof requestAnimationFrame === 'function') {
-      pendingZoomRedrawIsTimeout = false;
-      pendingZoomRedrawRAF = requestAnimationFrame((timestamp) => {
-        pendingZoomRedrawRAF = 0;
-        pendingZoomRedrawIsTimeout = false;
-        callback(timestamp);
-      });
-    } else {
-      pendingZoomRedrawIsTimeout = true;
-      pendingZoomRedrawRAF = setTimeout(() => {
-        pendingZoomRedrawRAF = 0;
-        pendingZoomRedrawIsTimeout = false;
-        callback(Date.now());
-      }, 16);
-    }
-  }
 
   function updateRulerHostDimensions(stageW, stageH) {
     if (!app.rulerH_host || !app.rulerV_host) return;
@@ -388,6 +304,36 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       schedule();
     }
   }
+
+  const zoomRenderManager = createZoomRenderManager({
+    state,
+    app,
+    prepareCanvas,
+    configureCanvasContext,
+    getEffectiveRenderZoom,
+    schedulePaint,
+    rebuildAllAtlases,
+    setFreezeVirtual,
+    requestVirtualization,
+    requestHammerNudge,
+    isSafari,
+    syncSafariZoomLayout,
+    stageLayoutSetSafariZoomMode,
+    getZooming,
+    setZooming,
+    getZoomDebounceTimer,
+    setZoomDebounceTimer,
+    setRenderScaleForZoom,
+    documentVerticalSpanPx,
+  });
+
+  const { scheduleZoomCrispRedraw } = zoomRenderManager;
+
+  let updateZoomUIFromState = () => {};
+  let onZoomPointerDown = () => {};
+  let onZoomPointerMove = () => {};
+  let onZoomPointerUp = () => {};
+  let setupZoomMeasurementTracking = () => {};
 
   function computeSnappedVisualMargins() {
     const charWidth = getCharWidth();
@@ -686,23 +632,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   }
 
   const Z_MIN = 50;
-  const Z_KNEE = 100;
   const Z_MAX = 400;
-  const N_KNEE = 1 / 3;
-  const LOG2 = Math.log(2);
-  const LOG4 = Math.log(4);
-
-const zFromNorm = (n) => {
-  const clamped = Math.max(0, Math.min(1, n));
-  if (clamped <= N_KNEE) return 50 * Math.pow(2, clamped / N_KNEE);
-  return 100 * Math.pow(4, (clamped - N_KNEE) / (1 - N_KNEE));
-};
-
-const normFromZ = (pct) => {
-  let p = Math.max(Z_MIN, Math.min(Z_MAX, pct));
-  if (p <= Z_KNEE) return (Math.log(p / 50) / LOG2) * N_KNEE;
-  return N_KNEE + (Math.log(p / 100) / LOG4) * (1 - N_KNEE);
-};
 
   const detent = (p) => (Math.abs(p - 100) <= 6 ? 100 : p);
 
@@ -712,144 +642,6 @@ const normFromZ = (pct) => {
     updateRulerHostDimensions(dims.width, dims.height);
     positionRulers();
     requestVirtualization();
-  }
-
-  function showZoomIndicator() {
-    if (!app.zoomIndicator) return;
-    app.zoomIndicator.textContent = `${Math.round(state.zoom * 100)}%`;
-    app.zoomIndicator.classList.add('show');
-    if (zoomIndicatorTimer) clearTimeout(zoomIndicatorTimer);
-    zoomIndicatorTimer = setTimeout(() => app.zoomIndicator.classList.remove('show'), 700);
-  }
-
-  function updateZoomUIFromState() {
-    if (!app.zoomTrack || !app.zoomFill || !app.zoomThumb) return;
-    const measurements = ensureZoomMeasurements();
-    if (!measurements || !measurements.height) return;
-    const { height: H, thumbHeight: th } = measurements;
-    const n = normFromZ(state.zoom * 100);
-    const fillH = n * H;
-    app.zoomFill.style.height = `${fillH}px`;
-    const y = (H - fillH) - th / 2;
-    app.zoomThumb.style.top = `${Math.max(-th / 2, Math.min(H - th / 2, y))}px`;
-    showZoomIndicator();
-  }
-
-  function runBatchedZoomRedraw() {
-    const seen = new Set();
-    const priority = [];
-    const rest = [];
-
-    const enqueue = (page, target) => {
-      if (!page || seen.has(page)) return;
-      seen.add(page);
-      target.push(page);
-    };
-
-    const activeIndex = Number.isInteger(app.activePageIndex) ? app.activePageIndex : null;
-    if (activeIndex != null) enqueue(state.pages[activeIndex], priority);
-
-    const caretIndex = Number.isInteger(state.caret?.page) ? state.caret.page : null;
-    if (caretIndex != null) enqueue(state.pages[caretIndex], priority);
-
-    for (const page of state.pages) {
-      if (page?.active) enqueue(page, priority);
-    }
-
-    for (const page of state.pages) enqueue(page, rest);
-
-    if (!priority.length && rest.length) {
-      priority.push(rest.shift());
-    }
-
-    const now =
-      typeof performance !== 'undefined' && typeof performance.now === 'function'
-        ? () => performance.now()
-        : () => Date.now();
-
-    const prepPage = (page) => {
-      if (!page) return;
-      if (page.canvas) prepareCanvas(page.canvas);
-      if (page.backCanvas) prepareCanvas(page.backCanvas);
-      if (page.ctx) configureCanvasContext(page.ctx);
-      if (page.backCtx) configureCanvasContext(page.backCtx);
-      const effectiveZoom = typeof getEffectiveRenderZoom === 'function'
-        ? getEffectiveRenderZoom()
-        : (state.zoom || 1);
-      page.zoomPreparedFor = effectiveZoom;
-      page.dirtyAll = true;
-      if (page.active) schedulePaint(page);
-    };
-
-    for (const page of priority) prepPage(page);
-
-    rebuildAllAtlases();
-
-    let finalized = false;
-    const finalize = () => {
-      if (finalized) return;
-      finalized = true;
-      setFreezeVirtual(false);
-      requestVirtualization();
-      requestHammerNudge();
-      if (isSafari) syncSafariZoomLayout(true);
-    };
-
-    finalize();
-
-    if (!rest.length) {
-      return;
-    }
-
-    let index = 0;
-
-    const processBatch = () => {
-      const start = now();
-      const budgetMs = 7;
-      while (index < rest.length) {
-        const page = rest[index++];
-        prepPage(page);
-        if (now() - start >= budgetMs) break;
-      }
-
-      if (index < rest.length) {
-        scheduleZoomRedrawFrame(processBatch);
-      }
-    };
-
-    scheduleZoomRedrawFrame(processBatch);
-  }
-
-  function zoomRedrawDebounceDelay() {
-    const BASE_DELAY_MS = 160;
-    const MIN_DELAY_MS = 60;
-    const pageCount = Array.isArray(state.pages) ? state.pages.length : 0;
-    if (!pageCount) return BASE_DELAY_MS;
-    const docSpan = documentVerticalSpanPx();
-    const approxPages = Number.isFinite(docSpan) && docSpan > 0 ? docSpan / app.PAGE_H : pageCount;
-    const reduction = Math.min(90, Math.max(0, (approxPages - 1) * 12));
-    const adjusted = BASE_DELAY_MS - reduction;
-    return adjusted > MIN_DELAY_MS ? adjusted : MIN_DELAY_MS;
-  }
-
-  function scheduleZoomCrispRedraw() {
-    const existing = getZoomDebounceTimer();
-    if (existing) clearTimeout(existing);
-    clearPendingZoomRedrawFrame();
-    const debounceDelay = zoomRedrawDebounceDelay();
-    const timer = setTimeout(() => {
-      setZoomDebounceTimer(null);
-      if (getZooming()) {
-        scheduleZoomCrispRedraw();
-        return;
-      }
-      setZooming(false);
-      requestHammerNudge();
-      setRenderScaleForZoom();
-      if (isSafari) stageLayoutSetSafariZoomMode('steady', { force: true });
-      runBatchedZoomRedraw();
-    }, debounceDelay);
-    setZoomDebounceTimer(timer);
   }
 
   function setZoomPercent(pct) {
@@ -874,41 +666,24 @@ const normFromZ = (pct) => {
     saveStateDebounced();
   }
 
-  const percentFromPointer = (clientY) => {
-    if (!app.zoomTrack) return state.zoom * 100;
-    const measurements = ensureZoomMeasurements();
-    if (!measurements || !measurements.height) return state.zoom * 100;
-    const y = clamp(clientY - measurements.top, 0, measurements.height);
-    return zFromNorm(1 - y / measurements.height);
-  };
+  const zoomUiController = createZoomUiController({
+    app,
+    state,
+    isSafari,
+    setZoomPercent,
+    setZooming,
+    setFreezeVirtual,
+    setSafariZoomMode,
+    scheduleZoomCrispRedraw,
+  });
 
-  function onZoomPointerDown(e) {
-    if (!app.zoomThumb || !app.zoomTrack) return;
-    e.preventDefault();
-    refreshZoomMeasurements();
-    setZooming(true);
-    setFreezeVirtual(true);
-    if (isSafari) setSafariZoomMode('transient', { force: true });
-    if (e.target === app.zoomThumb) {
-      zoomDrag = { from: 'thumb', id: e.pointerId };
-      app.zoomThumb.setPointerCapture && app.zoomThumb.setPointerCapture(e.pointerId);
-    } else {
-      zoomDrag = { from: 'track', id: e.pointerId };
-    }
-    setZoomPercent(percentFromPointer(e.clientY));
-  }
-
-  function onZoomPointerMove(e) {
-    if (!zoomDrag) return;
-    setZoomPercent(percentFromPointer(e.clientY));
-  }
-
-  function onZoomPointerUp() {
-    if (!zoomDrag) return;
-    zoomDrag = null;
-    setZooming(false);
-    scheduleZoomCrispRedraw();
-  }
+  ({
+    setupZoomMeasurementTracking,
+    updateZoomUIFromState,
+    onZoomPointerDown,
+    onZoomPointerMove,
+    onZoomPointerUp,
+  } = zoomUiController);
 
   function handleWheelPan(e) {
     e.preventDefault();
