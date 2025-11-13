@@ -40,6 +40,18 @@ export function createPageRenderer(options) {
   const getInkSectionOrderFn = typeof getInkSectionOrder === 'function'
     ? getInkSectionOrder
     : (() => ['expTone', 'expEdge', 'expGrain', 'expDefects']);
+  const getLineStepMu = () => {
+    const step = Number.isFinite(state?.lineStepMu) ? state.lineStepMu : gridDiv;
+    return Number.isFinite(step) && step > 0 ? step : 1;
+  };
+
+  function firstRowMuInBand(minMu, bounds, step) {
+    const base = Number.isFinite(bounds?.Tmu) ? bounds.Tmu : 0;
+    if (!Number.isFinite(step) || step <= 0) return Math.ceil(minMu);
+    if (minMu <= base) return base;
+    const stepsFromBase = Math.ceil((minMu - base) / step);
+    return base + stepsFromBase * step;
+  }
 
   function drawGlyphStack(ctx, stack, x, baseline, pageIndex, rowMu, col) {
     if (!Array.isArray(stack) || stack.length === 0) return;
@@ -134,25 +146,38 @@ export function createPageRenderer(options) {
     const maxMu = Math.min(bounds.Bmu, dirtyRowMaxMu + gridDiv);
     if (minMu > maxMu) return;
 
-    const rowsToRender = [];
-    for (const [rowMu, rowMap] of page.grid) {
-      if (!rowMap) continue;
-      if (rowMu < minMu || rowMu > maxMu) continue;
-      rowsToRender.push([rowMu, rowMap]);
-    }
-
-    rowsToRender.sort((a, b) => a[0] - b[0]);
-
-    for (const [rowMu, rowMap] of rowsToRender) {
-
+    const renderRow = (rowMu, rowMap) => {
       const baseline = rowMu * gridHeight;
       const rowTopCss = baseline - BLEED_TOP_CSS;
       const rowBotCss = baseline + BLEED_BOTTOM_CSS;
-      if (rowBotCss <= bandTopCss || rowTopCss >= bandBotCss) continue;
+      if (rowBotCss <= bandTopCss || rowTopCss >= bandBotCss) return;
 
       for (const [col, stack] of rowMap) {
         const x = col * charWidth;
         drawGlyphStack(backCtx, stack, x, baseline, page.index, rowMu, col);
+      }
+    };
+
+    const stepMu = getLineStepMu();
+    const startRowMu = firstRowMuInBand(minMu, bounds, stepMu);
+    const canIterateByStep = Number.isFinite(stepMu) && stepMu > 0 && Number.isFinite(startRowMu);
+
+    if (canIterateByStep && startRowMu <= maxMu) {
+      for (let rowMu = startRowMu; rowMu <= maxMu; rowMu += stepMu) {
+        const rowMap = page.grid.get(rowMu);
+        if (!rowMap) continue;
+        renderRow(rowMu, rowMap);
+      }
+    } else {
+      const rowsToRender = [];
+      for (const [rowMu, rowMap] of page.grid) {
+        if (!rowMap) continue;
+        if (rowMu < minMu || rowMu > maxMu) continue;
+        rowsToRender.push([rowMu, rowMap]);
+      }
+      rowsToRender.sort((a, b) => a[0] - b[0]);
+      for (const [rowMu, rowMap] of rowsToRender) {
+        renderRow(rowMu, rowMap);
       }
     }
 
