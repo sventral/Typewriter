@@ -188,6 +188,61 @@ body[data-page-tone='dark']{
     opacity: 1;
     transform: translateY(0);
   }
+
+  .lag-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+    opacity: 0;
+    z-index: 90;
+  }
+
+  .lag-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at center, rgba(0,0,0,0.15), rgba(0,0,0,0.35));
+    opacity: 0.65;
+  }
+
+  .lag-overlay-symbol {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: rgba(24, 24, 28, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    position: relative;
+  }
+
+  .lag-overlay-spinner {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.25);
+    border-top-color: #ffffff;
+    animation: lag-spin 0.9s linear infinite;
+    display: inline-block;
+  }
+
+  body.dark .lag-overlay-symbol {
+    background: rgba(5, 5, 7, 0.88);
+  }
+
+  .lag-overlay--visible {
+    opacity: 1;
+  }
+
+  @keyframes lag-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
   .toolbar-left, .toolbar-right { display:flex; align-items:center; gap:.5rem; }
 
   .btn.icon-only {

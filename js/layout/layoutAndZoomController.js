@@ -47,6 +47,19 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   const { clampCaretToBounds } = editingController;
 
+  const updateLagOverlay = (phase) => {
+    const el = app.lagOverlay;
+    if (!el) return;
+    const active = phase === 'pending' || phase === 'lag';
+    el.classList.toggle('lag-overlay--visible', active);
+    el.setAttribute('aria-hidden', active ? 'false' : 'true');
+    if (active) {
+      el.dataset.phase = phase || 'lag';
+    } else {
+      el.dataset.phase = 'idle';
+    }
+  };
+
   const setLagInputBlocked = (blocked) => {
     state.lagInputBlocked = !!blocked;
   };
@@ -56,6 +69,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     onLagStateChange: (phase) => {
       const blocked = phase === 'pending' || phase === 'lag';
       setLagInputBlocked(blocked);
+      updateLagOverlay(phase);
     },
   });
   const trackZoomLag = (payload) => {
