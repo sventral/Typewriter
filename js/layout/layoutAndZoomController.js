@@ -47,7 +47,17 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   const { clampCaretToBounds } = editingController;
 
-  const zoomLagMonitor = createZoomLagMonitor({ app });
+  const setLagInputBlocked = (blocked) => {
+    state.lagInputBlocked = !!blocked;
+  };
+
+  const zoomLagMonitor = createZoomLagMonitor({
+    app,
+    onLagStateChange: (phase) => {
+      const blocked = phase === 'pending' || phase === 'lag';
+      setLagInputBlocked(blocked);
+    },
+  });
   const trackZoomLag = (payload) => {
     if (!zoomLagMonitor || typeof zoomLagMonitor.trackZoomEvent !== 'function') return;
     zoomLagMonitor.trackZoomEvent(payload);

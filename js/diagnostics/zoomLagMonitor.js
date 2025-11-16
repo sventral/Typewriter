@@ -78,6 +78,7 @@ export function createZoomLagMonitor({
   minDelta = MIN_ZOOM_DELTA,
   checkWindowMs = CHECK_WINDOW_MS,
   recoveryFrameCount = DEFAULT_RECOVERY_FRAMES,
+  onLagStateChange,
 } = {}) {
   if (!isBrowserEnvironment()) return null;
   if (typeof requestAnimationFrame !== 'function') return null;
@@ -98,6 +99,11 @@ export function createZoomLagMonitor({
   };
 
   const longTaskSupported = typeof PerformanceObserver === 'function';
+  const emitLagState = (phase) => {
+    if (typeof onLagStateChange === 'function') {
+      onLagStateChange(phase);
+    }
+  };
 
   function isArmed(ts = now()) {
     return state.armedUntil && ts <= state.armedUntil;
@@ -122,6 +128,7 @@ export function createZoomLagMonitor({
     state.preLagActive = false;
     state.smoothFrames = 0;
     notice.hide({ immediate });
+    emitLagState('idle');
   }
 
   function stopWatchersIfIdle() {
@@ -172,6 +179,7 @@ export function createZoomLagMonitor({
       via,
       reason: state.lastReason,
     });
+    emitLagState('lag');
   }
 
   function handleRecovery(gap) {
@@ -239,6 +247,7 @@ export function createZoomLagMonitor({
     state.armedUntil = Math.max(state.armedUntil, now() + checkWindowMs);
     state.preLagActive = true;
     notice.showPending({ zoom: state.cachedZoom, reason: state.lastReason });
+    emitLagState('pending');
     ensurePerformanceObserver();
     scheduleLoop();
   }

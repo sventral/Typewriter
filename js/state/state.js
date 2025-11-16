@@ -51,6 +51,7 @@ export function createMainState(app, gridDiv = 8) {
     lowResZoomEnabled: true,
     lowResZoomSoftCapPct: 200,
     lowResZoomMarginPct: 20,
+    lagInputBlocked: false,
   };
 }
 
