@@ -7,6 +7,7 @@ const DOM_ID_GROUPS = {
     marginBox: 'marginBox',
     caretEl: 'caret',
     lagNotice: 'lagNotice',
+    lagOverlay: 'lagOverlay',
   },
   rulers: {
     rulerH_host: 'rulerH_host',
