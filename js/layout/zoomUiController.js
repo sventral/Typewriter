@@ -10,6 +10,7 @@ export function createZoomUiController(options) {
     setFreezeVirtual,
     setSafariZoomMode,
     scheduleZoomCrispRedraw,
+    onZoomCommit,
   } = options;
 
   const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
@@ -141,6 +142,9 @@ export function createZoomUiController(options) {
     zoomDrag = null;
     setZooming(false);
     scheduleZoomCrispRedraw();
+    if (typeof onZoomCommit === 'function') {
+      onZoomCommit();
+    }
   }
 
   return {

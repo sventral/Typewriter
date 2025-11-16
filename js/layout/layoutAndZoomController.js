@@ -52,6 +52,19 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     if (!zoomLagMonitor || typeof zoomLagMonitor.trackZoomEvent !== 'function') return;
     zoomLagMonitor.trackZoomEvent(payload);
   };
+  let pendingZoomLagEvent = null;
+
+  const flushPendingZoomLagEvent = (reason) => {
+    if (pendingZoomLagEvent) {
+      const payload = reason ? { ...pendingZoomLagEvent, reason } : pendingZoomLagEvent;
+      trackZoomLag(payload);
+      pendingZoomLagEvent = null;
+      return;
+    }
+    if (reason) {
+      trackZoomLag({ zoom: state.zoom, delta: 0, reason });
+    }
+  };
 
   let hammerNudgeRAF = 0;
   let pendingRulerRAF1 = 0;
@@ -660,7 +673,12 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const prevOffsetX = state.paperOffset.x;
     const prevOffsetY = state.paperOffset.y;
     state.zoom = nextZoom;
-    trackZoomLag({ zoom: nextZoom, delta: zoomDelta, reason: 'zoom-change' });
+    const eventPayload = { zoom: nextZoom, delta: zoomDelta, reason: 'zoom-change' };
+    if (getZooming()) {
+      pendingZoomLagEvent = eventPayload;
+    } else {
+      trackZoomLag(eventPayload);
+    }
     if (prevZoom > 0 && Number.isFinite(prevOffsetX) && Number.isFinite(prevOffsetY)) {
       const ratio = prevZoom / nextZoom;
       if (Number.isFinite(ratio) && Math.abs(ratio - 1) > 1e-6) {
@@ -685,6 +703,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     setFreezeVirtual,
     setSafariZoomMode,
     scheduleZoomCrispRedraw,
+    onZoomCommit: () => flushPendingZoomLagEvent('zoom-pointer-commit'),
   });
 
   ({
