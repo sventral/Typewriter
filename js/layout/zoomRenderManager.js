@@ -19,6 +19,7 @@ export function createZoomRenderManager(options) {
     setZoomDebounceTimer,
     setRenderScaleForZoom,
     documentVerticalSpanPx,
+    trackZoomLag,
   } = options;
 
   let pendingZoomRedrawRAF = 0;
@@ -54,6 +55,9 @@ export function createZoomRenderManager(options) {
   }
 
   function runBatchedZoomRedraw() {
+    if (typeof trackZoomLag === 'function') {
+      trackZoomLag({ zoom: state.zoom, delta: 0, reason: 'zoom-redraw' });
+    }
     const seen = new Set();
     const priority = [];
     const rest = [];

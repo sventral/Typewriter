@@ -6,6 +6,7 @@ const DOM_ID_GROUPS = {
     firstPage: 'page',
     marginBox: 'marginBox',
     caretEl: 'caret',
+    lagNotice: 'lagNotice',
   },
   rulers: {
     rulerH_host: 'rulerH_host',

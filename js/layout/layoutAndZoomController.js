@@ -2,6 +2,7 @@ import { clamp } from '../utils/math.js';
 import { markDocumentDirty } from '../state/saveRevision.js';
 import { createZoomRenderManager } from './zoomRenderManager.js';
 import { createZoomUiController } from './zoomUiController.js';
+import { createZoomLagMonitor } from '../diagnostics/zoomLagMonitor.js';
 
 export function createLayoutAndZoomController(context, pageLifecycle, editingController) {
   const {
@@ -45,6 +46,12 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   } = layoutController;
 
   const { clampCaretToBounds } = editingController;
+
+  const zoomLagMonitor = createZoomLagMonitor({ app });
+  const trackZoomLag = (payload) => {
+    if (!zoomLagMonitor || typeof zoomLagMonitor.trackZoomEvent !== 'function') return;
+    zoomLagMonitor.trackZoomEvent(payload);
+  };
 
   let hammerNudgeRAF = 0;
   let pendingRulerRAF1 = 0;
@@ -325,6 +332,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     setZoomDebounceTimer,
     setRenderScaleForZoom,
     documentVerticalSpanPx,
+    trackZoomLag,
   });
 
   const { scheduleZoomCrispRedraw } = zoomRenderManager;
@@ -648,9 +656,11 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const z = detent(Math.round(Math.max(Z_MIN, Math.min(Z_MAX, pct))));
     const prevZoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
     const nextZoom = z / 100;
+    const zoomDelta = Math.abs(nextZoom - prevZoom);
     const prevOffsetX = state.paperOffset.x;
     const prevOffsetY = state.paperOffset.y;
     state.zoom = nextZoom;
+    trackZoomLag({ zoom: nextZoom, delta: zoomDelta, reason: 'zoom-change' });
     if (prevZoom > 0 && Number.isFinite(prevOffsetX) && Number.isFinite(prevOffsetY)) {
       const ratio = prevZoom / nextZoom;
       if (Number.isFinite(ratio) && Math.abs(ratio - 1) > 1e-6) {
