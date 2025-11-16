@@ -128,6 +128,12 @@ export function createInputController({
   function handleKeyDown(e) {
     if (isEditableTarget(e.target)) return;
 
+    if (state.lagInputBlocked) {
+      e.preventDefault();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      return;
+    }
+
     if (e.target && isToolbarInput(e.target)) {
       const key = e.key;
       const allowDecimal = e.target.id === 'lhInput';
@@ -255,6 +261,12 @@ export function createInputController({
 
   function handlePaste(e) {
     if (isEditableTarget(e.target)) return;
+
+    if (state.lagInputBlocked) {
+      e.preventDefault();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      return;
+    }
 
     const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
     if (!text) return;
