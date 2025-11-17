@@ -394,6 +394,11 @@ export function createPageLifecycleController(context, editingController) {
   let prevScrollFocusIndex = 0;
   let lastScrollDirection = 0;
   let lastPaperOffsetY = 0;
+  let cachedActiveWindow = { start: 0, end: -1 };
+  let hasCachedActiveWindow = false;
+  let frozenVirtualWindow = null;
+  let pagesArraySnapshot = state.pages;
+  let pagesLengthSnapshot = Array.isArray(state.pages) ? state.pages.length : 0;
 
   function effectiveVirtualPad() {
     return state.zoom >= 3 ? 0 : 1;
@@ -631,18 +636,72 @@ export function createPageLifecycleController(context, editingController) {
     return [i0, i1];
   }
 
+  function normalizeWindowRange(i0, i1) {
+    if (!state.pages.length) return [0, -1];
+    const last = state.pages.length - 1;
+    const start = Math.max(0, Math.min(i0, i1));
+    const end = Math.max(start, Math.min(last, Math.max(i0, i1)));
+    return [start, end];
+  }
+
+  function applyWindowIfNeeded(i0, i1) {
+    const [start, end] = normalizeWindowRange(i0, i1);
+    if (hasCachedActiveWindow
+      && cachedActiveWindow.start === start
+      && cachedActiveWindow.end === end) {
+      return false;
+    }
+    applyActiveWindow(start, end);
+    cachedActiveWindow = { start, end };
+    hasCachedActiveWindow = true;
+    return true;
+  }
+
+  function invalidateActiveWindowCache({ clearFrozen = false } = {}) {
+    hasCachedActiveWindow = false;
+    cachedActiveWindow = { start: 0, end: -1 };
+    if (clearFrozen) {
+      frozenVirtualWindow = null;
+    }
+  }
+
+  function updatePagesSnapshot() {
+    pagesArraySnapshot = state.pages;
+    pagesLengthSnapshot = Array.isArray(state.pages) ? state.pages.length : 0;
+  }
+
+  function detectPageCollectionMutation() {
+    const currentLength = Array.isArray(state.pages) ? state.pages.length : 0;
+    if (state.pages !== pagesArraySnapshot || currentLength !== pagesLengthSnapshot) {
+      updatePagesSnapshot();
+      invalidateActiveWindowCache({ clearFrozen: true });
+    }
+  }
+
+  function getFrozenVirtualWindow() {
+    if (!frozenVirtualWindow) {
+      frozenVirtualWindow = visibleWindowIndices();
+    }
+    return frozenVirtualWindow;
+  }
+
   function updateVirtualization() {
-    if (state.pages.length === 0) return;
-    const freezeVirtual = getFreezeVirtual();
-    const zoom = state.zoom || 1;
-    if (freezeVirtual) {
-      if (zoom < 2) {
-        for (let i = 0; i < state.pages.length; i++) setPageActive(state.pages[i], true);
-      }
+    detectPageCollectionMutation();
+    if (state.pages.length === 0) {
+      invalidateActiveWindowCache({ clearFrozen: true });
       return;
     }
-    const [i0, i1] = visibleWindowIndices();
-    applyActiveWindow(i0, i1);
+    const freezeVirtual = getFreezeVirtual();
+    let windowRange;
+    if (freezeVirtual) {
+      windowRange = getFrozenVirtualWindow();
+    } else {
+      frozenVirtualWindow = null;
+      windowRange = visibleWindowIndices();
+    }
+    if (Array.isArray(windowRange) && windowRange.length === 2) {
+      applyWindowIfNeeded(windowRange[0], windowRange[1]);
+    }
   }
 
   function requestVirtualization() {
