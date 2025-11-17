@@ -10,6 +10,7 @@
     --margin-right-px: 0px;
     --margin-bottom-px: 0px;
     --margin-left-px: 0px;
+    --margin-box-color: rgba(0,0,0,0.25);
     --stage-bg-light:#d1d1d3;
     --stage-bg-dark:#343639;
     --page-bg-light:#f7f5ee;
@@ -141,6 +142,7 @@ body[data-page-tone='dark']{
     --page-bg:var(--page-bg-dark);
     --page-shadow:none;
     --caret-color:#f5f5f5;
+    --margin-box-color: rgba(255,255,255,0.35);
 }
 
 @font-face{ font-family: "TT2020Base"; src: url("./fonts/TT2020Base-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
@@ -467,14 +469,12 @@ body[data-page-tone='dark']{
   .page{ width:100%; background:var(--page-bg); box-shadow:var(--page-shadow); position:relative; overflow:hidden; }
   .margin-box{
     position:absolute;
-    border:1px dashed rgba(0,0,0,0.25);
+    border:1px dashed var(--margin-box-color, rgba(0,0,0,0.25));
     pointer-events:none;
     visibility:hidden;
     inset: var(--margin-top-px) var(--margin-right-px) var(--margin-bottom-px) var(--margin-left-px);
   }
-  @media (prefers-color-scheme: dark){ :root:not([data-theme='light']) .margin-box{ border-color: rgba(255,255,255,0.35); } }
-  :root[data-theme='dark'] .margin-box{ border-color: rgba(255,255,255,0.35); }
-  body[data-page-tone='dark'] .margin-box{ border-color: rgba(255,255,255,0.35); }
+
 
   .ruler{ position:fixed; left:0; bottom:var(--toolbar-h); height:16px; z-index:50; display:block; overflow:hidden; pointer-events:none; width:var(--stage-width-px); }
   #rulerH_stops_container { position:absolute; inset:0; pointer-events:auto; }
