@@ -289,11 +289,18 @@ export function createPageRenderer(options) {
   function drawGlyphStack(ctx, stack, x, baseline, pageIndex, rowMu, col) {
     if (!Array.isArray(stack) || stack.length === 0) return;
     const gridHeight = getGridHeightFn();
-    const jitterOffset = computeGlyphJitterOffset(state, pageIndex, rowMu, col, gridHeight);
-    const baselineAdjusted = Number.isFinite(jitterOffset) ? baseline + jitterOffset : baseline;
     for (let k = 0; k < stack.length; k++) {
       const glyph = stack[k];
       if (!glyph) continue;
+      const jitterOffset = computeGlyphJitterOffset(
+        state,
+        pageIndex,
+        rowMu,
+        col,
+        gridHeight,
+        glyph?.jitterSalt,
+      );
+      const baselineAdjusted = Number.isFinite(jitterOffset) ? baseline + jitterOffset : baseline;
       drawGlyph(ctx, glyph.char, glyph.ink || 'b', x, baselineAdjusted, k, stack.length, pageIndex, rowMu, col, undefined);
     }
   }

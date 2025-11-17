@@ -17,6 +17,7 @@ import {
   getDefaultInkSectionQuality,
   getDefaultInkSectionStrength,
 } from '../config/inkEffectDefaultStyle.js';
+import { hydrateGlyphEntry, serializeGlyphEntry } from './glyphStack.js';
 const KNOWN_INK_SECTIONS = PRESET_INK_SECTION_ORDER.slice();
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
@@ -170,10 +171,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
             if (!Array.isArray(stack) || !Number.isFinite(c)) continue;
             cols.push([
               c,
-              stack.map((s) => ({
-                ch: typeof s?.char === 'string' ? s.char : '',
-                ink: s?.ink || 'b',
-              })),
+              stack.map((s) => serializeGlyphEntry(s)),
             ]);
           }
           rows.push([rmu, cols]);
@@ -302,7 +300,7 @@ export function deserializeDocumentState(data, context) {
         if (Array.isArray(cols)) {
           for (const [c, stackArr] of cols) {
             rowMap.set(c, Array.isArray(stackArr)
-              ? stackArr.map((s) => ({ char: s?.ch, ink: s?.ink || 'b' }))
+              ? stackArr.map((s) => hydrateGlyphEntry(s?.ch, s?.ink, s?.salt))
               : []);
           }
         }

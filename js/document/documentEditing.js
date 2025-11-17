@@ -9,6 +9,7 @@ import {
   generateDocumentId,
 } from './documentStore.js';
 import { resetInkEffectsState } from '../state/state.js';
+import { createGlyphEntry, cloneGlyphEntry } from './glyphStack.js';
 
 export function createDocumentEditingController(context) {
   const {
@@ -160,6 +161,7 @@ export function createDocumentEditingController(context) {
   function writeRunToRow(page, rowMu, startCol, text, ink) {
     if (!text || !text.length) return;
     const rowMap = ensureRowExists(page, rowMu);
+    const normalizedInk = ink || 'b';
     for (let i = 0; i < text.length; i++) {
       const col = startCol + i;
       let stack = rowMap.get(col);
@@ -167,7 +169,7 @@ export function createDocumentEditingController(context) {
         stack = [];
         rowMap.set(col, stack);
       }
-      stack.push({ char: text[i], ink: ink || 'b' });
+      stack.push(createGlyphEntry(text[i], normalizedInk));
     }
     markRowAsDirty(page, rowMu);
   }
@@ -224,14 +226,16 @@ export function createDocumentEditingController(context) {
     updateCaretPosition();
   }
 
-  function overtypeCharacter(page, rowMu, col, ch, ink) {
+  function overtypeCharacter(page, rowMu, col, ch, ink, options = undefined) {
     const rowMap = ensureRowExists(page, rowMu);
     let stack = rowMap.get(col);
     if (!stack) {
       stack = [];
       rowMap.set(col, stack);
     }
-    stack.push({ char: ch, ink });
+    const normalizedInk = ink || 'b';
+    const jitterSalt = options?.jitterSalt;
+    stack.push(createGlyphEntry(ch, normalizedInk, jitterSalt));
     markRowAsDirty(page, rowMu);
   }
 
@@ -489,7 +493,13 @@ function insertStringFast(s) {
             linear++;
             continue;
           }
-          tokens.push({ layers: stack.map(s => ({ ch: s.char, ink: s.ink || 'b' })) });
+          tokens.push({
+            layers: stack.map((s) => ({
+              ch: s.char,
+              ink: s.ink || 'b',
+              salt: Number.isFinite(s?.jitterSalt) ? (s.jitterSalt >>> 0) : undefined,
+            })),
+          });
           linear++;
         }
         tokens.push({ ch: '\n' });
@@ -559,7 +569,7 @@ function insertStringFast(s) {
         destRowMap.set(destCol, dstack);
       }
       for (const s of stack) {
-        dstack.push({ char: s.char, ink: s.ink || 'b' });
+        dstack.push(cloneGlyphEntry(s));
       }
       rowMap.delete(c);
       destCol++;
@@ -639,7 +649,7 @@ function insertStringFast(s) {
       maybeSetCaret();
       if (t.layers) {
         for (const L of t.layers) {
-          overtypeCharacter(page, rowMu, col, L.ch, L.ink || 'b');
+          overtypeCharacter(page, rowMu, col, L.ch, L.ink || 'b', { jitterSalt: L.salt });
         }
       } else if (t.ch !== ' ') {
         overtypeCharacter(page, rowMu, col, t.ch, t.ink || 'b');
