@@ -46,6 +46,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   } = layoutController;
 
   const { clampCaretToBounds } = editingController;
+  const { visibleWindowIndices } = pageLifecycle || {};
+  const getVisibleWindowIndices = typeof visibleWindowIndices === 'function' ? visibleWindowIndices : null;
 
   const updateLagOverlay = (phase) => {
     const el = app.lagOverlay;
@@ -370,6 +372,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     setRenderScaleForZoom,
     documentVerticalSpanPx,
     trackZoomLag,
+    getVisibleWindowIndices,
   });
 
   const { scheduleZoomCrispRedraw } = zoomRenderManager;
