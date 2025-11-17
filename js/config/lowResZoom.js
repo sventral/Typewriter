@@ -5,7 +5,7 @@ export const ZOOM_SLIDER_MAX_PCT = 400;
 
 export const LOW_RES_ZOOM_DEFAULTS = {
   enabled: true,
-  softCapPct: 200,
+  softCapPct: 180,
   marginPct: 20,
 };
 

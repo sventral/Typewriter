@@ -1,4 +1,5 @@
 import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitterConfig.js';
+import { LOW_RES_ZOOM_DEFAULTS } from '../config/lowResZoom.js';
 import {
   DEFAULT_INK_SECTION_ORDER as PRESET_INK_SECTION_ORDER,
   getDefaultInkSectionQuality,
@@ -68,8 +69,8 @@ export function createMainState(app, gridDiv = 8) {
     savedInkStyles: [],
     currentInkStyle: null,
     lowResZoomEnabled: true,
-    lowResZoomSoftCapPct: 200,
-    lowResZoomMarginPct: 20,
+    lowResZoomSoftCapPct: LOW_RES_ZOOM_DEFAULTS.softCapPct,
+    lowResZoomMarginPct: LOW_RES_ZOOM_DEFAULTS.marginPct,
     lagInputBlocked: false,
   };
 }

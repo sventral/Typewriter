@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.18.8b</div>
+  <div class="app-version">v.18.9b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -149,12 +149,12 @@
               <label for="glyphJitterAmountMin">Offset range</label>
               <div class="range-input-pair">
                 <div class="input-with-suffix">
-                  <input id="glyphJitterAmountMin" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter minimum offset percent" />
+                  <input id="glyphJitterAmountMin" type="number" min="0" max="25" step="0.1" aria-label="Glyph jitter minimum offset percent" />
                   <span aria-hidden="true">%</span>
                 </div>
                 <span class="range-separator">–</span>
                 <div class="input-with-suffix">
-                  <input id="glyphJitterAmountMax" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter maximum offset percent" />
+                  <input id="glyphJitterAmountMax" type="number" min="0" max="25" step="0.1" aria-label="Glyph jitter maximum offset percent" />
                   <span aria-hidden="true">%</span>
                 </div>
               </div>
@@ -349,7 +349,7 @@
               <div class="low-res-zoom-fields">
                 <label>
                   <span>Soft cap (%)</span>
-                  <input type="number" id="lowResZoomSoftCap" min="50" max="400" step="10" value="200" />
+                  <input type="number" id="lowResZoomSoftCap" min="50" max="400" step="10" value="180" />
                 </label>
                 <label>
                   <span>Zoom margin (%)</span>
