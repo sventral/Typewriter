@@ -26,8 +26,7 @@ export function createZoomRenderManager(options) {
   let pendingZoomRedrawRAF = 0;
   let pendingZoomRedrawIsTimeout = false;
   const MAX_FALLBACK_ACTIVE_PRIORITY = 6;
-  const SECONDARY_WINDOW_PAD = 2;
-  const MAX_BACKGROUND_REDRAW_PAGES = 8;
+  const SECONDARY_WINDOW_PAD = 1;
 
   function clearPendingZoomRedrawFrame() {
     if (!pendingZoomRedrawRAF) return;
@@ -65,7 +64,6 @@ export function createZoomRenderManager(options) {
     const seen = new Set();
     const priority = [];
     const secondary = [];
-    const rest = [];
 
     const resolveVisibleWindowRange = () => {
       if (!Array.isArray(state.pages) || state.pages.length === 0) return null;
@@ -130,25 +128,8 @@ export function createZoomRenderManager(options) {
       }
     }
 
-    const backgroundBudget = Math.min(
-      MAX_BACKGROUND_REDRAW_PAGES,
-      Math.max(0, (state.pages?.length || 0) - (priority.length + secondary.length)),
-    );
-    if (backgroundBudget > 0) {
-      let queued = 0;
-      for (const page of state.pages) {
-        if (seen.has(page)) continue;
-        enqueue(page, rest);
-        queued += 1;
-        if (queued >= backgroundBudget) break;
-      }
-    }
-
     if (!priority.length && secondary.length) {
       priority.push(secondary.shift());
-    }
-    if (!priority.length && rest.length) {
-      priority.push(rest.shift());
     }
     if (!priority.length && state.pages.length) {
       priority.push(state.pages[0]);
@@ -174,7 +155,7 @@ export function createZoomRenderManager(options) {
     };
 
     for (const page of priority) prepPage(page);
-    for (const page of secondary) prepPage(page);
+    const deferredQueue = secondary.slice();
 
     rebuildAllAtlases();
 
@@ -190,7 +171,7 @@ export function createZoomRenderManager(options) {
 
     finalize();
 
-    if (!rest.length) {
+    if (!deferredQueue.length) {
       return;
     }
 
@@ -199,13 +180,13 @@ export function createZoomRenderManager(options) {
     const processBatch = () => {
       const start = now();
       const budgetMs = 7;
-      while (index < rest.length) {
-        const page = rest[index++];
+      while (index < deferredQueue.length) {
+        const page = deferredQueue[index++];
         prepPage(page);
         if (now() - start >= budgetMs) break;
       }
 
-      if (index < rest.length) {
+      if (index < deferredQueue.length) {
         scheduleZoomRedrawFrame(processBatch);
       }
     };
