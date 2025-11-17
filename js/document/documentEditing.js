@@ -158,6 +158,66 @@ export function createDocumentEditingController(context) {
     return r;
   }
 
+  let overtypeSession = null;
+
+  function resetOvertypeSession() {
+    overtypeSession = null;
+  }
+
+  function ensureOvertypeSession(pageIndex, rowMu) {
+    const resolvedPage = Number.isFinite(pageIndex) ? pageIndex : 0;
+    const resolvedRow = Number.isFinite(rowMu) ? rowMu : 0;
+    if (
+      !overtypeSession ||
+      overtypeSession.pageIndex !== resolvedPage ||
+      overtypeSession.rowMu !== resolvedRow
+    ) {
+      overtypeSession = {
+        pageIndex: resolvedPage,
+        rowMu: resolvedRow,
+        touched: new Map(),
+      };
+    }
+    return overtypeSession;
+  }
+
+  function recordOvertypeBaseline(pageIndex, rowMu, col, stackDepth) {
+    const session = ensureOvertypeSession(pageIndex, rowMu);
+    if (!session.touched.has(col)) {
+      session.touched.set(col, Number.isFinite(stackDepth) ? stackDepth : 0);
+    }
+  }
+
+  function getOvertypeSessionForRow(pageIndex, rowMu) {
+    if (
+      !overtypeSession ||
+      !Number.isFinite(pageIndex) ||
+      !Number.isFinite(rowMu)
+    ) {
+      return null;
+    }
+    if (overtypeSession.pageIndex !== pageIndex || overtypeSession.rowMu !== rowMu) {
+      return null;
+    }
+    return overtypeSession;
+  }
+
+  function beginOvertypeSessionForRow(pageIndex, rowMu, touchedMap = new Map()) {
+    overtypeSession = {
+      pageIndex: Number.isFinite(pageIndex) ? pageIndex : 0,
+      rowMu: Number.isFinite(rowMu) ? rowMu : 0,
+      touched: touchedMap instanceof Map ? touchedMap : new Map(),
+    };
+    return overtypeSession;
+  }
+
+  function resolvePageIndex(page) {
+    if (Number.isFinite(page?.index)) return page.index;
+    const idx = Array.isArray(state.pages) ? state.pages.indexOf(page) : -1;
+    if (idx >= 0) return idx;
+    return Number.isFinite(state?.caret?.page) ? state.caret.page : 0;
+  }
+
   function writeRunToRow(page, rowMu, startCol, text, ink) {
     if (!text || !text.length) return;
     const rowMap = ensureRowExists(page, rowMu);
@@ -233,6 +293,8 @@ export function createDocumentEditingController(context) {
       stack = [];
       rowMap.set(col, stack);
     }
+    const pageIndex = resolvePageIndex(page);
+    recordOvertypeBaseline(pageIndex, rowMu, col, stack.length);
     const normalizedInk = ink || 'b';
     const jitterSalt = options?.jitterSalt;
     stack.push(createGlyphEntry(ch, normalizedInk, jitterSalt));
@@ -546,6 +608,31 @@ function insertStringFast(s) {
     const start = splitAt + 1;
     if (start > maxCol) return false;
 
+    const session = getOvertypeSessionForRow(pageIndex, prevRowMu);
+    const movementPlan = [];
+    for (let c = start; c <= maxCol; c++) {
+      const stack = rowMap.get(c);
+      if (!stack || !stack.length) continue;
+      let baseDepth = 0;
+      if (session) {
+        if (session.touched.has(c)) baseDepth = session.touched.get(c);
+        else baseDepth = stack.length;
+      }
+      if (!session) baseDepth = 0;
+      if (baseDepth < 0) baseDepth = 0;
+      if (baseDepth >= stack.length) continue;
+      movementPlan.push({ col: c, baseDepth });
+    }
+
+    if (!movementPlan.length && session) {
+      for (let c = start; c <= maxCol; c++) {
+        const stack = rowMap.get(c);
+        if (!stack || !stack.length) continue;
+        movementPlan.push({ col: c, baseDepth: 0, legacy: true });
+      }
+    }
+    if (!movementPlan.length) return false;
+
     let destPageIndex = pageIndex;
     let destRowMu = prevRowMu + state.lineStepMu;
     if (destRowMu > bounds.Bmu) {
@@ -560,23 +647,44 @@ function insertStringFast(s) {
     const destRowMap = ensureRowExists(destPage, destRowMu);
 
     let destCol = bounds.L;
-    for (let c = start; c <= maxCol; c++) {
-      const stack = rowMap.get(c);
+    let movedAny = false;
+    const nextSessionTouched = mutateCaret ? new Map() : null;
+    for (const plan of movementPlan) {
+      const stack = rowMap.get(plan.col);
       if (!stack || !stack.length) continue;
+      const baseDepth = Math.max(0, Math.min(plan.baseDepth, stack.length));
+      if (baseDepth >= stack.length) continue;
+      const movingEntries = stack.splice(baseDepth);
+      if (!movingEntries.length) continue;
       let dstack = destRowMap.get(destCol);
       if (!dstack) {
         dstack = [];
         destRowMap.set(destCol, dstack);
       }
-      for (const s of stack) {
+      const destBaseDepth = dstack.length;
+      for (const s of movingEntries) {
         dstack.push(cloneGlyphEntry(s));
       }
-      rowMap.delete(c);
+      if (!stack.length) rowMap.delete(plan.col);
+      if (session) session.touched.delete(plan.col);
+      if (nextSessionTouched) {
+        nextSessionTouched.set(destCol, destBaseDepth);
+      }
       destCol++;
+      movedAny = true;
     }
+
+    if (!movedAny) return false;
 
     markRowAsDirty(page, prevRowMu);
     markRowAsDirty(destPage, destRowMu);
+
+    if (session && overtypeSession === session) {
+      overtypeSession = null;
+    }
+    if (mutateCaret) {
+      beginOvertypeSessionForRow(destPageIndex, destRowMu, nextSessionTouched || new Map());
+    }
 
     const nextPos = { pageIndex: destPageIndex, rowMu: destRowMu, col: destCol };
     if (mutateCaret) {
@@ -664,6 +772,7 @@ function insertStringFast(s) {
 
   function rewrapDocumentToCurrentBounds() {
     beginBatch();
+    resetOvertypeSession();
     const { tokens, caretIndex } = flattenGridToStreamWithCaret();
     resetPagesBlankPreserveSettings();
     typeStreamIntoGrid(tokens, caretIndex);
@@ -685,6 +794,7 @@ function insertStringFast(s) {
   }
 
   function deserializeState(data) {
+    resetOvertypeSession();
     return deserializeDocumentState(data, {
       state,
       app,
@@ -698,6 +808,7 @@ function insertStringFast(s) {
 
   function createNewDocument(options = {}) {
     const { documentId, documentTitle, skipSave } = options || {};
+    resetOvertypeSession();
     let resolvedId = null;
     if (typeof documentId === 'string' && documentId.trim()) {
       resolvedId = documentId.trim();
