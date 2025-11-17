@@ -387,6 +387,51 @@ function insertStringFast(s) {
     updateCaretPosition();
   }
 
+  function moveCaretByLines(deltaLines) {
+    if (!Number.isFinite(deltaLines) || deltaLines === 0) return;
+
+    const bounds = getCurrentBounds();
+    const step = Math.max(1, state.lineStepMu || 1);
+    const verticalRange = Math.max(0, bounds.Bmu - bounds.Tmu);
+    const linesPerPage = Math.max(1, Math.floor(verticalRange / step) + 1);
+    const normalizeLine = (rowMu) =>
+      clamp(Math.round((rowMu - bounds.Tmu) / step), 0, linesPerPage - 1);
+
+    let nextLine = normalizeLine(state.caret.rowMu) + deltaLines;
+    let nextPageIndex = state.caret.page;
+    const hasPage = (idx) => idx >= 0 && idx < state.pages.length && !!state.pages[idx];
+
+    while (nextLine < 0 && nextPageIndex > 0 && hasPage(nextPageIndex - 1)) {
+      nextPageIndex -= 1;
+      nextLine += linesPerPage;
+    }
+
+    while (nextLine >= linesPerPage && hasPage(nextPageIndex + 1)) {
+      nextPageIndex += 1;
+      nextLine -= linesPerPage;
+    }
+
+    nextLine = clamp(nextLine, 0, linesPerPage - 1);
+    const targetRowMu = snapRowMuToStep(bounds.Tmu + nextLine * step, bounds);
+    state.caret.rowMu = clamp(targetRowMu, bounds.Tmu, bounds.Bmu);
+    state.caret.col = clamp(state.caret.col, bounds.L, bounds.R);
+
+    const prevPageIndex = state.caret.page;
+    if (nextPageIndex !== prevPageIndex && hasPage(nextPageIndex)) {
+      state.caret.page = nextPageIndex;
+      const targetPage = state.pages[nextPageIndex];
+      if (targetPage) {
+        viewSetActivePageIndex(targetPage.index);
+      } else {
+        viewSetActivePageIndex(nextPageIndex);
+      }
+      requestVirtualization();
+      positionRulers();
+    }
+
+    updateCaretPosition();
+  }
+
   function insertText(text) {
     const normalized = (text || '').replace(/\r\n?/g, '\n');
     beginBatch();
@@ -722,6 +767,7 @@ function insertStringFast(s) {
     insertTextFast: insertStringFast,
     overtypeCharacter,
     eraseCharacters,
+    moveCaretByLines,
     rewrapDocumentToCurrentBounds,
     serializeState,
     deserializeState,

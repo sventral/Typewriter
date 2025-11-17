@@ -63,6 +63,7 @@ export function createInputController({
   advanceCaret,
   handleNewline,
   handleBackspace,
+  moveCaretByLines,
   insertTextFast,
   overtypeCharacter,
   eraseCharacters,
@@ -213,16 +214,22 @@ export function createInputController({
     if (key === 'ArrowUp') {
       e.preventDefault();
       resetTypedRun();
-      state.caret.rowMu = clamp(state.caret.rowMu - state.lineStepMu, bounds.Tmu, bounds.Bmu);
-      updateCaretPosition();
+      if (typeof moveCaretByLines === 'function') moveCaretByLines(-1);
+      else {
+        state.caret.rowMu = clamp(state.caret.rowMu - state.lineStepMu, bounds.Tmu, bounds.Bmu);
+        updateCaretPosition();
+      }
       return;
     }
 
     if (key === 'ArrowDown') {
       e.preventDefault();
       resetTypedRun();
-      state.caret.rowMu = clamp(state.caret.rowMu + state.lineStepMu, bounds.Tmu, bounds.Bmu);
-      updateCaretPosition();
+      if (typeof moveCaretByLines === 'function') moveCaretByLines(1);
+      else {
+        state.caret.rowMu = clamp(state.caret.rowMu + state.lineStepMu, bounds.Tmu, bounds.Bmu);
+        updateCaretPosition();
+      }
       return;
     }
 
