@@ -12,10 +12,29 @@ import {
   ZOOM_SLIDER_MAX_PCT,
   ZOOM_SLIDER_MIN_PCT,
 } from '../config/lowResZoom.js';
-const KNOWN_INK_SECTIONS = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
+import {
+  DEFAULT_INK_SECTION_ORDER as PRESET_INK_SECTION_ORDER,
+  getDefaultInkSectionQuality,
+  getDefaultInkSectionStrength,
+} from '../config/inkEffectDefaultStyle.js';
+const KNOWN_INK_SECTIONS = PRESET_INK_SECTION_ORDER.slice();
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
 const EFFECT_QUALITY_MAX = 200;
+
+const SECTION_STRENGTH_DEFAULTS = Object.freeze({
+  expTone: getDefaultInkSectionStrength('expTone'),
+  expEdge: getDefaultInkSectionStrength('expEdge'),
+  expGrain: getDefaultInkSectionStrength('expGrain'),
+  expDefects: getDefaultInkSectionStrength('expDefects'),
+});
+
+const SECTION_QUALITY_DEFAULTS = Object.freeze({
+  expTone: getDefaultInkSectionQuality('expTone'),
+  expEdge: getDefaultInkSectionQuality('expEdge'),
+  expGrain: getDefaultInkSectionQuality('expGrain'),
+  expDefects: getDefaultInkSectionQuality('expDefects'),
+});
 
 function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
   const base = Array.isArray(order) ? order : [];
@@ -198,14 +217,14 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
-    expToneStrength: clamp(Number(state.expToneStrength ?? 100), 0, 100),
-    expEdgeStrength: clamp(Number(state.expEdgeStrength ?? 100), 0, 100),
-    expGrainStrength: clamp(Number(state.expGrainStrength ?? 100), 0, 100),
-    expDefectsStrength: clamp(Number(state.expDefectsStrength ?? 100), 0, 100),
-    expToneQuality: clamp(Number(state.expToneQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expEdgeQuality: clamp(Number(state.expEdgeQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expGrainQuality: clamp(Number(state.expGrainQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expDefectsQuality: clamp(Number(state.expDefectsQuality ?? EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expToneStrength: clamp(Number(state.expToneStrength ?? SECTION_STRENGTH_DEFAULTS.expTone), 0, 100),
+    expEdgeStrength: clamp(Number(state.expEdgeStrength ?? SECTION_STRENGTH_DEFAULTS.expEdge), 0, 100),
+    expGrainStrength: clamp(Number(state.expGrainStrength ?? SECTION_STRENGTH_DEFAULTS.expGrain), 0, 100),
+    expDefectsStrength: clamp(Number(state.expDefectsStrength ?? SECTION_STRENGTH_DEFAULTS.expDefects), 0, 100),
+    expToneQuality: clamp(Number(state.expToneQuality ?? SECTION_QUALITY_DEFAULTS.expTone), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expEdgeQuality: clamp(Number(state.expEdgeQuality ?? SECTION_QUALITY_DEFAULTS.expEdge), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expGrainQuality: clamp(Number(state.expGrainQuality ?? SECTION_QUALITY_DEFAULTS.expGrain), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expDefectsQuality: clamp(Number(state.expDefectsQuality ?? SECTION_QUALITY_DEFAULTS.expDefects), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
     inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
     wordWrap: state.wordWrap,
     stageWidthFactor: state.stageWidthFactor,
@@ -388,42 +407,42 @@ export function deserializeDocumentState(data, context) {
     lowResZoomMarginPct: normalizedLowResZoom.marginPct ?? LOW_RES_ZOOM_DEFAULTS.marginPct,
     effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
     expToneStrength: clamp(
-      Number(data.expToneStrength ?? state.expToneStrength ?? 100),
+      Number(data.expToneStrength ?? state.expToneStrength ?? SECTION_STRENGTH_DEFAULTS.expTone),
       0,
       100,
     ),
     expEdgeStrength: clamp(
-      Number(data.expEdgeStrength ?? state.expEdgeStrength ?? 100),
+      Number(data.expEdgeStrength ?? state.expEdgeStrength ?? SECTION_STRENGTH_DEFAULTS.expEdge),
       0,
       100,
     ),
     expGrainStrength: clamp(
-      Number(data.expGrainStrength ?? state.expGrainStrength ?? 100),
+      Number(data.expGrainStrength ?? state.expGrainStrength ?? SECTION_STRENGTH_DEFAULTS.expGrain),
       0,
       100,
     ),
     expDefectsStrength: clamp(
-      Number(data.expDefectsStrength ?? state.expDefectsStrength ?? 100),
+      Number(data.expDefectsStrength ?? state.expDefectsStrength ?? SECTION_STRENGTH_DEFAULTS.expDefects),
       0,
       100,
     ),
     expToneQuality: clamp(
-      Number(data.expToneQuality ?? state.expToneQuality ?? EFFECT_QUALITY_DEFAULT),
+      Number(data.expToneQuality ?? state.expToneQuality ?? SECTION_QUALITY_DEFAULTS.expTone),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
     expEdgeQuality: clamp(
-      Number(data.expEdgeQuality ?? state.expEdgeQuality ?? EFFECT_QUALITY_DEFAULT),
+      Number(data.expEdgeQuality ?? state.expEdgeQuality ?? SECTION_QUALITY_DEFAULTS.expEdge),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
     expGrainQuality: clamp(
-      Number(data.expGrainQuality ?? state.expGrainQuality ?? EFFECT_QUALITY_DEFAULT),
+      Number(data.expGrainQuality ?? state.expGrainQuality ?? SECTION_QUALITY_DEFAULTS.expGrain),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
     expDefectsQuality: clamp(
-      Number(data.expDefectsQuality ?? state.expDefectsQuality ?? EFFECT_QUALITY_DEFAULT),
+      Number(data.expDefectsQuality ?? state.expDefectsQuality ?? SECTION_QUALITY_DEFAULTS.expDefects),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),

@@ -1,6 +1,25 @@
 import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitterConfig.js';
+import {
+  DEFAULT_INK_SECTION_ORDER as PRESET_INK_SECTION_ORDER,
+  getDefaultInkSectionQuality,
+  getDefaultInkSectionStrength,
+} from '../config/inkEffectDefaultStyle.js';
 
-export const DEFAULT_INK_SECTION_ORDER = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
+const SECTION_STRENGTH_DEFAULTS = {
+  expTone: getDefaultInkSectionStrength('expTone'),
+  expEdge: getDefaultInkSectionStrength('expEdge'),
+  expGrain: getDefaultInkSectionStrength('expGrain'),
+  expDefects: getDefaultInkSectionStrength('expDefects'),
+};
+
+const SECTION_QUALITY_DEFAULTS = {
+  expTone: getDefaultInkSectionQuality('expTone'),
+  expEdge: getDefaultInkSectionQuality('expEdge'),
+  expGrain: getDefaultInkSectionQuality('expGrain'),
+  expDefects: getDefaultInkSectionQuality('expDefects'),
+};
+
+export const DEFAULT_INK_SECTION_ORDER = PRESET_INK_SECTION_ORDER.slice();
 
 export function createMainState(app, gridDiv = 8) {
   return {
@@ -27,14 +46,14 @@ export function createMainState(app, gridDiv = 8) {
     lineStepMu: Math.round(gridDiv * 1.5),
     zoom: 1.0,
     effectsOverallStrength: 100,
-    expToneStrength: 100,
-    expEdgeStrength: 100,
-    expGrainStrength: 100,
-    expDefectsStrength: 100,
-    expToneQuality: 100,
-    expEdgeQuality: 100,
-    expGrainQuality: 100,
-    expDefectsQuality: 100,
+    expToneStrength: SECTION_STRENGTH_DEFAULTS.expTone,
+    expEdgeStrength: SECTION_STRENGTH_DEFAULTS.expEdge,
+    expGrainStrength: SECTION_STRENGTH_DEFAULTS.expGrain,
+    expDefectsStrength: SECTION_STRENGTH_DEFAULTS.expDefects,
+    expToneQuality: SECTION_QUALITY_DEFAULTS.expTone,
+    expEdgeQuality: SECTION_QUALITY_DEFAULTS.expEdge,
+    expGrainQuality: SECTION_QUALITY_DEFAULTS.expGrain,
+    expDefectsQuality: SECTION_QUALITY_DEFAULTS.expDefects,
     altSeed: 0x51F15EED,
     inkSectionOrder: DEFAULT_INK_SECTION_ORDER.slice(),
     glyphJitterEnabled: GLYPH_JITTER_DEFAULTS.enabled,
@@ -82,13 +101,13 @@ export function createEphemeralState() {
 export function resetInkEffectsState(state) {
   if (!state) return;
   state.effectsOverallStrength = 100;
-  state.expToneStrength = 100;
-  state.expEdgeStrength = 100;
-  state.expGrainStrength = 100;
-  state.expDefectsStrength = 100;
-  state.expToneQuality = 100;
-  state.expEdgeQuality = 100;
-  state.expGrainQuality = 100;
-  state.expDefectsQuality = 100;
+  state.expToneStrength = SECTION_STRENGTH_DEFAULTS.expTone;
+  state.expEdgeStrength = SECTION_STRENGTH_DEFAULTS.expEdge;
+  state.expGrainStrength = SECTION_STRENGTH_DEFAULTS.expGrain;
+  state.expDefectsStrength = SECTION_STRENGTH_DEFAULTS.expDefects;
+  state.expToneQuality = SECTION_QUALITY_DEFAULTS.expTone;
+  state.expEdgeQuality = SECTION_QUALITY_DEFAULTS.expEdge;
+  state.expGrainQuality = SECTION_QUALITY_DEFAULTS.expGrain;
+  state.expDefectsQuality = SECTION_QUALITY_DEFAULTS.expDefects;
   state.inkSectionOrder = DEFAULT_INK_SECTION_ORDER.slice();
 }

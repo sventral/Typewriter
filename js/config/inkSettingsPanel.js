@@ -1,3 +1,9 @@
+import {
+  cloneDefaultExperimentalConfig,
+  getDefaultInkSectionQuality,
+  getDefaultInkSectionStrength,
+} from './inkEffectDefaultStyle.js';
+
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
 const INPUT_OVERRIDES = {
@@ -64,81 +70,7 @@ function getInputOverride(sectionId, path) {
 
 // Classic fill helpers have been removed; experimental sections manage their own config.
 
-const EXPERIMENTAL_EFFECTS_CONFIG = {
-  enable: {
-    toneCore: true,
-    toneDynamics: true,
-    ribbonBands: true,
-    rim: false,
-    centerEdge: false,
-    grainSpeck: true,
-    dropouts: true,
-    edgeFuzz: true,
-    smudge: true,
-    punch: true,
-  },
-  ink: {
-    pressureMid: 0.53,
-    pressureVar: 0.22,
-    inkGamma: 0.94,
-    toneJitter: 0.2,
-    rim: 0.27,
-    rimCurve: 2.21,
-    mottling: 0.11,
-    speckDark: 0.9,
-    speckLight: 0.62,
-    speckGrayBias: 0.51,
-  },
-  ribbon: {
-    height: 0.35,
-    position: 0.55,
-    delta: 0.12,
-    fade: 0.65,
-    wobble: 0.25,
-  },
-  noise: {
-    lfScale: 22,
-    hfScale: 1,
-  },
-  centerEdge: {
-    center: 0.28,
-    edge: 0,
-  },
-  dropouts: {
-    amount: 0.9,
-    width: 1.75,
-    scale: 16,
-    pinhole: 0.1,
-    streakDensity: 0.2,
-    pinholeWeight: 0.34,
-  },
-  edgeFuzz: {
-    opacity: 0.23,
-    inBand: 2,
-    outBand: 0.5,
-    rough: 0.63,
-    scale: 6,
-    mix: 0.38,
-  },
-  smudge: {
-    strength: 0.21,
-    radius: 6.75,
-    falloff: 1.39,
-    scale: 24,
-    density: 0.33,
-    dirDeg: 300,
-    spread: 0.16,
-  },
-  punch: {
-    chance: 0.26,
-    count: 1,
-    rMin: 0.004,
-    rMax: 0.082,
-    edgeBias: 0.8,
-    soft: 0.295,
-    intensity: 0.96,
-  },
-};
+const EXPERIMENTAL_EFFECTS_CONFIG = cloneDefaultExperimentalConfig();
 
 const EXP_TONE_KEYS = [
   { path: 'enable.toneDynamics', label: 'Enable tone filters' },
@@ -214,7 +146,7 @@ const SECTION_DEFS = [
     keyOrder: EXP_TONE_KEYS,
     trigger: 'glyph',
     stateKey: 'expToneStrength',
-    defaultStrength: 100,
+    defaultStrength: getDefaultInkSectionStrength('expTone'),
   },
   {
     id: 'expEdge',
@@ -224,7 +156,7 @@ const SECTION_DEFS = [
     keyOrder: EXP_EDGE_KEYS,
     trigger: 'glyph',
     stateKey: 'expEdgeStrength',
-    defaultStrength: 100,
+    defaultStrength: getDefaultInkSectionStrength('expEdge'),
   },
   {
     id: 'expGrain',
@@ -234,7 +166,7 @@ const SECTION_DEFS = [
     keyOrder: EXP_GRAIN_KEYS,
     trigger: 'glyph',
     stateKey: 'expGrainStrength',
-    defaultStrength: 100,
+    defaultStrength: getDefaultInkSectionStrength('expGrain'),
   },
   {
     id: 'expDefects',
@@ -244,7 +176,7 @@ const SECTION_DEFS = [
     keyOrder: EXP_DEFECT_KEYS,
     trigger: 'glyph',
     stateKey: 'expDefectsStrength',
-    defaultStrength: 100,
+    defaultStrength: getDefaultInkSectionStrength('expDefects'),
   },
 ];
 
@@ -253,10 +185,26 @@ const EFFECT_QUALITY_MIN = 0;
 const EFFECT_QUALITY_MAX = 200;
 
 const SECTION_QUALITY_CONFIG = Object.freeze({
-  expTone: { stateKey: 'expToneQuality', label: 'Tone & ribbon quality' },
-  expEdge: { stateKey: 'expEdgeQuality', label: 'Edge shaping quality' },
-  expGrain: { stateKey: 'expGrainQuality', label: 'Texture quality' },
-  expDefects: { stateKey: 'expDefectsQuality', label: 'Defects quality' },
+  expTone: {
+    stateKey: 'expToneQuality',
+    label: 'Tone & ribbon quality',
+    defaultValue: getDefaultInkSectionQuality('expTone'),
+  },
+  expEdge: {
+    stateKey: 'expEdgeQuality',
+    label: 'Edge shaping quality',
+    defaultValue: getDefaultInkSectionQuality('expEdge'),
+  },
+  expGrain: {
+    stateKey: 'expGrainQuality',
+    label: 'Texture quality',
+    defaultValue: getDefaultInkSectionQuality('expGrain'),
+  },
+  expDefects: {
+    stateKey: 'expDefectsQuality',
+    label: 'Defects quality',
+    defaultValue: getDefaultInkSectionQuality('expDefects'),
+  },
 });
 
 const VISIBLE_SECTION_DEFS = SECTION_DEFS.filter(def => !def.hidden);
@@ -412,7 +360,11 @@ function normalizeStyleRecord(style, index = 0) {
         config: deepCloneValue(configSource == null ? def.config : configSource),
       };
       if (SECTION_QUALITY_CONFIG[def.id]) {
-        record.sections[def.id].quality = clampQualityValue(section?.quality ?? EFFECT_QUALITY_DEFAULT);
+        const defaultQuality = getDefaultInkSectionQuality(def.id);
+        record.sections[def.id].quality = clampQualityValue(
+          section?.quality ?? defaultQuality,
+          defaultQuality,
+        );
       }
     });
     return record;
@@ -491,7 +443,8 @@ function createStyleSnapshot(name, existingId = null) {
       config: deepCloneValue(configSource),
     };
     if (SECTION_QUALITY_CONFIG[def.id]) {
-      sectionRecord.quality = getSectionQualityPercent(def.id, EFFECT_QUALITY_DEFAULT);
+      const defaultQuality = getDefaultInkSectionQuality(def.id);
+      sectionRecord.quality = getSectionQualityPercent(def.id, defaultQuality);
     }
     base.sections[def.id] = sectionRecord;
   });
@@ -968,14 +921,22 @@ function setScalarOnState(key, value, min = 0, max = 100) {
 }
 
 function clampQualityValue(value, fallback = EFFECT_QUALITY_DEFAULT) {
-  const raw = Number.isFinite(Number(value)) ? Number(value) : Number(fallback);
-  return clamp(Math.round(Number.isFinite(raw) ? raw : EFFECT_QUALITY_DEFAULT), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
+  const safeFallback = Number.isFinite(fallback) ? fallback : EFFECT_QUALITY_DEFAULT;
+  const raw = Number.isFinite(Number(value)) ? Number(value) : safeFallback;
+  const normalized = Number.isFinite(raw) ? raw : safeFallback;
+  return clamp(Math.round(normalized), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
 }
 
 function getSectionQualityPercent(sectionId, fallback = EFFECT_QUALITY_DEFAULT) {
   const cfg = SECTION_QUALITY_CONFIG[sectionId];
-  if (!cfg) return clampQualityValue(fallback);
-  return getScalarFromState(cfg.stateKey, clampQualityValue(fallback), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
+  const defaultValue = Number.isFinite(cfg?.defaultValue) ? cfg.defaultValue : fallback;
+  if (!cfg) return clampQualityValue(defaultValue, defaultValue);
+  return getScalarFromState(
+    cfg.stateKey,
+    clampQualityValue(defaultValue, defaultValue),
+    EFFECT_QUALITY_MIN,
+    EFFECT_QUALITY_MAX,
+  );
 }
 
 function setSectionQualityPercent(sectionId, value) {
