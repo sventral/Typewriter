@@ -3,6 +3,7 @@ import { markDocumentDirty } from '../state/saveRevision.js';
 import { createZoomRenderManager } from './zoomRenderManager.js';
 import { createZoomUiController } from './zoomUiController.js';
 import { createZoomLagMonitor } from '../diagnostics/zoomLagMonitor.js';
+import { createWheelAxisStabilizer } from './wheelAxisStabilizer.js';
 
 export function createLayoutAndZoomController(context, pageLifecycle, editingController) {
   const {
@@ -106,6 +107,13 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let pendingPaperOffsetWorkRAF = 0;
   const lastMarginInsets = { top: null, right: null, bottom: null, left: null };
   let lastPageHeightPx = '';
+  const wheelAxisStabilizer = createWheelAxisStabilizer({
+    dominanceRatio: 1.28,
+    crossAxisSuppression: 0.9,
+    snapResponsiveness: 0.5,
+    releaseDecay: 0.14,
+    idleDecay: 0.06,
+  });
 
   function updateRulerHostDimensions(stageW, stageH) {
     if (!app.rulerH_host || !app.rulerV_host) return;
@@ -743,10 +751,10 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   function handleWheelPan(e) {
     e.preventDefault();
-    const dx = e.deltaX;
-    const dy = e.deltaY;
+    const { dx, dy } = wheelAxisStabilizer.filter(e.deltaX, e.deltaY);
     if (dx || dy) {
-      setPaperOffset(state.paperOffset.x - dx / state.zoom, state.paperOffset.y - dy / state.zoom);
+      const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+      setPaperOffset(state.paperOffset.x - dx / zoom, state.paperOffset.y - dy / zoom);
     }
   }
 
