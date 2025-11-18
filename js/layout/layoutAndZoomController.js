@@ -108,11 +108,12 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   const lastMarginInsets = { top: null, right: null, bottom: null, left: null };
   let lastPageHeightPx = '';
   const wheelAxisStabilizer = createWheelAxisStabilizer({
-    dominanceRatio: 1.28,
-    crossAxisSuppression: 0.9,
-    snapResponsiveness: 0.5,
-    releaseDecay: 0.14,
-    idleDecay: 0.06,
+    dominanceRatio: 1.15,
+    minorFloor: 0.35,
+    crossAxisSuppression: 0.95,
+    snapResponsiveness: 0.65,
+    releaseDecay: 0.1,
+    idleDecay: 0.05,
   });
 
   function updateRulerHostDimensions(stageW, stageH) {
