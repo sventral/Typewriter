@@ -15,12 +15,13 @@ pipeline.stageRegistry.texture = (coverage, ctx) => {
   }
 };
 
-const makeContext = dpPerCss => ({
+const makeContext = (dpPerCss, extras = {}) => ({
   w: 4,
   h: 4,
   alpha0: new Uint8Array(16),
   dpPerCss,
   params: {},
+  ...extras,
 });
 
 const coverageBaseline = new Float32Array(16).fill(0.2);
@@ -95,5 +96,54 @@ lowDpPipeline.runPipeline(coverageLowDp, makeContext(1.4), ['texture']);
 assert.ok(lowDpCtx, 'Low dp pipeline should still run when quality forces it.');
 assert.equal(lowDpCtx.w, 1, 'Low dp pipeline should downsample even below threshold.');
 assert.equal(lowDpCtx.h, 1, 'Low dp pipeline should downsample height below threshold.');
+
+const cachePipeline = createExperimentalStagePipeline({
+  detailResolution: { threshold: 1, scale: 0.5, stages: ['texture'], stageScaleMap: { texture: 0.5 } },
+});
+
+const mockDm = {
+  raw: {
+    inside: new Float32Array(16).fill(2),
+    outside: new Float32Array(16).fill(3),
+  },
+  getInside(index) {
+    return this.raw.inside[index];
+  },
+  getOutside(index) {
+    return this.raw.outside[index];
+  },
+  getMaxInside() {
+    return 5;
+  },
+};
+
+const coverageCache = new Float32Array(16).fill(0.4);
+let cachedCtxAlpha = [];
+let cachedCtxDm = [];
+cachePipeline.stageRegistry.texture = (coverage, ctx) => {
+  cachedCtxAlpha.push(ctx.alpha0);
+  cachedCtxDm.push(ctx.dm);
+  for (let i = 0; i < coverage.length; i++) {
+    coverage[i] = Math.min(1, coverage[i] + 0.05);
+  }
+};
+cachedCtxAlpha = [];
+cachedCtxDm = [];
+cachePipeline.runPipeline(
+  coverageCache,
+  makeContext(3.4, { dm: mockDm }),
+  ['texture', 'texture'],
+);
+assert.equal(cachedCtxAlpha.length, 2, 'Caching pipeline should invoke the stage twice.');
+assert.strictEqual(
+  cachedCtxAlpha[0],
+  cachedCtxAlpha[1],
+  'Downsampled alpha0 buffer should be reused between identical stages.',
+);
+assert.strictEqual(
+  cachedCtxDm[0],
+  cachedCtxDm[1],
+  'Downsampled distance map should be reused between identical stages.',
+);
 
 console.log('stagePipeline detail resolution tests passed.');
