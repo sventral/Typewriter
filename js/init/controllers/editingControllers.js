@@ -57,6 +57,43 @@ export function registerEditingControllers(options) {
 
   let pendingVirtualization = false;
 
+  const rootStyle = typeof document !== 'undefined' ? document.documentElement?.style : null;
+
+  function setInkPanelShiftVar(valuePx) {
+    if (!rootStyle) return;
+    const safeValue = Number.isFinite(valuePx) ? Math.max(0, valuePx) : 0;
+    rootStyle.setProperty('--ink-panel-shift', `${safeValue}px`);
+  }
+
+  function syncZoomControlsPanelOffset() {
+    if (!app?.inkSettingsPanel) {
+      setInkPanelShiftVar(0);
+      return;
+    }
+    const shouldShift = app.inkSettingsPanel.classList.contains('is-open');
+    const panelWidth = shouldShift ? app.inkSettingsPanel.getBoundingClientRect().width : 0;
+    setInkPanelShiftVar(panelWidth);
+  }
+
+  function observeInkPanelState() {
+    if (typeof MutationObserver === 'function' && app?.inkSettingsPanel) {
+      const observer = new MutationObserver((mutations) => {
+        if (!mutations?.length) return;
+        syncZoomControlsPanelOffset();
+      });
+      observer.observe(app.inkSettingsPanel, { attributes: true, attributeFilter: ['class'] });
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', () => {
+        if (!app?.inkSettingsPanel?.classList.contains('is-open')) return;
+        syncZoomControlsPanelOffset();
+      }, { passive: true });
+    }
+    syncZoomControlsPanelOffset();
+  }
+
+  observeInkPanelState();
+
   function getLifecycleController() {
     return context.controllers.lifecycle;
   }
@@ -423,6 +460,7 @@ export function registerEditingControllers(options) {
     if (!app.inkSettingsPanel) return;
     const isOpen = app.inkSettingsPanel.classList.toggle('is-open');
     if (isOpen) syncFontRadiosWithActiveFont();
+    syncZoomControlsPanelOffset();
   }
 
   function computeColsFromCpi(cpi) {
