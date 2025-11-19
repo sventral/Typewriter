@@ -2,8 +2,8 @@
     --page-w: 900;
     --page-width-px: calc(var(--page-w) * 1px);
     --page-height-px: calc(var(--page-width-px) * 297 / 210);
-    --stage-width-mult: 2;
-    --stage-height-mult: 1.2;
+    --stage-width-mult: 1;
+    --stage-height-mult: 1;
     --stage-width-px: calc(var(--page-width-px) * var(--stage-width-mult));
     --stage-height-px: calc(var(--page-height-px) * var(--stage-height-mult));
     --margin-top-px: 0px;
@@ -447,7 +447,7 @@ body[data-page-tone='dark']{
     position:relative;
     scrollbar-gutter:stable;
     display:flex;
-    align-items:center;
+    align-items:flex-start;
     justify-content:center;
   }
   .stage::-webkit-scrollbar-horizontal{ height:0; }

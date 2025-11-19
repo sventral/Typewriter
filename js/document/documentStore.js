@@ -18,6 +18,7 @@ import {
   getDefaultInkSectionStrength,
 } from '../config/inkEffectDefaultStyle.js';
 import { hydrateGlyphEntry, serializeGlyphEntry } from './glyphStack.js';
+import { STAGE_HEIGHT_MAX, STAGE_HEIGHT_MIN, STAGE_WIDTH_MAX, STAGE_WIDTH_MIN } from '../layout/stageLayout.js';
 const KNOWN_INK_SECTIONS = PRESET_INK_SECTION_ORDER.slice();
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
@@ -358,10 +359,10 @@ export function deserializeDocumentState(data, context) {
   const storedStageWidth = Number(data.stageWidthFactor);
   const storedStageHeight = Number(data.stageHeightFactor);
   const sanitizedStageWidth = Number.isFinite(storedStageWidth)
-    ? clamp(storedStageWidth, 1, 5)
+    ? clamp(storedStageWidth, STAGE_WIDTH_MIN, STAGE_WIDTH_MAX)
     : state.stageWidthFactor;
   const sanitizedStageHeight = Number.isFinite(storedStageHeight)
-    ? clamp(storedStageHeight, 1, 5)
+    ? clamp(storedStageHeight, STAGE_HEIGHT_MIN, STAGE_HEIGHT_MAX)
     : state.stageHeightFactor;
   const jitterBlock = data.glyphJitter && typeof data.glyphJitter === 'object'
     ? data.glyphJitter
