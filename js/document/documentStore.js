@@ -267,6 +267,8 @@ export function deserializeDocumentState(data, context) {
   if (app.stageInner) {
     app.stageInner.innerHTML = '';
   }
+  const hasStoredMarginBox = data && Object.prototype.hasOwnProperty.call(data, 'showMarginBox');
+  const resolvedShowMarginBox = hasStoredMarginBox ? !!data.showMarginBox : !!state.showMarginBox;
   const pgArr = Array.isArray(data.pages) ? data.pages : [];
   pgArr.forEach((pg, idx) => {
     const wrap = document.createElement('div');
@@ -281,7 +283,7 @@ export function deserializeDocumentState(data, context) {
     }
     const mb = document.createElement('div');
     mb.className = 'margin-box';
-    mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
+    mb.style.visibility = resolvedShowMarginBox ? 'visible' : 'hidden';
     pageEl.appendChild(cv);
     pageEl.appendChild(mb);
     wrap.appendChild(pageEl);
@@ -324,7 +326,7 @@ export function deserializeDocumentState(data, context) {
     }
     const mb = document.createElement('div');
     mb.className = 'margin-box';
-    mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
+    mb.style.visibility = resolvedShowMarginBox ? 'visible' : 'hidden';
     pageEl.appendChild(cv);
     pageEl.appendChild(mb);
     wrap.appendChild(pageEl);
@@ -393,7 +395,7 @@ export function deserializeDocumentState(data, context) {
       : state.caret,
     ink: ['b', 'r', 'w'].includes(data.ink) ? data.ink : 'b',
     showRulers: data.showRulers !== false,
-    showMarginBox: !!data.showMarginBox,
+    showMarginBox: resolvedShowMarginBox,
     cpi: cpiVal || 10,
     colsAcross: inferredCols ?? state.colsAcross,
     inkWidthPct: sanitizedInkWidth,
