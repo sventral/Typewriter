@@ -20,6 +20,7 @@ function createNoopLayoutAndZoomApi() {
     onZoomPointerUp: () => {},
     sanitizeStageInput: () => null,
     scheduleZoomCrispRedraw: () => {},
+    handleScrollLaneScroll: () => {},
   };
 }
 
@@ -36,6 +37,7 @@ export function createLayoutBridge(context) {
     setPaperOffset: (...args) => layoutAndZoomApi.setPaperOffset(...args),
     requestHammerNudge: (...args) => layoutAndZoomApi.requestHammerNudge(...args),
     handleWheelPan: (...args) => layoutAndZoomApi.handleWheelPan(...args),
+    handleScrollLaneScroll: (...args) => layoutAndZoomApi.handleScrollLaneScroll(...args),
     handleHorizontalMarginDrag: (...args) => layoutAndZoomApi.handleHorizontalMarginDrag(...args),
     handleVerticalMarginDrag: (...args) => layoutAndZoomApi.handleVerticalMarginDrag(...args),
     endMarginDrag: (...args) => layoutAndZoomApi.endMarginDrag(...args),
@@ -61,6 +63,7 @@ export function createLayoutBridge(context) {
     setPaperOffset: bridge.setPaperOffset,
     requestHammerNudge: bridge.requestHammerNudge,
     handleWheelPan: bridge.handleWheelPan,
+    handleScrollLaneScroll: bridge.handleScrollLaneScroll,
     handleHorizontalMarginDrag: bridge.handleHorizontalMarginDrag,
     handleVerticalMarginDrag: bridge.handleVerticalMarginDrag,
     endMarginDrag: bridge.endMarginDrag,

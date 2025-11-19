@@ -41,6 +41,7 @@ export function createMeasurementControls({
   onZoomPointerUp,
   setZoomPercent,
   handleWheelPan,
+  handleScrollLaneScroll = () => {},
   requestHammerNudge,
   isZooming,
   applyDefaultMargins,
@@ -297,6 +298,9 @@ export function createMeasurementControls({
     bindZoomControls();
     if (app.stage) {
       app.stage.addEventListener('wheel', handleWheelPan, { passive: false });
+    }
+    if (app.scrollLane) {
+      app.scrollLane.addEventListener('scroll', handleScrollLaneScroll, { passive: true });
     }
     window.addEventListener('resize', () => {
       positionRulers();

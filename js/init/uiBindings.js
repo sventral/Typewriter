@@ -46,6 +46,7 @@ export function setupUIBindings(context, controllers) {
 
   const {
     handleWheelPan,
+    handleScrollLaneScroll,
     handleHorizontalMarginDrag,
     handleVerticalMarginDrag,
     endMarginDrag,
@@ -131,6 +132,7 @@ export function setupUIBindings(context, controllers) {
     onZoomPointerUp,
     setZoomPercent,
     handleWheelPan,
+    handleScrollLaneScroll,
     requestHammerNudge,
     isZooming,
     applyDefaultMargins,
