@@ -16,7 +16,7 @@ import {
 } from './textureMath.js';
 import { createDetailNoiseCache, globalDetailNoiseCache } from './detailNoiseCache.js';
 
-const { min, max, abs, floor, ceil, round, sin, cos, pow } = Math;
+const { min, max, abs, floor, ceil, round, sin, cos, pow, hypot } = Math;
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const smoothStep = t => t * t * (3 - 2 * t);
@@ -322,6 +322,75 @@ const getOrCreateDetailGeometry = (ctx, scale) => {
   return geometry;
 };
 
+const DISTANCE_DERIVED_EPSILON = 1e-6;
+
+const computeNormalizedGradient = (dist, w, h) => {
+  if (!dist || w <= 0 || h <= 0) return null;
+  const total = w * h;
+  const grad = new Float32Array(total * 2);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      const center = dist[idx] || 0;
+      const left = x > 0 ? (dist[idx - 1] || 0) : center;
+      const right = x < w - 1 ? (dist[idx + 1] || 0) : center;
+      const up = y > 0 ? (dist[idx - w] || 0) : center;
+      const down = y < h - 1 ? (dist[idx + w] || 0) : center;
+      let dx = left - right;
+      let dy = up - down;
+      const length = hypot(dx, dy);
+      if (length > DISTANCE_DERIVED_EPSILON) {
+        dx /= length;
+        dy /= length;
+      } else {
+        dx = 0;
+        dy = 0;
+      }
+      grad[idx * 2] = dx;
+      grad[idx * 2 + 1] = dy;
+    }
+  }
+  return grad;
+};
+
+const ensureDistanceDerived = ctx => {
+  if (!ctx) return null;
+  if (ctx.__distanceDerived !== undefined) {
+    return ctx.__distanceDerived;
+  }
+  const { dm, w, h } = ctx;
+  if (!dm || !dm.raw || !w || !h) {
+    ctx.__distanceDerived = null;
+    return null;
+  }
+  const smul = Math.max(DISTANCE_DERIVED_EPSILON, ctx.smul || 1);
+  const dpPerCss = Math.max(DISTANCE_DERIVED_EPSILON, ctx.dpPerCss || 1);
+  const normFactor = smul * dpPerCss;
+  const result = {};
+  let hasData = false;
+  if (dm.raw.inside) {
+    const insideSource = dm.raw.inside;
+    const insideNorm = new Float32Array(w * h);
+    for (let i = 0; i < insideNorm.length; i++) {
+      insideNorm[i] = (insideSource[i] || 0) / normFactor;
+    }
+    result.inside = insideNorm;
+    hasData = true;
+  }
+  if (dm.raw.outside) {
+    const outsideSource = dm.raw.outside;
+    const outsideNorm = new Float32Array(w * h);
+    for (let i = 0; i < outsideNorm.length; i++) {
+      outsideNorm[i] = (outsideSource[i] || 0) / normFactor;
+    }
+    result.outside = outsideNorm;
+    result.outsideNormal = computeNormalizedGradient(outsideSource, w, h);
+    hasData = true;
+  }
+  ctx.__distanceDerived = hasData ? result : null;
+  return ctx.__distanceDerived;
+};
+
 const applyLowResDeltaToCoverage = (
   coverage,
   baseWidth,
@@ -366,6 +435,8 @@ const createDetailResolutionContext = (ctx, coverage, scale) => {
   detailCtx.alpha0 = geometry.alpha;
   detailCtx.dpPerCss = geometry.dpPerCss;
   detailCtx.__detailDensity = undefined;
+  detailCtx.__detailGeometryCache = undefined;
+  detailCtx.__distanceDerived = undefined;
   detailCtx.dm = geometry.dm || ctx.dm;
   if (typeof ctx.stageQuality === 'number') {
     detailCtx.stageQuality = ctx.stageQuality;
@@ -797,10 +868,9 @@ export function createExperimentalStagePipeline(deps = {}) {
     const invDp = 1 / dpPerCss;
     const cfg = params.edgeFuzz;
     if (!params.enable.edgeFuzz || !cfg || (cfg.inBand <= 0 && cfg.outBand <= 0)) return;
-    const inside = dm?.raw?.inside;
-    const outside = dm?.raw?.outside;
+    const smulSafe = Math.max(1e-6, smul || 1);
     const detailCss = getDetailDensityCss(ctx);
-    const ns = max(2 / detailCss, ((cfg.scale || 2) * smul) / detailCss);
+    const ns = max(2 / detailCss, ((cfg.scale || 2) * smulSafe) / detailCss);
     const fuzzTile = detailNoiseCache.getTile({
       detailCss,
       width: w,
@@ -809,16 +879,46 @@ export function createExperimentalStagePipeline(deps = {}) {
       scale: ns,
       seed: seed ^ 0x0F0F0F0F,
     });
+    const derived = ensureDistanceDerived(ctx);
+    const insideNorm = derived?.inside;
+    const outsideNorm = derived?.outside;
+    const insideRaw = dm?.raw?.inside;
+    const outsideRaw = dm?.raw?.outside;
+    const distScale = smulSafe * dpPerCss;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
         let covF = 0;
         const a = alpha0[i] / 255;
-        if (a > 0 && cfg.inBand > 0 && inside) {
-          covF = max(covF, clamp01Fn(1 - ((inside[i] || 0) / (cfg.inBand * smul * dpPerCss))));
+        if (a > 0 && cfg.inBand > 0) {
+          if (insideNorm) {
+            covF = max(
+              covF,
+              clamp01Fn(1 - (insideNorm[i] / Math.max(cfg.inBand, DISTANCE_DERIVED_EPSILON))),
+            );
+          } else if (insideRaw) {
+            covF = max(
+              covF,
+              clamp01Fn(
+                1 - ((insideRaw[i] || 0) / (Math.max(cfg.inBand, DISTANCE_DERIVED_EPSILON) * distScale)),
+              ),
+            );
+          }
         }
-        if (a === 0 && cfg.outBand > 0 && outside && outside[i] > 0) {
-          covF = max(covF, clamp01Fn(1 - ((outside[i] || 0) / (cfg.outBand * smul * dpPerCss))));
+        if (a === 0 && cfg.outBand > 0) {
+          if (outsideNorm) {
+            covF = max(
+              covF,
+              clamp01Fn(1 - (outsideNorm[i] / Math.max(cfg.outBand, DISTANCE_DERIVED_EPSILON))),
+            );
+          } else if (outsideRaw && outsideRaw[i] > 0) {
+            covF = max(
+              covF,
+              clamp01Fn(
+                1 - ((outsideRaw[i] || 0) / (Math.max(cfg.outBand, DISTANCE_DERIVED_EPSILON) * distScale)),
+              ),
+            );
+          }
         }
         if (covF > 0) {
           const xCss = x * invDp;
@@ -844,14 +944,18 @@ function applySmudgeHalo(coverage, ctx) {
   const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
   const invDp = 1 / dpPerCss;
   const s = params.smudge;
-  const outside = dm?.raw?.outside;
-  if (!params.enable.smudge || !s || s.strength <= 0 || !outside) return;
+  const smulSafe = Math.max(1e-6, smul || 1);
+  const derived = ensureDistanceDerived(ctx);
+  const outsideNorm = derived?.outside;
+  const outsideNormal = derived?.outsideNormal;
+  const outsideRaw = dm?.raw?.outside;
+  if (!params.enable.smudge || !s || s.strength <= 0 || (!outsideNorm && !outsideRaw)) return;
 
-  const R = Math.max(0.0001, s.radius * smul * dpPerCss);
-  if (R <= 0) return;
+  const radiusCss = Math.max(0.0001, s.radius);
+  const scaleDp = smulSafe * dpPerCss;
 
   const detailCss = getDetailDensityCss(ctx);
-  const ns = Math.max(2 / detailCss, (s.scale * smul) / detailCss);
+  const ns = Math.max(2 / detailCss, (s.scale * smulSafe) / detailCss);
   const theta = (s.dirDeg || 0) * (Math.PI / 180); // ← fix
   const dir = [Math.cos(theta), Math.sin(theta)];
   const smudgeTile = detailNoiseCache.getTile({
@@ -866,9 +970,12 @@ function applySmudgeHalo(coverage, ctx) {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
-      if (!(outside[i] > 0)) continue;
+      const outsideDepth = outsideNorm
+        ? outsideNorm[i]
+        : ((outsideRaw?.[i] || 0) / scaleDp);
+      if (!(outsideDepth > 0)) continue;
 
-      let band = Math.max(0, 1 - ((outside[i] || 0) / R));
+      let band = Math.max(0, 1 - (outsideDepth / radiusCss));
       band = Math.pow(band, Math.max(0.0001, 1 + s.falloff));
 
       const xCss = x * invDp;
@@ -876,8 +983,15 @@ function applySmudgeHalo(coverage, ctx) {
       const n = smudgeTile.data[i];
       const gate = Math.max(0, (n - (1 - s.density)) * (1 / (s.density + 1e-4)));
 
-      const g = gradOutFn(outside, w, h, x, y);
-      const ndotl = Math.max(0, dotFn(g, dir[0], dir[1]) / lenFn(g));
+      let ndotl = 0;
+      if (outsideNormal) {
+        const nx = outsideNormal[i * 2];
+        const ny = outsideNormal[i * 2 + 1];
+        ndotl = max(0, nx * dir[0] + ny * dir[1]);
+      } else if (outsideRaw) {
+        const g = gradOutFn(outsideRaw, w, h, x, y);
+        ndotl = max(0, dotFn(g, dir[0], dir[1]) / lenFn(g));
+      }
       const dirW = Math.pow(ndotl, Math.max(0.01, 1 - s.spread) * 2 + 0.5);
 
       const sm = s.strength * band * gate * dirW;
