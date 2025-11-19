@@ -1,4 +1,5 @@
 import { clamp } from '../utils/math.js';
+import { computeLineStepPx, normalizeTopMarginPx } from '../utils/marginSnap.js';
 import { markDocumentDirty } from '../state/saveRevision.js';
 import { createZoomRenderManager } from './zoomRenderManager.js';
 import { createZoomUiController } from './zoomUiController.js';
@@ -418,11 +419,21 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   function computeSnappedVisualMargins() {
     const charWidth = getCharWidth();
     const gridHeight = getGridHeight();
+    const normalizedTop = normalizeTopMarginPx(state.marginTop, {
+      pageHeight: app.PAGE_H,
+      marginBottom: state.marginBottom,
+      gridHeight,
+      lineStepMu: getLineStepMu(),
+      fallbackLineStepMu: state.lineStepMu,
+    });
+    if (Math.abs(normalizedTop - state.marginTop) > 1e-4) {
+      state.marginTop = normalizedTop;
+    }
     const Lcol = Math.ceil(state.marginL / charWidth);
     const Rcol = Math.floor((state.marginR - 1) / charWidth);
     const leftPx = Lcol * charWidth;
     const rightPx = (Rcol + 1) * charWidth;
-    const topPx = state.marginTop;
+    const topPx = normalizedTop;
     const bottomPx = state.marginBottom;
     const Tmu = Math.ceil((state.marginTop + getAsc()) / gridHeight);
     const Bmu = Math.floor((app.PAGE_H - state.marginBottom - getDesc()) / gridHeight);
@@ -679,15 +690,21 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const drag = getDrag();
     if (!drag || drag.kind !== 'v') return;
     const pr = getActivePageRect();
-    let y = snapYToGrid(clamp((ev.clientY - pr.top) / state.zoom, 0, app.PAGE_H));
+    const pointerY = clamp((ev.clientY - pr.top) / state.zoom, 0, app.PAGE_H);
+    const snappedPointerY = snapYToGrid(pointerY);
+    const lineStepPx = computeLineStepPx(getGridHeight(), getLineStepMu(), state.lineStepMu);
     if (drag.side === 'top') {
-      const maxTop = (app.PAGE_H - state.marginBottom) - (getLineStepMu() * getGridHeight());
-      state.marginTop = Math.min(y, snapYToGrid(maxTop));
-      app.guideH.style.top = `${pr.top + state.marginTop * state.zoom}px`;
+      const normalizedTop = normalizeTopMarginPx(snappedPointerY, {
+        pageHeight: app.PAGE_H,
+        marginBottom: state.marginBottom,
+        lineStepPx,
+      });
+      state.marginTop = normalizedTop;
+      app.guideH.style.top = `${pr.top + normalizedTop * state.zoom}px`;
     } else {
-      const bottomEdge = Math.max(state.marginTop + (getLineStepMu() * getGridHeight()), y);
+      const bottomEdge = Math.max(state.marginTop + lineStepPx, snappedPointerY);
       const snappedBottomEdge = snapYToGrid(Math.min(bottomEdge, app.PAGE_H));
-      state.marginBottom = app.PAGE_H - snappedBottomEdge;
+      state.marginBottom = Math.max(0, app.PAGE_H - snappedBottomEdge);
       app.guideH.style.top = `${pr.top + snappedBottomEdge * state.zoom}px`;
     }
     app.guideH.style.display = 'block';
