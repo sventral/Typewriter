@@ -851,21 +851,29 @@ export function createGlyphAtlas(options) {
                 dm,
                 dpPerCss,
               };
-              const coverage = new Float32Array(glyphWidth * glyphHeight);
-              if (typeof processor.runGlyphPipeline === 'function') {
-                processor.runGlyphPipeline({ ...context, coverage }, effectiveOrder);
-              } else {
-                stagePipeline.runPipeline(coverage, context, effectiveOrder);
-              }
-              for (let i = 0, k = 0; i < coverage.length; i++, k += 4) {
-                const baseAlpha = basePixels[k + 3] / 255;
-                const cov = coverage[i];
-                const coverageAlpha = Number.isFinite(cov) ? clamp(cov, 0, 1) : baseAlpha;
-                const mixedAlpha = clamp(baseAlpha + (coverageAlpha - baseAlpha) * overallStrength, 0, 1);
-                basePixels[k] = colorRgb.r;
-                basePixels[k + 1] = colorRgb.g;
-                basePixels[k + 2] = colorRgb.b;
-                basePixels[k + 3] = Math.round(mixedAlpha * 255);
+              const coverage = typeof processor?.acquireCoverageBuffer === 'function'
+                ? processor.acquireCoverageBuffer(glyphWidth, glyphHeight)
+                : new Float32Array(glyphWidth * glyphHeight);
+              try {
+                if (typeof processor.runGlyphPipeline === 'function') {
+                  processor.runGlyphPipeline({ ...context, coverage }, effectiveOrder);
+                } else {
+                  stagePipeline.runPipeline(coverage, context, effectiveOrder);
+                }
+                for (let i = 0, k = 0; i < coverage.length; i++, k += 4) {
+                  const baseAlpha = basePixels[k + 3] / 255;
+                  const cov = coverage[i];
+                  const coverageAlpha = Number.isFinite(cov) ? clamp(cov, 0, 1) : baseAlpha;
+                  const mixedAlpha = clamp(baseAlpha + (coverageAlpha - baseAlpha) * overallStrength, 0, 1);
+                  basePixels[k] = colorRgb.r;
+                  basePixels[k + 1] = colorRgb.g;
+                  basePixels[k + 2] = colorRgb.b;
+                  basePixels[k + 3] = Math.round(mixedAlpha * 255);
+                }
+              } finally {
+                if (typeof processor?.releaseCoverageBuffer === 'function' && coverage) {
+                  processor.releaseCoverageBuffer(coverage);
+                }
               }
             } else {
               for (let k = 0; k < basePixels.length; k += 4) {

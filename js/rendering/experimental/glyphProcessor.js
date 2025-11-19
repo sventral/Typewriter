@@ -22,6 +22,34 @@ export function createExperimentalGlyphProcessor(options = {}) {
     ? imageDataFactory
     : (data, width, height) => new ImageData(data, width, height);
 
+  const coveragePool = new Map();
+
+  const acquireCoverageBuffer = (w, h) => {
+    const safeW = Number.isFinite(w) ? Math.max(0, Math.trunc(w)) : 0;
+    const safeH = Number.isFinite(h) ? Math.max(0, Math.trunc(h)) : 0;
+    const area = safeW * safeH;
+    if (!area) return new Float32Array(0);
+    const stack = coveragePool.get(area);
+    if (stack && stack.length) {
+      const buffer = stack.pop();
+      buffer.fill(0);
+      return buffer;
+    }
+    return new Float32Array(area);
+  };
+
+  const releaseCoverageBuffer = buffer => {
+    if (!buffer || typeof buffer.length !== 'number') return;
+    const area = buffer.length;
+    if (!area) return;
+    let stack = coveragePool.get(area);
+    if (!stack) {
+      stack = [];
+      coveragePool.set(area, stack);
+    }
+    stack.push(buffer);
+  };
+
   const ensureDistanceMap = shape => {
     if (!shape) return null;
     if (shape.distanceMapProvider) return shape.distanceMapProvider;
@@ -46,20 +74,26 @@ export function createExperimentalGlyphProcessor(options = {}) {
       smul,
       dm,
     };
-    const coverage = new Float32Array(w * h);
-    stagePipeline.runPipeline(coverage, context, pipelineOrder);
-    for (let i = 0, k = 0; i < w * h; i++, k += 4) {
-      pixels[k] = 12;
-      pixels[k + 1] = 12;
-      pixels[k + 2] = 12;
-      pixels[k + 3] = round(clamp01(coverage[i]) * 255);
+    const coverage = acquireCoverageBuffer(w, h);
+    try {
+      stagePipeline.runPipeline(coverage, context, pipelineOrder);
+      for (let i = 0, k = 0; i < w * h; i++, k += 4) {
+        pixels[k] = 12;
+        pixels[k + 1] = 12;
+        pixels[k + 2] = 12;
+        pixels[k + 3] = round(clamp01(coverage[i]) * 255);
+      }
+      return output;
+    } finally {
+      releaseCoverageBuffer(coverage);
     }
-    return output;
   };
 
   return {
     stagePipeline,
     pipelineOrder,
     processGlyph,
+    acquireCoverageBuffer,
+    releaseCoverageBuffer,
   };
 }
