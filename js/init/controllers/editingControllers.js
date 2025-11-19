@@ -513,6 +513,13 @@ export function registerEditingControllers(options) {
       page.grid = newGrid;
       if (page._dirtyRowMinMu !== undefined) page._dirtyRowMinMu += deltaMu;
       if (page._dirtyRowMaxMu !== undefined) page._dirtyRowMaxMu += deltaMu;
+      if (page._dirtyRows?.size) {
+        const shifted = new Set();
+        for (const row of page._dirtyRows) {
+          shifted.add(row + deltaMu);
+        }
+        page._dirtyRows = shifted;
+      }
     }
     state.caret.rowMu += deltaMu;
     if (typedRun?.active) typedRun.rowMu += deltaMu;
