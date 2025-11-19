@@ -119,6 +119,7 @@ export function registerControllers({
       gridDiv: GRID_DIV,
       applySubmittedChanges: editingDomain.ui.applySubmittedChanges,
       applyLineHeight: editingDomain.ui.applyLineHeight,
+      applyPaperSizeSelection: editingDomain.ui.applyPaperSizeSelection,
       readStagedLH: editingDomain.ui.readStagedLH,
       toggleRulers: editingDomain.ui.toggleRulers,
       toggleInkSettingsPanel: editingDomain.ui.toggleInkSettingsPanel,

@@ -49,6 +49,7 @@ const DOM_ID_GROUPS = {
     colsPreviewSpan: 'colsPreview',
     sizeInput: 'sizeInput',
     lhInput: 'lhInput',
+    paperSizeSelect: 'paperSizeSelect',
     glyphJitterToggle: 'glyphJitterToggle',
     glyphJitterAmountMin: 'glyphJitterAmountMin',
     glyphJitterAmountMax: 'glyphJitterAmountMax',

@@ -1,4 +1,5 @@
 import { exactFontString } from '../../config/metrics.js';
+import { createPaperMetrics, DEFAULT_PAPER_SIZE, getPaperSize, normalizePaperSizeId } from '../../config/paperSizes.js';
 import { markDocumentDirty } from '../../state/saveRevision.js';
 import { clamp } from '../../utils/math.js';
 import { sanitizeIntegerField } from '../../utils/forms.js';
@@ -94,6 +95,8 @@ export function registerEditingControllers(options) {
 
   observeInkPanelState();
 
+  let scheduleMetricsUpdateRef = null;
+
   function getLifecycleController() {
     return context.controllers.lifecycle;
   }
@@ -149,6 +152,8 @@ export function registerEditingControllers(options) {
     setPaperOffset: layoutBridge.setPaperOffset,
     applyDefaultMargins,
     computeColsFromCpi,
+    applyPaperSizeSelection,
+    scheduleMetricsUpdate: (...args) => scheduleMetricsUpdateRef?.(...args),
     rendererHooks,
     layoutZoomFactor: () => layoutBridge.getLayoutZoomFactor(),
     requestHammerNudge: layoutBridge.requestHammerNudge,
@@ -383,28 +388,167 @@ export function registerEditingControllers(options) {
     applyMetricsNow(true);
   }
 
+  function resolvePaperMetrics() {
+    if (metrics?.PAPER?.widthMm > 0) return metrics.PAPER;
+    const fallbackId = normalizePaperSizeId(state.paperSize || metrics?.PAPER_SIZE_ID || DEFAULT_PAPER_SIZE);
+    const fallback = getPaperSize(fallbackId);
+    const widthMm = fallback?.widthMm || 210;
+    const pxPerMm = Number.isFinite(metrics?.PX_PER_MM) && metrics.PX_PER_MM > 0
+      ? metrics.PX_PER_MM
+      : (app.PAGE_W || 900) / widthMm;
+    const computed = createPaperMetrics(fallbackId, pxPerMm);
+    metrics.PAPER = computed;
+    return computed;
+  }
+
   function mmX(px) {
-    return (px * 210) / app.PAGE_W;
+    const paper = resolvePaperMetrics();
+    if (!paper?.widthMm || !app.PAGE_W) return 0;
+    return (px * paper.widthMm) / app.PAGE_W;
   }
   function mmY(px) {
-    return (px * 297) / app.PAGE_H;
+    const paper = resolvePaperMetrics();
+    if (!paper?.heightMm || !app.PAGE_H) return 0;
+    return (px * paper.heightMm) / app.PAGE_H;
   }
   function pxX(mm) {
-    return (mm * app.PAGE_W) / 210;
+    const paper = resolvePaperMetrics();
+    if (!paper?.widthMm) return 0;
+    return (mm * app.PAGE_W) / paper.widthMm;
   }
   function pxY(mm) {
-    return (mm * app.PAGE_H) / 297;
+    const paper = resolvePaperMetrics();
+    if (!paper?.heightMm) return 0;
+    return (mm * app.PAGE_H) / paper.heightMm;
   }
 
   function applyDefaultMargins() {
-    const mmw = app.PAGE_W / 210;
-    const mmh = app.PAGE_H / 297;
-    const mW = 25 * mmw;
-    const mH = 25 * mmh;
-    state.marginL = mW;
-    state.marginR = app.PAGE_W - mW;
-    state.marginTop = mH;
-    state.marginBottom = mH;
+    const defaultMarginMm = 25;
+    const marginXpx = pxX(defaultMarginMm);
+    const marginYpx = pxY(defaultMarginMm);
+    state.marginL = marginXpx;
+    state.marginR = app.PAGE_W - marginXpx;
+    state.marginTop = marginYpx;
+    state.marginBottom = marginYpx;
+  }
+
+  function getPxPerMmRatio() {
+    if (Number.isFinite(metrics?.PX_PER_MM) && metrics.PX_PER_MM > 0) {
+      return metrics.PX_PER_MM;
+    }
+    const paper = resolvePaperMetrics();
+    if (paper?.widthMm > 0) {
+      const widthMm = paper.widthMm;
+      const widthPx = paper.widthPx || app.PAGE_W;
+      return widthPx / widthMm;
+    }
+    const fallback = getPaperSize(DEFAULT_PAPER_SIZE);
+    return (app.PAGE_W || 900) / (fallback?.widthMm || 210);
+  }
+
+  function setRootPaperStyles(paper) {
+    if (!rootStyle || !paper) return;
+    const widthValue = Number.isFinite(paper.widthPx) ? paper.widthPx.toFixed(2) : '900';
+    const aspectValue = Number.isFinite(paper.aspectRatio) ? paper.aspectRatio.toFixed(6) : (297 / 210).toFixed(6);
+    rootStyle.setProperty('--page-w', widthValue);
+    rootStyle.setProperty('--page-aspect', aspectValue);
+  }
+
+  function updatePaperMetricCache(paper) {
+    if (!paper) return;
+    metrics.PAPER = paper;
+    metrics.PAPER_SIZE_ID = paper.id;
+    metrics.PAPER_WIDTH_MM = paper.widthMm;
+    metrics.PAPER_HEIGHT_MM = paper.heightMm;
+    metrics.PAPER_WIDTH_IN = paper.widthIn;
+    metrics.PAPER_HEIGHT_IN = paper.heightIn;
+    metrics.PAGE_ASPECT = paper.aspectRatio;
+    metrics.PAGE_W_CSS = paper.widthPx;
+    metrics.PAGE_H_CSS = paper.heightPx;
+    metrics.A4_WIDTH_IN = paper.widthIn;
+    metrics.PX_PER_MM = paper.pxPerMm;
+    app.PAGE_W = paper.widthPx;
+    app.PAGE_H = paper.heightPx;
+  }
+
+  function applyPaperSizeSelection(targetId, options = {}) {
+    const silent = options.silent === true;
+    const normalizedId = normalizePaperSizeId(
+      targetId || state.paperSize || metrics?.PAPER_SIZE_ID || DEFAULT_PAPER_SIZE,
+    );
+    const currentId = normalizePaperSizeId(state.paperSize || metrics?.PAPER_SIZE_ID || DEFAULT_PAPER_SIZE);
+    const shouldForce = options.force === true;
+    if (!shouldForce && normalizedId === currentId && metrics?.PAPER) {
+      state.paperSize = normalizedId;
+      return false;
+    }
+
+    const pxPerMm = getPxPerMmRatio();
+    const nextPaper = createPaperMetrics(normalizedId, pxPerMm);
+    if (!nextPaper) return false;
+
+    const preserveMargins = options.preserveMargins ?? !silent;
+    const updateColumns = options.updateColumns ?? !silent;
+    const triggerLayout = options.triggerLayout ?? !silent;
+    const scheduleMetricUpdate = options.scheduleMetrics ?? !silent;
+    const triggerRewrap = options.triggerRewrap ?? !silent;
+    const markDirtyNow = options.markDirty ?? !silent;
+    const saveStateNow = options.save ?? !silent;
+    const focusNow = options.focus ?? !silent;
+    let leftMarginMm;
+    let rightMarginMm;
+    let topMarginMm;
+    let bottomMarginMm;
+    if (preserveMargins) {
+      leftMarginMm = mmX(state.marginL || 0);
+      rightMarginMm = mmX(Math.max(0, (app.PAGE_W || 0) - (state.marginR || 0)));
+      topMarginMm = mmY(state.marginTop || 0);
+      bottomMarginMm = mmY(Math.max(0, (app.PAGE_H || 0) - (state.marginBottom || 0)));
+    }
+
+    setRootPaperStyles(nextPaper);
+    updatePaperMetricCache(nextPaper);
+    state.paperSize = nextPaper.id;
+
+    if (preserveMargins) {
+      state.marginL = pxX(leftMarginMm || 0);
+      state.marginR = app.PAGE_W - pxX(rightMarginMm || 0);
+      state.marginTop = pxY(topMarginMm || 0);
+      state.marginBottom = app.PAGE_H - pxY(bottomMarginMm || 0);
+    }
+
+    if (updateColumns) {
+      const { cols2 } = computeColsFromCpi(state.cpi || 10);
+      state.colsAcross = cols2;
+    }
+
+    if (triggerLayout) {
+      layoutBridge.updateStageEnvironment();
+      layoutBridge.renderMargins();
+      layoutBridge.positionRulers();
+    }
+
+    if (scheduleMetricUpdate) {
+      scheduleMetricsUpdate(true);
+    }
+
+    if (triggerRewrap) {
+      rewrapDocumentToCurrentBounds();
+    }
+
+    if (markDirtyNow) {
+      markDocumentDirty(state);
+    }
+
+    if (saveStateNow) {
+      saveHooks.saveStateDebounced();
+    }
+
+    if (focusNow) {
+      focusStage();
+    }
+
+    return true;
   }
 
   function toggleRulers() {
@@ -464,7 +608,9 @@ export function registerEditingControllers(options) {
   }
 
   function computeColsFromCpi(cpi) {
-    const raw = metrics.A4_WIDTH_IN * cpi;
+    const paper = resolvePaperMetrics();
+    const widthIn = paper?.widthIn || getPaperSize(DEFAULT_PAPER_SIZE)?.widthIn || (210 / 25.4);
+    const raw = widthIn * cpi;
     const cols3 = Math.round(raw * 1000) / 1000;
     const cols2 = Math.round(cols3 * 100) / 100;
     return { cols3, cols2 };
@@ -604,6 +750,7 @@ export function registerEditingControllers(options) {
   }
 
   const scheduleMetricsUpdate = createMetricsScheduler(applyMetricsNow);
+  scheduleMetricsUpdateRef = scheduleMetricsUpdate;
 
   return {
     rendererHooks,
@@ -630,6 +777,7 @@ export function registerEditingControllers(options) {
     computeColsFromCpi,
     applySubmittedChanges,
     applyLineHeight,
+    applyPaperSizeSelection,
     readStagedLH,
     setLineHeightFactor,
     toggleRulers,

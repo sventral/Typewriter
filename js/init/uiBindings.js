@@ -30,6 +30,7 @@ export function setupUIBindings(context, controllers) {
     applySubmittedChanges,
     applyLineHeight,
     readStagedLH,
+    applyPaperSizeSelection,
     toggleRulers,
     toggleInkSettingsPanel,
     loadFontAndApply,
@@ -138,6 +139,7 @@ export function setupUIBindings(context, controllers) {
     applyDefaultMargins,
     computeColsFromCpi,
     gridDiv,
+    applyPaperSizeSelection,
   });
 
   function bindGlobalListeners() {

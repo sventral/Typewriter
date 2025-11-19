@@ -1,5 +1,6 @@
 import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitterConfig.js';
 import { LOW_RES_ZOOM_DEFAULTS } from '../config/lowResZoom.js';
+import { DEFAULT_PAPER_SIZE } from '../config/paperSizes.js';
 import {
   DEFAULT_INK_SECTION_ORDER as PRESET_INK_SECTION_ORDER,
   getDefaultInkSectionQuality,
@@ -37,6 +38,7 @@ export function createMainState(app, gridDiv = 8) {
     hammerLock: true,
     caretAnchor: { x: 0.5, y: 0.5, unit: 'fraction' },
     paperOffset: { x: 0, y: 0 },
+    paperSize: DEFAULT_PAPER_SIZE,
     stageWidthFactor: 1.0,
     stageHeightFactor: 1.0,
     cpi: 10,

@@ -1,7 +1,8 @@
 :root{
     --page-w: 900;
     --page-width-px: calc(var(--page-w) * 1px);
-    --page-height-px: calc(var(--page-width-px) * 297 / 210);
+    --page-aspect: 297 / 210;
+    --page-height-px: calc(var(--page-width-px) * var(--page-aspect));
     --stage-width-mult: 1;
     --stage-height-mult: 1;
     --stage-width-px: calc(var(--page-width-px) * var(--stage-width-mult));

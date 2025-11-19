@@ -1,4 +1,5 @@
 import { clamp } from '../utils/math.js';
+import { DEFAULT_PAPER_SIZE, normalizePaperSizeId } from '../config/paperSizes.js';
 import {
   GLYPH_JITTER_DEFAULTS,
   normalizeGlyphJitterAmount,
@@ -194,7 +195,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
   const lowResZoomEnabled = state.lowResZoomEnabled !== false;
 
   return {
-    v: 25,
+    v: 26,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -207,6 +208,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       B: state.marginBottom,
     },
     caret: state.caret,
+    paperSize: normalizePaperSizeId(state.paperSize || DEFAULT_PAPER_SIZE),
     ink: state.ink,
     showRulers: state.showRulers,
     showMarginBox: state.showMarginBox,
@@ -258,11 +260,30 @@ export function deserializeDocumentState(data, context) {
     makePageRecord,
     computeColsFromCpi,
     setActiveFontName,
+    applyPaperSizeSelection,
+    scheduleMetricsUpdate,
   } = context || {};
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 25) return false;
+  if (!data || data.v < 2 || data.v > 26) return false;
+  const targetPaperSize = typeof data.paperSize === 'string'
+    ? data.paperSize
+    : state.paperSize || DEFAULT_PAPER_SIZE;
+  if (typeof applyPaperSizeSelection === 'function') {
+    applyPaperSizeSelection(targetPaperSize, {
+      silent: true,
+      preserveMargins: false,
+      updateColumns: false,
+      triggerLayout: false,
+      scheduleMetrics: false,
+      triggerRewrap: false,
+      markDirty: false,
+      save: false,
+      focus: false,
+    });
+  }
+  state.paperSize = normalizePaperSizeId(targetPaperSize);
   state.pages = [];
   if (app.stageInner) {
     app.stageInner.innerHTML = '';
@@ -398,6 +419,7 @@ export function deserializeDocumentState(data, context) {
     showMarginBox: resolvedShowMarginBox,
     cpi: cpiVal || 10,
     colsAcross: inferredCols ?? state.colsAcross,
+    paperSize: normalizePaperSizeId(data.paperSize || state.paperSize || DEFAULT_PAPER_SIZE),
     inkWidthPct: sanitizedInkWidth,
     inkOpacity,
     lineHeightFactor: [1, 1.5, 2, 2.5, 3].includes(data.lineHeightFactor)
@@ -487,6 +509,9 @@ export function deserializeDocumentState(data, context) {
     p.dirtyAll = true;
   }
   document.body.classList.toggle('rulers-off', !state.showRulers);
+  if (typeof scheduleMetricsUpdate === 'function') {
+    scheduleMetricsUpdate(true);
+  }
   return true;
 }
 

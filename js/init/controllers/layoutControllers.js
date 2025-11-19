@@ -158,6 +158,8 @@ export function registerLayoutControllers(params) {
       schedulePaint: rendering.schedulePaint,
       rebuildAllAtlases: rendering.rebuildAllAtlases,
       setFreezeVirtual: editing.layoutState.setFreezeVirtual,
+      getPaperWidthMm: () => metrics?.PAPER?.widthMm || metrics.PAPER_WIDTH_MM || 210,
+      getPaperHeightMm: () => metrics?.PAPER?.heightMm || metrics.PAPER_HEIGHT_MM || 297,
       getZooming: editing.layoutState.getZooming,
       setZooming: editing.layoutState.setZooming,
       getZoomDebounceTimer: editing.layoutState.getZoomDebounceTimer,
