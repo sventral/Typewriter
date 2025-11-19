@@ -216,6 +216,7 @@ export function createPageRenderer(options) {
 
     page.dirtyAll = false;
     page._dirtyRowMinMu = page._dirtyRowMaxMu = undefined;
+    if (page._dirtyRows) page._dirtyRows.clear();
 
     if (queue.length === 0) {
       resetFullPagePaintState(page);
@@ -324,6 +325,10 @@ export function createPageRenderer(options) {
       if (rowMu < page._dirtyRowMinMu) page._dirtyRowMinMu = rowMu;
       if (rowMu > page._dirtyRowMaxMu) page._dirtyRowMaxMu = rowMu;
     }
+    if (!page._dirtyRows) {
+      page._dirtyRows = new Set();
+    }
+    page._dirtyRows.add(rowMu);
     touchPage(page);
     if (!page.active) return;
     if (getBatchDepth() === 0) schedulePaint(page);
@@ -389,8 +394,9 @@ export function createPageRenderer(options) {
     backCtx.restore();
 
     const bounds = getCurrentBounds();
-    const minMu = Math.max(bounds.Tmu, dirtyRowMinMu - gridDiv);
-    const maxMu = Math.min(bounds.Bmu, dirtyRowMaxMu + gridDiv);
+    const maxNeighborGapMu = Math.max(gridDiv * 3, getLineStepMu(), state?.lineStepMu || 0);
+    const minMu = Math.max(bounds.Tmu, dirtyRowMinMu - maxNeighborGapMu);
+    const maxMu = Math.min(bounds.Bmu, dirtyRowMaxMu + maxNeighborGapMu);
     if (minMu > maxMu) return;
 
     const renderRow = (rowMu, rowMap) => {
@@ -405,23 +411,29 @@ export function createPageRenderer(options) {
       }
     };
 
-    const stepMu = getLineStepMu();
-    const startRowMu = firstRowMuInBand(minMu, bounds, stepMu);
-    const canIterateByStep = Number.isFinite(stepMu) && stepMu > 0 && Number.isFinite(startRowMu);
+    const rowsToRender = [];
+    const seenRows = new Set();
+    const addRow = (rowMu, rowMapParam) => {
+      if (seenRows.has(rowMu)) return;
+      if (rowMu < minMu || rowMu > maxMu) return;
+      const rowMap = rowMapParam || page.grid.get(rowMu);
+      if (!rowMap) return;
+      seenRows.add(rowMu);
+      rowsToRender.push([rowMu, rowMap]);
+    };
 
-    if (canIterateByStep && startRowMu <= maxMu) {
-      for (let rowMu = startRowMu; rowMu <= maxMu; rowMu += stepMu) {
-        const rowMap = page.grid.get(rowMu);
-        if (!rowMap) continue;
-        renderRow(rowMu, rowMap);
+    const dirtyRowSet = page?._dirtyRows instanceof Set ? page._dirtyRows : null;
+    if (dirtyRowSet?.size) {
+      for (const rowMu of dirtyRowSet) {
+        addRow(rowMu);
       }
-    } else {
-      const rowsToRender = [];
-      for (const [rowMu, rowMap] of page.grid) {
-        if (!rowMap) continue;
-        if (rowMu < minMu || rowMu > maxMu) continue;
-        rowsToRender.push([rowMu, rowMap]);
-      }
+    }
+
+    for (const [rowMu, rowMap] of page.grid) {
+      addRow(rowMu, rowMap);
+    }
+
+    if (rowsToRender.length) {
       rowsToRender.sort((a, b) => a[0] - b[0]);
       for (const [rowMu, rowMap] of rowsToRender) {
         renderRow(rowMu, rowMap);
@@ -451,6 +463,7 @@ export function createPageRenderer(options) {
     if (hasDirtyRows) {
       paintDirtyRowsBand(page, page._dirtyRowMinMu, page._dirtyRowMaxMu);
       page._dirtyRowMinMu = page._dirtyRowMaxMu = undefined;
+      if (page._dirtyRows) page._dirtyRows.clear();
     }
   }
 
