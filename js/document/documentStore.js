@@ -19,6 +19,7 @@ import {
 } from '../config/inkEffectDefaultStyle.js';
 import { hydrateGlyphEntry, serializeGlyphEntry } from './glyphStack.js';
 import { STAGE_HEIGHT_MAX, STAGE_HEIGHT_MIN, STAGE_WIDTH_MAX, STAGE_WIDTH_MIN } from '../layout/stageLayout.js';
+import { encodeDocumentDataForStorage, decodeDocumentDataFromStorage } from '../storage/jsonCompression.js';
 const KNOWN_INK_SECTIONS = PRESET_INK_SECTION_ORDER.slice();
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
@@ -534,10 +535,11 @@ export function loadDocumentIndexFromStorage(storageKey, options = {}) {
     if (parsed && Array.isArray(parsed.documents)) {
       parsed.documents.forEach((entry) => {
         const base = entry && typeof entry === 'object' ? entry : {};
+        const decodedData = decodeDocumentDataFromStorage(base.data);
         const record = createDocumentRecord({
           id: base.id,
           title: base.title,
-          data: base.data && typeof base.data === 'object' ? base.data : null,
+          data: decodedData,
           createdAt: Number(base.createdAt),
           updatedAt: Number(base.updatedAt),
         }, seen);
@@ -590,11 +592,15 @@ export function persistDocuments(storageKey, docState, options = {}) {
       title: doc.title,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
-      data: doc.data,
+      data: encodeDocumentDataForStorage(doc.data),
     })),
   };
   try {
     storage.setItem(getDocumentsKey(storageKey), JSON.stringify(payload));
     storage.removeItem(storageKey);
-  } catch {}
+  } catch (err) {
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn('Typewriter: Failed to persist documents – storage quota may be exhausted.', err);
+    }
+  }
 }
