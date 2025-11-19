@@ -36,6 +36,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     isSafari,
     setSafariZoomMode,
     syncSafariZoomLayout,
+    getPaperWidthMm = () => 210,
+    getPaperHeightMm = () => 297,
   } = context;
 
   const {
@@ -621,7 +623,11 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     if (!ticksH || !ticksV) return;
     ticksH.innerHTML = '';
     ticksV.innerHTML = '';
-    const ppiH = (activePageRect.width / 210) * 25.4;
+    const widthMm = Math.max(
+      1,
+      typeof getPaperWidthMm === 'function' ? getPaperWidthMm() : 210,
+    );
+    const ppiH = (activePageRect.width / widthMm) * 25.4;
     const originX = activePageRect.left;
     let hostWidth = cachedRulerHostSize.width;
     if (preferLiveLayout && app.rulerH_host) {
@@ -653,7 +659,11 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
         }
       }
     }
-    const ppiV = (activePageRect.height / 297) * 25.4;
+    const heightMm = Math.max(
+      1,
+      typeof getPaperHeightMm === 'function' ? getPaperHeightMm() : 297,
+    );
+    const ppiV = (activePageRect.height / heightMm) * 25.4;
     const originY = activePageRect.top;
     let hostHeight = cachedRulerHostSize.height;
     if (preferLiveLayout && app.rulerV_host) {

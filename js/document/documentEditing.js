@@ -42,6 +42,8 @@ export function createDocumentEditingController(context) {
     setPaperOffset,
     applyDefaultMargins,
     computeColsFromCpi,
+    applyPaperSizeSelection: applyPaperSizeSelectionFn = null,
+    scheduleMetricsUpdate: scheduleMetricsUpdateFn = null,
     rendererHooks,
     layoutZoomFactor,
     requestHammerNudge,
@@ -803,6 +805,8 @@ function insertStringFast(s) {
       makePageRecord,
       computeColsFromCpi,
       setActiveFontName,
+      applyPaperSizeSelection: applyPaperSizeSelectionFn,
+      scheduleMetricsUpdate: scheduleMetricsUpdateFn,
     });
   }
 

@@ -41,6 +41,7 @@ function createUiFacade(editing) {
     computeColsFromCpi: editing.computeColsFromCpi,
     applySubmittedChanges: editing.applySubmittedChanges,
     applyLineHeight: editing.applyLineHeight,
+    applyPaperSizeSelection: editing.applyPaperSizeSelection,
     readStagedLH: editing.readStagedLH,
     toggleRulers: editing.toggleRulers,
     toggleInkSettingsPanel: editing.toggleInkSettingsPanel,

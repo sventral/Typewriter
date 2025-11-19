@@ -1,12 +1,19 @@
+import { createPaperMetrics, DEFAULT_PAPER_SIZE, getPaperSize } from './paperSizes.js';
+
 export function computeBaseMetrics(app) {
   const rootStyles = getComputedStyle(document.documentElement);
-  const PAGE_W_CSS = parseInt(rootStyles.getPropertyValue('--page-w')) || 900;
-  const PAGE_H_CSS = Math.round(PAGE_W_CSS * 297 / 210);
+  const rawPageW = parseFloat(rootStyles.getPropertyValue('--page-w')) || 900;
+  const defaultPaper = getPaperSize(DEFAULT_PAPER_SIZE);
+  const pxPerMm = rawPageW / defaultPaper.widthMm;
+  const basePaperMetrics = createPaperMetrics(DEFAULT_PAPER_SIZE, pxPerMm);
+  const PAGE_W_CSS = basePaperMetrics.widthPx;
+  const PAGE_H_CSS = basePaperMetrics.heightPx;
   const DPR = Math.max(1, Math.min(4, window.devicePixelRatio || 1));
   Object.assign(app, { PAGE_W: PAGE_W_CSS, PAGE_H: PAGE_H_CSS });
 
-  const A4_WIDTH_IN = 210 / 25.4;
-  const PPI = app.PAGE_W / (210 / 25.4);
+  const PAPER_WIDTH_IN = basePaperMetrics.widthIn;
+  const PAPER_HEIGHT_IN = basePaperMetrics.heightIn;
+  const PPI = app.PAGE_W / PAPER_WIDTH_IN;
   const LPI = 6;
   const LINE_H_RAW = PPI / LPI;
   const GRID_DIV = 8;
@@ -25,6 +32,14 @@ export function computeBaseMetrics(app) {
   return {
     PAGE_W_CSS,
     PAGE_H_CSS,
+    PAGE_ASPECT: basePaperMetrics.aspectRatio,
+    PAPER: basePaperMetrics,
+    PAPER_SIZE_ID: basePaperMetrics.id,
+    PAPER_WIDTH_MM: basePaperMetrics.widthMm,
+    PAPER_HEIGHT_MM: basePaperMetrics.heightMm,
+    PAPER_WIDTH_IN,
+    PAPER_HEIGHT_IN,
+    PX_PER_MM: pxPerMm,
     DPR,
     GRID_DIV,
     GRID_H,
@@ -38,7 +53,7 @@ export function computeBaseMetrics(app) {
     DESC,
     CHAR_W,
     BASELINE_OFFSET_CELL,
-    A4_WIDTH_IN,
+    A4_WIDTH_IN: PAPER_WIDTH_IN,
     PPI,
     LPI,
     LINE_H_RAW,

@@ -28,6 +28,7 @@ export function createMeasurementControls({
   applySubmittedChanges,
   applyLineHeight,
   readStagedLH,
+  applyPaperSizeSelection,
   toggleRulers,
   setMarginBoxesVisible,
   setRenderScaleForZoom,
@@ -54,6 +55,13 @@ export function createMeasurementControls({
     if (app.colsPreviewSpan) {
       app.colsPreviewSpan.textContent = `Columns: ${cols2.toFixed(2)}`;
     }
+  }
+
+  function syncMarginInputsFromState() {
+    if (app.mmLeft) app.mmLeft.value = String(Math.round(mmX(state.marginL)));
+    if (app.mmRight) app.mmRight.value = String(Math.round(mmX(app.PAGE_W - state.marginR)));
+    if (app.mmTop) app.mmTop.value = String(Math.round(mmY(state.marginTop)));
+    if (app.mmBottom) app.mmBottom.value = String(Math.round(mmY(app.PAGE_H - state.marginBottom)));
   }
 
   function bindMarginInputs() {
@@ -145,6 +153,19 @@ export function createMeasurementControls({
       app.cpiSelect.addEventListener('change', () => {
         updateColsPreviewUI();
         applySubmittedChanges();
+        focusStage();
+      });
+    }
+
+    if (app.paperSizeSelect) {
+      app.paperSizeSelect.addEventListener('change', () => {
+        const value = app.paperSizeSelect.value;
+        if (typeof applyPaperSizeSelection === 'function') {
+          applyPaperSizeSelection(value);
+          updateColsPreviewUI();
+          queueDirtySave();
+          syncMarginInputsFromState();
+        }
         focusStage();
       });
     }
@@ -326,6 +347,9 @@ export function createMeasurementControls({
     if (app.cpiSelect) {
       app.cpiSelect.value = String(state.cpi || 10);
       updateColsPreviewUI();
+    }
+    if (app.paperSizeSelect) {
+      app.paperSizeSelect.value = state.paperSize || 'a4';
     }
     if (app.sizeInput) app.sizeInput.value = String(clamp(Math.round(state.inkWidthPct ?? 95), 1, 150));
     if (app.lhInput) app.lhInput.value = String(state.lineHeightFactor);
