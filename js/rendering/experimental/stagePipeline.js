@@ -260,6 +260,68 @@ const downsampleFloat = (data, width, height, scale, scaleValues = false) => {
   return { data: result, width: dw, height: dh };
 };
 
+const DETAIL_GEOMETRY_KEY_PRECISION = 4;
+
+const getDetailGeometryCache = ctx => {
+  if (!ctx) return null;
+  if (!ctx.__detailGeometryCache) {
+    ctx.__detailGeometryCache = new Map();
+  }
+  return ctx.__detailGeometryCache;
+};
+
+const buildDetailDistanceMap = (dm, scale, width, height) => {
+  if (!dm || !dm.raw) return null;
+  const inside = dm.raw.inside;
+  const outside = dm.raw.outside;
+  const insideResult = inside ? downsampleFloat(inside, width, height, scale, true) : null;
+  const outsideResult = outside ? downsampleFloat(outside, width, height, scale, true) : null;
+  let maxInside = 0;
+  if (insideResult && insideResult.data) {
+    const arr = insideResult.data;
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i] > maxInside) maxInside = arr[i];
+    }
+  } else if (typeof dm.getMaxInside === 'function') {
+    maxInside = (dm.getMaxInside() || 0) * scale;
+  }
+  return {
+    getInside: idx => (insideResult?.data ? insideResult.data[idx] : 0),
+    getOutside: idx => (outsideResult?.data ? outsideResult.data[idx] : 0),
+    getMaxInside: () => maxInside,
+    raw: {
+      inside: insideResult?.data || null,
+      outside: outsideResult?.data || null,
+    },
+  };
+};
+
+const getOrCreateDetailGeometry = (ctx, scale) => {
+  if (!ctx) return null;
+  const { w, h } = ctx;
+  if (!w || !h) return null;
+  const dw = max(1, round(w * scale));
+  const dh = max(1, round(h * scale));
+  if (dw === w && dh === h) return null;
+  const cache = getDetailGeometryCache(ctx);
+  const key = `${dw}x${dh}:${scale.toFixed(DETAIL_GEOMETRY_KEY_PRECISION)}`;
+  if (cache && cache.has(key)) {
+    return cache.get(key);
+  }
+  const alphaResult = ctx.alpha0 ? downsampleUint8(ctx.alpha0, w, h, scale) : null;
+  const geometry = {
+    w: dw,
+    h: dh,
+    alpha: alphaResult?.data || new Uint8Array(dw * dh),
+    dpPerCss: max(1e-6, (ctx.dpPerCss || 1) * scale),
+    dm: buildDetailDistanceMap(ctx.dm, scale, w, h),
+  };
+  if (cache) {
+    cache.set(key, geometry);
+  }
+  return geometry;
+};
+
 const applyLowResDeltaToCoverage = (
   coverage,
   baseWidth,
@@ -289,54 +351,35 @@ const applyLowResDeltaToCoverage = (
 
 const createDetailResolutionContext = (ctx, coverage, scale) => {
   if (!ctx || !coverage) return null;
-  const { w, h, alpha0, dm } = ctx;
-  if (!w || !h) return null;
-  const dw = max(1, round(w * scale));
-  const dh = max(1, round(h * scale));
-  if (dw === w && dh === h) return null;
+  const baseWidth = ctx.w;
+  const baseHeight = ctx.h;
+  if (!baseWidth || !baseHeight) return null;
+  const geometry = getOrCreateDetailGeometry(ctx, scale);
+  if (!geometry) return null;
 
-  const coverageLow = downsampleFloat(coverage, w, h, scale).data;
+  const coverageLow = downsampleFloat(coverage, baseWidth, baseHeight, scale).data;
   const coverageBefore = coverageLow.slice();
-  const alphaResult = alpha0 ? downsampleUint8(alpha0, w, h, scale) : null;
-
-  let detailDm = null;
-  if (dm && dm.raw) {
-    const inside = dm.raw.inside;
-    const outside = dm.raw.outside;
-    const insideResult = inside ? downsampleFloat(inside, w, h, scale, true) : null;
-    const outsideResult = outside ? downsampleFloat(outside, w, h, scale, true) : null;
-    let maxInside = 0;
-    if (insideResult && insideResult.data) {
-      const arr = insideResult.data;
-      for (let i = 0; i < arr.length; i++) {
-        if (arr[i] > maxInside) maxInside = arr[i];
-      }
-    } else if (typeof dm.getMaxInside === 'function') {
-      maxInside = (dm.getMaxInside() || 0) * scale;
-    }
-    detailDm = {
-      getInside: idx => (insideResult?.data ? insideResult.data[idx] : 0),
-      getOutside: idx => (outsideResult?.data ? outsideResult.data[idx] : 0),
-      getMaxInside: () => maxInside,
-      raw: {
-        inside: insideResult?.data || null,
-        outside: outsideResult?.data || null,
-      },
-    };
-  }
 
   const detailCtx = { ...ctx };
-  detailCtx.w = dw;
-  detailCtx.h = dh;
-  detailCtx.alpha0 = alphaResult?.data || new Uint8Array(dw * dh);
-  detailCtx.dpPerCss = max(1e-6, (ctx.dpPerCss || 1) * scale);
+  detailCtx.w = geometry.w;
+  detailCtx.h = geometry.h;
+  detailCtx.alpha0 = geometry.alpha;
+  detailCtx.dpPerCss = geometry.dpPerCss;
   detailCtx.__detailDensity = undefined;
+  detailCtx.dm = geometry.dm || ctx.dm;
   if (typeof ctx.stageQuality === 'number') {
     detailCtx.stageQuality = ctx.stageQuality;
+  } else if ('stageQuality' in detailCtx) {
+    delete detailCtx.stageQuality;
   }
-  if (detailDm) detailCtx.dm = detailDm;
 
-  return { detailCtx, coverageLow, coverageBefore, lowWidth: dw, lowHeight: dh };
+  return {
+    detailCtx,
+    coverageLow,
+    coverageBefore,
+    lowWidth: geometry.w,
+    lowHeight: geometry.h,
+  };
 };
 
 const shouldRunDetailStageLowRes = (stageId, ctx, config) => {
