@@ -4,6 +4,7 @@ import { createZoomRenderManager } from './zoomRenderManager.js';
 import { createZoomUiController } from './zoomUiController.js';
 import { createZoomLagMonitor } from '../diagnostics/zoomLagMonitor.js';
 import { createWheelAxisStabilizer } from './wheelAxisStabilizer.js';
+import { BASE_PADDING_X_PX, BASE_PADDING_Y_PX } from './stageLayout.js';
 
 export function createLayoutAndZoomController(context, pageLifecycle, editingController) {
   const {
@@ -148,57 +149,79 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     return Number.isFinite(span) && span > 0 ? span : app.PAGE_H;
   }
 
-  function effectiveZoomScale() {
-    const scale = cssScaleFactor();
-    return Number.isFinite(scale) && scale > 1 ? scale : 1;
-  }
-
   function hammerAllowanceX() {
     const span = documentHorizontalSpanPx();
     const allowance = Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_W / 2;
-    return allowance * effectiveZoomScale();
+    return allowance;
   }
 
-  function hammerAllowanceY() {
-    const span = documentVerticalSpanPx();
-    const allowance = Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_H / 2;
-    return allowance * effectiveZoomScale();
+  function computeStagePadding(dims) {
+    const zoomDivisor = state.zoom || 1;
+    const scale = cssScaleFactor() || 1;
+    const padX = dims && Number.isFinite(dims.extraX) ? dims.extraX / zoomDivisor : BASE_PADDING_X_PX;
+    const padY = dims && Number.isFinite(dims.extraY) ? dims.extraY / zoomDivisor : BASE_PADDING_Y_PX;
+    const bottomPad = padY + toolbarHeightPx() / scale;
+    return {
+      left: padX,
+      right: padX,
+      top: padY,
+      bottom: bottomPad,
+    };
   }
 
   function clampPaperOffset(x, y) {
-    const { extraX, extraY } = stageDimensions();
+    const dims = stageDimensions();
+    const pads = computeStagePadding(dims);
     const hammerX = hammerAllowanceX();
-    const hammerY = hammerAllowanceY();
-    const minX = -(extraX + hammerX);
-    const maxX = extraX + hammerX;
-    const minY = -(extraY + hammerY);
-    const maxY = extraY + hammerY;
-    return { x: clamp(x, minX, maxX), y: clamp(y, minY, maxY) };
+    const minX = -hammerX;
+    const maxX = hammerX;
+
+    const cssScale = cssScaleFactor() || 1;
+    const viewportH = window.innerHeight / cssScale;
+    const center = viewportH / 2;
+    const docHeight = documentVerticalSpanPx();
+    const totalContentH = docHeight + pads.top + pads.bottom;
+    const limitTop = center - pads.top;
+    const limitBottom = center - totalContentH;
+
+    const minY = Math.min(limitBottom, limitTop);
+    const maxY = Math.max(limitBottom, limitTop);
+    return {
+      x: clamp(x, minX, maxX),
+      y: clamp(y, minY, maxY),
+    };
   }
 
   function updateStageEnvironment() {
     const dims = stageDimensions();
     const rootStyle = document.documentElement.style;
     const layoutZoom = layoutZoomFactor();
+    const pads = computeStagePadding(dims);
+
     rootStyle.setProperty('--page-w', (app.PAGE_W * layoutZoom).toString());
     rootStyle.setProperty('--stage-width-mult', dims.widthFactor.toString());
     rootStyle.setProperty('--stage-height-mult', dims.heightFactor.toString());
+
+    const adjustedWidth = dims.pageW + pads.left * 2;
+    const adjustedHeight = dims.pageH + pads.top * 2;
+
     if (app.zoomWrap) {
-      app.zoomWrap.style.width = `${dims.width}px`;
-      app.zoomWrap.style.minHeight = `${dims.height}px`;
+      app.zoomWrap.style.width = `${adjustedWidth}px`;
+      app.zoomWrap.style.minHeight = `${adjustedHeight}px`;
       app.zoomWrap.style.height = '';
     }
+    
     if (app.stageInner) {
-      app.stageInner.style.minWidth = `${dims.width}px`;
-      app.stageInner.style.minHeight = `${dims.height}px`;
-      app.stageInner.style.paddingLeft = `${dims.extraX}px`;
-      app.stageInner.style.paddingRight = `${dims.extraX}px`;
-      const padTop = dims.extraY;
-      const padBottom = dims.extraY + toolbarHeightPx();
-      app.stageInner.style.paddingTop = `${padTop}px`;
-      app.stageInner.style.paddingBottom = `${padBottom}px`;
+      app.stageInner.style.minWidth = `${adjustedWidth}px`;
+      app.stageInner.style.minHeight = `${adjustedHeight}px`;
+      
+      app.stageInner.style.paddingLeft = `${pads.left}px`;
+      app.stageInner.style.paddingRight = `${pads.right}px`;
+      app.stageInner.style.paddingTop = `${pads.top}px`;
+      app.stageInner.style.paddingBottom = `${pads.bottom}px`;
     }
-    updateRulerHostDimensions(dims.width, dims.height);
+
+    updateRulerHostDimensions(adjustedWidth, adjustedHeight);
     setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   }
 
@@ -694,9 +717,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   const detent = (p) => (Math.abs(p - 100) <= 6 ? 100 : p);
 
   function applyZoomCSS() {
+    updateStageEnvironment();
     updateZoomWrapTransform();
-    const dims = stageDimensions();
-    updateRulerHostDimensions(dims.width, dims.height);
     positionRulers();
     requestVirtualization();
   }

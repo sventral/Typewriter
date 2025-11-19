@@ -2,6 +2,12 @@ import { clamp } from '../utils/math.js';
 import { sanitizeIntegerField } from '../utils/forms.js';
 
 const SAFARI_SUPERSAMPLE_THRESHOLD = 1.75;
+export const STAGE_WIDTH_MIN = 1.0;
+export const STAGE_WIDTH_MAX = 1.5;
+export const STAGE_HEIGHT_MIN = 1.0;
+export const STAGE_HEIGHT_MAX = 1.5;
+export const BASE_PADDING_X_PX = 24;
+export const BASE_PADDING_Y_PX = 40;
 
 export function detectSafariEnvironment() {
   if (typeof navigator === 'undefined') {
@@ -30,10 +36,6 @@ export function createStageLayoutController(options) {
 
   const app = explicitApp || context?.app;
   const state = explicitState || context?.state || {};
-  const STAGE_WIDTH_MIN = 1.0;
-  const STAGE_WIDTH_MAX = 5.0;
-  const STAGE_HEIGHT_MIN = 1.0;
-  const STAGE_HEIGHT_MAX = 5.0;
 
   let safariZoomMode = isSafari ? 'steady' : 'transient';
   let lastSafariLayoutZoom = isSafari ? state.zoom : 1;
@@ -58,7 +60,7 @@ export function createStageLayoutController(options) {
 
   function sanitizedStageWidthFactor() {
     const raw = Number(state.stageWidthFactor);
-    const fallback = 2.0;
+    const fallback = 1.0;
     const sanitized = clamp(Number.isFinite(raw) ? raw : fallback, STAGE_WIDTH_MIN, STAGE_WIDTH_MAX);
     if (sanitized !== state.stageWidthFactor) state.stageWidthFactor = sanitized;
     return sanitized;
@@ -66,7 +68,7 @@ export function createStageLayoutController(options) {
 
   function sanitizedStageHeightFactor() {
     const raw = Number(state.stageHeightFactor);
-    const fallback = 1.2;
+    const fallback = 1.0;
     const sanitized = clamp(Number.isFinite(raw) ? raw : fallback, STAGE_HEIGHT_MIN, STAGE_HEIGHT_MAX);
     if (sanitized !== state.stageHeightFactor) state.stageHeightFactor = sanitized;
     return sanitized;
@@ -78,11 +80,32 @@ export function createStageLayoutController(options) {
     const layoutZoom = layoutZoomFactor();
     const pageW = app.PAGE_W * layoutZoom;
     const pageH = app.PAGE_H * layoutZoom;
-    const width = pageW * widthFactor;
-    const height = pageH * heightFactor;
-    const extraX = Math.max(0, (width - pageW) / 2);
-    const extraY = Math.max(0, (height - pageH) / 2);
-    return { widthFactor, heightFactor, width, height, extraX, extraY, pageW, pageH };
+    const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+
+    const extraFromWidthFactor = Math.max(0, widthFactor - 1) * pageW / 2;
+    const extraFromHeightFactor = Math.max(0, heightFactor - 1) * pageH / 2;
+    const paddingX = BASE_PADDING_X_PX + extraFromWidthFactor;
+    const paddingY = BASE_PADDING_Y_PX + extraFromHeightFactor;
+    const scaledExtraX = paddingX * zoom;
+    const scaledExtraY = paddingY * zoom;
+
+    const width = pageW + paddingX * 2;
+    const height = pageH + paddingY * 2;
+    const widthMultiplier = width / pageW;
+    const heightMultiplier = height / pageH;
+
+    return {
+      widthFactor: widthMultiplier,
+      heightFactor: heightMultiplier,
+      width,
+      height,
+      extraX: scaledExtraX,
+      extraY: scaledExtraY,
+      paddingX,
+      paddingY,
+      pageW,
+      pageH,
+    };
   }
 
   function toolbarHeightPx() {
