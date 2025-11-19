@@ -47,6 +47,7 @@
     --scrollbar-track: rgba(0,0,0,0.08);
     --scrollbar-thumb: rgba(0,0,0,0.32);
     --scrollbar-thumb-hover: rgba(0,0,0,0.50);
+    --ink-panel-shift: 0px;
   }
 
 :root[data-theme='light']{
@@ -865,7 +866,19 @@ body[data-page-tone='dark']{
     opacity: 0.8;
   }
 
-  .zoom-controls{ position:fixed; right:0px; top:16px; display:flex; flex-direction:column; align-items:center; gap:8px; z-index:52; }
+  .zoom-controls{
+    position:fixed;
+    right:0px;
+    top:16px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+    z-index:52;
+    transform:translateX(calc(-1 * var(--ink-panel-shift, 0px)));
+    transition:transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change:transform;
+  }
   .slider{ position:relative; width:60px; height:calc(122px + 2px + 14px); pointer-events:none; }
   .track{ position:absolute; top:0; left:50%; transform:translateX(-50%); width:4.1px; height:122px; border:1px solid var(--tri-color); border-radius:35px; background:transparent; overflow:hidden; pointer-events:none; }
   .fill{ position:absolute; left:0; right:0; bottom:0; height:0; background:var(--tri-color); pointer-events:none; will-change:height; }
