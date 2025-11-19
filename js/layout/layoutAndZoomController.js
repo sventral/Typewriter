@@ -117,6 +117,20 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     releaseDecay: 0.1,
     idleDecay: 0.05,
   });
+  const hasElementApi = typeof Element !== 'undefined';
+  const SCROLLBAR_VISIBILITY_EPSILON = 4;
+  let suppressScrollLaneEvent = false;
+  let lastScrollLaneContent = 0;
+  let lastScrollLaneViewport = 0;
+  let lastScrollLaneRange = 0;
+  let lastScrollLaneVisible = false;
+
+  function scrollLaneElements() {
+    return {
+      lane: hasElementApi && app.scrollLane instanceof Element ? app.scrollLane : null,
+      inner: hasElementApi && app.scrollLaneInner instanceof Element ? app.scrollLaneInner : null,
+    };
+  }
 
   function updateRulerHostDimensions(stageW, stageH) {
     if (!app.rulerH_host || !app.rulerV_host) return;
@@ -170,7 +184,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     };
   }
 
-  function clampPaperOffset(x, y) {
+  function computePaperOffsetLimits() {
     const dims = stageDimensions();
     const pads = computeStagePadding(dims);
     const hammerX = hammerAllowanceX();
@@ -178,19 +192,88 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const maxX = hammerX;
 
     const cssScale = cssScaleFactor() || 1;
-    const viewportH = window.innerHeight / cssScale;
+    const safeScale = Math.abs(cssScale) < 1e-6 ? 1 : cssScale;
+    const viewportH = (typeof window !== 'undefined' ? window.innerHeight : dims.height) / safeScale;
     const center = viewportH / 2;
     const docHeight = documentVerticalSpanPx();
     const totalContentH = docHeight + pads.top + pads.bottom;
     const limitTop = center - pads.top;
     const limitBottom = center - totalContentH;
 
-    const minY = Math.min(limitBottom, limitTop);
-    const maxY = Math.max(limitBottom, limitTop);
     return {
-      x: clamp(x, minX, maxX),
-      y: clamp(y, minY, maxY),
+      minX,
+      maxX,
+      minY: Math.min(limitBottom, limitTop),
+      maxY: Math.max(limitBottom, limitTop),
+      pads,
+      docHeight,
+      totalContentH,
+      viewportH,
     };
+  }
+
+  function clampPaperOffset(x, y, limits = null) {
+    const bounds = limits || computePaperOffsetLimits();
+    return {
+      x: clamp(x, bounds.minX, bounds.maxX),
+      y: clamp(y, bounds.minY, bounds.maxY),
+    };
+  }
+
+  function scrollLaneHasOverflow(metrics) {
+    if (!metrics) return false;
+    return metrics.totalContentH - metrics.viewportH > SCROLLBAR_VISIBILITY_EPSILON;
+  }
+
+  function updateScrollLaneMetrics(limits, { force = false } = {}) {
+    const { lane, inner } = scrollLaneElements();
+    if (!lane || !inner) return limits;
+    const metrics = limits || computePaperOffsetLimits();
+    const content = metrics.totalContentH;
+    const viewport = metrics.viewportH;
+    const range = Math.max(0, metrics.maxY - metrics.minY);
+    const hasOverflow = scrollLaneHasOverflow(metrics);
+    const needsUpdate = force
+      || Math.abs(content - lastScrollLaneContent) > 0.5
+      || Math.abs(viewport - lastScrollLaneViewport) > 0.5
+      || Math.abs(range - lastScrollLaneRange) > 0.5
+      || hasOverflow !== lastScrollLaneVisible;
+
+    if (!needsUpdate) return metrics;
+
+    lastScrollLaneContent = content;
+    lastScrollLaneViewport = viewport;
+    lastScrollLaneRange = range;
+    lastScrollLaneVisible = hasOverflow;
+
+    const extent = lane.clientHeight || lane.offsetHeight || viewport || 0;
+    const effectiveRange = hasOverflow ? range : 0;
+    const innerHeight = Math.max(1, extent + effectiveRange);
+    inner.style.height = `${innerHeight}px`;
+    lane.classList.toggle('stage-scroll-lane--hidden', !hasOverflow);
+    lane.setAttribute('aria-hidden', hasOverflow ? 'false' : 'true');
+    if (!hasOverflow) {
+      suppressScrollLaneEvent = true;
+      lane.scrollTop = 0;
+      suppressScrollLaneEvent = false;
+    }
+    return metrics;
+  }
+
+  function syncScrollLaneFromPaper(limits) {
+    const { lane } = scrollLaneElements();
+    if (!lane) return;
+    const metrics = limits || computePaperOffsetLimits();
+    if (!scrollLaneHasOverflow(metrics)) return;
+    const trackRange = lane.scrollHeight - lane.clientHeight;
+    if (trackRange <= 0.5) return;
+    const motionRange = Math.max(1e-3, metrics.maxY - metrics.minY);
+    const ratio = clamp((metrics.maxY - state.paperOffset.y) / motionRange, 0, 1);
+    const target = ratio * trackRange;
+    if (Math.abs(target - lane.scrollTop) < 0.25) return;
+    suppressScrollLaneEvent = true;
+    lane.scrollTop = target;
+    suppressScrollLaneEvent = false;
   }
 
   function updateStageEnvironment() {
@@ -226,8 +309,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     setPaperOffset(state.paperOffset.x, state.paperOffset.y);
   }
 
-  function setPaperOffset(x, y) {
-    const clamped = clampPaperOffset(x, y);
+  function setPaperOffset(x, y, options = {}) {
+    const limits = computePaperOffsetLimits();
+    const clamped = clampPaperOffset(x, y, limits);
     const scale = cssScaleFactor();
     const snap = (v) => Math.round(v * DPR) / DPR;
     const snappedX = scale ? snap(clamped.x * scale) / scale : clamped.x;
@@ -248,6 +332,10 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       app.stageInner.style.transform = `translate3d(${tx}px,${ty}px,0)`;
     }
     schedulePostPaperOffsetWork();
+    const metrics = updateScrollLaneMetrics(limits);
+    if (!options.skipScrollLaneSync) {
+      syncScrollLaneFromPaper(metrics || limits);
+    }
   }
 
   function schedulePostPaperOffsetWork() {
@@ -798,6 +886,20 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     }
   }
 
+  function handleScrollLaneScroll() {
+    if (suppressScrollLaneEvent) return;
+    const { lane } = scrollLaneElements();
+    if (!lane || !lastScrollLaneVisible) return;
+    const trackRange = lane.scrollHeight - lane.clientHeight;
+    if (trackRange <= 0.5) return;
+    const limits = computePaperOffsetLimits();
+    if (!scrollLaneHasOverflow(limits)) return;
+    const ratio = clamp(lane.scrollTop / trackRange, 0, 1);
+    const motionRange = Math.max(1e-3, limits.maxY - limits.minY);
+    const targetY = limits.maxY - ratio * motionRange;
+    setPaperOffset(state.paperOffset.x, targetY, { skipScrollLaneSync: true });
+  }
+
   setupZoomMeasurementTracking();
 
   return {
@@ -819,5 +921,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     sanitizeStageInput,
     scheduleZoomCrispRedraw,
     clampPaperOffset,
+    handleScrollLaneScroll,
   };
 }

@@ -44,6 +44,9 @@
     --danger-hover:#a83232;
     --danger-border:#c24141;
     --page-shadow:0 8px 24px rgba(0,0,0,0.10);
+    --scrollbar-track: rgba(0,0,0,0.08);
+    --scrollbar-thumb: rgba(0,0,0,0.32);
+    --scrollbar-thumb-hover: rgba(0,0,0,0.50);
   }
 
 :root[data-theme='light']{
@@ -74,6 +77,9 @@
     --danger-hover:#a83232;
     --danger-border:#c24141;
     --page-shadow:0 8px 24px rgba(0,0,0,0.10);
+    --scrollbar-track: rgba(0,0,0,0.08);
+    --scrollbar-thumb: rgba(0,0,0,0.32);
+    --scrollbar-thumb-hover: rgba(0,0,0,0.50);
 }
 
 @media (prefers-color-scheme: dark){
@@ -105,6 +111,9 @@
       --danger-hover:#ff8787;
       --danger-border:#ff8787;
       --page-shadow:0 14px 36px rgba(0,0,0,0.55);
+      --scrollbar-track: rgba(255,255,255,0.10);
+      --scrollbar-thumb: rgba(255,255,255,0.45);
+      --scrollbar-thumb-hover: rgba(255,255,255,0.65);
     }
 }
 
@@ -136,6 +145,9 @@
     --danger-hover:#ff8787;
     --danger-border:#ff8787;
     --page-shadow:0 14px 36px rgba(0,0,0,0.55);
+    --scrollbar-track: rgba(255,255,255,0.10);
+    --scrollbar-thumb: rgba(255,255,255,0.45);
+    --scrollbar-thumb-hover: rgba(255,255,255,0.65);
 }
 
 body[data-page-tone='dark']{
@@ -473,6 +485,47 @@ body[data-page-tone='dark']{
     pointer-events:none;
     visibility:hidden;
     inset: var(--margin-top-px) var(--margin-right-px) var(--margin-bottom-px) var(--margin-left-px);
+  }
+
+
+  .stage-scroll-lane{
+    position:fixed;
+    top:0;
+    right:0;
+    bottom:var(--toolbar-h);
+    width:16px;
+    z-index:70;
+    overflow-x:hidden;
+    overflow-y:auto;
+    background:transparent;
+    scrollbar-gutter:stable;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+    scrollbar-width:thin;
+    transition:opacity 0.18s ease;
+  }
+  .stage-scroll-lane--hidden{
+    opacity:0;
+    pointer-events:none;
+  }
+  .stage-scroll-lane__inner{
+    width:100%;
+    min-height:100%;
+  }
+  .stage-scroll-lane::-webkit-scrollbar{
+    width:12px;
+    background:transparent;
+  }
+  .stage-scroll-lane::-webkit-scrollbar-track{
+    background:var(--scrollbar-track);
+  }
+  .stage-scroll-lane::-webkit-scrollbar-thumb{
+    background:var(--scrollbar-thumb);
+    border-radius:12px;
+    border:3px solid transparent;
+    background-clip:content-box;
+  }
+  .stage-scroll-lane::-webkit-scrollbar-thumb:hover{
+    background:var(--scrollbar-thumb-hover);
   }
 
 

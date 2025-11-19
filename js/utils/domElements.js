@@ -8,6 +8,8 @@ const DOM_ID_GROUPS = {
     caretEl: 'caret',
     lagNotice: 'lagNotice',
     lagOverlay: 'lagOverlay',
+    scrollLane: 'scrollLane',
+    scrollLaneInner: 'scrollLaneInner',
   },
   rulers: {
     rulerH_host: 'rulerH_host',

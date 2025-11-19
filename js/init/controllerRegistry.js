@@ -138,6 +138,7 @@ export function registerControllers({
       },
       layout: {
         handleWheelPan: layoutDomain.bridge.handleWheelPan,
+        handleScrollLaneScroll: layoutDomain.bridge.handleScrollLaneScroll,
         handleHorizontalMarginDrag: layoutDomain.bridge.handleHorizontalMarginDrag,
         handleVerticalMarginDrag: layoutDomain.bridge.handleVerticalMarginDrag,
         endMarginDrag: layoutDomain.bridge.endMarginDrag,
