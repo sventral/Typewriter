@@ -200,6 +200,11 @@ export function createPageRenderer(options) {
       return false;
     }
 
+    const preserveFrontBuffer = page.preserveFrontBufferForFullPaint === true;
+    if (page.preserveFrontBufferForFullPaint) {
+      delete page.preserveFrontBufferForFullPaint;
+    }
+
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
     backCtx.globalAlpha = 1;
@@ -207,12 +212,14 @@ export function createPageRenderer(options) {
     backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
     backCtx.restore();
 
-    page.ctx.save();
-    page.ctx.globalCompositeOperation = 'source-over';
-    page.ctx.globalAlpha = 1;
-    page.ctx.fillStyle = state.pageFillColor || '#f7f5ee';
-    page.ctx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
-    page.ctx.restore();
+    if (!preserveFrontBuffer) {
+      page.ctx.save();
+      page.ctx.globalCompositeOperation = 'source-over';
+      page.ctx.globalAlpha = 1;
+      page.ctx.fillStyle = state.pageFillColor || '#f7f5ee';
+      page.ctx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
+      page.ctx.restore();
+    }
 
     page.dirtyAll = false;
     page._dirtyRowMinMu = page._dirtyRowMaxMu = undefined;
@@ -307,12 +314,16 @@ export function createPageRenderer(options) {
   }
 
   function refreshGlyphEffects(options = {}) {
-    if (options.rebuild !== false) {
+    const shouldRebuild = options.rebuild !== false;
+    const preserveFrontBuffer = options.preserveFrontBuffer === true;
+    if (shouldRebuild) {
       rebuildAllAtlases();
     }
-    for (const page of state.pages) {
+    const pages = Array.isArray(state?.pages) ? state.pages : [];
+    for (const page of pages) {
       if (!page) continue;
       page.dirtyAll = true;
+      page.preserveFrontBufferForFullPaint = preserveFrontBuffer;
       if (page.active) schedulePaint(page);
     }
   }

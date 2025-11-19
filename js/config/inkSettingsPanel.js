@@ -694,7 +694,7 @@ function applySectionOrder(order, options = {}) {
   reorderMetas(panelState.sectionOrder);
   updateSectionsDomOrder(panelState.sectionOrder);
   if (options.silent !== true) {
-    scheduleGlyphRefresh(true);
+    scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
     scheduleGrainRefresh();
   }
 }
@@ -1543,20 +1543,37 @@ function persistPanelState() {
   }
 }
 
-function scheduleGlyphRefresh(rebuild = true) {
+function scheduleGlyphRefresh(rebuildOrOptions = true, maybeOptions = undefined) {
   if (typeof panelState.callbacks.refreshGlyphs !== 'function') return;
+  let rebuild = rebuildOrOptions;
+  let options = maybeOptions;
+  if (typeof rebuildOrOptions === 'object' && rebuildOrOptions !== null) {
+    options = rebuildOrOptions;
+    rebuild = options.rebuild;
+  }
+  const normalizedRebuild = rebuild !== false;
+  const preserveFrontBuffer = options?.preserveFrontBuffer === true;
   if (panelState.pendingGlyphRAF) {
-    if (rebuild && panelState.pendingGlyphOptions && panelState.pendingGlyphOptions.rebuild === false) {
+    if (normalizedRebuild && panelState.pendingGlyphOptions && panelState.pendingGlyphOptions.rebuild === false) {
       panelState.pendingGlyphOptions.rebuild = true;
+    }
+    if (panelState.pendingGlyphOptions && preserveFrontBuffer) {
+      panelState.pendingGlyphOptions.preserveFrontBuffer = true;
     }
     return;
   }
-  panelState.pendingGlyphOptions = { rebuild: rebuild !== false };
+  panelState.pendingGlyphOptions = {
+    rebuild: normalizedRebuild,
+    preserveFrontBuffer,
+  };
   panelState.pendingGlyphRAF = requestAnimationFrame(() => {
-    const opts = panelState.pendingGlyphOptions || { rebuild: rebuild !== false };
+    const opts = panelState.pendingGlyphOptions || { rebuild: normalizedRebuild, preserveFrontBuffer };
     panelState.pendingGlyphRAF = 0;
     panelState.pendingGlyphOptions = null;
-    panelState.callbacks.refreshGlyphs(opts);
+    panelState.callbacks.refreshGlyphs({
+      rebuild: opts.rebuild !== false,
+      preserveFrontBuffer: opts.preserveFrontBuffer === true,
+    });
   });
 }
 
@@ -1564,7 +1581,8 @@ function scheduleRefreshForMeta(meta, options = {}) {
   if (!meta) return;
   if (meta.trigger === 'glyph') {
     const needsFullRebuild = options.forceRebuild === false ? false : true;
-    scheduleGlyphRefresh(needsFullRebuild);
+    const preserveFront = options.preserveFrontBuffer === false ? false : true;
+    scheduleGlyphRefresh(needsFullRebuild, { preserveFrontBuffer: preserveFront });
   }
 }
 
@@ -1606,7 +1624,7 @@ function applySectionQuality(meta, value, options = {}) {
   }
   if (options.silent) return normalized;
   setSectionQualityPercent(meta.id, normalized);
-  scheduleGlyphRefresh(true);
+  scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
   persistPanelState();
   return normalized;
 }
@@ -2079,7 +2097,7 @@ function setOverallStrength(percent) {
   const pct = clamp(Math.round(Number(percent) || 0), 0, 100);
   setPercentOnState('effectsOverallStrength', pct);
   syncOverallStrengthUI();
-  scheduleGlyphRefresh();
+  scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
   persistPanelState();
   return pct;
 }
