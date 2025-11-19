@@ -44,6 +44,12 @@ const SPECK_SUBPIXEL_OFFSETS = Object.freeze([
   [0.1666667, 0.6666667],
   [0.6666667, 0.6666667],
 ]);
+const SPECK_SUPERSAMPLE_OFFSETS = Object.freeze([
+  [0.25, 0.25],
+  [0.75, 0.25],
+  [0.25, 0.75],
+  [0.75, 0.75],
+]);
 
 const DEFAULT_RIBBON_BAND = Object.freeze({
   height: 0.35,
@@ -502,9 +508,16 @@ const sampleSpeckValueNoise = (hash2Fn, x, y, seed) => {
   return lerp(nx0, nx1, sy);
 };
 
-const sampleSpeckField = (hash2Fn, xCss, yCss, detailCss, seed) => {
+const sampleSpeckField = (hash2Fn, xCss, yCss, detailCss, seed, quality = 1) => {
+  const stageQuality = clampStageQuality(quality);
+  const totalOctaves = SPECK_NOISE_OCTAVES.length;
+  const desiredOctaves = stageQuality >= 1
+    ? totalOctaves
+    : Math.max(1, Math.round(totalOctaves * stageQuality));
   let accum = 0;
-  for (let o = 0; o < SPECK_NOISE_OCTAVES.length; o++) {
+  let weightSum = 0;
+  for (let o = 0; o < totalOctaves; o++) {
+    if (o >= desiredOctaves) break;
     const octave = SPECK_NOISE_OCTAVES[o];
     const freq = max(0.0001, detailCss * octave.freq);
     const value = sampleSpeckValueNoise(
@@ -514,8 +527,10 @@ const sampleSpeckField = (hash2Fn, xCss, yCss, detailCss, seed) => {
       seed ^ octave.salt,
     );
     accum += value * octave.weight;
+    weightSum += octave.weight;
   }
-  const normalized = accum / (SPECK_NOISE_WEIGHT_SUM || 1);
+  const normalizationWeight = stageQuality >= 1 ? SPECK_NOISE_WEIGHT_SUM : weightSum;
+  const normalized = accum / (normalizationWeight || 1);
   const centered = normalized - 0.5;
   const contrast = 1.25;
   return clamp01(centered * contrast + 0.5);
@@ -665,12 +680,14 @@ export function createExperimentalStagePipeline(deps = {}) {
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
     if (!params.enable.dropouts || !params.dropouts || params.dropouts.amount <= 0) return;
+    const stageQuality = getStageQualityFromContext(ctx);
     const detailCss = getDetailDensityCss(ctx);
     const inside = dm?.raw?.inside;
     const widthPx = max(0.0001, params.dropouts.width * smul * dpPerCss);
     const dropScalePx = max(2 / detailCss, (params.dropouts.scale * smul) / detailCss);
     const dropThr = 1 - clamp01Fn(params.dropouts.streakDensity);
     const dropPw = clamp01Fn(params.dropouts.pinholeWeight);
+    const dropoutHashDensity = max(0.1, 3 * stageQuality);
     const dropoutTile = detailNoiseCache.getTile({
       detailCss,
       width: w,
@@ -689,8 +706,8 @@ export function createExperimentalStagePipeline(deps = {}) {
         const nlf = dropoutTile.data[i];
         const streak = (nlf > dropThr ? 1 : 0) * band;
         const nhf = hash2Fn(
-          floor(xCss * detailCss * 3 + 7),
-          floor(yCss * detailCss * 3 + 11),
+          floor(xCss * detailCss * dropoutHashDensity + 7),
+          floor(yCss * detailCss * dropoutHashDensity + 11),
           seed ^ 0xC0FFEE00,
         );
         const pinh = (nhf > 1 - params.dropouts.pinhole ? 1 : 0) * (1 - band);
@@ -706,8 +723,22 @@ export function createExperimentalStagePipeline(deps = {}) {
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
     if (!params.enable.grainSpeck) return;
+    const stageQuality = getStageQualityFromContext(ctx);
     const detailCss = getDetailDensityCss(ctx, 1.5);
-    const sampleOffsets = SPECK_SUBPIXEL_OFFSETS;
+    let sampleOffsets = SPECK_SUBPIXEL_OFFSETS;
+    if (stageQuality < 1) {
+      const subsetCount = Math.max(1, Math.round(sampleOffsets.length * stageQuality));
+      sampleOffsets = SPECK_SUBPIXEL_OFFSETS.slice(0, subsetCount);
+    } else if (stageQuality > 1) {
+      const extraCount = Math.min(
+        SPECK_SUPERSAMPLE_OFFSETS.length,
+        Math.round((stageQuality - 1) * SPECK_SUPERSAMPLE_OFFSETS.length),
+      );
+      sampleOffsets = extraCount > 0
+        ? SPECK_SUBPIXEL_OFFSETS.concat(SPECK_SUPERSAMPLE_OFFSETS.slice(0, extraCount))
+        : SPECK_SUBPIXEL_OFFSETS;
+    }
+    const microNoiseWeight = clamp01((stageQuality - 0.5) / 0.5);
     const sampleCount = sampleOffsets.length || 1;
     const invSampleCount = 1 / sampleCount;
     const speckSeed = seed ^ 0xBEEFCAFE;
@@ -726,14 +757,17 @@ export function createExperimentalStagePipeline(deps = {}) {
           const offset = sampleOffsets[s];
           const xCss = (x + offset[0]) * invDp;
           const yCss = (y + offset[1]) * invDp;
-          const baseMask = sampleSpeckField(hash2Fn, xCss, yCss, detailCss, speckSeed);
-          const microMask = sampleSpeckValueNoise(
-            hash2Fn,
-            xCss * detailCss * 3.37 + 5.71,
-            yCss * detailCss * 3.17 - 2.9,
-            speckSeed ^ 0x7F4A7C15,
-          );
-          const microPerturb = (microMask - 0.5) * 0.7;
+          const baseMask = sampleSpeckField(hash2Fn, xCss, yCss, detailCss, speckSeed, stageQuality);
+          let microPerturb = 0;
+          if (microNoiseWeight > 0) {
+            const microMask = sampleSpeckValueNoise(
+              hash2Fn,
+              xCss * detailCss * 3.37 + 5.71,
+              yCss * detailCss * 3.17 - 2.9,
+              speckSeed ^ 0x7F4A7C15,
+            );
+            microPerturb = (microMask - 0.5) * 0.7 * microNoiseWeight;
+          }
           const combinedMask = clamp01Fn(baseMask + microPerturb);
           const speckMask = clamp01Fn((combinedMask - 0.5) * 1.6 + 0.5);
           if (speckMask > darkGate) {
