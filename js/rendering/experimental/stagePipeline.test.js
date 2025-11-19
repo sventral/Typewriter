@@ -146,4 +146,81 @@ assert.strictEqual(
   'Downsampled distance map should be reused between identical stages.',
 );
 
+const constantNoiseCache = {
+  getTile: params => ({
+    width: params.width,
+    height: params.height,
+    data: new Float32Array(params.width * params.height).fill(0.5),
+    dpPerCss: params.dpPerCss,
+    scale: params.scale,
+    seed: params.seed,
+  }),
+};
+
+const fuzzSmudgePipeline = createExperimentalStagePipeline({
+  detailResolution: { threshold: 0, scale: 1, stages: [] },
+  detailNoiseCache: constantNoiseCache,
+});
+const realFuzz = fuzzSmudgePipeline.stageRegistry.fuzz;
+const realSmudge = fuzzSmudgePipeline.stageRegistry.smudge;
+let derivedAfterFuzz = null;
+let derivedAfterSmudge = null;
+fuzzSmudgePipeline.stageRegistry.fuzz = (coverage, ctx) => {
+  realFuzz(coverage, ctx);
+  derivedAfterFuzz = ctx.__distanceDerived;
+};
+fuzzSmudgePipeline.stageRegistry.smudge = (coverage, ctx) => {
+  realSmudge(coverage, ctx);
+  derivedAfterSmudge = ctx.__distanceDerived;
+};
+const baseInside = new Float32Array([1, 2, 1, 0]);
+const baseOutside = new Float32Array([0.5, 1, 1.5, 2]);
+const fuzzSmudgeCtx = {
+  w: 2,
+  h: 2,
+  alpha0: new Uint8Array([255, 200, 0, 0]),
+  dpPerCss: 1.2,
+  smul: 1,
+  params: {
+    enable: {
+      edgeFuzz: true,
+      smudge: true,
+    },
+    edgeFuzz: {
+      opacity: 0.4,
+      inBand: 1,
+      outBand: 1,
+      rough: 0.1,
+      scale: 1,
+      mix: 0,
+    },
+    smudge: {
+      strength: 0.5,
+      radius: 1.1,
+      falloff: 0,
+      scale: 1,
+      density: 0.5,
+      dirDeg: 0,
+      spread: 0.2,
+    },
+  },
+  dm: {
+    raw: {
+      inside: baseInside,
+      outside: baseOutside,
+    },
+    getInside: idx => baseInside[idx],
+    getOutside: idx => baseOutside[idx],
+    getMaxInside: () => 2,
+  },
+};
+const fuzzSmudgeCoverage = new Float32Array(4).fill(0.1);
+fuzzSmudgePipeline.runPipeline(fuzzSmudgeCoverage, fuzzSmudgeCtx, ['fuzz', 'smudge']);
+assert.ok(derivedAfterFuzz, 'Distance cache should be created for fuzz.');
+assert.strictEqual(
+  derivedAfterFuzz,
+  derivedAfterSmudge,
+  'Smudge should reuse the cached distance derivatives from fuzz.',
+);
+
 console.log('stagePipeline detail resolution tests passed.');
