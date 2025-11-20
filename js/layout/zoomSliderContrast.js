@@ -9,9 +9,17 @@ function getEffectiveTheme() {
   return prefersDark ? 'dark' : 'light';
 }
 
-function rectsOverlap(a, b) {
-  if (!a || !b) return false;
-  return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+function overlapAreaRatio(a, b) {
+  if (!a || !b) return 0;
+  const left = Math.max(a.left, b.left);
+  const right = Math.min(a.right, b.right);
+  const top = Math.max(a.top, b.top);
+  const bottom = Math.min(a.bottom, b.bottom);
+  if (right <= left || bottom <= top) return 0;
+  const area = (right - left) * (bottom - top);
+  const sliderArea = a.width * a.height;
+  if (!sliderArea) return 0;
+  return area / sliderArea;
 }
 
 function collectPageElements(app) {
@@ -27,8 +35,9 @@ export function createZoomSliderContrastManager({ app } = {}) {
   let pageToneObserver = null;
 
   const getSliderEl = () => {
+    if (app?.zoomSlider instanceof Element) return app.zoomSlider;
     if (app?.zoomControls instanceof Element) return app.zoomControls;
-    return document.getElementById('zoomControls');
+    return document.getElementById('zoomSlider') || document.getElementById('zoomControls');
   };
 
   const hasLightPageTone = () => document?.body?.dataset?.pageTone !== 'dark';
@@ -39,14 +48,19 @@ export function createZoomSliderContrastManager({ app } = {}) {
     if (!hasLightPageTone()) return false;
     const sliderRect = slider.getBoundingClientRect();
     if (!sliderRect || sliderRect.width === 0 || sliderRect.height === 0) return false;
+    const center = {
+      x: sliderRect.left + sliderRect.width / 2,
+      y: sliderRect.top + sliderRect.height / 2,
+    };
     const pages = collectPageElements(app);
     for (const page of pages) {
       if (!page) continue;
       const rect = page.getBoundingClientRect();
       if (!rect || rect.width === 0 || rect.height === 0) continue;
-      if (rectsOverlap(sliderRect, rect)) {
-        return true;
-      }
+      const ratio = overlapAreaRatio(sliderRect, rect);
+      const centerInside = center.x > rect.left && center.x < rect.right && center.y > rect.top && center.y < rect.bottom;
+      // Require center to be over the page and a modest overlap to avoid early toggles.
+      if (centerInside && ratio >= 0.1) return true;
     }
     return false;
   };
