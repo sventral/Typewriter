@@ -1,4 +1,5 @@
 import { computeGlyphJitterOffset } from './glyphJitter.js';
+import { sanitizePageNumberingSettings } from '../config/pageNumbering.js';
 
 export function createPageRenderer(options) {
   const {
@@ -51,6 +52,52 @@ export function createPageRenderer(options) {
     }
     return () => Date.now();
   })();
+
+  function pageNumberingSettings() {
+    return sanitizePageNumberingSettings(
+      state?.pageNumbering,
+      { enabled: false, offsetLines: 1, alignment: 'center' },
+    );
+  }
+
+  function computePageNumberRow(page) {
+    const settings = pageNumberingSettings();
+    if (!settings.enabled) return null;
+    const bounds = typeof getCurrentBounds === 'function' ? getCurrentBounds() : null;
+    if (!bounds) return null;
+    const gridHeight = getGridHeightFn();
+    const desc = getDescFn();
+    const step = Math.max(1, getLineStepMu());
+    if (!Number.isFinite(gridHeight) || gridHeight <= 0) return null;
+    const tmu = Number.isFinite(bounds.Tmu) ? bounds.Tmu : 0;
+    const rawMaxRow = Math.floor((app.PAGE_H - desc) / gridHeight);
+    const stepsFromTop = Math.floor((rawMaxRow - tmu) / step);
+    if (!Number.isFinite(stepsFromTop) || stepsFromTop < 0) return null;
+    const targetStepsFromTop = Math.max(0, stepsFromTop - settings.offsetLines);
+    const rowMu = tmu + targetStepsFromTop * step;
+    if (!Number.isFinite(rowMu) || rowMu < 0) return null;
+    const pageNumber = Number.isFinite(page?.index) ? page.index + 1 : null;
+    if (pageNumber == null) return null;
+    const text = String(pageNumber);
+    const leftCol = Number.isFinite(bounds.L) ? bounds.L : 0;
+    const rightCol = Number.isFinite(bounds.R) ? bounds.R : leftCol;
+    const widthCols = Math.max(0, rightCol - leftCol + 1);
+    if (widthCols <= 0 || !text.length) return null;
+    let startCol;
+    if (settings.alignment === 'right') {
+      startCol = rightCol - text.length + 1;
+    } else if (settings.alignment === 'center') {
+      startCol = leftCol + Math.floor((widthCols - text.length) / 2);
+    } else {
+      startCol = leftCol;
+    }
+    const safeStart = Math.max(leftCol, Math.min(startCol, rightCol - text.length + 1));
+    const rowMap = new Map();
+    for (let i = 0; i < text.length; i++) {
+      rowMap.set(safeStart + i, [{ char: text[i], ink: state.ink || 'b' }]);
+    }
+    return { rowMu, rowMap };
+  }
 
   function firstRowMuInBand(minMu, bounds, step) {
     const base = Number.isFinite(bounds?.Tmu) ? bounds.Tmu : 0;
@@ -171,6 +218,10 @@ export function createPageRenderer(options) {
       if (!Number.isFinite(key)) continue;
       rows.push(key);
     }
+    const pageNumberRow = computePageNumberRow(page);
+    if (pageNumberRow && Number.isFinite(pageNumberRow.rowMu) && !rows.includes(pageNumberRow.rowMu)) {
+      rows.push(pageNumberRow.rowMu);
+    }
     rows.sort((a, b) => a - b);
     const priorityRange = getViewportPriorityRange(page);
     if (!priorityRange) return rows;
@@ -246,6 +297,7 @@ export function createPageRenderer(options) {
       resetFullPagePaintState(page);
       return;
     }
+    const pageNumberRow = computePageNumberRow(page);
 
     const asc = getAscFn();
     const desc = getDescFn();
@@ -270,7 +322,10 @@ export function createPageRenderer(options) {
       }
       const rowMu = queue[page.fullPaintCursor++];
       rowsProcessed += 1;
-      const rowMap = page.grid.get(rowMu);
+      let rowMap = page.grid.get(rowMu);
+      if (!rowMap && pageNumberRow && pageNumberRow.rowMu === rowMu) {
+        rowMap = pageNumberRow.rowMap;
+      }
       if (!rowMap) continue;
       const baseline = rowMu * gridHeight;
       const rowTopCss = baseline - BLEED_TOP_CSS;
@@ -365,6 +420,7 @@ export function createPageRenderer(options) {
     const { backCtx } = page;
     const gridHeight = getGridHeightFn();
     const charWidth = getCharWidthFn();
+    const pageNumberRow = computePageNumberRow(page);
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
     backCtx.globalAlpha = 1;
@@ -377,6 +433,13 @@ export function createPageRenderer(options) {
       for (const [col, stack] of rowMap) {
         const x = col * charWidth;
         drawGlyphStack(backCtx, stack, x, baseline, page.index, rowMu, col);
+      }
+    }
+    if (pageNumberRow?.rowMap) {
+      const baseline = pageNumberRow.rowMu * gridHeight;
+      for (const [col, stack] of pageNumberRow.rowMap) {
+        const x = col * charWidth;
+        drawGlyphStack(backCtx, stack, x, baseline, page.index, pageNumberRow.rowMu, col);
       }
     }
     page.ctx.drawImage(page.backCanvas, 0, 0, page.backCanvas.width, page.backCanvas.height, 0, 0, app.PAGE_W, app.PAGE_H);
@@ -438,6 +501,10 @@ export function createPageRenderer(options) {
       for (const rowMu of dirtyRowSet) {
         addRow(rowMu);
       }
+    }
+    const pageNumberRow = computePageNumberRow(page);
+    if (pageNumberRow) {
+      addRow(pageNumberRow.rowMu, pageNumberRow.rowMap);
     }
 
     for (const [rowMu, rowMap] of page.grid) {

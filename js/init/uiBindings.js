@@ -22,7 +22,6 @@ export function setupUIBindings(context, controllers) {
     updateCaretPosition,
     positionRulers,
     requestVirtualization,
-    schedulePaint,
     setRenderScaleForZoom,
     setZoomPercent,
     applyDefaultMargins,
@@ -40,6 +39,7 @@ export function setupUIBindings(context, controllers) {
     getSaveTimer,
     setSaveTimer,
     gridDiv,
+    schedulePaint,
   } = context;
 
   const { editing, layout, input, theme } = controllers;
@@ -142,6 +142,7 @@ export function setupUIBindings(context, controllers) {
     computeColsFromCpi,
     gridDiv,
     applyPaperSizeSelection,
+    schedulePaint,
   });
 
   function bindGlobalListeners() {

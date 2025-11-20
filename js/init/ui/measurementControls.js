@@ -6,6 +6,7 @@ import {
   ZOOM_SLIDER_MAX_PCT,
   ZOOM_SLIDER_MIN_PCT,
 } from '../../config/lowResZoom.js';
+import { createDefaultPageNumberingSettings, sanitizePageNumberingSettings } from '../../config/pageNumbering.js';
 
 export function createMeasurementControls({
   app,
@@ -29,6 +30,7 @@ export function createMeasurementControls({
   applyLineHeight,
   readStagedLH,
   applyPaperSizeSelection,
+  schedulePaint,
   toggleRulers,
   setMarginBoxesVisible,
   setRenderScaleForZoom,
@@ -74,6 +76,7 @@ export function createMeasurementControls({
       clampCaretToBounds();
       updateCaretPosition();
       positionRulers();
+      markPageNumbersDirty();
       queueDirtySave();
     };
 
@@ -136,6 +139,7 @@ export function createMeasurementControls({
       });
       app.lhInput.addEventListener('change', () => {
         applyLineHeight();
+        markPageNumbersDirty();
       });
     }
 
@@ -165,6 +169,7 @@ export function createMeasurementControls({
           updateColsPreviewUI();
           queueDirtySave();
           syncMarginInputsFromState();
+          markPageNumbersDirty();
         }
         focusStage();
       });
@@ -242,6 +247,84 @@ export function createMeasurementControls({
     }
   }
 
+  function ensurePageNumberingState() {
+    const sanitized = sanitizePageNumberingSettings(
+      state.pageNumbering,
+      createDefaultPageNumberingSettings(),
+    );
+    state.pageNumbering = sanitized;
+    return sanitized;
+  }
+
+  function markPageNumbersDirty() {
+    if (!state?.pageNumbering?.enabled) return;
+    const pages = Array.isArray(state.pages) ? state.pages : [];
+    pages.forEach((page) => {
+      if (!page) return;
+      page.dirtyAll = true;
+      if (typeof schedulePaint === 'function' && page.active) {
+        schedulePaint(page);
+      }
+    });
+    if (typeof requestVirtualization === 'function') {
+      requestVirtualization();
+    }
+  }
+
+  function syncPageNumberingUI() {
+    const settings = ensurePageNumberingState();
+    const enabled = settings.enabled === true;
+    if (app.pageNumberToggle) app.pageNumberToggle.checked = enabled;
+    if (app.pageNumberOffset) {
+      app.pageNumberOffset.value = String(settings.offsetLines);
+      app.pageNumberOffset.disabled = !enabled;
+    }
+    const alignInputs = [
+      app.pageNumberAlignLeft,
+      app.pageNumberAlignCenter,
+      app.pageNumberAlignRight,
+    ].filter(Boolean);
+    alignInputs.forEach((inp) => {
+      inp.disabled = !enabled;
+      inp.checked = inp.value === settings.alignment;
+    });
+  }
+
+  function bindPageNumberingControls() {
+    if (app.pageNumberToggle) {
+      app.pageNumberToggle.addEventListener('change', () => {
+        const settings = ensurePageNumberingState();
+        settings.enabled = !!app.pageNumberToggle.checked;
+        syncPageNumberingUI();
+        markPageNumbersDirty();
+        queueDirtySave();
+      });
+    }
+
+    if (app.pageNumberOffset) {
+      const applyOffset = () => {
+        sanitizeIntegerField(app.pageNumberOffset, { min: 0, allowEmpty: true });
+        const settings = ensurePageNumberingState();
+        settings.offsetLines = Math.max(0, Math.round(Number(app.pageNumberOffset.value) || 0));
+        markPageNumbersDirty();
+        queueDirtySave();
+      };
+      app.pageNumberOffset.addEventListener('input', applyOffset);
+      app.pageNumberOffset.addEventListener('change', applyOffset);
+    }
+
+    [app.pageNumberAlignLeft, app.pageNumberAlignCenter, app.pageNumberAlignRight].forEach((inp) => {
+      if (!inp) return;
+      inp.addEventListener('change', () => {
+        if (!inp.checked) return;
+        const settings = ensurePageNumberingState();
+        settings.alignment = inp.value;
+        markPageNumbersDirty();
+        queueDirtySave();
+      });
+    });
+  }
+
   function bindLowResZoomControls() {
     if (app.lowResZoomToggle) {
       app.lowResZoomToggle.addEventListener('change', () => {
@@ -315,6 +398,7 @@ export function createMeasurementControls({
     bindStageSizeInputs();
     bindToolbarInputs();
     bindLowResZoomControls();
+    bindPageNumberingControls();
     bindRulerInteractions();
     bindZoomControls();
     if (app.stage) {
@@ -339,6 +423,10 @@ export function createMeasurementControls({
     const baseGridDiv = Number.isFinite(gridDiv) ? gridDiv : 8;
     state.lineStepMu = Math.round(state.lineHeightFactor * baseGridDiv);
     state.wordWrap = true;
+    state.pageNumbering = sanitizePageNumberingSettings(
+      state.pageNumbering,
+      createDefaultPageNumberingSettings(),
+    );
     applyDefaultMargins();
   }
 
@@ -361,6 +449,7 @@ export function createMeasurementControls({
     if (app.mmBottom) app.mmBottom.value = Math.round(mmY(state.marginBottom));
     if (app.stageWidthPct) app.stageWidthPct.value = String(Math.round(sanitizedStageWidthFactor() * 100));
     if (app.stageHeightPct) app.stageHeightPct.value = String(Math.round(sanitizedStageHeightFactor() * 100));
+    syncPageNumberingUI();
     syncLowResZoomUI();
   }
 

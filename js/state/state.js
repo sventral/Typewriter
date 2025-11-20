@@ -6,6 +6,7 @@ import {
   getDefaultInkSectionQuality,
   getDefaultInkSectionStrength,
 } from '../config/inkEffectDefaultStyle.js';
+import { createDefaultPageNumberingSettings } from '../config/pageNumbering.js';
 
 const SECTION_STRENGTH_DEFAULTS = {
   expTone: getDefaultInkSectionStrength('expTone'),
@@ -75,6 +76,7 @@ export function createMainState(app, gridDiv = 8) {
     lowResZoomMarginPct: LOW_RES_ZOOM_DEFAULTS.marginPct,
     lagInputBlocked: false,
     lagAssistEnabled: true,
+    pageNumbering: createDefaultPageNumberingSettings(),
   };
 }
 

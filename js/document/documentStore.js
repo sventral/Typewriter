@@ -21,6 +21,7 @@ import {
 import { hydrateGlyphEntry, serializeGlyphEntry } from './glyphStack.js';
 import { STAGE_HEIGHT_MAX, STAGE_HEIGHT_MIN, STAGE_WIDTH_MAX, STAGE_WIDTH_MIN } from '../layout/stageLayout.js';
 import { encodeDocumentDataForStorage, decodeDocumentDataFromStorage } from '../storage/jsonCompression.js';
+import { createDefaultPageNumberingSettings, sanitizePageNumberingSettings } from '../config/pageNumbering.js';
 const KNOWN_INK_SECTIONS = PRESET_INK_SECTION_ORDER.slice();
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
@@ -193,9 +194,13 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     { maxZoomPct: ZOOM_SLIDER_MAX_PCT, minSoftCapPct: ZOOM_SLIDER_MIN_PCT },
   );
   const lowResZoomEnabled = state.lowResZoomEnabled !== false;
+  const pageNumbering = sanitizePageNumberingSettings(
+    state.pageNumbering,
+    createDefaultPageNumberingSettings(),
+  );
 
   return {
-    v: 26,
+    v: 27,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -237,6 +242,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     pageFillColor: state.pageFillColor,
     savedInkStyles: sanitizeSavedInkStyles(state.savedInkStyles),
     currentInkStyle: state.currentInkStyle ? sanitizeSavedInkStyle(state.currentInkStyle) : null,
+    pageNumbering,
     glyphJitter: {
       enabled: !!state.glyphJitterEnabled,
       amountPct: cloneGlyphJitterRange(glyphJitterAmount),
@@ -267,7 +273,7 @@ export function deserializeDocumentState(data, context) {
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 26) return false;
+  if (!data || data.v < 2 || data.v > 27) return false;
   const targetPaperSize = typeof data.paperSize === 'string'
     ? data.paperSize
     : state.paperSize || DEFAULT_PAPER_SIZE;
@@ -490,6 +496,10 @@ export function deserializeDocumentState(data, context) {
     glyphJitterAmountPct: sanitizedJitterAmount,
     glyphJitterFrequencyPct: sanitizedJitterFrequency,
     glyphJitterSeed: sanitizedJitterSeed,
+    pageNumbering: sanitizePageNumberingSettings(
+      data.pageNumbering,
+      state.pageNumbering || createDefaultPageNumberingSettings(),
+    ),
   });
   state.savedInkStyles = sanitizeSavedInkStyles(data.savedInkStyles);
   state.currentInkStyle = data.currentInkStyle
