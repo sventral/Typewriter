@@ -1,4 +1,3 @@
-import { detectSafariEnvironment } from '../../layout/stageLayout.js';
 import { registerRenderingControllers } from '../controllers/renderingControllers.js';
 
 function createThemeFacade(rendering) {
@@ -17,14 +16,11 @@ function createLayoutFacade(rendering) {
 }
 
 export function registerRenderingDomain(options) {
-  const safariEnv = options.safariEnv || detectSafariEnvironment();
   const rendering = registerRenderingControllers({
     ...options,
-    safariEnv,
   });
 
   return {
-    safariEnv,
     publicApi: {
       refreshGlyphEffects: rendering.refreshGlyphEffects,
       schedulePaint: rendering.schedulePaint,

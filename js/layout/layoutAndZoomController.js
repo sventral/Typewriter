@@ -33,9 +33,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     setZoomDebounceTimer,
     getDrag,
     setDrag,
-    isSafari,
-    setSafariZoomMode,
-    syncSafariZoomLayout,
     getPaperWidthMm = () => 210,
     getPaperHeightMm = () => 297,
   } = context;
@@ -47,7 +44,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     toolbarHeightPx,
     updateZoomWrapTransform,
     sanitizeStageInput,
-    setSafariZoomMode: stageLayoutSetSafariZoomMode,
   } = layoutController;
 
   const { clampCaretToBounds } = editingController;
@@ -379,33 +375,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     };
   }
 
-  function maybeApplyNativeScroll(dx, dy, threshold) {
-    if (!layoutController.isSafariSteadyZoom()) return false;
-    const stage = app.stage;
-    if (!stage) return false;
-    let used = false;
-    const maxX = stage.scrollWidth - stage.clientWidth;
-    const maxY = stage.scrollHeight - stage.clientHeight;
-    if (Math.abs(dx) > threshold && maxX > 1) {
-      const target = clamp(stage.scrollLeft - dx, 0, Math.max(0, maxX));
-      if (Math.abs(target - stage.scrollLeft) > threshold) {
-        stage.scrollLeft = target;
-        used = true;
-      }
-    }
-    if (Math.abs(dy) > threshold && maxY > 1) {
-      const target = clamp(stage.scrollTop - dy, 0, Math.max(0, maxY));
-      if (Math.abs(target - stage.scrollTop) > threshold) {
-        stage.scrollTop = target;
-        used = true;
-      }
-    }
-    if (used) {
-      queueRulerRepositionAfterVisualMove();
-    }
-    return used;
-  }
-
   const DEAD_X = 1.25;
   const DEAD_Y = 3.0;
 
@@ -418,15 +387,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     let dy = ay - cv.y;
     const pxThreshold = 1 / DPR;
     if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-    const usedNative = maybeApplyNativeScroll(dx, dy, pxThreshold);
-    if (usedNative) {
-      const updated = caretViewportPos();
-      if (updated) {
-        dx = ax - updated.x;
-        dy = ay - updated.y;
-        if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-      }
-    }
     if (Math.abs(dx) < DEAD_X && Math.abs(dy) < DEAD_Y) return;
     const scale = cssScaleFactor() || 1;
     const prevX = state.paperOffset.x;
@@ -453,15 +413,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     let dy = ay - cv.y;
     const pxThreshold = 1 / DPR;
     if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-    const usedNative = maybeApplyNativeScroll(dx, dy, pxThreshold);
-    if (usedNative) {
-      const updated = caretViewportPos();
-      if (updated) {
-        dx = ax - updated.x;
-        dy = ay - updated.y;
-        if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-      }
-    }
     const scale = cssScaleFactor() || 1;
     if (!Number.isFinite(scale) || scale <= 0) return;
     setPaperOffset(state.paperOffset.x + dx / scale, state.paperOffset.y + dy / scale);
@@ -476,14 +427,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
         nudgePaperToAnchor();
       });
     };
-    if (isSafari) {
-      hammerNudgeRAF = requestAnimationFrame(() => {
-        hammerNudgeRAF = 0;
-        schedule();
-      });
-    } else {
-      schedule();
-    }
+    schedule();
   }
 
   const zoomRenderManager = createZoomRenderManager({
@@ -497,9 +441,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     setFreezeVirtual,
     requestVirtualization,
     requestHammerNudge,
-    isSafari,
-    syncSafariZoomLayout,
-    stageLayoutSetSafariZoomMode,
     getZooming,
     setZooming,
     getZoomDebounceTimer,
@@ -870,7 +811,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
         setPaperOffset(prevOffsetX * ratio, prevOffsetY * ratio);
       }
     }
-    if (isSafari && !getZooming()) stageLayoutSetSafariZoomMode('steady', { force: true });
     applyZoomCSS();
     reanchorCaretAfterZoomChange();
     scheduleZoomCrispRedraw();
@@ -882,11 +822,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   const zoomUiController = createZoomUiController({
     app,
     state,
-    isSafari,
     setZoomPercent,
     setZooming,
     setFreezeVirtual,
-    setSafariZoomMode,
     scheduleZoomCrispRedraw,
     onZoomCommit: () => flushPendingZoomLagEvent('zoom-pointer-commit'),
   });

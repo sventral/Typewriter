@@ -18,7 +18,6 @@ export function registerRenderingControllers(options) {
     gridDiv,
     colors,
     editing,
-    safariEnv,
   } = options;
 
   const { rebuildAllAtlases, drawGlyph } = createGlyphAtlas({
@@ -33,8 +32,6 @@ export function registerRenderingControllers(options) {
     getCharWidth: () => metricsStore.CHAR_W,
     getRenderScale: () => metricsStore.RENDER_SCALE,
     getStateZoom: () => state.zoom,
-    isSafari: safariEnv.isSafari,
-    safariSupersampleThreshold: safariEnv.supersampleThreshold,
     getInkEffectFactor,
     getInkSectionStrength,
     getInkSectionOrder,
