@@ -10,17 +10,8 @@ export const BASE_PADDING_X_PX = 24;
 export const BASE_PADDING_Y_PX = 40;
 
 export function detectSafariEnvironment() {
-  if (typeof navigator === 'undefined') {
-    return { isSafari: false, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD };
-  }
-  const ua = navigator.userAgent || '';
-  const vendor = navigator.vendor || '';
-  const platform = navigator.platform || '';
-  const maxTouch = Number.isFinite(navigator.maxTouchPoints) ? navigator.maxTouchPoints : 0;
-  const isIos = /iP(ad|hone|od)/i.test(ua) || (platform === 'MacIntel' && maxTouch > 1);
-  const isSafariDesktop = /Safari/i.test(ua) && /Apple/i.test(vendor) && !/Chrome|CriOS|FxiOS|Edg|Android/i.test(ua);
-  const isSafari = isIos ? (/Safari/i.test(ua) || /Version\//i.test(ua)) : isSafariDesktop;
-  return { isSafari, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD };
+  // Safari-specific branches are intentionally disabled to keep a single rendering path.
+  return { isSafari: false, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD };
 }
 
 export function createStageLayoutController(options) {
@@ -28,11 +19,14 @@ export function createStageLayoutController(options) {
     context,
     app: explicitApp,
     state: explicitState,
-    isSafari,
+    isSafari: _isSafari,
     renderMargins,
     updateStageEnvironment,
     updateCaretPosition,
   } = options || {};
+
+  // Force Safari handling off so all browsers follow the same code path.
+  const isSafari = false;
 
   const app = explicitApp || context?.app;
   const state = explicitState || context?.state || {};
@@ -40,13 +34,6 @@ export function createStageLayoutController(options) {
   let safariZoomMode = isSafari ? 'steady' : 'transient';
   let lastSafariLayoutZoom = isSafari ? state.zoom : 1;
   let cachedToolbarHeight = null;
-
-  if (isSafari) {
-    try {
-      document.documentElement.classList.add('safari-no-blur');
-    } catch {
-    }
-  }
 
   function layoutZoomFactor() {
     if (!isSafari) return 1;
