@@ -9,6 +9,7 @@ import {
 } from '../../document/documentStore.js';
 import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../../state/saveRevision.js';
 import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/inkSettingsPanel.js';
+import { createExportDialog } from './exportDialog.js';
 
 export function createDocumentControls({
   app,
@@ -52,6 +53,12 @@ export function createDocumentControls({
     }
   })();
 
+  const exportDialog = createExportDialog({
+    app,
+    onExportRaw: exportDocumentData,
+    onExportPlain: exportPlainTextFile,
+  });
+
   function formatUpdatedAt(ts) {
     if (!Number.isFinite(ts) || ts <= 0) return '';
     if (!docUpdatedFormatter) return '';
@@ -60,6 +67,29 @@ export function createDocumentControls({
     } catch {
       return '';
     }
+  }
+
+  function buildExportFileName({ suffix, ext }) {
+    const normalized = normalizeDocumentTitle(state.documentTitle || DEFAULT_DOCUMENT_TITLE);
+    const slug = normalized
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gi, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'typewriter';
+    const stamp = new Date().toISOString().replace(/[:]/g, '-').replace('T', '_').split('.')[0];
+    const parts = [slug, suffix, stamp].filter(Boolean);
+    return `${parts.join('-')}.${ext}`;
+  }
+
+  function downloadBlob(blob, filename) {
+    if (!blob || !filename) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(a.href);
+    a.remove();
   }
 
   function sortDocumentsInPlace() {
@@ -293,7 +323,7 @@ export function createDocumentControls({
     }
   }
 
-  function exportToTextFile() {
+  function exportPlainTextFile() {
     const out = [];
     for (let p = 0; p < state.pages.length; p++) {
       const page = state.pages[p];
@@ -330,13 +360,20 @@ export function createDocumentControls({
     }
     const txt = out.join('\n');
     const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'typewriter.txt';
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(a.href);
-    a.remove();
+    downloadBlob(blob, buildExportFileName({ suffix: 'plain-text', ext: 'txt' }));
+  }
+
+  function exportDocumentData() {
+    let serialized = null;
+    try {
+      serialized = serializeState();
+    } catch {
+      serialized = null;
+    }
+    if (!serialized) return;
+    const payload = JSON.stringify(serialized, null, 2);
+    const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+    downloadBlob(blob, buildExportFileName({ suffix: 'raw', ext: 'json' }));
   }
 
   function queueDirtySave() {
@@ -487,8 +524,12 @@ export function createDocumentControls({
       });
     }
     if (app.exportBtn) {
-      app.exportBtn.addEventListener('click', exportToTextFile);
+      app.exportBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        exportDialog.open();
+      });
     }
+    exportDialog.bind();
     document.addEventListener('pointerdown', (e) => {
       if (!docMenuState.open) return;
       if (app.docMenuPopup?.contains(e.target) || app.docMenuBtn?.contains(e.target)) return;
@@ -496,6 +537,10 @@ export function createDocumentControls({
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
+        if (exportDialog.isOpen()) {
+          exportDialog.close();
+          return;
+        }
         closeDocMenu();
       }
     });
