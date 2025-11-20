@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.21.9b</div>
+  <div class="app-version">v.22.5b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -413,6 +413,31 @@
       </details>
     </div>
   </aside>
+
+  <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>
+  <div class="export-dialog" id="exportDialog" role="dialog" aria-modal="true" aria-labelledby="exportDialogTitle" aria-hidden="true">
+    <div class="export-dialog__panel">
+      <div class="export-dialog__header">
+        <div class="export-dialog__titles">
+          <h2 class="export-dialog__title" id="exportDialogTitle">Export</h2>
+          <p class="export-dialog__subtitle">Pick the format for this document:</p>
+        </div>
+      </div>
+      <div class="export-dialog__options" role="group" aria-label="Export format options">
+        <div class="export-option-row">
+          <button class="btn export-option-btn" type="button" id="exportRawBtn">Raw data</button>
+          <span class="export-option__desc">Preserves the styles, margins, and overtyped text</span>
+        </div>
+        <div class="export-option-row">
+          <button class="btn export-option-btn" type="button" id="exportPlainBtn">Plain text</button>
+          <span class="export-option__desc">Saves only the plain, most recent text</span>
+        </div>
+      </div>
+      <div class="export-dialog__footer">
+        <button class="btn export-dialog__cancel" type="button" id="exportDialogCloseBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="js/main.js"></script>
 </body>
