@@ -74,6 +74,13 @@ const DOM_ID_GROUPS = {
     zoomThumb: 'zoomThumb',
     zoomIndicator: 'zoomIndicator',
   },
+  pageNumbers: {
+    pageNumberToggle: 'pageNumberToggle',
+    pageNumberOffset: 'pageNumberOffset',
+    pageNumberAlignLeft: 'pageNumberAlignLeft',
+    pageNumberAlignCenter: 'pageNumberAlignCenter',
+    pageNumberAlignRight: 'pageNumberAlignRight',
+  },
   appearance: {
     appearanceAuto: 'appearanceAuto',
     appearanceLight: 'appearanceLight',

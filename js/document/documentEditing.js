@@ -10,6 +10,7 @@ import {
 } from './documentStore.js';
 import { resetInkEffectsState } from '../state/state.js';
 import { createGlyphEntry, cloneGlyphEntry } from './glyphStack.js';
+import { createDefaultPageNumberingSettings } from '../config/pageNumbering.js';
 
 export function createDocumentEditingController(context) {
   const {
@@ -826,6 +827,7 @@ function insertStringFast(s) {
     state.savedInkStyles = [];
     state.currentInkStyle = null;
     resetInkEffectsState(state);
+    state.pageNumbering = createDefaultPageNumberingSettings();
     beginBatch();
     state.paperOffset = { x: 0, y: 0 };
     setPaperOffset(0, 0);

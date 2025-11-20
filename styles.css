@@ -624,6 +624,12 @@ body[data-page-tone='dark']{
   .appearance-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: 0.8; margin-left: 24px; }
   .appearance-dark-toggle input[type="checkbox"],
   .appearance-toggle input[type="checkbox"] { margin: 0; }
+  .page-numbering-group { gap: 10px; }
+  .page-number-align { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .page-number-align-label { font-weight: 600; }
+  .page-number-align-options { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .page-number-align-options label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+  .page-number-align-options input[type="radio"] { margin: 0; }
   .low-res-zoom-controls { display: flex; flex-direction: column; gap: 12px; margin-left: 24px; padding: 12px 0 0; border-top: 1px solid rgba(0,0,0,0.08); }
   body.dark .low-res-zoom-controls { border-color: rgba(255,255,255,0.1); }
   .low-res-zoom-toggle { display: flex; align-items: center; gap: 12px; font-size: 13px; }
