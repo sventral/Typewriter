@@ -54,31 +54,43 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   const { visibleWindowIndices } = pageLifecycle || {};
   const getVisibleWindowIndices = typeof visibleWindowIndices === 'function' ? visibleWindowIndices : null;
 
-  const updateLagOverlay = (phase) => {
-    const el = app.lagOverlay;
-    if (!el) return;
-    const active = phase === 'pending' || phase === 'lag';
-    el.classList.toggle('lag-overlay--visible', active);
-    el.setAttribute('aria-hidden', active ? 'false' : 'true');
-    if (active) {
-      el.dataset.phase = phase || 'lag';
-    } else {
-      el.dataset.phase = 'idle';
-    }
-  };
+  let lastLagPhase = 'idle';
 
-  const setLagInputBlocked = (blocked) => {
-    state.lagInputBlocked = !!blocked;
+  const syncLagAssistState = (phaseInput) => {
+    const hasExplicitPhase = typeof phaseInput === 'string' && phaseInput.length > 0;
+    const phase = hasExplicitPhase ? phaseInput : (lastLagPhase || 'idle');
+    if (hasExplicitPhase) {
+      lastLagPhase = phaseInput;
+    }
+    const lagAssistEnabled = state.lagAssistEnabled !== false;
+    const active = phase === 'pending' || phase === 'lag';
+    const shouldEngage = lagAssistEnabled && active;
+    state.lagInputBlocked = shouldEngage;
+
+    const overlay = app.lagOverlay;
+    if (overlay) {
+      overlay.classList.toggle('lag-overlay--visible', shouldEngage);
+      overlay.setAttribute('aria-hidden', shouldEngage ? 'false' : 'true');
+      overlay.dataset.phase = shouldEngage ? (phase || 'lag') : 'idle';
+    }
+
+    const notice = app.lagNotice;
+    if (notice) {
+      notice.classList.toggle('lag-notice--visible', shouldEngage);
+      notice.setAttribute('aria-hidden', shouldEngage ? 'false' : 'true');
+    }
   };
 
   const zoomLagMonitor = createZoomLagMonitor({
     app,
     onLagStateChange: (phase) => {
-      const blocked = phase === 'pending' || phase === 'lag';
-      setLagInputBlocked(blocked);
-      updateLagOverlay(phase);
+      syncLagAssistState(phase);
     },
   });
+
+  const refreshLagAssistState = () => {
+    syncLagAssistState();
+  };
   const trackZoomLag = (payload) => {
     if (!zoomLagMonitor || typeof zoomLagMonitor.trackZoomEvent !== 'function') return;
     zoomLagMonitor.trackZoomEvent(payload);
@@ -932,5 +944,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     scheduleZoomCrispRedraw,
     clampPaperOffset,
     handleScrollLaneScroll,
+    refreshLagAssistState,
   };
 }

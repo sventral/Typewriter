@@ -21,6 +21,7 @@ function createNoopLayoutAndZoomApi() {
     sanitizeStageInput: () => null,
     scheduleZoomCrispRedraw: () => {},
     handleScrollLaneScroll: () => {},
+    refreshLagAssistState: () => {},
   };
 }
 
@@ -54,6 +55,7 @@ export function createLayoutBridge(context) {
       layoutZoomFactorGetter = typeof fn === 'function' ? fn : () => 1;
     },
     getLayoutAndZoomApi: () => layoutAndZoomApi,
+    refreshLagAssistState: (...args) => layoutAndZoomApi.refreshLagAssistState?.(...args),
   };
 
   context.registerLayoutApi({

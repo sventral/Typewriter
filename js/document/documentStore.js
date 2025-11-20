@@ -233,6 +233,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     stageHeightFactor: state.stageHeightFactor,
     themeMode: state.themeMode || 'auto',
     darkPageInDarkMode: !!state.darkPageInDarkMode,
+    lagAssistEnabled: state.lagAssistEnabled !== false,
     pageFillColor: state.pageFillColor,
     savedInkStyles: sanitizeSavedInkStyles(state.savedInkStyles),
     currentInkStyle: state.currentInkStyle ? sanitizeSavedInkStyle(state.currentInkStyle) : null,
@@ -477,6 +478,7 @@ export function deserializeDocumentState(data, context) {
       ? data.themeMode
       : (state.themeMode || 'auto'),
     darkPageInDarkMode: data.darkPageInDarkMode === true,
+    lagAssistEnabled: data.lagAssistEnabled !== false,
     pageFillColor: typeof data.pageFillColor === 'string' && data.pageFillColor.trim()
       ? data.pageFillColor
       : state.pageFillColor,
