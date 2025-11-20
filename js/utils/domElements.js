@@ -79,6 +79,7 @@ const DOM_ID_GROUPS = {
     appearanceLight: 'appearanceLight',
     appearanceDark: 'appearanceDark',
     darkPageToggle: 'darkPageToggle',
+    lagAssistToggle: 'lagAssistToggle',
   },
   lowResZoom: {
     lowResZoomToggle: 'lowResZoomToggle',

@@ -41,6 +41,7 @@ export function createInkControls({
   loadFontAndApply,
   focusStage,
   theme,
+  refreshLagAssistState = () => {},
 }) {
   function bindOpacitySliders() {
     const onOpacitySliderInput = (key, sliderEl, valueEl) => {
@@ -236,6 +237,14 @@ export function createInkControls({
         themeApi.setDarkPagePreference(!!app.darkPageToggle.checked);
       });
     }
+    if (app.lagAssistToggle) {
+      app.lagAssistToggle.addEventListener('change', () => {
+        state.lagAssistEnabled = !!app.lagAssistToggle.checked;
+        refreshLagAssistState();
+        queueDirtySave();
+        focusStage();
+      });
+    }
   }
 
   function bindInkControls() {
@@ -281,6 +290,9 @@ export function createInkControls({
     if (app.darkPageToggle) {
       app.darkPageToggle.checked = !!state.darkPageInDarkMode;
       app.darkPageToggle.disabled = state.themeMode === 'light';
+    }
+    if (app.lagAssistToggle) {
+      app.lagAssistToggle.checked = state.lagAssistEnabled !== false;
     }
 
     refreshSavedInkStylesUI();

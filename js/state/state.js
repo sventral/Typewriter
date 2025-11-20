@@ -74,6 +74,7 @@ export function createMainState(app, gridDiv = 8) {
     lowResZoomSoftCapPct: LOW_RES_ZOOM_DEFAULTS.softCapPct,
     lowResZoomMarginPct: LOW_RES_ZOOM_DEFAULTS.marginPct,
     lagInputBlocked: false,
+    lagAssistEnabled: true,
   };
 }
 

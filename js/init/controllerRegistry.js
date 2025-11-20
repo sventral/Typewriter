@@ -148,6 +148,7 @@ export function registerControllers({
         onZoomPointerUp: layoutDomain.bridge.onZoomPointerUp,
         setMarginBoxesVisible: layoutDomain.bridge.setMarginBoxesVisible,
         scheduleZoomCrispRedraw: layoutDomain.bridge.scheduleZoomCrispRedraw,
+        refreshLagAssistState: layoutDomain.bridge.refreshLagAssistState,
       },
       input: editingDomain.document.inputController,
       theme: themeDomain.controller,

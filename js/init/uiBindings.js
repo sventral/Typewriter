@@ -56,6 +56,7 @@ export function setupUIBindings(context, controllers) {
     onZoomPointerUp,
     setMarginBoxesVisible,
     scheduleZoomCrispRedraw,
+    refreshLagAssistState = () => {},
   } = layout;
 
   const { handleKeyDown, handlePaste } = input;
@@ -97,6 +98,7 @@ export function setupUIBindings(context, controllers) {
     loadFontAndApply,
     focusStage,
     theme,
+    refreshLagAssistState,
   });
 
   const measurementControls = createMeasurementControls({
