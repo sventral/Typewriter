@@ -6,6 +6,7 @@ import { createZoomUiController } from './zoomUiController.js';
 import { createZoomLagMonitor } from '../diagnostics/zoomLagMonitor.js';
 import { createWheelAxisStabilizer } from './wheelAxisStabilizer.js';
 import { BASE_PADDING_X_PX, BASE_PADDING_Y_PX } from './stageLayout.js';
+import { createZoomSliderContrastManager } from './zoomSliderContrast.js';
 
 export function createLayoutAndZoomController(context, pageLifecycle, editingController) {
   const {
@@ -127,6 +128,12 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     releaseDecay: 0.1,
     idleDecay: 0.05,
   });
+  const zoomSliderContrast = createZoomSliderContrastManager({ app });
+  const scheduleZoomSliderContrastUpdate = () => {
+    if (zoomSliderContrast && typeof zoomSliderContrast.scheduleUpdate === 'function') {
+      zoomSliderContrast.scheduleUpdate();
+    }
+  };
   const hasElementApi = typeof Element !== 'undefined';
   const SCROLLBAR_VISIBILITY_EPSILON = 4;
   let suppressScrollLaneEvent = false;
@@ -317,6 +324,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
     updateRulerHostDimensions(adjustedWidth, adjustedHeight);
     setPaperOffset(state.paperOffset.x, state.paperOffset.y);
+    scheduleZoomSliderContrastUpdate();
   }
 
   function setPaperOffset(x, y, options = {}) {
@@ -346,6 +354,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     if (!options.skipScrollLaneSync) {
       syncScrollLaneFromPaper(metrics || limits);
     }
+    scheduleZoomSliderContrastUpdate();
   }
 
   function schedulePostPaperOffsetWork() {
@@ -861,6 +870,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   }
 
   setupZoomMeasurementTracking();
+  scheduleZoomSliderContrastUpdate();
 
   return {
     updateStageEnvironment,
