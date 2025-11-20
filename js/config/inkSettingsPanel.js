@@ -266,6 +266,7 @@ const panelState = {
   importButton: null,
   importInput: null,
   resetButton: null,
+  randomizeButton: null,
   sectionsRoot: null,
   sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   dragState: null,
@@ -925,6 +926,76 @@ function clampQualityValue(value, fallback = EFFECT_QUALITY_DEFAULT) {
   const raw = Number.isFinite(Number(value)) ? Number(value) : safeFallback;
   const normalized = Number.isFinite(raw) ? raw : safeFallback;
   return clamp(Math.round(normalized), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
+}
+
+const SECTION_OFF_CHANCE = 0.10;
+const TOGGLE_OFF_CHANCE = 0.20;
+
+function randomBetween(lower, upper, step = null) {
+  const min = Math.min(lower, upper);
+  const max = Math.max(lower, upper);
+  if (max === min) return min;
+  const raw = min + Math.random() * (max - min);
+  if (Number.isFinite(step) && step > 0) {
+    const rounded = Math.round(raw / step) * step;
+    return clamp(rounded, min, max);
+  }
+  return raw;
+}
+
+function deriveNumericBounds(input) {
+  const parsedMin = Number.parseFloat(input?.min);
+  const parsedMax = Number.parseFloat(input?.max);
+  const hasMin = Number.isFinite(parsedMin);
+  const hasMax = Number.isFinite(parsedMax);
+  const base = Number.parseFloat(input?.value);
+  const magnitude = Number.isFinite(base) ? Math.max(Math.abs(base), 1) : 1;
+  let min = hasMin ? parsedMin : (Number.isFinite(base) ? base - magnitude : 0);
+  let max = hasMax ? parsedMax : (Number.isFinite(base) ? base + magnitude : 1);
+  if (hasMin && !hasMax) {
+    max = Math.max(parsedMin + magnitude, parsedMin + Math.max(1, Math.abs(parsedMin)));
+  }
+  if (hasMax && !hasMin) {
+    min = Math.min(parsedMax - magnitude, parsedMax - Math.max(1, Math.abs(parsedMax)));
+  }
+  if (!Number.isFinite(min)) min = 0;
+  if (!Number.isFinite(max)) max = Math.max(min + magnitude, 1);
+  if (max === min) max = min + 1;
+  return { min, max };
+}
+
+function randomizeSingleInput(input, options = {}) {
+  if (!input) return;
+  if (input.dataset.enumOptions) {
+    const optionsList = input.dataset.enumOptions.split('|');
+    const idx = optionsList.length ? Math.floor(Math.random() * optionsList.length) : 0;
+    input.value = String(idx);
+    updateSliderDisplay(input);
+    return;
+  }
+  if (input.type === 'checkbox') {
+    const offChance = Number.isFinite(options.offChance) ? options.offChance : TOGGLE_OFF_CHANCE;
+    input.checked = Math.random() >= offChance;
+    return;
+  }
+  if (input.dataset.hex === '1') {
+    const rand = (Math.random() * 0xFFFFFFFF) >>> 0; // 32-bit seed
+    input.value = toHex(rand);
+    return;
+  }
+  if (input.type === 'range' || input.type === 'number') {
+    const step = Number.parseFloat(input.step);
+    const { min, max } = deriveNumericBounds(input);
+    const value = randomBetween(min, max, Number.isFinite(step) ? Math.abs(step) : null);
+    input.value = String(value);
+    if (input.dataset.slider === '1') updateSliderDisplay(input);
+    return;
+  }
+  if (input.dataset.string === '1') {
+    input.value = Math.random().toString(36).slice(2, 10);
+    return;
+  }
+  input.value = String(randomBetween(0, 1));
 }
 
 function getSectionQualityPercent(sectionId, fallback = EFFECT_QUALITY_DEFAULT) {
@@ -1952,6 +2023,35 @@ function handleResetInkSettings() {
   resetInkSettingsToDefaults();
 }
 
+function randomizeInkSection(meta) {
+  if (!meta) return;
+  const enabled = Math.random() >= SECTION_OFF_CHANCE;
+  const targetStrength = enabled ? Math.round(randomBetween(20, 100, 1)) : 0;
+  applySectionStrength(meta, targetStrength, { syncSlider: true, syncNumber: true });
+
+  meta.inputs.forEach(input => randomizeSingleInput(input, { offChance: TOGGLE_OFF_CHANCE }));
+  if (meta.qualityControl) {
+    const quality = Math.round(randomBetween(EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX, 5));
+    applySectionQuality(meta, quality, { syncInputs: true });
+  }
+
+  applySection(meta);
+}
+
+function randomizeInkSettings() {
+  if (!panelState.initialized) return;
+  runWithPersistSuppressed(() => {
+    setOverallStrength(Math.round(randomBetween(50, 100, 1)));
+    panelState.metas.forEach(meta => randomizeInkSection(meta));
+  });
+  persistPanelState();
+  syncInkStrengthDisplays();
+}
+
+function handleRandomizeInkSettings() {
+  randomizeInkSettings();
+}
+
 function applyStyleSnapshot(style, options = {}) {
   if (!style) return;
   const workingStyle = deepCloneValue(style);
@@ -2160,6 +2260,7 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.importButton = document.getElementById('inkStyleImportBtn');
   panelState.importInput = document.getElementById('inkStyleImportInput');
   panelState.resetButton = document.getElementById('inkStyleResetBtn');
+  panelState.randomizeButton = document.getElementById('inkStyleRandomizeBtn');
   panelState.sectionsRoot = sectionsRoot;
 
   panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
@@ -2186,6 +2287,9 @@ export function setupInkSettingsPanel(options = {}) {
   }
   if (panelState.resetButton) {
     panelState.resetButton.addEventListener('click', handleResetInkSettings);
+  }
+  if (panelState.randomizeButton) {
+    panelState.randomizeButton.addEventListener('click', handleRandomizeInkSettings);
   }
 
   if (panelState.appState) {

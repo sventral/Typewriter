@@ -812,7 +812,7 @@ body[data-page-tone='dark']{
   }
 .ink-style-actions-row .btn-text.danger { color: var(--danger-color, #c24141); }
 .ink-style-actions-row .btn-text:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
-.ink-style-reset-row { display: flex; justify-content: flex-end; margin: 16px 0; }
+.ink-style-reset-row { display: flex; justify-content: flex-end; gap: 8px; margin: 16px 0; }
 .ink-style-reset-row .btn-text { color: var(--danger-color, #c24141); }
   .input-with-suffix { position: relative; display: flex; }
   .input-with-suffix input { width: 100%; }
