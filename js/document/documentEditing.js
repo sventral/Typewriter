@@ -133,6 +133,7 @@ export function createDocumentEditingController(context) {
   };
 
   const rendererBridge = rendererApi || {};
+  let lastVirtualizedCaretPage = Number.isInteger(state?.caret?.page) ? state.caret.page : -1;
 
   const recalcMetrics = (face) => recalcMetricsForContext(face, metricsOptions || {});
 
@@ -279,7 +280,12 @@ export function createDocumentEditingController(context) {
       width: caretWidth,
     });
     if (!isZooming()) requestHammerNudge();
-    requestVirtualization();
+    const caretPage = Number.isInteger(state?.caret?.page) ? state.caret.page : -1;
+    const shouldVirtualize = caretPage !== lastVirtualizedCaretPage;
+    lastVirtualizedCaretPage = caretPage;
+    if (shouldVirtualize) {
+      requestVirtualization();
+    }
   }
 
   function clampCaretToBounds() {

@@ -34,6 +34,7 @@ export function createDocumentControls({
   const docState = { documents: [], activeId: null };
   const docMenuState = { open: false };
   let isEditingTitle = false;
+  let lastSaveNowTs = 0;
 
   const docUpdatedFormatter = (() => {
     if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
@@ -379,9 +380,20 @@ export function createDocumentControls({
       persistDocumentIndex();
       syncDocumentUi();
       syncSavedRevision(state);
+      lastSaveNowTs = Date.now();
     } catch {}
   }
 
+  function adaptiveSaveDelayMs() {
+    const pages = Array.isArray(state.pages) ? state.pages.length : 0;
+    if (pages > 18) return 1700;
+    if (pages > 12) return 1400;
+    if (pages > 8) return 1100;
+    if (pages > 4) return 750;
+    return 450;
+  }
+
+  let pendingIdleHandle = 0;
   function saveStateDebounced(options = {}) {
     const force = typeof options === 'object' && options !== null ? !!options.force : false;
     if (!force && !hasPendingDocumentChanges(state)) {
@@ -389,11 +401,40 @@ export function createDocumentControls({
     }
     const timer = getSaveTimer();
     if (timer) clearTimeout(timer);
-    const newTimer = setTimeout(() => {
-      setSaveTimer(0);
-      saveStateNow();
-    }, 400);
-    setSaveTimer(newTimer);
+    if (pendingIdleHandle && typeof cancelIdleCallback === 'function') {
+      try { cancelIdleCallback(pendingIdleHandle); } catch {}
+      pendingIdleHandle = 0;
+    }
+
+    const delay = adaptiveSaveDelayMs();
+    const scheduleIdle = () => {
+      const run = () => {
+        pendingIdleHandle = 0;
+        const now = Date.now();
+        if (!force && now - lastSaveNowTs < 250) {
+          // Avoid back-to-back saves when something else just ran.
+          setTimeout(() => saveStateNow(options), 150);
+          return;
+        }
+        if (typeof requestIdleCallback === 'function') {
+          pendingIdleHandle = requestIdleCallback(
+            () => saveStateNow(options),
+            { timeout: 1000 },
+          );
+        } else if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => saveStateNow(options));
+        } else {
+          setTimeout(() => saveStateNow(options), 0);
+        }
+      };
+      const newTimer = setTimeout(() => {
+        setSaveTimer(0);
+        run();
+      }, delay);
+      setSaveTimer(newTimer);
+    };
+
+    scheduleIdle();
   }
 
   function bindDocumentControls() {
