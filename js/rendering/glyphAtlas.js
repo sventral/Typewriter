@@ -15,8 +15,6 @@ export function createGlyphAtlas(options) {
     getCharWidth,
     getRenderScale,
     getStateZoom,
-    isSafari,
-    safariSupersampleThreshold,
     getInkEffectFactor,
     getInkSectionStrength,
     getInkSectionOrder,
@@ -732,10 +730,9 @@ export function createGlyphAtlas(options) {
     const rectDpByCode = [];
     const advCache = new Float32Array(ASCII_END + 1);
     const SHIFT_EPS = 0.5;
-    const safariSupersample = (isSafari && getStateZoomFn() >= safariSupersampleThreshold) ? 2 : 1;
-    const sampleScale = Math.max(1, safariSupersample);
+    const sampleScale = 1;
     const needsEffectsPipeline = effectsAllowed && overallStrength > 0 && hasExperimentalStages;
-    const needsPipeline = needsEffectsPipeline || sampleScale > 1;
+    const needsPipeline = needsEffectsPipeline;
 
     let glyphCanvas = null;
     let glyphCtx = null;

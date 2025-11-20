@@ -4,11 +4,9 @@ export function createZoomUiController(options) {
   const {
     app,
     state,
-    isSafari,
     setZoomPercent,
     setZooming,
     setFreezeVirtual,
-    setSafariZoomMode,
     scheduleZoomCrispRedraw,
     onZoomCommit,
   } = options;
@@ -122,7 +120,6 @@ export function createZoomUiController(options) {
     refreshZoomMeasurements();
     setZooming(true);
     setFreezeVirtual(true);
-    if (isSafari) setSafariZoomMode('transient', { force: true });
     if (e.target === app.zoomThumb) {
       zoomDrag = { from: 'thumb', id: e.pointerId };
       app.zoomThumb.setPointerCapture && app.zoomThumb.setPointerCapture(e.pointerId);

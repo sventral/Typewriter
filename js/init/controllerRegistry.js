@@ -74,7 +74,6 @@ export function registerControllers({
     saveStateDebounced: editingDomain.persistence.saveStateDebounced,
     setRenderScaleForZoom,
     getEffectiveRenderZoom,
-    safariEnv: renderingDomain.safariEnv,
   });
 
   const themeDomain = registerThemeDomain({

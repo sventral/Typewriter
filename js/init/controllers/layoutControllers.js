@@ -1,4 +1,4 @@
-import { detectSafariEnvironment, createStageLayoutController } from '../../layout/stageLayout.js';
+import { createStageLayoutController } from '../../layout/stageLayout.js';
 import { createLayoutAndZoomController } from '../../layout/layoutAndZoomController.js';
 
 function createNoopLayoutAndZoomApi() {
@@ -103,13 +103,10 @@ export function registerLayoutControllers(params) {
     getEffectiveRenderZoom,
   } = params;
 
-  const safariEnv = params.safariEnv || detectSafariEnvironment();
-
   const stageLayoutApi = createStageLayoutController({
     context,
     app,
     state,
-    isSafari: safariEnv.isSafari,
     renderMargins: layoutBridge.renderMargins,
     updateStageEnvironment: layoutBridge.updateStageEnvironment,
     updateCaretPosition: editing.updateCaretPosition,
@@ -124,9 +121,6 @@ export function registerLayoutControllers(params) {
     toolbarHeightPx,
     sanitizeStageInput,
     updateZoomWrapTransform,
-    syncSafariZoomLayout,
-    setSafariZoomMode,
-    isSafariSteadyZoom,
   } = stageLayoutApi;
 
   layoutBridge.setLayoutZoomFactorGetter(layoutZoomFactor);
@@ -148,8 +142,6 @@ export function registerLayoutControllers(params) {
         toolbarHeightPx,
         updateZoomWrapTransform,
         sanitizeStageInput,
-        setSafariZoomMode,
-        isSafariSteadyZoom,
       },
       requestVirtualization,
       saveStateDebounced,
@@ -168,9 +160,6 @@ export function registerLayoutControllers(params) {
       setZoomDebounceTimer: editing.layoutState.setZoomDebounceTimer,
       getDrag: editing.layoutState.getDrag,
       setDrag: editing.layoutState.setDrag,
-      isSafari: safariEnv.isSafari,
-      setSafariZoomMode,
-      syncSafariZoomLayout,
     },
     lifecycleController,
     editing.editingController,

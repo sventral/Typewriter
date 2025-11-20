@@ -10,9 +10,6 @@ export function createZoomRenderManager(options) {
     setFreezeVirtual,
     requestVirtualization,
     requestHammerNudge,
-    isSafari,
-    syncSafariZoomLayout,
-    stageLayoutSetSafariZoomMode,
     getZooming,
     setZooming,
     getZoomDebounceTimer,
@@ -166,7 +163,6 @@ export function createZoomRenderManager(options) {
       setFreezeVirtual(false);
       requestVirtualization();
       requestHammerNudge();
-      if (isSafari) syncSafariZoomLayout(true);
     };
 
     finalize();
@@ -220,7 +216,6 @@ export function createZoomRenderManager(options) {
       setZooming(false);
       requestHammerNudge();
       setRenderScaleForZoom();
-      if (isSafari) stageLayoutSetSafariZoomMode('steady', { force: true });
       runBatchedZoomRedraw();
     }, debounceDelay);
     setZoomDebounceTimer(timer);
