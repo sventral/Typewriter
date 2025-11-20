@@ -2031,8 +2031,8 @@ function randomizeInkSection(meta) {
 
   meta.inputs.forEach(input => randomizeSingleInput(input, { offChance: TOGGLE_OFF_CHANCE }));
   if (meta.qualityControl) {
-    const quality = Math.round(randomBetween(EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX, 5));
-    applySectionQuality(meta, quality, { syncInputs: true });
+    // Randomization should bias toward maximum fidelity for quality controls.
+    applySectionQuality(meta, EFFECT_QUALITY_DEFAULT, { syncInputs: true });
   }
 
   applySection(meta);
@@ -2041,7 +2041,8 @@ function randomizeInkSection(meta) {
 function randomizeInkSettings() {
   if (!panelState.initialized) return;
   runWithPersistSuppressed(() => {
-    setOverallStrength(Math.round(randomBetween(50, 100, 1)));
+    // Randomize should keep overall strength at the default maximum.
+    setOverallStrength(100);
     panelState.metas.forEach(meta => randomizeInkSection(meta));
   });
   persistPanelState();
