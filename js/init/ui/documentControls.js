@@ -6,6 +6,8 @@ import {
   loadDocumentIndexFromStorage,
   migrateLegacyDocument,
   persistDocuments,
+  loadDocumentDataById,
+  estimateDocumentDataBytes,
 } from '../../document/documentStore.js';
 import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../../state/saveRevision.js';
 import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/inkSettingsPanel.js';
@@ -36,6 +38,8 @@ export function createDocumentControls({
   const docMenuState = { open: false };
   let isEditingTitle = false;
   let lastSaveNowTs = 0;
+  let storageNoticeTimer = 0;
+  const LARGE_DOC_SIZE_WARNING = 4.5 * 1024 * 1024; // ~4.5 MB
 
   const docUpdatedFormatter = (() => {
     if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
@@ -58,6 +62,48 @@ export function createDocumentControls({
     onExportRaw: exportDocumentData,
     onExportPlain: exportPlainTextFile,
   });
+
+  function clearStorageNotice() {
+    if (storageNoticeTimer) {
+      clearTimeout(storageNoticeTimer);
+      storageNoticeTimer = 0;
+    }
+    if (app.storageNotice) {
+      app.storageNotice.textContent = '';
+      app.storageNotice.classList.remove('is-visible', 'is-error');
+    }
+  }
+
+  function showStorageNotice(message, options = {}) {
+    if (!app.storageNotice || !message) return;
+    const durationMs = Number.isFinite(options.durationMs) ? options.durationMs : 5000;
+    const isError = options.level === 'error';
+    app.storageNotice.textContent = message;
+    app.storageNotice.classList.toggle('is-error', !!isError);
+    app.storageNotice.classList.add('is-visible');
+    if (storageNoticeTimer) clearTimeout(storageNoticeTimer);
+    storageNoticeTimer = setTimeout(() => {
+      app.storageNotice?.classList.remove('is-visible', 'is-error');
+      storageNoticeTimer = 0;
+    }, durationMs);
+  }
+
+  async function warnIfApproachingQuota(nextBytes, previousBytes = 0) {
+    if (!navigator?.storage?.estimate || !Number.isFinite(nextBytes)) return;
+    try {
+      const { usage, quota } = await navigator.storage.estimate();
+      if (!quota || usage == null) return;
+      const projected = usage + Math.max(0, nextBytes - (previousBytes || 0));
+      const fill = projected / quota;
+      if (fill >= 0.98) {
+        showStorageNotice('Storage is full. Export or delete documents before continuing.', { level: 'error', durationMs: 9000 });
+      } else if (fill >= 0.9) {
+        showStorageNotice('Storage almost full. Consider exporting or deleting older documents.', { level: 'error', durationMs: 8000 });
+      } else if (fill >= 0.8) {
+        showStorageNotice('Storage is getting tight. Export large documents to avoid data loss.', { durationMs: 6500 });
+      }
+    } catch {}
+  }
 
   function formatUpdatedAt(ts) {
     if (!Number.isFinite(ts) || ts <= 0) return '';
@@ -100,9 +146,23 @@ export function createDocumentControls({
     });
   }
 
-  function persistDocumentIndex() {
+  async function persistDocumentIndex() {
     sortDocumentsInPlace();
-    persistDocuments(storageKey, docState);
+    try {
+      await persistDocuments(storageKey, docState, {
+        onSaveError: (err) => {
+          const message = err?.name === 'QuotaExceededError'
+            ? 'Storage is full. Try exporting or deleting older documents.'
+            : 'Could not save documents. Changes may not persist.';
+          showStorageNotice(message, { level: 'error', durationMs: 7000 });
+        },
+      });
+    } catch (err) {
+      showStorageNotice('Could not save documents. Changes may not persist.', { level: 'error', durationMs: 7000 });
+      if (typeof console !== 'undefined' && typeof console.error === 'function') {
+        console.error('Typewriter: persistDocuments failed', err);
+      }
+    }
   }
 
   function renderDocumentList() {
@@ -168,6 +228,15 @@ export function createDocumentControls({
     return docState.documents.find((doc) => doc.id === docState.activeId) || null;
   }
 
+  async function ensureDocumentData(doc) {
+    if (!doc || doc.data) return doc?.data || null;
+    const hydrated = await loadDocumentDataById(doc.id);
+    if (hydrated) {
+      doc.data = hydrated;
+    }
+    return doc.data || null;
+  }
+
   function refreshDocumentEnvironment() {
     updateStageEnvironment();
     setZoomPercent(Math.round((state.zoom || 1) * 100) || 100);
@@ -214,23 +283,24 @@ export function createDocumentControls({
     focusStage();
   }
 
-  function handleDocumentSelection(id) {
+  async function handleDocumentSelection(id) {
     if (!id || docState.activeId === id) {
       closeDocMenu();
       return;
     }
-    saveStateNow();
+    await saveStateNow();
     const nextDoc = docState.documents.find((record) => record.id === id);
     if (!nextDoc) {
       closeDocMenu();
       return;
     }
+    await ensureDocumentData(nextDoc);
     applyDocumentRecord(nextDoc);
     closeDocMenu();
   }
 
   function handleCreateDocument() {
-    saveStateNow();
+    void saveStateNow();
     const now = Date.now();
     const existingIds = new Set(docState.documents.map((doc) => doc.id));
     const newId = generateDocumentId(existingIds);
@@ -248,10 +318,10 @@ export function createDocumentControls({
     docState.activeId = newId;
     createNewDocument({ documentId: newId, documentTitle: newDoc.title, skipSave: true });
     newDoc.data = serializeState();
-    persistDocumentIndex();
+    void persistDocumentIndex();
     applyDocumentRecord(newDoc);
     markDocumentDirty(state);
-    saveStateNow();
+    void saveStateNow();
     closeDocMenu();
   }
 
@@ -271,17 +341,17 @@ export function createDocumentControls({
       blank.data = serializeState();
       blank.createdAt = Date.now();
       blank.updatedAt = blank.createdAt;
-      persistDocumentIndex();
+      void persistDocumentIndex();
       refreshDocumentEnvironment();
       syncDocumentUi();
       markDocumentDirty(state);
-      saveStateNow();
+      void saveStateNow();
       closeDocMenu();
       return;
     }
     const nextDoc = docState.documents[Math.min(idx, docState.documents.length - 1)];
     docState.activeId = nextDoc.id;
-    persistDocumentIndex();
+    void persistDocumentIndex();
     applyDocumentRecord(nextDoc);
     closeDocMenu();
   }
@@ -317,9 +387,9 @@ export function createDocumentControls({
     syncDocumentUi();
     if (changed) {
       markDocumentDirty(state);
-      saveStateNow();
+      void saveStateNow();
     } else {
-      persistDocumentIndex();
+      void persistDocumentIndex();
     }
   }
 
@@ -381,19 +451,24 @@ export function createDocumentControls({
     saveStateDebounced();
   }
 
-  function saveStateNow(options = {}) {
+  async function saveStateNow(options = {}) {
     const force = typeof options === 'object' && options !== null ? !!options.force : false;
     if (!force && !hasPendingDocumentChanges(state)) {
       return;
     }
     try {
       const serialized = serializeState();
+      const encodedBytes = estimateDocumentDataBytes(serialized);
+      if (encodedBytes >= LARGE_DOC_SIZE_WARNING) {
+        showStorageNotice('This document is large; saving may take a moment.', { durationMs: 5000 });
+      }
       const activeId = typeof state.documentId === 'string' && state.documentId.trim()
         ? state.documentId.trim()
         : (docState.activeId || generateDocumentId(new Set(docState.documents.map((doc) => doc.id))));
       const title = normalizeDocumentTitle(serialized.documentTitle || state.documentTitle);
       const now = Date.now();
       let doc = docState.documents.find((d) => d.id === activeId);
+      const previousBytes = Number(doc?.dataSize) || 0;
       if (!doc) {
         doc = {
           id: activeId,
@@ -401,12 +476,14 @@ export function createDocumentControls({
           createdAt: now,
           updatedAt: now,
           data: serialized,
+          dataSize: encodedBytes,
         };
         docState.documents.push(doc);
       } else {
         doc.title = title;
         doc.updatedAt = now;
         doc.data = serialized;
+        doc.dataSize = encodedBytes;
         if (!Number.isFinite(doc.createdAt)) {
           doc.createdAt = now;
         }
@@ -414,11 +491,17 @@ export function createDocumentControls({
       state.documentId = activeId;
       state.documentTitle = title;
       docState.activeId = activeId;
-      persistDocumentIndex();
+      void warnIfApproachingQuota(encodedBytes, previousBytes);
+      await persistDocumentIndex();
       syncDocumentUi();
       syncSavedRevision(state);
       lastSaveNowTs = Date.now();
-    } catch {}
+    } catch (err) {
+      showStorageNotice('Save failed. Export your document to avoid losing changes.', { level: 'error', durationMs: 8000 });
+      if (typeof console !== 'undefined' && typeof console.error === 'function') {
+        console.error('Typewriter: saveStateNow failed', err);
+      }
+    }
   }
 
   function adaptiveSaveDelayMs() {
@@ -450,18 +533,18 @@ export function createDocumentControls({
         const now = Date.now();
         if (!force && now - lastSaveNowTs < 250) {
           // Avoid back-to-back saves when something else just ran.
-          setTimeout(() => saveStateNow(options), 150);
+          setTimeout(() => { void saveStateNow(options); }, 150);
           return;
         }
         if (typeof requestIdleCallback === 'function') {
           pendingIdleHandle = requestIdleCallback(
-            () => saveStateNow(options),
+            () => { void saveStateNow(options); },
             { timeout: 1000 },
           );
         } else if (typeof requestAnimationFrame === 'function') {
-          requestAnimationFrame(() => saveStateNow(options));
+          requestAnimationFrame(() => { void saveStateNow(options); });
         } else {
-          setTimeout(() => saveStateNow(options), 0);
+          setTimeout(() => { void saveStateNow(options); }, 0);
         }
       };
       const newTimer = setTimeout(() => {
@@ -490,7 +573,7 @@ export function createDocumentControls({
         const item = e.target.closest('.doc-list-item');
         if (!item) return;
         e.preventDefault();
-        handleDocumentSelection(item.dataset.id || '');
+        void handleDocumentSelection(item.dataset.id || '');
       });
     }
     if (app.docTitleInput) {
@@ -546,10 +629,10 @@ export function createDocumentControls({
     });
   }
 
-  function loadPersistedState() {
+  async function loadPersistedState() {
     let savedFont = null;
     let loaded = false;
-    const { documents, activeId } = loadDocumentIndexFromStorage(storageKey);
+    const { documents, activeId } = await loadDocumentIndexFromStorage(storageKey);
     docState.documents = documents;
     sortDocumentsInPlace();
     docState.activeId = activeId || (documents[0]?.id ?? null);
@@ -566,8 +649,12 @@ export function createDocumentControls({
         docState.documents.push(migrated);
         docState.activeId = migrated.id;
         activeDoc = migrated;
-        persistDocumentIndex();
+        await persistDocumentIndex();
       }
+    }
+
+    if (activeDoc) {
+      await ensureDocumentData(activeDoc);
     }
 
     if (activeDoc && activeDoc.data) {
@@ -589,7 +676,7 @@ export function createDocumentControls({
       blank.data = serializeState();
       blank.createdAt = Date.now();
       blank.updatedAt = blank.createdAt;
-      persistDocumentIndex();
+      await persistDocumentIndex();
       loaded = false;
       state.documentId = blank.id;
       state.documentTitle = blank.title;

@@ -23,10 +23,17 @@ import { STAGE_HEIGHT_MAX, STAGE_HEIGHT_MIN, STAGE_WIDTH_MAX, STAGE_WIDTH_MIN } 
 import { encodeDocumentDataForStorage, decodeDocumentDataFromStorage } from '../storage/jsonCompression.js';
 import { createDefaultPageNumberingSettings, sanitizePageNumberingSettings } from '../config/pageNumbering.js';
 import { DEFAULT_INK, SUPPORTED_INKS, createDefaultInkOpacity, normalizeInkId } from '../config/inkPalette.js';
+import {
+  saveDocumentPayload,
+  readDocumentPayload,
+  pruneDocumentPayloads,
+  estimatePayloadBytes,
+} from '../storage/documentBlobStore.js';
 const KNOWN_INK_SECTIONS = PRESET_INK_SECTION_ORDER.slice();
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
 const EFFECT_QUALITY_MAX = 200;
+const METADATA_VERSION = 2;
 
 const SECTION_STRENGTH_DEFAULTS = Object.freeze({
   expTone: getDefaultInkSectionStrength('expTone'),
@@ -538,6 +545,46 @@ function resolveStorage(options) {
   return null;
 }
 
+function estimateStoredBytes(value) {
+  return estimatePayloadBytes(value);
+}
+
+async function hydrateDocumentsFromBlobStore(documents, idsToHydrate) {
+  if (!Array.isArray(documents) || !documents.length) return;
+  const targetIds = Array.isArray(idsToHydrate) ? idsToHydrate.filter(Boolean) : [];
+  if (!targetIds.length) return;
+  const docMap = new Map(documents.map((doc) => [doc.id, doc]));
+  await Promise.all(targetIds.map(async (id) => {
+    const doc = docMap.get(id);
+    if (!doc || doc.data) return;
+    try {
+      const payload = await readDocumentPayload(id);
+      if (!payload) return;
+      doc.data = decodeDocumentDataFromStorage(payload);
+    } catch (err) {
+      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+        console.warn('Typewriter: Failed to read stored document payload', err);
+      }
+    }
+  }));
+}
+
+function normalizeDocumentEntry(base, seen) {
+  const decodedData = decodeDocumentDataFromStorage(base.data);
+  const record = createDocumentRecord({
+    id: base.id,
+    title: base.title,
+    data: decodedData,
+    createdAt: Number(base.createdAt),
+    updatedAt: Number(base.updatedAt),
+  }, seen);
+  const dataSize = Number.isFinite(base.dataSize) ? base.dataSize : estimateStoredBytes(base.data);
+  if (dataSize) {
+    record.dataSize = dataSize;
+  }
+  return record;
+}
+
 export function createDocumentRecord({ id, title, data, createdAt, updatedAt } = {}, existingIds) {
   const now = Date.now();
   let safeId = typeof id === 'string' && id.trim() ? id.trim() : '';
@@ -562,40 +609,39 @@ export function createDocumentRecord({ id, title, data, createdAt, updatedAt } =
   };
 }
 
-export function loadDocumentIndexFromStorage(storageKey, options = {}) {
+export async function loadDocumentIndexFromStorage(storageKey, options = {}) {
   const storage = resolveStorage(options);
   const documents = [];
   const seen = new Set();
   let activeId = null;
-  if (!storage) {
-    return { documents, activeId };
+  let parsed = null;
+  if (storage) {
+    try {
+      parsed = JSON.parse(storage.getItem(getDocumentsKey(storageKey)));
+    } catch {
+      parsed = null;
+    }
   }
-  try {
-    const parsed = JSON.parse(storage.getItem(getDocumentsKey(storageKey)));
-    if (parsed && Array.isArray(parsed.documents)) {
-      parsed.documents.forEach((entry) => {
-        const base = entry && typeof entry === 'object' ? entry : {};
-        const decodedData = decodeDocumentDataFromStorage(base.data);
-        const record = createDocumentRecord({
-          id: base.id,
-          title: base.title,
-          data: decodedData,
-          createdAt: Number(base.createdAt),
-          updatedAt: Number(base.updatedAt),
-        }, seen);
-        documents.push(record);
-      });
-    }
-    if (parsed && typeof parsed.activeId === 'string' && parsed.activeId.trim()) {
-      activeId = parsed.activeId.trim();
-    }
-  } catch {}
+  const docEntries = parsed && Array.isArray(parsed.documents) ? parsed.documents : [];
+  docEntries.forEach((entry) => {
+    const base = entry && typeof entry === 'object' ? entry : {};
+    const record = normalizeDocumentEntry(base, seen);
+    documents.push(record);
+  });
+  if (parsed && typeof parsed.activeId === 'string' && parsed.activeId.trim()) {
+    activeId = parsed.activeId.trim();
+  }
   if (activeId && !documents.some((doc) => doc.id === activeId)) {
     activeId = null;
   }
   if (!activeId && documents.length) {
     activeId = documents[0].id;
   }
+  const hydrateMode = options && options.hydrateAll ? 'all' : 'active';
+  const idsToHydrate = hydrateMode === 'all'
+    ? documents.map((d) => d.id)
+    : (activeId ? [activeId] : []);
+  await hydrateDocumentsFromBlobStore(documents, idsToHydrate);
   return { documents, activeId };
 }
 
@@ -620,27 +666,81 @@ export function migrateLegacyDocument(storageKey, options = {}) {
   return migrated;
 }
 
-export function persistDocuments(storageKey, docState, options = {}) {
+export async function loadDocumentDataById(docId) {
+  if (!docId) return null;
+  try {
+    const payload = await readDocumentPayload(docId);
+    return decodeDocumentDataFromStorage(payload);
+  } catch {
+    return null;
+  }
+}
+
+export async function persistDocuments(storageKey, docState, options = {}) {
   const storage = resolveStorage(options);
-  if (!storage) return;
   const documents = Array.isArray(docState?.documents) ? docState.documents : [];
-  const payload = {
-    version: 1,
-    activeId: docState?.activeId || null,
-    documents: documents.map((doc) => ({
+  const keepIds = new Set();
+  const payloadDocs = [];
+  const blobWrites = [];
+  documents.forEach((doc) => {
+    if (!doc || typeof doc !== 'object') return;
+    const encoded = encodeDocumentDataForStorage(doc.data);
+    const size = encoded ? estimateStoredBytes(encoded) : (Number(doc.dataSize) || 0);
+    if (doc.id) {
+      keepIds.add(doc.id);
+    }
+    payloadDocs.push({
       id: doc.id,
       title: doc.title,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
-      data: encodeDocumentDataForStorage(doc.data),
-    })),
+      dataSize: size || 0,
+      hasData: !!encoded || !!doc.dataSize,
+    });
+    if (doc.id && encoded) {
+      blobWrites.push(saveDocumentPayload(doc.id, encoded));
+    }
+  });
+  const payload = {
+    version: METADATA_VERSION,
+    activeId: docState?.activeId || null,
+    documents: payloadDocs,
   };
-  try {
-    storage.setItem(getDocumentsKey(storageKey), JSON.stringify(payload));
-    storage.removeItem(storageKey);
-  } catch (err) {
-    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-      console.warn('Typewriter: Failed to persist documents – storage quota may be exhausted.', err);
+  if (storage && !options.skipMetadataWrite) {
+    try {
+      storage.setItem(getDocumentsKey(storageKey), JSON.stringify(payload));
+      storage.removeItem(storageKey);
+    } catch (err) {
+      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+        console.warn('Typewriter: Failed to persist document metadata – storage quota may be exhausted.', err);
+      }
+      if (options.onSaveError) {
+        options.onSaveError(err);
+      }
     }
   }
+  try {
+    await Promise.all(blobWrites);
+  } catch (err) {
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn('Typewriter: Failed to persist document payloads', err);
+    }
+    if (options.onSaveError) {
+      options.onSaveError(err);
+    }
+  }
+  if (keepIds.size || documents.length === 0) {
+    try {
+      await pruneDocumentPayloads(keepIds);
+    } catch (err) {
+      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+        console.warn('Typewriter: Failed to prune stale document payloads', err);
+      }
+    }
+  }
+}
+
+export function estimateDocumentDataBytes(data, options = {}) {
+  const encoded = encodeDocumentDataForStorage(data, options);
+  return estimateStoredBytes(encoded);
 }

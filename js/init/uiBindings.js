@@ -148,7 +148,7 @@ export function setupUIBindings(context, controllers) {
   function bindGlobalListeners() {
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     window.addEventListener('paste', handlePaste, { capture: true });
-    window.addEventListener('beforeunload', documentControls.saveStateNow);
+    window.addEventListener('beforeunload', () => { documentControls.saveStateNow({ force: true }); });
     window.addEventListener('click', () => window.focus(), { passive: true });
   }
 
