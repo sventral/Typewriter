@@ -1,3 +1,5 @@
+import { syncRulerToggleButton } from '../init/ui/rulerToggle.js';
+
 export function createDocumentViewAdapter({ app }) {
   function updateCaretDom({ pageEl, left, top, height, width }) {
     const caret = app?.caretEl;
@@ -18,6 +20,7 @@ export function createDocumentViewAdapter({ app }) {
 
   function toggleRulers(showRulers) {
     document.body.classList.toggle('rulers-off', !showRulers);
+    syncRulerToggleButton(app?.toggleMarginsBtn, showRulers);
   }
 
   function rebuildStageForNewDocument({ pageIndex = 0, pageHeight, showMarginBox, prepareCanvas }) {

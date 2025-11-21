@@ -1,5 +1,6 @@
 import { markDocumentDirty } from '../state/saveRevision.js';
 import { setupInkSettingsPanel } from '../config/inkSettingsPanel.js';
+import { syncRulerToggleButton } from './ui/rulerToggle.js';
 
 export async function bootstrapUI({
   state,
@@ -52,6 +53,7 @@ export async function bootstrapUI({
   clampCaretToBounds();
   updateCaretPosition();
   document.body.classList.toggle('rulers-off', !state.showRulers);
+  syncRulerToggleButton(app.toggleMarginsBtn, state.showRulers);
   if (state.showRulers) positionRulers();
   if (!inkAdjustedByTheme) setInk(state.ink || 'b');
   requestVirtualization();
