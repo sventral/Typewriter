@@ -321,7 +321,6 @@ export function registerEditingControllers(options) {
     'TT2020StyleE Italic',
     'TT2020StyleF',
     'TT2020StyleG',
-    'Another Typewriter',
     'Canon TypeStar 210',
     'Courier',
     'Courier New',
