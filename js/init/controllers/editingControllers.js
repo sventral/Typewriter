@@ -7,6 +7,7 @@ import { createDocumentEditingController } from '../../document/documentEditing.
 import { createDocumentViewAdapter } from '../../document/documentViewAdapter.js';
 import { createInputController } from '../../document/inputHandlers.js';
 import { createPageLifecycleController } from '../../document/pageLifecycle.js';
+import { syncRulerToggleButton } from '../ui/rulerToggle.js';
 
 function ensureTypedRun(run) {
   if (run && typeof run === 'object') return run;
@@ -554,6 +555,7 @@ export function registerEditingControllers(options) {
   function toggleRulers() {
     state.showRulers = !state.showRulers;
     document.body.classList.toggle('rulers-off', !state.showRulers);
+    syncRulerToggleButton(app.toggleMarginsBtn, state.showRulers);
     layoutBridge.positionRulers();
     markDocumentDirty(state);
     saveHooks.saveStateDebounced();

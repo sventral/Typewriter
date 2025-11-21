@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.22.5b</div>
+  <div class="app-version">v.22.6b</div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -55,6 +55,13 @@
   <div id="guideV" class="guide"></div>
   <div id="guideH" class="guide"></div>
 
+  <button id="toggleMarginsBtn" class="corner-ruler-toggle" type="button" aria-label="Show rulers" title="Show rulers">
+    <span class="corner-ruler-toggle__icon" aria-hidden="true">
+      <span class="corner-ruler-toggle__leg corner-ruler-toggle__leg--h"></span>
+      <span class="corner-ruler-toggle__leg corner-ruler-toggle__leg--v"></span>
+    </span>
+  </button>
+
   <div class="toolbar">
     <div class="toolbar-left">
       <div class="doc-controls" id="docControls">
@@ -83,7 +90,6 @@
     </div>
     <div class="toolbar-right">
       <button class="btn" id="inkSettingsBtn">Settings</button>
-      <button class="btn" id="toggleMarginsBtn" title="Toggle rulers">Margins</button>
       <div class="ink-control-group">
         <button class="btn" id="inkBlackBtn" title="Black Ink. Long-press for transparency."><span class="sw black"></span></button>
         <div class="ink-slider-popup" id="inkBlackSliderPopup">
