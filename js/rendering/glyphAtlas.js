@@ -704,9 +704,12 @@ export function createGlyphAtlas(options) {
     const ORIGIN_Y_CSS = ASC + GLYPH_BLEED;
     const CELL_W_CSS = CHAR_W;
     const CELL_H_CSS = Math.ceil(ASC + DESC + 2 * GLYPH_BLEED);
-    const GUTTER_DP = 1;
+    const OVERHANG_DP = 2;
+    const OVERHANG_CSS = OVERHANG_DP / RENDER_SCALE;
+    const GLYPH_DRAW_W_CSS = CELL_W_CSS + 2 * OVERHANG_CSS;
+    const GUTTER_DP = 2;
     const GUTTER_CSS = GUTTER_DP / RENDER_SCALE;
-    const cellW_draw_dp = Math.round(CELL_W_CSS * RENDER_SCALE);
+    const cellW_draw_dp = Math.round(GLYPH_DRAW_W_CSS * RENDER_SCALE);
     const cellH_draw_dp = Math.ceil(CELL_H_CSS * RENDER_SCALE);
     const cellW_pack_dp = cellW_draw_dp + 2 * GUTTER_DP;
     const cellH_pack_dp = cellH_draw_dp + 2 * GUTTER_DP;
@@ -781,7 +784,7 @@ export function createGlyphAtlas(options) {
         const destX_dp = col * cellW_pack_dp + GUTTER_DP;
         const destY_dp = row * cellH_pack_dp + GUTTER_DP;
         const snapFactor = RENDER_SCALE * (glyphCanvas ? sampleScale : 1);
-        const baseLocalX = -(n - 1) * adv - SHIFT_EPS;
+        const baseLocalX = OVERHANG_CSS - (n - 1) * adv - SHIFT_EPS;
         const baseLocalY = ORIGIN_Y_CSS;
         const localXSnapped = Math.round(baseLocalX * snapFactor) / snapFactor;
         const localYSnapped = Math.round(baseLocalY * snapFactor) / snapFactor;
@@ -800,7 +803,7 @@ export function createGlyphAtlas(options) {
           glyphCtx.textBaseline = 'alphabetic';
           glyphCtx.imageSmoothingEnabled = false;
           glyphCtx.beginPath();
-          glyphCtx.rect(0, 0, CELL_W_CSS, CELL_H_CSS);
+          glyphCtx.rect(0, 0, GLYPH_DRAW_W_CSS, CELL_H_CSS);
           glyphCtx.clip();
           glyphCtx.fillText(text, localXSnapped, localYSnapped);
           glyphCtx.restore();
@@ -905,7 +908,7 @@ export function createGlyphAtlas(options) {
         } else {
           ctx.save();
           ctx.beginPath();
-          ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, CELL_W_CSS, CELL_H_CSS);
+          ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, GLYPH_DRAW_W_CSS, CELL_H_CSS);
           ctx.clip();
           const x0 = packX_css + GUTTER_CSS + localXSnapped;
           const y0 = packY_css + GUTTER_CSS + localYSnapped;
@@ -930,6 +933,8 @@ export function createGlyphAtlas(options) {
       cellW_draw_dp,
       cellH_draw_dp,
       originY_css: ORIGIN_Y_CSS,
+      bleedX_css: OVERHANG_CSS,
+      drawW_css: GLYPH_DRAW_W_CSS,
       rectDpByCode,
     };
     experimentalAtlases.set(key, atlas);
@@ -956,14 +961,16 @@ export function createGlyphAtlas(options) {
     const rect = atlas.rectDpByCode[ch.charCodeAt(0)] || fallback;
     if (!rect) return;
     const RENDER_SCALE = getRenderScale();
-    const dx_css = Math.round(x_css * RENDER_SCALE) / RENDER_SCALE;
+    const bleedX = Number.isFinite(atlas.bleedX_css) ? atlas.bleedX_css : 0;
+    const drawW_css = Number.isFinite(atlas.drawW_css) ? atlas.drawW_css : atlas.cellW_css;
+    const dx_css = Math.round((x_css - bleedX) * RENDER_SCALE) / RENDER_SCALE;
     const dy_css = Math.round((baselineY_css - atlas.originY_css) * RENDER_SCALE) / RENDER_SCALE;
     const baseOpacity = clamp(((state.inkOpacity && typeof state.inkOpacity[ink] === 'number') ? state.inkOpacity[ink] : 100) / 100, 0, 1);
     const layerFalloff = Math.max(0.1, Math.min(1, 0.92 * Math.pow(0.92, totalLayers - 1 - layerIndex)));
     const finalAlpha = (ink === 'w') ? baseOpacity : baseOpacity * layerFalloff;
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = finalAlpha;
-    ctx.drawImage(atlas.canvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, atlas.cellW_css, atlas.cellH_css);
+    ctx.drawImage(atlas.canvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, drawW_css, atlas.cellH_css);
   }
 
   if (typeof context?.registerRendererApi === 'function') {
