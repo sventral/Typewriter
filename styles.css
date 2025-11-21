@@ -37,6 +37,7 @@
     --tri-h:12px;
     --panel-bg: rgba(247, 247, 247, 0.85);
     --panel-border: rgba(0, 0, 0, 0.1);
+    --corner-ruler-bg: rgb(221, 221, 221);
     --panel-item-bg: rgba(255, 255, 255, 0.7);
     --control-bg: #fff;
     --control-border: #ccc;
@@ -74,6 +75,7 @@
     --panel-bg: rgba(247, 247, 247, 0.85);
     --panel-item-bg: rgba(255, 255, 255, 0.7);
     --panel-border: rgba(0, 0, 0, 0.1);
+    --corner-ruler-bg: rgb(221, 221, 221);
     --control-bg: #fff;
     --control-border: #ccc;
     --divider-color: #e0e0e0;
@@ -110,6 +112,7 @@
       --panel-bg: rgba(44, 44, 50, 0.9);
       --panel-item-bg: rgba(60, 60, 68, 0.7);
       --panel-border: rgba(255, 255, 255, 0.12);
+      --corner-ruler-bg: rgba(44, 44, 50, 0.9);
       --control-bg: #25262b;
       --control-border: #3f4047;
       --divider-color: #3f4047;
@@ -144,6 +147,7 @@
     --tri-color:#d7d7dc;
     --tri-red:#e47a7a;
     --panel-bg: rgba(44, 44, 50, 0.9);
+    --corner-ruler-bg: rgba(44, 44, 50, 0.9);
     --panel-item-bg: rgba(60, 60, 68, 0.7);
     --panel-border: rgba(255, 255, 255, 0.12);
     --control-bg: #25262b;
@@ -191,13 +195,12 @@ body[data-page-tone='dark']{
     height:46px;
     border-radius:12px;
     border:1px solid var(--panel-border);
-    background:var(--panel-bg);
+    background:var(--corner-ruler-bg);
     color:#8c909b;
     display:flex;
     align-items:center;
     justify-content:center;
     gap:4px;
-    box-shadow:0 8px 20px rgba(0,0,0,0.18);
     backdrop-filter:blur(4px);
     -webkit-backdrop-filter:blur(4px);
     cursor:pointer;
@@ -205,11 +208,11 @@ body[data-page-tone='dark']{
     --corner-ruler-shift-x: 0px;
     --corner-ruler-shift-y: 0px;
     transform:translate(var(--corner-ruler-shift-x), var(--corner-ruler-shift-y));
-    transition:transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    transition:transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
   }
 
   .corner-ruler-toggle:hover{
-    box-shadow:0 12px 28px rgba(0,0,0,0.22);
+    box-shadow:none;
   }
 
   .corner-ruler-toggle:active{
