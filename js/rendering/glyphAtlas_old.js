@@ -644,9 +644,7 @@ export function createGlyphAtlas(options) {
     return processor;
   }
 
-
-
-function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
+  function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const preferWhiteEffects = !!state.inkEffectsPreferWhite;
     let effectsAllowed =
       ink === 'w' ? preferWhiteEffects :
@@ -663,11 +661,6 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const rawOrder = getInkSectionOrderFn();
     const pipelineStages = resolveExperimentalStages(rawOrder);
     const hasExperimentalStages = Array.isArray(pipelineStages) && pipelineStages.length > 0;
-
-    // Force pipeline if we need to erase a prefix (variantIdx > 0) to avoid ghosts,
-    // or if we actually have effects to run.
-    const needsEffectsPipeline = effectsAllowed && overallStrength > 0 && hasExperimentalStages;
-    const needsPipeline = needsEffectsPipeline || (variantIdx > 0);
 
     // BEGIN: config snapshot + hash (no name collisions)
     const baseExperimentalConfig = getExperimentalEffectsConfigFn() || {};
@@ -693,6 +686,8 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     let atlas = experimentalAtlases.get(key);
     if (atlas) return atlas;
 
+
+
     const ASC = getAscFn();
     const DESC = getDescFn();
     const CHAR_W = getCharWidthFn();
@@ -709,13 +704,9 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const ORIGIN_Y_CSS = ASC + GLYPH_BLEED;
     const CELL_W_CSS = CHAR_W;
     const CELL_H_CSS = Math.ceil(ASC + DESC + 2 * GLYPH_BLEED);
-    // Alma: Increased overhang to 64 to accommodate wide script swashes
-    const OVERHANG_DP = 64;
-    const OVERHANG_CSS = OVERHANG_DP / RENDER_SCALE;
-    const GLYPH_DRAW_W_CSS = CELL_W_CSS + 2 * OVERHANG_CSS;
-    const GUTTER_DP = 2;
+    const GUTTER_DP = 1;
     const GUTTER_CSS = GUTTER_DP / RENDER_SCALE;
-    const cellW_draw_dp = Math.round(GLYPH_DRAW_W_CSS * RENDER_SCALE);
+    const cellW_draw_dp = Math.round(CELL_W_CSS * RENDER_SCALE);
     const cellH_draw_dp = Math.ceil(CELL_H_CSS * RENDER_SCALE);
     const cellW_pack_dp = cellW_draw_dp + 2 * GUTTER_DP;
     const cellH_pack_dp = cellH_draw_dp + 2 * GUTTER_DP;
@@ -740,6 +731,8 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const advCache = new Float32Array(ASCII_END + 1);
     const SHIFT_EPS = 0.5;
     const sampleScale = 1;
+    const needsEffectsPipeline = effectsAllowed && overallStrength > 0 && hasExperimentalStages;
+    const needsPipeline = needsEffectsPipeline;
 
     let glyphCanvas = null;
     let glyphCtx = null;
@@ -782,94 +775,38 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
         const packX_css = (col * cellW_pack_dp) / RENDER_SCALE;
         const packY_css = (row * cellH_pack_dp) / RENDER_SCALE;
         const ch = String.fromCharCode(code);
-        
-        // Alma: Use differential rendering to isolate the N-th variant.
-        // We draw the full sequence (1..N), then subtract the prefix (1..N-1).
-        // This preserves tails/swashes that extend left, removing only the actual ink of previous chars.
-        const metrics = ctx.measureText(ch);
-        const adv = advCache[code] || (advCache[code] = Math.max(0.01, metrics.width));
-        
         const n = (variantIdx | 0) + 1;
-        const textFull = ch.repeat(n);
-        const textPrefix = n > 1 ? ch.repeat(n - 1) : null;
-
+        const adv = advCache[code] || (advCache[code] = Math.max(0.01, ctx.measureText(ch).width));
+        const text = variantIdx ? ch.repeat(n) : ch;
         const destX_dp = col * cellW_pack_dp + GUTTER_DP;
         const destY_dp = row * cellH_pack_dp + GUTTER_DP;
         const snapFactor = RENDER_SCALE * (glyphCanvas ? sampleScale : 1);
-        
-        // Shift left so the N-th character lands at the origin (OVERHANG_CSS)
-        const shiftLeft = (n - 1) * adv;
-        const baseLocalX = OVERHANG_CSS - shiftLeft - SHIFT_EPS;
+        const baseLocalX = -(n - 1) * adv - SHIFT_EPS;
         const baseLocalY = ORIGIN_Y_CSS;
         const localXSnapped = Math.round(baseLocalX * snapFactor) / snapFactor;
         const localYSnapped = Math.round(baseLocalY * snapFactor) / snapFactor;
 
         if (glyphCtx) {
           const glyphSeed = (atlasSeed ^ Math.imul((code + 1) | 0, 0xC2B2AE3D)) >>> 0;
-          
-          // 1. Capture Prefix Pixels (if applicable)
-          let prefixData = null;
-          if (textPrefix) {
-            glyphCtx.save();
-            glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
-            glyphCtx.clearRect(0, 0, glyphCanvas.width, glyphCanvas.height);
-            
-            glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
-            glyphCtx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
-            glyphCtx.textAlign = 'left';
-            glyphCtx.textBaseline = 'alphabetic';
-            glyphCtx.fillStyle = '#000000'; // Solid black for pure alpha capture
-            glyphCtx.globalCompositeOperation = 'source-over';
-            
-            glyphCtx.fillText(textPrefix, localXSnapped, localYSnapped);
-            glyphCtx.restore();
-            
-            prefixData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
-          }
-
-          // 2. Draw Full Sequence
-          glyphCtx.save();
           glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
+          glyphCtx.globalCompositeOperation = 'source-over';
+          glyphCtx.globalAlpha = 1;
           glyphCtx.clearRect(0, 0, glyphCanvas.width, glyphCanvas.height);
-          
+          glyphCtx.save();
           glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
+          glyphCtx.fillStyle = COLORS[ink] || '#000';
           glyphCtx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
           glyphCtx.textAlign = 'left';
           glyphCtx.textBaseline = 'alphabetic';
-          glyphCtx.fillStyle = COLORS[ink] || '#000';
-          glyphCtx.globalCompositeOperation = 'source-over';
-          
-          glyphCtx.fillText(textFull, localXSnapped, localYSnapped);
+          glyphCtx.imageSmoothingEnabled = false;
+          glyphCtx.beginPath();
+          glyphCtx.rect(0, 0, CELL_W_CSS, CELL_H_CSS);
+          glyphCtx.clip();
+          glyphCtx.fillText(text, localXSnapped, localYSnapped);
           glyphCtx.restore();
 
-          // 3. Capture Full Pixels
           let glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
           const basePixels = glyphData.data;
-
-          // 4. Perform Pixel Subtraction (Eliminates ghosts)
-          if (prefixData) {
-            const pData = prefixData.data;
-            const len = basePixels.length;
-            for (let i = 3; i < len; i += 4) {
-              const pA = pData[i];
-              if (pA > 0) {
-                const fA = basePixels[i];
-                // Subtract prefix alpha from full alpha.
-                // If pA is 255 (solid), fA (solid) - pA = 0. Clean cut.
-                // If pA is 100 (AA), fA (AA) - pA = 0. Clean cut.
-                let newA = fA - pA;
-                if (newA <= 0) {
-                  basePixels[i] = 0;
-                  // Clear RGB to keep it clean
-                  basePixels[i-1] = 0;
-                  basePixels[i-2] = 0;
-                  basePixels[i-3] = 0;
-                } else {
-                  basePixels[i] = newA;
-                }
-              }
-            }
-          }
 
           if (runExperimentalEffects) {
             const glyphWidth = glyphCanvas.width;
@@ -966,22 +903,13 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
           ctx.textAlign = 'left';
           ctx.textBaseline = 'alphabetic';
         } else {
-          // Fallback for direct canvas drawing (rarely used in this app flow, but kept for safety)
           ctx.save();
+          ctx.beginPath();
+          ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, CELL_W_CSS, CELL_H_CSS);
+          ctx.clip();
           const x0 = packX_css + GUTTER_CSS + localXSnapped;
           const y0 = packY_css + GUTTER_CSS + localYSnapped;
-          
-          // Clip to the cell box to ensure no bleed from the shift
-          ctx.beginPath();
-          ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, GLYPH_DRAW_W_CSS, CELL_H_CSS);
-          ctx.clip();
-
-          ctx.fillText(textFull, x0, y0);
-          if (textPrefix) {
-             ctx.globalCompositeOperation = 'destination-out';
-             ctx.fillText(textPrefix, x0, y0);
-             ctx.globalCompositeOperation = 'source-over';
-          }
+          ctx.fillText(text, x0, y0);
           ctx.restore();
         }
 
@@ -1002,14 +930,11 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
       cellW_draw_dp,
       cellH_draw_dp,
       originY_css: ORIGIN_Y_CSS,
-      bleedX_css: OVERHANG_CSS,
-      drawW_css: GLYPH_DRAW_W_CSS,
       rectDpByCode,
     };
     experimentalAtlases.set(key, atlas);
     return atlas;
   }
-
 
   function ensureAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     return ensureExperimentalAtlas(ink, variantIdx, effectOverride);
@@ -1031,16 +956,14 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const rect = atlas.rectDpByCode[ch.charCodeAt(0)] || fallback;
     if (!rect) return;
     const RENDER_SCALE = getRenderScale();
-    const bleedX = Number.isFinite(atlas.bleedX_css) ? atlas.bleedX_css : 0;
-    const drawW_css = Number.isFinite(atlas.drawW_css) ? atlas.drawW_css : atlas.cellW_css;
-    const dx_css = Math.round((x_css - bleedX) * RENDER_SCALE) / RENDER_SCALE;
+    const dx_css = Math.round(x_css * RENDER_SCALE) / RENDER_SCALE;
     const dy_css = Math.round((baselineY_css - atlas.originY_css) * RENDER_SCALE) / RENDER_SCALE;
     const baseOpacity = clamp(((state.inkOpacity && typeof state.inkOpacity[ink] === 'number') ? state.inkOpacity[ink] : 100) / 100, 0, 1);
     const layerFalloff = Math.max(0.1, Math.min(1, 0.92 * Math.pow(0.92, totalLayers - 1 - layerIndex)));
     const finalAlpha = (ink === 'w') ? baseOpacity : baseOpacity * layerFalloff;
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = finalAlpha;
-    ctx.drawImage(atlas.canvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, drawW_css, atlas.cellH_css);
+    ctx.drawImage(atlas.canvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, atlas.cellW_css, atlas.cellH_css);
   }
 
   if (typeof context?.registerRendererApi === 'function') {
