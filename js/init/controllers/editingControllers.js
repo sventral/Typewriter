@@ -310,21 +310,43 @@ export function registerEditingControllers(options) {
     }
   }
 
+  const FONT_CANDIDATE_NAMES = [
+    'Another Typewriter',
+    'Canon TypeStar 210',
+    'Courier',
+    'Courier Bold',
+    'Courier New',
+    'Courier New Bold',
+    'Courier Prime',
+    'Courier Prime Bold',
+    'Cutive Mono',
+    'Elite Math',
+    'IBM Selectric Light Regular',
+    'IBM Selectric Light Italic',
+    'Letter Gothic',
+    'Pica',
+    'Prestige Elite Std',
+    'Prestige Elite Std Bold',
+    'SCM Galaxie XII',
+    'Selectric Pica Regular',
+    'Selectric Script Regular',
+    'Special Elite',
+    'TT2020Base',
+    'TT2020StyleB',
+    'TT2020StyleD',
+    'TT2020StyleE',
+    'TT2020StyleG',
+    'ui-monospace',
+    'Menlo',
+    'Monaco',
+    'Consolas',
+    'Liberation Mono',
+    'monospace',
+  ];
+
   const FONT_CANDIDATES = [
     () => metricsStore.ACTIVE_FONT_NAME,
-    () => 'TT2020Base',
-    () => 'TT2020StyleB',
-    () => 'TT2020StyleD',
-    () => 'TT2020StyleE',
-    () => 'TT2020StyleG',
-    () => 'Courier New',
-    () => 'Courier',
-    () => 'ui-monospace',
-    () => 'Menlo',
-    () => 'Monaco',
-    () => 'Consolas',
-    () => 'Liberation Mono',
-    () => 'monospace',
+    ...FONT_CANDIDATE_NAMES.map((face) => () => face),
   ];
 
   function faceAvailable(face) {
