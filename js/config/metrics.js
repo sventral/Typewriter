@@ -1,4 +1,5 @@
 import { createPaperMetrics, DEFAULT_PAPER_SIZE, getPaperSize } from './paperSizes.js';
+import { INK_COLORS } from './inkPalette.js';
 
 export function computeBaseMetrics(app) {
   const rootStyles = getComputedStyle(document.documentElement);
@@ -19,7 +20,7 @@ export function computeBaseMetrics(app) {
   const GRID_DIV = 8;
   const GRID_H = LINE_H_RAW / GRID_DIV;
   const ACTIVE_FONT_NAME = 'TT2020StyleE';
-  const COLORS = { b:'#1f2024', r:'#b00000', w:'#f7f5ee' };
+  const COLORS = { ...INK_COLORS };
   const STORAGE_KEY = 'typewriter.minimal.v17';
   const RENDER_SCALE = DPR;
   const FONT_FAMILY = ACTIVE_FONT_NAME;

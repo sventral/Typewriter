@@ -4,6 +4,7 @@ import {
   normalizeGlyphJitterAmount,
   normalizeGlyphJitterFrequency,
 } from '../../config/glyphJitterConfig.js';
+import { INK_PALETTE, createDefaultInkOpacity } from '../../config/inkPalette.js';
 
 function formatNumberForInput(value, fractionDigits = 2) {
   if (!Number.isFinite(value)) return '';
@@ -15,6 +16,12 @@ function formatNumberForInput(value, fractionDigits = 2) {
   let str = rounded.toFixed(fractionDigits);
   str = str.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
   return str;
+}
+
+function clampOpacityValue(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 100;
+  return Math.min(100, Math.max(0, Math.round(num)));
 }
 
 function setGlyphJitterInputsDisabled(app, disabled) {
@@ -57,15 +64,13 @@ export function createInkControls({
       }
     };
 
-    if (app.inkOpacityBSlider && app.inkOpacityBValue) {
-      app.inkOpacityBSlider.addEventListener('input', () => onOpacitySliderInput('b', app.inkOpacityBSlider, app.inkOpacityBValue));
-    }
-    if (app.inkOpacityRSlider && app.inkOpacityRValue) {
-      app.inkOpacityRSlider.addEventListener('input', () => onOpacitySliderInput('r', app.inkOpacityRSlider, app.inkOpacityRValue));
-    }
-    if (app.inkOpacityWSlider && app.inkOpacityWValue) {
-      app.inkOpacityWSlider.addEventListener('input', () => onOpacitySliderInput('w', app.inkOpacityWSlider, app.inkOpacityWValue));
-    }
+    INK_PALETTE.forEach(({ id, sliderId, valueId }) => {
+      const sliderEl = app?.[sliderId];
+      const valueEl = app?.[valueId];
+      if (sliderEl && valueEl) {
+        sliderEl.addEventListener('input', () => onOpacitySliderInput(id, sliderEl, valueEl));
+      }
+    });
   }
 
   function bindInkButtons() {
@@ -75,7 +80,7 @@ export function createInkControls({
       if (!btn || !popup) return;
       let pressTimer = null;
       let isLongPress = false;
-      const allPopups = [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup];
+      const allPopups = INK_PALETTE.map(({ popupId }) => app?.[popupId]).filter(Boolean);
       const startPress = () => {
         isLongPress = false;
         if (pressTimer) {
@@ -110,12 +115,15 @@ export function createInkControls({
       popup.addEventListener('pointerdown', (e) => e.stopPropagation());
     };
 
-    setupInkButton(app.inkBlackBtn, 'b', app.inkBlackSliderPopup);
-    setupInkButton(app.inkRedBtn, 'r', app.inkRedSliderPopup);
-    setupInkButton(app.inkWhiteBtn, 'w', app.inkWhiteSliderPopup);
+    INK_PALETTE.forEach(({ id, buttonId, popupId }) => {
+      setupInkButton(app?.[buttonId], id, app?.[popupId]);
+    });
 
     document.body.addEventListener('pointerdown', () => {
-      [app.inkBlackSliderPopup, app.inkRedSliderPopup, app.inkWhiteSliderPopup].forEach((p) => p?.classList.remove('active'));
+      INK_PALETTE.forEach(({ popupId }) => {
+        const popup = app?.[popupId];
+        if (popup) popup.classList.remove('active');
+      });
     });
   }
 
@@ -257,7 +265,7 @@ export function createInkControls({
 
   function applyInkDefaults(loaded) {
     if (loaded) return;
-    state.inkOpacity = { b: 100, r: 100, w: 100 };
+    state.inkOpacity = createDefaultInkOpacity(100);
     state.glyphJitterEnabled = GLYPH_JITTER_DEFAULTS.enabled;
     state.glyphJitterAmountPct = normalizeGlyphJitterAmount(GLYPH_JITTER_DEFAULTS.amountPct, GLYPH_JITTER_DEFAULTS.amountPct);
     state.glyphJitterFrequencyPct = normalizeGlyphJitterFrequency(GLYPH_JITTER_DEFAULTS.frequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
@@ -266,12 +274,20 @@ export function createInkControls({
 
   function populateInkUI({ loaded } = {}) {
     applyInkDefaults(loaded);
-    if (app.inkOpacityBSlider) app.inkOpacityBSlider.value = String(state.inkOpacity.b);
-    if (app.inkOpacityRSlider) app.inkOpacityRSlider.value = String(state.inkOpacity.r);
-    if (app.inkOpacityWSlider) app.inkOpacityWSlider.value = String(state.inkOpacity.w);
-    if (app.inkOpacityBValue) app.inkOpacityBValue.textContent = `${state.inkOpacity.b}%`;
-    if (app.inkOpacityRValue) app.inkOpacityRValue.textContent = `${state.inkOpacity.r}%`;
-    if (app.inkOpacityWValue) app.inkOpacityWValue.textContent = `${state.inkOpacity.w}%`;
+    const normalizedOpacity = createDefaultInkOpacity(100);
+    INK_PALETTE.forEach(({ id }) => {
+      normalizedOpacity[id] = clampOpacityValue(state.inkOpacity?.[id]);
+    });
+    state.inkOpacity = normalizedOpacity;
+
+    INK_PALETTE.forEach(({ id, sliderId, valueId }) => {
+      const sliderEl = app?.[sliderId];
+      const valueEl = app?.[valueId];
+      const pct = clampOpacityValue(state.inkOpacity[id]);
+      if (sliderEl) sliderEl.value = String(pct);
+      if (valueEl) valueEl.textContent = `${pct}%`;
+      state.inkOpacity[id] = pct;
+    });
 
     const jitterAmount = normalizeGlyphJitterAmount(state.glyphJitterAmountPct, GLYPH_JITTER_DEFAULTS.amountPct);
     const jitterFrequency = normalizeGlyphJitterFrequency(state.glyphJitterFrequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);

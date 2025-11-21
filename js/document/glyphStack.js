@@ -1,5 +1,6 @@
-const DEFAULT_INK = 'b';
-const GLYPH_INKS = new Set(['b', 'r', 'w']);
+import { DEFAULT_INK, SUPPORTED_INKS, normalizeInkId } from '../config/inkPalette.js';
+
+const GLYPH_INKS = new Set(SUPPORTED_INKS);
 const SALT_INCREMENT = 0x9E3779B1;
 let fallbackSaltState = (Date.now() >>> 0) ^ 0xA511E9;
 
@@ -13,7 +14,7 @@ function normalizeGlyphInk(ink) {
   if (typeof ink !== 'string') return DEFAULT_INK;
   const trimmed = ink.trim();
   if (GLYPH_INKS.has(trimmed)) return trimmed;
-  return DEFAULT_INK;
+  return normalizeInkId(trimmed);
 }
 
 export function normalizeGlyphJitterSalt(value) {
