@@ -1,4 +1,5 @@
 import { syncRulerToggleButton } from '../init/ui/rulerToggle.js';
+import { INK_PALETTE, normalizeInkId } from '../config/inkPalette.js';
 
 export function createDocumentViewAdapter({ app }) {
   function updateCaretDom({ pageEl, left, top, height, width }) {
@@ -50,9 +51,11 @@ export function createDocumentViewAdapter({ app }) {
   }
 
   function setInkButtonsState(ink) {
-    if (app.inkBlackBtn) app.inkBlackBtn.dataset.active = String(ink === 'b');
-    if (app.inkRedBtn) app.inkRedBtn.dataset.active = String(ink === 'r');
-    if (app.inkWhiteBtn) app.inkWhiteBtn.dataset.active = String(ink === 'w');
+    const normalized = normalizeInkId(ink);
+    INK_PALETTE.forEach(({ id, buttonId }) => {
+      const btn = app?.[buttonId];
+      if (btn) btn.dataset.active = String(normalized === id);
+    });
   }
 
   return {

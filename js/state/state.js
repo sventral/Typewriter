@@ -7,6 +7,7 @@ import {
   getDefaultInkSectionStrength,
 } from '../config/inkEffectDefaultStyle.js';
 import { createDefaultPageNumberingSettings } from '../config/pageNumbering.js';
+import { createDefaultInkOpacity } from '../config/inkPalette.js';
 
 const SECTION_STRENGTH_DEFAULTS = {
   expTone: getDefaultInkSectionStrength('expTone'),
@@ -45,7 +46,7 @@ export function createMainState(app, gridDiv = 8) {
     cpi: 10,
     colsAcross: 82.68,
     inkWidthPct: 95,
-    inkOpacity: { b: 100, r: 100, w: 100 },
+    inkOpacity: createDefaultInkOpacity(100),
     lineHeightFactor: 1.5,
     lineStepMu: Math.round(gridDiv * 1.5),
     zoom: 1.0,

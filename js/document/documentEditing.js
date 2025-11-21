@@ -11,6 +11,7 @@ import {
 import { resetInkEffectsState } from '../state/state.js';
 import { createGlyphEntry, cloneGlyphEntry } from './glyphStack.js';
 import { createDefaultPageNumberingSettings } from '../config/pageNumbering.js';
+import { INK_PALETTE, normalizeInkId } from '../config/inkPalette.js';
 
 export function createDocumentEditingController(context) {
   const {
@@ -123,13 +124,15 @@ export function createDocumentEditingController(context) {
   };
 
   const viewSetInkState = (ink) => {
+    const normalized = normalizeInkId(ink);
     if (typeof setInkButtonsState === 'function') {
-      setInkButtonsState(ink);
+      setInkButtonsState(normalized);
       return;
     }
-    if (app.inkBlackBtn) app.inkBlackBtn.dataset.active = String(ink === 'b');
-    if (app.inkRedBtn) app.inkRedBtn.dataset.active = String(ink === 'r');
-    if (app.inkWhiteBtn) app.inkWhiteBtn.dataset.active = String(ink === 'w');
+    INK_PALETTE.forEach(({ id, buttonId }) => {
+      const btn = app?.[buttonId];
+      if (btn) btn.dataset.active = String(normalized === id);
+    });
   };
 
   const rendererBridge = rendererApi || {};
@@ -881,8 +884,9 @@ function insertStringFast(s) {
   }
 
   function setInk(ink) {
-    state.ink = ink;
-    viewSetInkState(ink);
+    const normalized = normalizeInkId(ink);
+    state.ink = normalized;
+    viewSetInkState(normalized);
     markDocumentDirty(state);
     saveStateDebounced();
   }

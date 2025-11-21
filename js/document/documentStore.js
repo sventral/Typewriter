@@ -22,6 +22,7 @@ import { hydrateGlyphEntry, serializeGlyphEntry } from './glyphStack.js';
 import { STAGE_HEIGHT_MAX, STAGE_HEIGHT_MIN, STAGE_WIDTH_MAX, STAGE_WIDTH_MIN } from '../layout/stageLayout.js';
 import { encodeDocumentDataForStorage, decodeDocumentDataFromStorage } from '../storage/jsonCompression.js';
 import { createDefaultPageNumberingSettings, sanitizePageNumberingSettings } from '../config/pageNumbering.js';
+import { DEFAULT_INK, SUPPORTED_INKS, createDefaultInkOpacity, normalizeInkId } from '../config/inkPalette.js';
 const KNOWN_INK_SECTIONS = PRESET_INK_SECTION_ORDER.slice();
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
@@ -376,13 +377,13 @@ export function deserializeDocumentState(data, context) {
   if (cpiVal && typeof computeColsFromCpi === 'function') {
     inferredCols = computeColsFromCpi(cpiVal).cols2;
   }
+  const defaultInkOpacity = createDefaultInkOpacity(100);
   const inkOpacity = (data.inkOpacity && typeof data.inkOpacity === 'object')
-    ? {
-        b: clamp(Number(data.inkOpacity.b ?? 100), 0, 100),
-        r: clamp(Number(data.inkOpacity.r ?? 100), 0, 100),
-        w: clamp(Number(data.inkOpacity.w ?? 100), 0, 100),
-      }
-    : { b: 100, r: 100, w: 100 };
+    ? SUPPORTED_INKS.reduce((map, key) => {
+        map[key] = clamp(Number(data.inkOpacity[key] ?? defaultInkOpacity[key]), 0, 100);
+        return map;
+      }, {})
+    : defaultInkOpacity;
   const storedInkWidth = Number(data.inkWidthPct);
   const sanitizedInkWidth = Number.isFinite(storedInkWidth)
     ? clamp(Math.round(storedInkWidth), 1, 150)
@@ -421,7 +422,7 @@ export function deserializeDocumentState(data, context) {
     caret: data.caret
       ? { page: data.caret.page || 0, rowMu: data.caret.rowMu || 0, col: data.caret.col || 0 }
       : state.caret,
-    ink: ['b', 'r', 'w'].includes(data.ink) ? data.ink : 'b',
+    ink: normalizeInkId(data.ink ?? state.ink ?? DEFAULT_INK),
     showRulers: data.showRulers !== false,
     showMarginBox: resolvedShowMarginBox,
     cpi: cpiVal || 10,
