@@ -177,9 +177,6 @@ body[data-page-tone='dark']{
 @font-face{ font-family:"Another Typewriter"; src:url("./fonts/Another Typewriter.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"Canon TypeStar 210"; src:url("./fonts/Canon TypeStar 210.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"Courier Prime"; src:url("./fonts/Courier Prime.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
-@font-face{ font-family:"Courier Prime Bold"; src:url("./fonts/Courier Prime Bold.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
-@font-face{ font-family:"Courier Bold"; src:local("Courier Bold"), local("Courier-Bold"); font-weight:400; font-style:normal; font-display:swap; }
-@font-face{ font-family:"Courier New Bold"; src:local("Courier New Bold"), local("CourierNewPS-BoldMT"), local("CourierNew-Bold"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"Cutive Mono"; src:url("./fonts/Cutive Mono.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"Elite Math"; src:url("./fonts/Elite Math.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"IBM Selectric Light Regular"; src:url("./fonts/IBM Selectric Light Regular.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
@@ -193,9 +190,14 @@ body[data-page-tone='dark']{
 @font-face{ font-family:"Selectric Script Regular"; src:url("./fonts/Selectric Script Regular.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"Special Elite"; src:url("./fonts/Special Elite.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"TT2020Base"; src:url("./fonts/TT2020Base-Regular.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
+@font-face{ font-family:"TT2020Base Italic"; src:url("./fonts/TT2020Base-Italic.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"TT2020StyleB"; src:url("./fonts/TT2020StyleB-Regular.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
+@font-face{ font-family:"TT2020StyleB Italic"; src:url("./fonts/TT2020StyleB-Italic.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"TT2020StyleD"; src:url("./fonts/TT2020StyleD-Regular.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
+@font-face{ font-family:"TT2020StyleD Italic"; src:url("./fonts/TT2020StyleD-Italic.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"TT2020StyleE"; src:url("./fonts/TT2020StyleE-Regular.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
+@font-face{ font-family:"TT2020StyleE Italic"; src:url("./fonts/TT2020StyleE-Italic.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
+@font-face{ font-family:"TT2020StyleF"; src:url("./fonts/TT2020StyleF-Regular.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 @font-face{ font-family:"TT2020StyleG"; src:url("./fonts/TT2020StyleG-Regular.woff2") format("woff2"); font-weight:400; font-style:normal; font-display:swap; }
 
   html,body{margin:0;height:100%;background:var(--stage-bg);font:16px system-ui, -apple-system, sans-serif;color:var(--ui-text)}
