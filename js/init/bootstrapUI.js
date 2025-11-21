@@ -38,7 +38,7 @@ export async function bootstrapUI({
   });
 
   bootstrapFirstPage();
-  const persistedState = loadPersistedState();
+  const persistedState = await loadPersistedState();
   populateInitialUI(persistedState);
   const { savedFont } = persistedState;
   const inkAdjustedByTheme = applyAppearance();

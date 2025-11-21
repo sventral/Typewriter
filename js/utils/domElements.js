@@ -32,6 +32,7 @@ const DOM_ID_GROUPS = {
     docMenuList: 'docMenuList',
     docTitleInput: 'docTitleInput',
     deleteDocBtn: 'deleteDocBtn',
+    storageNotice: 'storageNotice',
   },
   ink: {
     inkBlackBtn: 'inkBlackBtn',
