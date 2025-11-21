@@ -38,6 +38,7 @@
     --panel-bg: rgba(247, 247, 247, 0.85);
     --panel-border: rgba(0, 0, 0, 0.1);
     --corner-ruler-bg: rgb(221, 221, 221);
+    --corner-ruler-bg-hover: rgb(207, 207, 207);
     --panel-item-bg: rgba(255, 255, 255, 0.7);
     --control-bg: #fff;
     --control-border: #ccc;
@@ -113,6 +114,7 @@
       --panel-item-bg: rgba(60, 60, 68, 0.7);
       --panel-border: rgba(255, 255, 255, 0.12);
       --corner-ruler-bg: rgba(44, 44, 50, 0.9);
+      --corner-ruler-bg-hover: rgba(54, 54, 60, 0.9);
       --control-bg: #25262b;
       --control-border: #3f4047;
       --divider-color: #3f4047;
@@ -212,7 +214,8 @@ body[data-page-tone='dark']{
   }
 
   .corner-ruler-toggle:hover{
-    box-shadow:none;
+    background: var(--corner-ruler-bg-hover);
+    border-color: rgba(0, 0, 0, 0.14);
   }
 
   .corner-ruler-toggle:active{
