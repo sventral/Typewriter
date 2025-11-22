@@ -56,6 +56,7 @@ export function createGlyphAtlas(options) {
     ? getExperimentalQualitySettings
     : (() => ({}));
   const ALT_VARIANTS = 9;
+  const overhangCache = new Map();
   const experimentalAtlases = new Map();
   const experimentalProcessorCache = new Map();
 
@@ -646,7 +647,7 @@ export function createGlyphAtlas(options) {
 
 
 
-function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
+  function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const preferWhiteEffects = !!state.inkEffectsPreferWhite;
     let effectsAllowed =
       ink === 'w' ? preferWhiteEffects :
@@ -709,9 +710,32 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const ORIGIN_Y_CSS = ASC + GLYPH_BLEED;
     const CELL_W_CSS = CHAR_W;
     const CELL_H_CSS = Math.ceil(ASC + DESC + 2 * GLYPH_BLEED);
-    // Alma: Increased overhang to 64 to accommodate wide script swashes
-    const OVERHANG_DP = 64;
-    const OVERHANG_CSS = OVERHANG_DP / RENDER_SCALE;
+
+    // Dynamic overhang: measure actual glyph extents for this font to avoid clipping
+    const overhangKey = `${ACTIVE_FONT_NAME || ''}|${FONT_SIZE || 0}|${RENDER_SCALE || 1}`;
+    let OVERHANG_CSS = overhangCache.get(overhangKey);
+    if (!Number.isFinite(OVERHANG_CSS)) {
+      const measureCanvas = document.createElement('canvas');
+      const mCtx = measureCanvas.getContext('2d');
+      mCtx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
+      mCtx.textAlign = 'left';
+      mCtx.textBaseline = 'alphabetic';
+      const sampleChars = '~jgQÅßfyjpABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let maxLeft = 0;
+      let maxRightExtra = 0;
+      for (const ch of sampleChars) {
+        const m = mCtx.measureText(ch);
+        const left = Math.max(0, m.actualBoundingBoxLeft || 0);
+        const rightExtra = Math.max(0, (m.actualBoundingBoxRight || m.width || 0) - (m.width || 0));
+        if (left > maxLeft) maxLeft = left;
+        if (rightExtra > maxRightExtra) maxRightExtra = rightExtra;
+      }
+      // 2px safety margin in CSS space to guard against strokes we didn't sample
+      const SAFETY_CSS = 2;
+      OVERHANG_CSS = Math.max(maxLeft, maxRightExtra) + SAFETY_CSS;
+      overhangCache.set(overhangKey, OVERHANG_CSS);
+    }
+
     const GLYPH_DRAW_W_CSS = CELL_W_CSS + 2 * OVERHANG_CSS;
     const GUTTER_DP = 2;
     const GUTTER_CSS = GUTTER_DP / RENDER_SCALE;
@@ -894,7 +918,11 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
               );
               params.smul = (fontPx / 72) * supersample;
               params.ink = { ...(params.ink || {}), colorRgb };
-              const dpPerCss = Math.max(1e-6, (Number(RENDER_SCALE) || 1) * (Number(sampleScale) || 1));
+              const dpPerCssRaw = Math.max(1e-6, (Number(RENDER_SCALE) || 1) * (Number(sampleScale) || 1));
+              // Compensate effect scale so punch/edge fuzz sizes stay comparable to legacy cell width
+              const widthComp = Math.max(1e-6, CELL_W_CSS);
+              const drawComp = Math.max(1e-6, GLYPH_DRAW_W_CSS);
+              const dpPerCss = dpPerCssRaw * (widthComp / drawComp);
               const dm = createLazyDistanceMapProvider({
                 alpha,
                 width: glyphWidth,
