@@ -799,7 +799,14 @@ export function createExperimentalStagePipeline(deps = {}) {
     const { w, h, params, alpha0, dm, seed } = ctx;
     if (!params.enable.centerEdge || !params.centerEdge) return;
     const inside = dm?.raw?.inside;
+    const outside = dm?.raw?.outside;
     const maxInside = dm?.getMaxInside ? dm.getMaxInside() : 0;
+    let maxOutside = 0;
+    if (outside) {
+      for (let i = 0; i < outside.length; i++) {
+        if (outside[i] > maxOutside) maxOutside = outside[i];
+      }
+    }
     if (!inside || maxInside <= 0) return;
     const stageQuality = getStageQualityFromContext(ctx);
     const quantLevels = stageQuality >= 1
@@ -808,19 +815,17 @@ export function createExperimentalStagePipeline(deps = {}) {
     const cK = params.centerEdge.center || 0;
     const eK = params.centerEdge.edge || 0;
     const tK = params.centerEdge.thicken || 0;
-    const variation = clamp(params.centerEdge.variation ?? 1, 0, 1);
-    const varAmt = 1 - variation; // 0 = full coverage, 1 = sparse patches
+    const patchFill = clamp(params.centerEdge.patchFill ?? 1, 0, 1);   // coverage probability
+    const patchSize = clamp(params.centerEdge.patchSize ?? 0.5, 0, 1); // 0 small, 1 large
     // independent seeds per control so patches differ per knob
     const seedCenter = (seed ^ 0xC1CE1C31) >>> 0;
     const seedEdge = (seed ^ 0xC1CE2D42) >>> 0;
     const seedThicken = (seed ^ 0xC1CE3E53) >>> 0;
-    // Patch size grows with variation; lower variation => smaller, denser noise frequency
-    const baseFreq = 1.5;
-    const freq = baseFreq + varAmt * 18; // at var=0 -> 1.5 (big patches), var=1 -> 19.5 (tiny)
-    const coverageProb = clamp01(variation); // probability a patch is ON
-    if (cK === 0 && eK === 0 && tK === 0 && varAmt === 0) return;
+    const minFreq = 4;    // larger patches
+    const maxFreq = 22;   // tiny patches
+    const freq = minFreq + (1 - patchSize) * (maxFreq - minFreq);
+    if (cK === 0 && eK === 0 && tK === 0 && patchFill >= 0.999) return;
     for (let i = 0; i < w * h; i++) {
-      if (alpha0[i] === 0) continue;
       let norm = (inside[i] || 0) / maxInside;
       if (quantLevels > 1) {
         const steps = quantLevels - 1;
@@ -829,14 +834,27 @@ export function createExperimentalStagePipeline(deps = {}) {
       const x = i % w;
       const y = (i / w) | 0;
       const maskVal = (seedVal) => sampleSpeckValueNoise(hash2Fn, x * freq, y * freq, seedVal);
-      const onCenter = varAmt < 1e-3 ? true : maskVal(seedCenter) <= coverageProb;
-      const onEdge = varAmt < 1e-3 ? true : maskVal(seedEdge) <= coverageProb;
-      const onThicken = varAmt < 1e-3 ? true : maskVal(seedThicken) <= coverageProb;
+      const onCenter = patchFill >= 0.999 ? true : maskVal(seedCenter) <= patchFill;
+      const onEdge = patchFill >= 0.999 ? true : maskVal(seedEdge) <= patchFill;
+      const onThicken = patchFill >= 0.999 ? true : maskVal(seedThicken) <= patchFill;
       let mod = 1;
-      if (onCenter && cK !== 0) mod *= clampFn(1 + cK * norm, 0, 3);
-      if (onEdge && eK !== 0) mod *= clampFn(1 - eK * (1 - norm), 0, 3);
-      if (onThicken && tK !== 0) mod *= clampFn(1 + tK * (1 - norm), 0, 8);
-      coverage[i] = clamp01Fn(coverage[i] * mod);
+      const hasAlpha = alpha0[i] !== 0;
+      if (hasAlpha) {
+        if (onCenter && cK !== 0) mod *= clampFn(1 + cK * norm, 0, 3);
+        if (onEdge && eK !== 0) mod *= clampFn(1 - eK * (1 - norm), 0, 3);
+        if (onThicken && tK !== 0) mod *= clampFn(1 + tK * (1 - norm), 0, 12);
+        coverage[i] = clamp01Fn(coverage[i] * mod);
+      } else if (onThicken && tK > 0 && outside && maxOutside > 0) {
+        const distOut = outside[i] || 0;
+        if (distOut > 0) {
+          const radiusPx = 0.8 + tK * 1.8;
+          if (distOut <= radiusPx) {
+            const falloff = clamp((radiusPx - distOut) / radiusPx, 0, 1);
+            const added = clamp01(falloff * tK * 0.35);
+            coverage[i] = Math.max(coverage[i], added);
+          }
+        }
+      }
     }
   }
 
