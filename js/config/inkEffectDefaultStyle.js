@@ -68,7 +68,8 @@ const BASE_SECTION_CONFIG = deepFreeze({
     center: 0.28,
     edge: 0,
     thicken: 0,
-    variation: 1,
+    patchFill: 1,
+    patchSize: 0.5,
   },
   dropouts: {
     amount: 1.02,
