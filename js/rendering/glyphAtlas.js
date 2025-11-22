@@ -571,6 +571,7 @@ export function createGlyphAtlas(options) {
     const ribbonCfg = cfg.ribbon || {};
     const noiseCfg = cfg.noise || {};
     const centerEdgeCfg = cfg.centerEdge || {};
+    const fuzzExpCfg = cfg.fuzzExp || {};
     const edgeFuzzCfg = cfg.edgeFuzz || {};
     const dropoutsCfg = cfg.dropouts || {};
     const smudgeCfg = cfg.smudge || {};
@@ -608,6 +609,10 @@ export function createGlyphAtlas(options) {
         || hasPositive(centerEdgeCfg.edge)
         || hasPositive(centerEdgeCfg.thicken)
       );
+
+    const fuzzExpActive = sectionActive.expEdge
+      && (fuzzExpCfg.enable !== false)
+      && hasPositive(fuzzExpCfg.thicken);
     const textureActive = sectionActive.expGrain
       && !!enable.grainSpeck
       && (hasPositive(inkCfg.speckDark) || hasPositive(inkCfg.speckLight));
@@ -629,6 +634,7 @@ export function createGlyphAtlas(options) {
       && hasPositive(smudgeCfg.radius);
     const needsFill = toneCoreActive
       || centerEdgeActive
+      || fuzzExpActive
       || textureActive
       || dropoutsActive
       || punchActive
@@ -638,7 +644,7 @@ export function createGlyphAtlas(options) {
       fill: needsFill,
       dropouts: dropoutsActive,
       texture: textureActive,
-      centerEdge: centerEdgeActive,
+      centerEdge: centerEdgeActive || fuzzExpActive,
       punch: punchActive,
       fuzz: fuzzActive,
       smudge: smudgeActive,
