@@ -304,9 +304,7 @@ export function createGlyphAtlas(options) {
     if (!sectionEnabled.expTone) {
       enable.toneCore = false;
       enable.toneDynamics = false;
-      enable.centerEdge = false;
       enable.ribbonBands = false;
-      enable.rim = false;
     }
     if (!enable.toneCore) {
       enable.toneDynamics = false;
@@ -314,6 +312,8 @@ export function createGlyphAtlas(options) {
     }
     if (!sectionEnabled.expEdge) {
       enable.edgeFuzz = false;
+      enable.rim = false;
+      enable.centerEdge = false;
     }
     if (!sectionEnabled.expGrain) {
       enable.grainSpeck = false;
@@ -383,9 +383,9 @@ export function createGlyphAtlas(options) {
       { path: 'ink.rimCurve', section: 'expEdge', require: 'enable.rim' },
     ],
     centerEdge: [
-      { path: 'enable.centerEdge', section: 'expTone' },
-      { path: 'centerEdge.center', section: 'expTone', require: 'enable.centerEdge' },
-      { path: 'centerEdge.edge', section: 'expTone', require: 'enable.centerEdge' },
+      { path: 'enable.centerEdge', section: 'expEdge' },
+      { path: 'centerEdge.center', section: 'expEdge', require: 'enable.centerEdge' },
+      { path: 'centerEdge.edge', section: 'expEdge', require: 'enable.centerEdge' },
     ],
     texture: [
       { path: 'enable.grainSpeck', section: 'expGrain' },
@@ -488,8 +488,8 @@ export function createGlyphAtlas(options) {
 
   const EXPERIMENTAL_SECTION_IDS = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
   const EXPERIMENTAL_SECTION_STAGE_MAP = {
-    expTone: ['fill', 'centerEdge'],
-    expEdge: ['fuzz'],
+    expTone: ['fill'],
+    expEdge: ['fuzz', 'centerEdge'],
     expGrain: ['texture'],
     expDefects: ['dropouts', 'punch', 'smudge'],
   };
@@ -579,13 +579,10 @@ export function createGlyphAtlas(options) {
       && sectionActive.expTone
       && Math.abs(ribbonBandStrength) > 1e-3
     );
-    const toneCoreModulesActive = (
-      toneDynamicsActive
-      || ribbonBandsActive
-      || (!!enable.rim && sectionActive.expTone && hasPositive(inkCfg.rim))
-    );
+    const rimActive = !!enable.rim && sectionActive.expEdge && hasPositive(inkCfg.rim);
+    const toneCoreModulesActive = toneDynamicsActive || ribbonBandsActive || rimActive;
     const toneCoreActive = toneCoreModulesActive;
-    const centerEdgeActive = sectionActive.expTone
+    const centerEdgeActive = sectionActive.expEdge
       && !!enable.centerEdge
       && (hasPositive(centerEdgeCfg.center) || hasPositive(centerEdgeCfg.edge));
     const textureActive = sectionActive.expGrain
