@@ -994,6 +994,8 @@ body[data-page-tone='dark']{
   .ink-overall-spacer { width: 16px; display: inline-flex; flex: 0 0 16px; visibility: hidden; }
   .ink-settings-divider { margin: 16px 0; }
   .ink-section-body .control-row { margin-bottom: 6px; }
+  .ink-section-body .control-row--quality { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.28); }
+  .ink-section-body .control-row--quality + .control-row--quality { margin-top: 6px; padding-top: 0; border-top: none; }
   .ink-section-body .control-row input[type="range"] {
     flex: 1;
     margin: 0 8px;
