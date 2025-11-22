@@ -109,6 +109,8 @@ const EXP_EDGE_KEYS = [
   { path: 'centerEdge.patchSize', label: 'Patch size' },
 ];
 
+const EXP_EDGE_LABELS = {};
+
 const EXP_GRAIN_KEYS = [
   { path: 'enable.grainSpeck', label: 'Grain speckle' },
   { path: 'ink.mottling', label: 'Mottling' },
@@ -160,6 +162,7 @@ const SECTION_DEFS = [
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_EDGE_KEYS,
+    labels: EXP_EDGE_LABELS,
     trigger: 'glyph',
     stateKey: 'expEdgeStrength',
     defaultStrength: getDefaultInkSectionStrength('expEdge'),
@@ -1403,14 +1406,28 @@ function buildObjectControls(meta, container, obj, path, label) {
   if (!obj || typeof obj !== 'object') return;
   const group = document.createElement('div');
   group.className = 'ink-subgroup';
+  if (path === 'fuzzExp') group.classList.add('ink-subgroup-plain');
   if (label) {
+    const headingRow = document.createElement('div');
+    headingRow.className = 'ink-subheading-row';
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
-    heading.textContent = label;
-    group.appendChild(heading);
+    if (path === 'fuzzExp') heading.classList.add('ink-subheading-plain');
+    heading.textContent = meta.labels?.[path] || label;
+    headingRow.appendChild(heading);
+    if (path === 'fuzzExp') {
+      const toggle = createInputForValue(obj.enable ?? false, `${path}.enable`, meta?.id);
+      toggle.classList.add('ink-subheading-toggle');
+      toggle.setAttribute('aria-label', `Toggle ${heading.textContent}`);
+      toggle.title = `Toggle ${heading.textContent}`;
+      headingRow.appendChild(toggle);
+      registerMetaInput(meta, `${path}.enable`, toggle);
+    }
+    group.appendChild(headingRow);
   }
   const keys = getObjectKeys(path, obj);
   keys.forEach(key => {
+    if (path === 'fuzzExp' && key === 'enable') return;
     const keyPath = path ? `${path}.${key}` : key;
     const value = obj[key];
     if (Array.isArray(value)) {
@@ -1423,7 +1440,8 @@ function buildObjectControls(meta, container, obj, path, label) {
     }
     const input = createInputForValue(value, keyPath, meta?.id);
     if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
-    const row = buildControlRow(key, input);
+    const rowLabel = meta.labels?.[keyPath] || key;
+    const row = buildControlRow(rowLabel, input);
     group.appendChild(row);
     registerMetaInput(meta, keyPath, input);
   });
