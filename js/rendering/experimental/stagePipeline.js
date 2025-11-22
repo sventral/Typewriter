@@ -724,7 +724,15 @@ export function createExperimentalStagePipeline(deps = {}) {
     const invDp = 1 / dpPerCss;
     if (!params.enable.grainSpeck) return;
     const stageQuality = getStageQualityFromContext(ctx);
-    const detailCss = getDetailDensityCss(ctx, 1.5);
+    // Use mottling to shift blotch size: low = bigger blotches, high = finer specks.
+    // Keep current feel for 0–0.8, add headroom above that for stronger effect.
+    const mottlingRaw = clamp(params?.ink?.mottling ?? 0, 0, 1.5);
+    const baseBand = Math.min(mottlingRaw, 0.8);
+    const baseScale = 0.6 + baseBand * 2; // matches previous 0.6–2.2 range when <=0.8
+    const extraBand = Math.max(0, mottlingRaw - 0.8);
+    const extraScale = 1 + extraBand * 1.8; // additional boost up to ~2.26x at max
+    const mottlingScale = baseScale * extraScale;
+    const detailCss = getDetailDensityCss(ctx, 1.5 * mottlingScale);
     let sampleOffsets = SPECK_SUBPIXEL_OFFSETS;
     if (stageQuality < 1) {
       const subsetCount = Math.max(1, Math.round(sampleOffsets.length * stageQuality));
