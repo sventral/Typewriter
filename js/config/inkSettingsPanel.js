@@ -27,6 +27,8 @@ const INPUT_OVERRIDES = {
   'expEdge.edgeFuzz.rough': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expEdge.edgeFuzz.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
   'expEdge.edgeFuzz.mix': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.centerEdge.thicken': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
+  'expEdge.centerEdge.variation': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expGrain.ink.mottling': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
   'expGrain.ink.speckDark': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
   'expGrain.ink.speckLight': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
@@ -101,6 +103,8 @@ const EXP_EDGE_KEYS = [
   { path: 'enable.centerEdge', label: 'Center/edge' },
   { path: 'centerEdge.center', label: 'Center boost' },
   { path: 'centerEdge.edge', label: 'Edge thinning' },
+  { path: 'centerEdge.thicken', label: 'Edge thicken' },
+  { path: 'centerEdge.variation', label: 'Center/edge variation' },
 ];
 
 const EXP_GRAIN_KEYS = [
