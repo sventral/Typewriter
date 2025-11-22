@@ -962,18 +962,22 @@ export function createGlyphAtlas(options) {
               const pA = pData[i];
               if (pA > 0) {
                 const fA = basePixels[i];
-                // Subtract prefix alpha from full alpha.
-                // If pA is 255 (solid), fA (solid) - pA = 0. Clean cut.
-                // If pA is 100 (AA), fA (AA) - pA = 0. Clean cut.
+                if (fA === 0) continue;
+                // Subtract prefix alpha from full alpha, premultiplying RGB to avoid bright fringes on light inks.
                 let newA = fA - pA;
                 if (newA <= 0) {
                   basePixels[i] = 0;
-                  // Clear RGB to keep it clean
-                  basePixels[i-1] = 0;
-                  basePixels[i-2] = 0;
-                  basePixels[i-3] = 0;
+                  basePixels[i - 1] = 0;
+                  basePixels[i - 2] = 0;
+                  basePixels[i - 3] = 0;
                 } else {
+                  const scale = newA / fA;
                   basePixels[i] = newA;
+                  if (scale < 1) {
+                    basePixels[i - 1] = Math.round(basePixels[i - 1] * scale);
+                    basePixels[i - 2] = Math.round(basePixels[i - 2] * scale);
+                    basePixels[i - 3] = Math.round(basePixels[i - 3] * scale);
+                  }
                 }
               }
             }
