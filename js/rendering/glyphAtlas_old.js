@@ -21,6 +21,7 @@ export function createGlyphAtlas(options) {
     isInkSectionEnabled,
     getExperimentalEffectsConfig,
     getExperimentalQualitySettings,
+    getExperimentalScaleSettings,
   } = options || {};
 
   const app = explicitApp || context?.app;
@@ -55,7 +56,18 @@ export function createGlyphAtlas(options) {
   const getExperimentalQualitySettingsFn = typeof getExperimentalQualitySettings === 'function'
     ? getExperimentalQualitySettings
     : (() => ({}));
+  const getExperimentalScaleSettingsFn = typeof getExperimentalScaleSettings === 'function'
+    ? getExperimentalScaleSettings
+    : (() => ({}));
   const ALT_VARIANTS = 9;
+  const overhangCache = new Map();
+  let baselineCharWidthCss = null;
+
+  // Optional user-tunable scale bias for ink effects (keeps visual size consistent across CPI/fonts)
+  const getEffectScaleBias = () => {
+    const v = state?.inkEffectScaleBias;
+    return Number.isFinite(v) && v > 0 ? v : 1;
+  };
   const experimentalAtlases = new Map();
   const experimentalProcessorCache = new Map();
 
@@ -302,6 +314,13 @@ export function createGlyphAtlas(options) {
       enable.edgeFuzz = false;
       enable.rim = false;
       enable.centerEdge = false;
+      enable.fuzzExp = false;
+    }
+    // If experimental fuzz is active, force centerEdge stage on so fuzz can apply
+    const fuzzThicken = params?.fuzzExp?.thicken || 0;
+    const fuzzEnabled = params?.fuzzExp?.enable !== false;
+    if (sectionEnabled.expEdge && fuzzEnabled && Math.abs(fuzzThicken) > 1e-6) {
+      enable.centerEdge = true;
     }
     if (!sectionEnabled.expGrain) {
       enable.grainSpeck = false;
@@ -311,6 +330,48 @@ export function createGlyphAtlas(options) {
       enable.punch = false;
       enable.smudge = false;
     }
+    return params;
+  }
+
+  function applySectionScaleBias(params, scaleBias) {
+    if (!params || !scaleBias) return params;
+    const clampScale = v => clamp(v || 0, 0, 5);
+    const mul = (obj, key, factor) => {
+      if (!obj || !Object.prototype.hasOwnProperty.call(obj, key)) return;
+      const val = obj[key];
+      if (!Number.isFinite(val)) return;
+      obj[key] = val * factor;
+    };
+
+    const toneS = clampScale(scaleBias.expTone);
+    mul(params.noise, 'lfScale', toneS);
+    mul(params.noise, 'hfScale', toneS);
+    mul(params.ribbon, 'height', toneS);
+    mul(params.ribbon, 'delta', toneS);
+
+    const edgeS = clampScale(scaleBias.expEdge);
+    mul(params.edgeFuzz, 'inBand', edgeS);
+    mul(params.edgeFuzz, 'outBand', edgeS);
+    mul(params.edgeFuzz, 'scale', edgeS);
+    mul(params.centerEdge, 'center', edgeS);
+    mul(params.centerEdge, 'edge', edgeS);
+    mul(params.centerEdge, 'thicken', edgeS);
+    if (params.fuzzExp) {
+      mul(params.fuzzExp, 'thicken', edgeS);
+    }
+
+    const grainS = clampScale(scaleBias.expGrain);
+    mul(params.noise, 'lfScale', grainS);
+    mul(params.noise, 'hfScale', grainS);
+
+    const defectS = clampScale(scaleBias.expDefects);
+    mul(params.dropouts, 'width', defectS);
+    mul(params.dropouts, 'scale', defectS);
+    mul(params.punch, 'rMin', defectS);
+    mul(params.punch, 'rMax', defectS);
+    mul(params.punch, 'soft', defectS);
+    mul(params.smudge, 'radius', defectS);
+    mul(params.smudge, 'scale', defectS);
     return params;
   }
 
@@ -339,7 +400,11 @@ export function createGlyphAtlas(options) {
       { path: 'centerEdge.center', section: 'expEdge', require: 'enable.centerEdge' },
       { path: 'centerEdge.edge', section: 'expEdge', require: 'enable.centerEdge' },
       { path: 'centerEdge.thicken', section: 'expEdge', require: 'enable.centerEdge' },
-      { path: 'centerEdge.variation', section: 'expEdge', require: 'enable.centerEdge' },
+      { path: 'centerEdge.patchFill', section: 'expEdge', require: 'enable.centerEdge' },
+      { path: 'centerEdge.patchSize', section: 'expEdge', require: 'enable.centerEdge' },
+      { path: 'fuzzExp.enable', section: 'expEdge' },
+      { path: 'fuzzExp.thicken', section: 'expEdge', require: 'fuzzExp.enable' },
+      { path: 'fuzzExp.patchFill', section: 'expEdge', require: 'fuzzExp.enable' },
     ],
     texture: [
       { path: 'enable.grainSpeck', section: 'expGrain' },
@@ -506,6 +571,7 @@ export function createGlyphAtlas(options) {
     const ribbonCfg = cfg.ribbon || {};
     const noiseCfg = cfg.noise || {};
     const centerEdgeCfg = cfg.centerEdge || {};
+    const fuzzExpCfg = cfg.fuzzExp || {};
     const edgeFuzzCfg = cfg.edgeFuzz || {};
     const dropoutsCfg = cfg.dropouts || {};
     const smudgeCfg = cfg.smudge || {};
@@ -543,6 +609,10 @@ export function createGlyphAtlas(options) {
         || hasPositive(centerEdgeCfg.edge)
         || hasPositive(centerEdgeCfg.thicken)
       );
+
+    const fuzzExpActive = sectionActive.expEdge
+      && (fuzzExpCfg.enable !== false)
+      && hasPositive(fuzzExpCfg.thicken);
     const textureActive = sectionActive.expGrain
       && !!enable.grainSpeck
       && (hasPositive(inkCfg.speckDark) || hasPositive(inkCfg.speckLight));
@@ -564,6 +634,7 @@ export function createGlyphAtlas(options) {
       && hasPositive(smudgeCfg.radius);
     const needsFill = toneCoreActive
       || centerEdgeActive
+      || fuzzExpActive
       || textureActive
       || dropoutsActive
       || punchActive
@@ -573,7 +644,7 @@ export function createGlyphAtlas(options) {
       fill: needsFill,
       dropouts: dropoutsActive,
       texture: textureActive,
-      centerEdge: centerEdgeActive,
+      centerEdge: centerEdgeActive || fuzzExpActive,
       punch: punchActive,
       fuzz: fuzzActive,
       smudge: smudgeActive,
@@ -647,6 +718,8 @@ export function createGlyphAtlas(options) {
     return processor;
   }
 
+
+
   function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const preferWhiteEffects = !!state.inkEffectsPreferWhite;
     let effectsAllowed =
@@ -665,12 +738,24 @@ export function createGlyphAtlas(options) {
     const pipelineStages = resolveExperimentalStages(rawOrder);
     const hasExperimentalStages = Array.isArray(pipelineStages) && pipelineStages.length > 0;
 
+    // Force pipeline if we need to erase a prefix (variantIdx > 0) to avoid ghosts,
+    // or if we actually have effects to run.
+    const needsEffectsPipeline = effectsAllowed && overallStrength > 0 && hasExperimentalStages;
+    const needsPipeline = needsEffectsPipeline || (variantIdx > 0);
+
     // BEGIN: config snapshot + hash (no name collisions)
     const baseExperimentalConfig = getExperimentalEffectsConfigFn() || {};
     const sectionEnabled = getExperimentalSectionEnabledState();
     const orderKey = hasExperimentalStages ? pipelineStages.join('-') : 'none';
     const stageSignature = buildExperimentalStageConfigSignature(pipelineStages, baseExperimentalConfig, sectionEnabled);
     const qualitySettings = getExperimentalQualitySettingsFn() || {};
+    const scaleSettings = getExperimentalScaleSettingsFn() || {};
+    const sectionScaleBias = {
+      expTone: clamp(((scaleSettings.expTone ?? state.expToneScale ?? 100) / 100), 0, 5),
+      expEdge: clamp(((scaleSettings.expEdge ?? state.expEdgeScale ?? 100) / 100), 0, 5),
+      expGrain: clamp(((scaleSettings.expGrain ?? state.expGrainScale ?? 100) / 100), 0, 5),
+      expDefects: clamp(((scaleSettings.expDefects ?? state.expDefectsScale ?? 100) / 100), 0, 5),
+    };
     const detailResolutionConfig = buildDetailResolutionConfig(qualitySettings);
     const qualitySignature = detailResolutionConfig?.signature || 'base';
     const overallKey = Math.round(overallStrength * 1000);
@@ -689,8 +774,6 @@ export function createGlyphAtlas(options) {
     let atlas = experimentalAtlases.get(key);
     if (atlas) return atlas;
 
-
-
     const ASC = getAscFn();
     const DESC = getDescFn();
     const CHAR_W = getCharWidthFn();
@@ -706,10 +789,40 @@ export function createGlyphAtlas(options) {
     const GLYPH_BLEED = Math.ceil((ASC + DESC) * 0.5);
     const ORIGIN_Y_CSS = ASC + GLYPH_BLEED;
     const CELL_W_CSS = CHAR_W;
+    if (!baselineCharWidthCss && Number.isFinite(CELL_W_CSS) && CELL_W_CSS > 0) {
+      baselineCharWidthCss = CELL_W_CSS;
+    }
     const CELL_H_CSS = Math.ceil(ASC + DESC + 2 * GLYPH_BLEED);
-    const GUTTER_DP = 1;
+
+    // Dynamic overhang: measure actual glyph extents for this font to avoid clipping
+    const overhangKey = `${ACTIVE_FONT_NAME || ''}|${FONT_SIZE || 0}|${RENDER_SCALE || 1}`;
+    let OVERHANG_CSS = overhangCache.get(overhangKey);
+    if (!Number.isFinite(OVERHANG_CSS)) {
+      const measureCanvas = document.createElement('canvas');
+      const mCtx = measureCanvas.getContext('2d');
+      mCtx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
+      mCtx.textAlign = 'left';
+      mCtx.textBaseline = 'alphabetic';
+      const sampleChars = '~jgQÅßfyjpABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let maxLeft = 0;
+      let maxRightExtra = 0;
+      for (const ch of sampleChars) {
+        const m = mCtx.measureText(ch);
+        const left = Math.max(0, m.actualBoundingBoxLeft || 0);
+        const rightExtra = Math.max(0, (m.actualBoundingBoxRight || m.width || 0) - (m.width || 0));
+        if (left > maxLeft) maxLeft = left;
+        if (rightExtra > maxRightExtra) maxRightExtra = rightExtra;
+      }
+      // 2px safety margin in CSS space to guard against strokes we didn't sample
+      const SAFETY_CSS = 2;
+      OVERHANG_CSS = Math.max(maxLeft, maxRightExtra) + SAFETY_CSS;
+      overhangCache.set(overhangKey, OVERHANG_CSS);
+    }
+
+    const GLYPH_DRAW_W_CSS = CELL_W_CSS + 2 * OVERHANG_CSS;
+    const GUTTER_DP = 2;
     const GUTTER_CSS = GUTTER_DP / RENDER_SCALE;
-    const cellW_draw_dp = Math.round(CELL_W_CSS * RENDER_SCALE);
+    const cellW_draw_dp = Math.round(GLYPH_DRAW_W_CSS * RENDER_SCALE);
     const cellH_draw_dp = Math.ceil(CELL_H_CSS * RENDER_SCALE);
     const cellW_pack_dp = cellW_draw_dp + 2 * GUTTER_DP;
     const cellH_pack_dp = cellH_draw_dp + 2 * GUTTER_DP;
@@ -734,8 +847,6 @@ export function createGlyphAtlas(options) {
     const advCache = new Float32Array(ASCII_END + 1);
     const SHIFT_EPS = 0.5;
     const sampleScale = 1;
-    const needsEffectsPipeline = effectsAllowed && overallStrength > 0 && hasExperimentalStages;
-    const needsPipeline = needsEffectsPipeline;
 
     let glyphCanvas = null;
     let glyphCtx = null;
@@ -759,6 +870,7 @@ export function createGlyphAtlas(options) {
       ribbon: { ...(baseConfig.ribbon || {}) },
       noise: { ...(baseConfig.noise || {}) },
       centerEdge: { ...(baseConfig.centerEdge || {}) },
+      fuzzExp: { ...(baseConfig.fuzzExp || {}) },
       dropouts: { ...(baseConfig.dropouts || {}) },
       edgeFuzz: { ...(baseConfig.edgeFuzz || {}) },
       smudge: { ...(baseConfig.smudge || {}) },
@@ -778,38 +890,94 @@ export function createGlyphAtlas(options) {
         const packX_css = (col * cellW_pack_dp) / RENDER_SCALE;
         const packY_css = (row * cellH_pack_dp) / RENDER_SCALE;
         const ch = String.fromCharCode(code);
+        
+        // Alma: Use differential rendering to isolate the N-th variant.
+        // We draw the full sequence (1..N), then subtract the prefix (1..N-1).
+        // This preserves tails/swashes that extend left, removing only the actual ink of previous chars.
+        const metrics = ctx.measureText(ch);
+        const adv = advCache[code] || (advCache[code] = Math.max(0.01, metrics.width));
+        
         const n = (variantIdx | 0) + 1;
-        const adv = advCache[code] || (advCache[code] = Math.max(0.01, ctx.measureText(ch).width));
-        const text = variantIdx ? ch.repeat(n) : ch;
+        const textFull = ch.repeat(n);
+        const textPrefix = n > 1 ? ch.repeat(n - 1) : null;
+
         const destX_dp = col * cellW_pack_dp + GUTTER_DP;
         const destY_dp = row * cellH_pack_dp + GUTTER_DP;
         const snapFactor = RENDER_SCALE * (glyphCanvas ? sampleScale : 1);
-        const baseLocalX = -(n - 1) * adv - SHIFT_EPS;
+        
+        // Shift left so the N-th character lands at the origin (OVERHANG_CSS)
+        const shiftLeft = (n - 1) * adv;
+        const baseLocalX = OVERHANG_CSS - shiftLeft - SHIFT_EPS;
         const baseLocalY = ORIGIN_Y_CSS;
         const localXSnapped = Math.round(baseLocalX * snapFactor) / snapFactor;
         const localYSnapped = Math.round(baseLocalY * snapFactor) / snapFactor;
 
         if (glyphCtx) {
           const glyphSeed = (atlasSeed ^ Math.imul((code + 1) | 0, 0xC2B2AE3D)) >>> 0;
-          glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
-          glyphCtx.globalCompositeOperation = 'source-over';
-          glyphCtx.globalAlpha = 1;
-          glyphCtx.clearRect(0, 0, glyphCanvas.width, glyphCanvas.height);
+          
+          // 1. Capture Prefix Pixels (if applicable)
+          let prefixData = null;
+          if (textPrefix) {
+            glyphCtx.save();
+            glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
+            glyphCtx.clearRect(0, 0, glyphCanvas.width, glyphCanvas.height);
+            
+            glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
+            glyphCtx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
+            glyphCtx.textAlign = 'left';
+            glyphCtx.textBaseline = 'alphabetic';
+            glyphCtx.fillStyle = '#000000'; // Solid black for pure alpha capture
+            glyphCtx.globalCompositeOperation = 'source-over';
+            
+            glyphCtx.fillText(textPrefix, localXSnapped, localYSnapped);
+            glyphCtx.restore();
+            
+            prefixData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
+          }
+
+          // 2. Draw Full Sequence
           glyphCtx.save();
+          glyphCtx.setTransform(1, 0, 0, 1, 0, 0);
+          glyphCtx.clearRect(0, 0, glyphCanvas.width, glyphCanvas.height);
+          
           glyphCtx.setTransform(RENDER_SCALE * sampleScale, 0, 0, RENDER_SCALE * sampleScale, 0, 0);
-          glyphCtx.fillStyle = COLORS[ink] || '#000';
           glyphCtx.font = `400 ${FONT_SIZE}px "${ACTIVE_FONT_NAME}"`;
           glyphCtx.textAlign = 'left';
           glyphCtx.textBaseline = 'alphabetic';
-          glyphCtx.imageSmoothingEnabled = false;
-          glyphCtx.beginPath();
-          glyphCtx.rect(0, 0, CELL_W_CSS, CELL_H_CSS);
-          glyphCtx.clip();
-          glyphCtx.fillText(text, localXSnapped, localYSnapped);
+          glyphCtx.fillStyle = COLORS[ink] || '#000';
+          glyphCtx.globalCompositeOperation = 'source-over';
+          
+          glyphCtx.fillText(textFull, localXSnapped, localYSnapped);
           glyphCtx.restore();
 
+          // 3. Capture Full Pixels
           let glyphData = glyphCtx.getImageData(0, 0, glyphCanvas.width, glyphCanvas.height);
           const basePixels = glyphData.data;
+
+          // 4. Perform Pixel Subtraction (Eliminates ghosts)
+          if (prefixData) {
+            const pData = prefixData.data;
+            const len = basePixels.length;
+            for (let i = 3; i < len; i += 4) {
+              const pA = pData[i];
+              if (pA > 0) {
+                const fA = basePixels[i];
+                // Subtract prefix alpha from full alpha.
+                // If pA is 255 (solid), fA (solid) - pA = 0. Clean cut.
+                // If pA is 100 (AA), fA (AA) - pA = 0. Clean cut.
+                let newA = fA - pA;
+                if (newA <= 0) {
+                  basePixels[i] = 0;
+                  // Clear RGB to keep it clean
+                  basePixels[i-1] = 0;
+                  basePixels[i-2] = 0;
+                  basePixels[i-3] = 0;
+                } else {
+                  basePixels[i] = newA;
+                }
+              }
+            }
+          }
 
           if (runExperimentalEffects) {
             const glyphWidth = glyphCanvas.width;
@@ -825,6 +993,7 @@ export function createGlyphAtlas(options) {
             const canRun = hasProcessor && inkPixelCount > 0;
             if (canRun) {
               const params = applySectionEnableMask(cloneParams(), sectionEnabled);
+              applySectionScaleBias(params, sectionScaleBias);
               const fontPxRaw = getFontSizeFn() || FONT_SIZE || 48;
               const fontPx = Number.isFinite(fontPxRaw) && fontPxRaw > 0 ? fontPxRaw : 48;
               const supersample = clamp(
@@ -834,7 +1003,13 @@ export function createGlyphAtlas(options) {
               );
               params.smul = (fontPx / 72) * supersample;
               params.ink = { ...(params.ink || {}), colorRgb };
-              const dpPerCss = Math.max(1e-6, (Number(RENDER_SCALE) || 1) * (Number(sampleScale) || 1));
+              const dpPerCssRaw = Math.max(1e-6, (Number(RENDER_SCALE) || 1) * (Number(sampleScale) || 1));
+              // Compensate effect scale so punch/edge fuzz sizes stay comparable to a stable baseline
+              const widthComp = Math.max(1e-6, CELL_W_CSS);
+              const drawComp = Math.max(1e-6, GLYPH_DRAW_W_CSS);
+              const baselineW = Math.max(1e-6, baselineCharWidthCss || CELL_W_CSS);
+              const effectScaleBias = getEffectScaleBias();
+              const dpPerCss = dpPerCssRaw * (baselineW / widthComp) * (widthComp / drawComp) * effectScaleBias;
               const dm = createLazyDistanceMapProvider({
                 alpha,
                 width: glyphWidth,
@@ -906,13 +1081,22 @@ export function createGlyphAtlas(options) {
           ctx.textAlign = 'left';
           ctx.textBaseline = 'alphabetic';
         } else {
+          // Fallback for direct canvas drawing (rarely used in this app flow, but kept for safety)
           ctx.save();
-          ctx.beginPath();
-          ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, CELL_W_CSS, CELL_H_CSS);
-          ctx.clip();
           const x0 = packX_css + GUTTER_CSS + localXSnapped;
           const y0 = packY_css + GUTTER_CSS + localYSnapped;
-          ctx.fillText(text, x0, y0);
+          
+          // Clip to the cell box to ensure no bleed from the shift
+          ctx.beginPath();
+          ctx.rect(packX_css + GUTTER_CSS, packY_css + GUTTER_CSS, GLYPH_DRAW_W_CSS, CELL_H_CSS);
+          ctx.clip();
+
+          ctx.fillText(textFull, x0, y0);
+          if (textPrefix) {
+             ctx.globalCompositeOperation = 'destination-out';
+             ctx.fillText(textPrefix, x0, y0);
+             ctx.globalCompositeOperation = 'source-over';
+          }
           ctx.restore();
         }
 
@@ -933,11 +1117,14 @@ export function createGlyphAtlas(options) {
       cellW_draw_dp,
       cellH_draw_dp,
       originY_css: ORIGIN_Y_CSS,
+      bleedX_css: OVERHANG_CSS,
+      drawW_css: GLYPH_DRAW_W_CSS,
       rectDpByCode,
     };
     experimentalAtlases.set(key, atlas);
     return atlas;
   }
+
 
   function ensureAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     return ensureExperimentalAtlas(ink, variantIdx, effectOverride);
@@ -959,14 +1146,16 @@ export function createGlyphAtlas(options) {
     const rect = atlas.rectDpByCode[ch.charCodeAt(0)] || fallback;
     if (!rect) return;
     const RENDER_SCALE = getRenderScale();
-    const dx_css = Math.round(x_css * RENDER_SCALE) / RENDER_SCALE;
+    const bleedX = Number.isFinite(atlas.bleedX_css) ? atlas.bleedX_css : 0;
+    const drawW_css = Number.isFinite(atlas.drawW_css) ? atlas.drawW_css : atlas.cellW_css;
+    const dx_css = Math.round((x_css - bleedX) * RENDER_SCALE) / RENDER_SCALE;
     const dy_css = Math.round((baselineY_css - atlas.originY_css) * RENDER_SCALE) / RENDER_SCALE;
     const baseOpacity = clamp(((state.inkOpacity && typeof state.inkOpacity[ink] === 'number') ? state.inkOpacity[ink] : 100) / 100, 0, 1);
     const layerFalloff = Math.max(0.1, Math.min(1, 0.92 * Math.pow(0.92, totalLayers - 1 - layerIndex)));
     const finalAlpha = (ink === 'w') ? baseOpacity : baseOpacity * layerFalloff;
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = finalAlpha;
-    ctx.drawImage(atlas.canvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, atlas.cellW_css, atlas.cellH_css);
+    ctx.drawImage(atlas.canvas, rect.sx_dp, rect.sy_dp, rect.sw_dp, rect.sh_dp, dx_css, dy_css, drawW_css, atlas.cellH_css);
   }
 
   if (typeof context?.registerRendererApi === 'function') {
