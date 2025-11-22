@@ -7,7 +7,7 @@ export const GLYPH_JITTER_DEFAULTS = Object.freeze({
   seed: 0xD1FF1E,
 });
 
-export const GLYPH_JITTER_AMOUNT_LIMITS = Object.freeze({ min: 0, max: 25 });
+export const GLYPH_JITTER_AMOUNT_LIMITS = Object.freeze({ min: 0, max: 100 });
 export const GLYPH_JITTER_FREQUENCY_LIMITS = Object.freeze({ min: 0, max: 100 });
 
 function sanitizeRange(range, fallback, limits) {
