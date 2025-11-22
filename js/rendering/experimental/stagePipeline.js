@@ -809,10 +809,16 @@ export function createExperimentalStagePipeline(deps = {}) {
     const eK = params.centerEdge.edge || 0;
     const tK = params.centerEdge.thicken || 0;
     const variation = clamp(params.centerEdge.variation ?? 1, 0, 1);
-    const variationSeed = (seed ^ 0xC1CE1234) >>> 0;
-    const freq = 3 + (1 - variation) * 12; // fewer, smaller patches as variation drops
-    const threshold = variation; // 1 => full coverage; 0.3 => ~30% coverage
-    if (cK === 0 && eK === 0 && tK === 0) return;
+    const varAmt = 1 - variation; // 0 = full coverage, 1 = sparse patches
+    // independent seeds per control so patches differ per knob
+    const seedCenter = (seed ^ 0xC1CE1C31) >>> 0;
+    const seedEdge = (seed ^ 0xC1CE2D42) >>> 0;
+    const seedThicken = (seed ^ 0xC1CE3E53) >>> 0;
+    // Patch size grows with variation; lower variation => smaller, denser noise frequency
+    const baseFreq = 1.5;
+    const freq = baseFreq + varAmt * 18; // at var=0 -> 1.5 (big patches), var=1 -> 19.5 (tiny)
+    const coverageProb = clamp01(variation); // probability a patch is ON
+    if (cK === 0 && eK === 0 && tK === 0 && varAmt === 0) return;
     for (let i = 0; i < w * h; i++) {
       if (alpha0[i] === 0) continue;
       let norm = (inside[i] || 0) / maxInside;
@@ -820,21 +826,16 @@ export function createExperimentalStagePipeline(deps = {}) {
         const steps = quantLevels - 1;
         norm = clamp((Math.round(norm * steps) / steps) || 0, 0, 1);
       }
-      if (variation < 0.999) {
-        const x = i % w;
-        const y = (i / w) | 0;
-        const mask = sampleSpeckValueNoise(
-          hash2Fn,
-          x * freq,
-          y * freq,
-          variationSeed,
-        );
-        if (mask > threshold) continue;
-      }
+      const x = i % w;
+      const y = (i / w) | 0;
+      const maskVal = (seedVal) => sampleSpeckValueNoise(hash2Fn, x * freq, y * freq, seedVal);
+      const onCenter = varAmt < 1e-3 ? true : maskVal(seedCenter) <= coverageProb;
+      const onEdge = varAmt < 1e-3 ? true : maskVal(seedEdge) <= coverageProb;
+      const onThicken = varAmt < 1e-3 ? true : maskVal(seedThicken) <= coverageProb;
       let mod = 1;
-      mod *= clampFn(1 + cK * norm, 0, 2);
-      mod *= clampFn(1 - eK * (1 - norm), 0, 2);
-      mod *= clampFn(1 + tK * (1 - norm), 0, 2);
+      if (onCenter && cK !== 0) mod *= clampFn(1 + cK * norm, 0, 3);
+      if (onEdge && eK !== 0) mod *= clampFn(1 - eK * (1 - norm), 0, 3);
+      if (onThicken && tK !== 0) mod *= clampFn(1 + tK * (1 - norm), 0, 8);
       coverage[i] = clamp01Fn(coverage[i] * mod);
     }
   }
