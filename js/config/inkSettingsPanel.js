@@ -29,7 +29,7 @@ const INPUT_OVERRIDES = {
   'expEdge.edgeFuzz.mix': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expEdge.fuzzExp.thicken': { type: 'range', min: 0, max: 8, step: 0.01, precision: 2 },
   'expEdge.fuzzExp.patchFill': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.centerEdge.thicken': { type: 'range', min: 0, max: 8, step: 0.01, precision: 2 },
+  'expEdge.centerEdge.thicken': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
   'expEdge.centerEdge.patchFill': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expEdge.centerEdge.patchSize': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expGrain.ink.mottling': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
