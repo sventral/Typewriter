@@ -796,7 +796,7 @@ export function createExperimentalStagePipeline(deps = {}) {
   }
 
   function applyCenterEdgeShape(coverage, ctx) {
-    const { w, h, params, alpha0, dm } = ctx;
+    const { w, h, params, alpha0, dm, seed } = ctx;
     if (!params.enable.centerEdge || !params.centerEdge) return;
     const inside = dm?.raw?.inside;
     const maxInside = dm?.getMaxInside ? dm.getMaxInside() : 0;
@@ -807,7 +807,12 @@ export function createExperimentalStagePipeline(deps = {}) {
       : Math.max(2, Math.round(2 + stageQuality * 10));
     const cK = params.centerEdge.center || 0;
     const eK = params.centerEdge.edge || 0;
-    if (cK === 0 && eK === 0) return;
+    const tK = params.centerEdge.thicken || 0;
+    const variation = clamp(params.centerEdge.variation ?? 1, 0, 1);
+    const variationSeed = (seed ^ 0xC1CE1234) >>> 0;
+    const freq = 3 + (1 - variation) * 12; // fewer, smaller patches as variation drops
+    const threshold = variation; // 1 => full coverage; 0.3 => ~30% coverage
+    if (cK === 0 && eK === 0 && tK === 0) return;
     for (let i = 0; i < w * h; i++) {
       if (alpha0[i] === 0) continue;
       let norm = (inside[i] || 0) / maxInside;
@@ -815,9 +820,21 @@ export function createExperimentalStagePipeline(deps = {}) {
         const steps = quantLevels - 1;
         norm = clamp((Math.round(norm * steps) / steps) || 0, 0, 1);
       }
+      if (variation < 0.999) {
+        const x = i % w;
+        const y = (i / w) | 0;
+        const mask = sampleSpeckValueNoise(
+          hash2Fn,
+          x * freq,
+          y * freq,
+          variationSeed,
+        );
+        if (mask > threshold) continue;
+      }
       let mod = 1;
       mod *= clampFn(1 + cK * norm, 0, 2);
       mod *= clampFn(1 - eK * (1 - norm), 0, 2);
+      mod *= clampFn(1 + tK * (1 - norm), 0, 2);
       coverage[i] = clamp01Fn(coverage[i] * mod);
     }
   }

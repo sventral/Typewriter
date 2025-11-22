@@ -348,6 +348,7 @@ export function createGlyphAtlas(options) {
     mul(params.edgeFuzz, 'scale', edgeS);
     mul(params.centerEdge, 'center', edgeS);
     mul(params.centerEdge, 'edge', edgeS);
+    mul(params.centerEdge, 'thicken', edgeS);
 
     const grainS = clampScale(scaleBias.expGrain);
     mul(params.noise, 'lfScale', grainS);
@@ -388,6 +389,8 @@ export function createGlyphAtlas(options) {
       { path: 'enable.centerEdge', section: 'expEdge' },
       { path: 'centerEdge.center', section: 'expEdge', require: 'enable.centerEdge' },
       { path: 'centerEdge.edge', section: 'expEdge', require: 'enable.centerEdge' },
+      { path: 'centerEdge.thicken', section: 'expEdge', require: 'enable.centerEdge' },
+      { path: 'centerEdge.variation', section: 'expEdge', require: 'enable.centerEdge' },
     ],
     texture: [
       { path: 'enable.grainSpeck', section: 'expGrain' },
@@ -586,7 +589,11 @@ export function createGlyphAtlas(options) {
     const toneCoreActive = toneCoreModulesActive;
     const centerEdgeActive = sectionActive.expEdge
       && !!enable.centerEdge
-      && (hasPositive(centerEdgeCfg.center) || hasPositive(centerEdgeCfg.edge));
+      && (
+        hasPositive(centerEdgeCfg.center)
+        || hasPositive(centerEdgeCfg.edge)
+        || hasPositive(centerEdgeCfg.thicken)
+      );
     const textureActive = sectionActive.expGrain
       && !!enable.grainSpeck
       && (hasPositive(inkCfg.speckDark) || hasPositive(inkCfg.speckLight));
