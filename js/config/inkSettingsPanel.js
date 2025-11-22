@@ -27,6 +27,8 @@ const INPUT_OVERRIDES = {
   'expEdge.edgeFuzz.rough': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expEdge.edgeFuzz.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
   'expEdge.edgeFuzz.mix': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.fuzzExp.thicken': { type: 'range', min: 0, max: 8, step: 0.01, precision: 2 },
+  'expEdge.fuzzExp.patchFill': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expEdge.centerEdge.thicken': { type: 'range', min: 0, max: 8, step: 0.01, precision: 2 },
   'expEdge.centerEdge.patchFill': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expEdge.centerEdge.patchSize': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
@@ -101,7 +103,7 @@ const EXP_EDGE_KEYS = [
   { path: 'edgeFuzz.rough', label: 'Fuzz roughness' },
   { path: 'edgeFuzz.scale', label: 'Fuzz scale (px)' },
   { path: 'edgeFuzz.mix', label: 'Fuzz mix' },
-  { path: 'enable.experimentalFuzz', label: 'Experimental fuzz' },
+  { path: 'fuzzExp', label: 'Experimental fuzz' },
   { path: 'enable.centerEdge', label: 'Center/edge' },
   { path: 'centerEdge.center', label: 'Center boost' },
   { path: 'centerEdge.edge', label: 'Edge thinning' },
@@ -110,7 +112,11 @@ const EXP_EDGE_KEYS = [
   { path: 'centerEdge.patchSize', label: 'Patch size' },
 ];
 
-const EXP_EDGE_LABELS = {};
+const EXP_EDGE_LABELS = {
+  fuzzExp: 'Experimental fuzz',
+  'fuzzExp.thicken': 'Edge thicken',
+  'fuzzExp.patchFill': 'Patch coverage',
+};
 
 const EXP_GRAIN_KEYS = [
   { path: 'enable.grainSpeck', label: 'Grain speckle' },

@@ -314,6 +314,7 @@ export function createGlyphAtlas(options) {
       enable.edgeFuzz = false;
       enable.rim = false;
       enable.centerEdge = false;
+      enable.fuzzExp = false;
     }
     // If experimental fuzz is active, force centerEdge stage on so fuzz can apply
     const fuzzThicken = params?.fuzzExp?.thicken || 0;
@@ -401,6 +402,9 @@ export function createGlyphAtlas(options) {
       { path: 'centerEdge.thicken', section: 'expEdge', require: 'enable.centerEdge' },
       { path: 'centerEdge.patchFill', section: 'expEdge', require: 'enable.centerEdge' },
       { path: 'centerEdge.patchSize', section: 'expEdge', require: 'enable.centerEdge' },
+      { path: 'fuzzExp.enable', section: 'expEdge' },
+      { path: 'fuzzExp.thicken', section: 'expEdge', require: 'fuzzExp.enable' },
+      { path: 'fuzzExp.patchFill', section: 'expEdge', require: 'fuzzExp.enable' },
     ],
     texture: [
       { path: 'enable.grainSpeck', section: 'expGrain' },
@@ -860,6 +864,7 @@ export function createGlyphAtlas(options) {
       ribbon: { ...(baseConfig.ribbon || {}) },
       noise: { ...(baseConfig.noise || {}) },
       centerEdge: { ...(baseConfig.centerEdge || {}) },
+      fuzzExp: { ...(baseConfig.fuzzExp || {}) },
       dropouts: { ...(baseConfig.dropouts || {}) },
       edgeFuzz: { ...(baseConfig.edgeFuzz || {}) },
       smudge: { ...(baseConfig.smudge || {}) },
