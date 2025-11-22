@@ -17,8 +17,8 @@ const INPUT_OVERRIDES = {
   'expTone.ribbon.fade': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expTone.ribbon.wobble': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expTone.noise.lfScale': { type: 'range', min: 8, max: 40, step: 0.5, precision: 2 },
-  'expTone.centerEdge.center': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expTone.centerEdge.edge': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.centerEdge.center': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.centerEdge.edge': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expEdge.ink.rim': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
   'expEdge.ink.rimCurve': { type: 'range', min: 0.4, max: 3, step: 0.01, precision: 2 },
   'expEdge.edgeFuzz.opacity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
@@ -73,38 +73,38 @@ function getInputOverride(sectionId, path) {
 const EXPERIMENTAL_EFFECTS_CONFIG = cloneDefaultExperimentalConfig();
 
 const EXP_TONE_KEYS = [
-  { path: 'enable.toneDynamics', label: 'Enable tone filters' },
+  { path: 'enable.toneDynamics', label: 'Tone filters' },
   { path: 'ink.pressureMid', label: 'Pressure mid' },
   { path: 'ink.pressureVar', label: 'Pressure variance' },
   { path: 'ink.inkGamma', label: 'Ink gamma' },
   { path: 'ink.toneJitter', label: 'Tone jitter' },
   { path: 'noise.lfScale', label: 'Variance patch size' },
-  { path: 'enable.ribbonBands', label: 'Enable ribbon band' },
+  { path: 'enable.ribbonBands', label: 'Ribbon band' },
   { path: 'ribbon.height', label: 'Band height' },
   { path: 'ribbon.position', label: 'Band vertical position' },
   { path: 'ribbon.delta', label: 'Band tone shift' },
   { path: 'ribbon.fade', label: 'Band edge fade' },
   { path: 'ribbon.wobble', label: 'Band wobble' },
-  { path: 'enable.centerEdge', label: 'Enable center/edge shaping' },
-  { path: 'centerEdge.center', label: 'Center boost' },
-  { path: 'centerEdge.edge', label: 'Edge boost' },
 ];
 
 const EXP_EDGE_KEYS = [
-  { path: 'enable.rim', label: 'Enable rim lighting' },
+  { path: 'enable.rim', label: 'Rim lighting' },
   { path: 'ink.rim', label: 'Rim strength' },
   { path: 'ink.rimCurve', label: 'Rim curve' },
-  { path: 'enable.edgeFuzz', label: 'Enable edge fuzz' },
+  { path: 'enable.edgeFuzz', label: 'Edge fuzz' },
   { path: 'edgeFuzz.opacity', label: 'Edge fuzz opacity' },
   { path: 'edgeFuzz.inBand', label: 'Inner fuzz band (px)' },
   { path: 'edgeFuzz.outBand', label: 'Outer fuzz band (px)' },
   { path: 'edgeFuzz.rough', label: 'Fuzz roughness' },
   { path: 'edgeFuzz.scale', label: 'Fuzz scale (px)' },
   { path: 'edgeFuzz.mix', label: 'Fuzz mix' },
+  { path: 'enable.centerEdge', label: 'Center/edge' },
+  { path: 'centerEdge.center', label: 'Center boost' },
+  { path: 'centerEdge.edge', label: 'Edge thinning' },
 ];
 
 const EXP_GRAIN_KEYS = [
-  { path: 'enable.grainSpeck', label: 'Enable grain speckle' },
+  { path: 'enable.grainSpeck', label: 'Grain speckle' },
   { path: 'ink.mottling', label: 'Mottling' },
   { path: 'ink.speckDark', label: 'Dark specks' },
   { path: 'ink.speckLight', label: 'Light specks' },
@@ -112,14 +112,14 @@ const EXP_GRAIN_KEYS = [
 ];
 
 const EXP_DEFECT_KEYS = [
-  { path: 'enable.dropouts', label: 'Enable dropouts' },
+  { path: 'enable.dropouts', label: 'Dropouts' },
   { path: 'dropouts.amount', label: 'Dropout amount' },
   { path: 'dropouts.width', label: 'Dropout width (px)' },
   { path: 'dropouts.scale', label: 'Dropout scale (px)' },
   { path: 'dropouts.pinhole', label: 'Pinhole density' },
   { path: 'dropouts.streakDensity', label: 'Streak density' },
   { path: 'dropouts.pinholeWeight', label: 'Pinhole weight' },
-  { path: 'enable.smudge', label: 'Enable smudge halo' },
+  { path: 'enable.smudge', label: 'Smudge halo' },
   { path: 'smudge.strength', label: 'Smudge strength' },
   { path: 'smudge.radius', label: 'Smudge radius (px)' },
   { path: 'smudge.falloff', label: 'Smudge falloff' },
@@ -127,7 +127,7 @@ const EXP_DEFECT_KEYS = [
   { path: 'smudge.density', label: 'Smudge density' },
   { path: 'smudge.dirDeg', label: 'Smudge direction (deg)' },
   { path: 'smudge.spread', label: 'Smudge spread' },
-  { path: 'enable.punch', label: 'Enable punch defects' },
+  { path: 'enable.punch', label: 'Punch defects' },
   { path: 'punch.chance', label: 'Punch chance' },
   { path: 'punch.count', label: 'Punch count' },
   { path: 'punch.rMin', label: 'Punch size min' },
@@ -140,7 +140,7 @@ const EXP_DEFECT_KEYS = [
 const SECTION_DEFS = [
   {
     id: 'expTone',
-    label: 'Tone & ribbon',
+    label: 'Tone variations',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_TONE_KEYS,
@@ -191,7 +191,7 @@ const EFFECT_SCALE_MAX = 200;
 const SECTION_QUALITY_CONFIG = Object.freeze({
   expTone: {
     stateKey: 'expToneQuality',
-    label: 'Tone & ribbon quality',
+    label: 'Tone variations quality',
     defaultValue: getDefaultInkSectionQuality('expTone'),
   },
   expEdge: {
@@ -1567,8 +1567,8 @@ function buildSection(def, root) {
     checkbox.type = 'checkbox';
     checkbox.className = 'ink-section-enable-checkbox';
     checkbox.checked = startPercent > 0;
-    checkbox.setAttribute('aria-label', `Enable ${def.label}`);
-    checkbox.title = `Enable ${def.label}`;
+    checkbox.setAttribute('aria-label', `Toggle ${def.label}`);
+    checkbox.title = `Toggle ${def.label}`;
     checkboxWrap.appendChild(checkbox);
     topLine.appendChild(checkboxWrap);
   }
