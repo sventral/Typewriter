@@ -21,6 +21,7 @@ export function createGlyphAtlas(options) {
     isInkSectionEnabled,
     getExperimentalEffectsConfig,
     getExperimentalQualitySettings,
+    getExperimentalScaleSettings,
   } = options || {};
 
   const app = explicitApp || context?.app;
@@ -54,6 +55,9 @@ export function createGlyphAtlas(options) {
     : (() => ({}));
   const getExperimentalQualitySettingsFn = typeof getExperimentalQualitySettings === 'function'
     ? getExperimentalQualitySettings
+    : (() => ({}));
+  const getExperimentalScaleSettingsFn = typeof getExperimentalScaleSettings === 'function'
+    ? getExperimentalScaleSettings
     : (() => ({}));
   const ALT_VARIANTS = 9;
   const overhangCache = new Map();
@@ -319,6 +323,42 @@ export function createGlyphAtlas(options) {
       enable.punch = false;
       enable.smudge = false;
     }
+    return params;
+  }
+
+  function applySectionScaleBias(params, scaleBias) {
+    if (!params || !scaleBias) return params;
+    const clampScale = v => clamp(v || 0, 0, 5);
+    const mul = (obj, key, factor) => {
+      if (!obj || !Object.prototype.hasOwnProperty.call(obj, key)) return;
+      const val = obj[key];
+      if (!Number.isFinite(val)) return;
+      obj[key] = val * factor;
+    };
+
+    const toneS = clampScale(scaleBias.expTone);
+    mul(params.noise, 'lfScale', toneS);
+    mul(params.noise, 'hfScale', toneS);
+    mul(params.ribbon, 'height', toneS);
+    mul(params.ribbon, 'delta', toneS);
+
+    const edgeS = clampScale(scaleBias.expEdge);
+    mul(params.edgeFuzz, 'inBand', edgeS);
+    mul(params.edgeFuzz, 'outBand', edgeS);
+    mul(params.edgeFuzz, 'scale', edgeS);
+
+    const grainS = clampScale(scaleBias.expGrain);
+    mul(params.noise, 'lfScale', grainS);
+    mul(params.noise, 'hfScale', grainS);
+
+    const defectS = clampScale(scaleBias.expDefects);
+    mul(params.dropouts, 'width', defectS);
+    mul(params.dropouts, 'scale', defectS);
+    mul(params.punch, 'rMin', defectS);
+    mul(params.punch, 'rMax', defectS);
+    mul(params.punch, 'soft', defectS);
+    mul(params.smudge, 'radius', defectS);
+    mul(params.smudge, 'scale', defectS);
     return params;
   }
 
@@ -683,6 +723,13 @@ export function createGlyphAtlas(options) {
     const orderKey = hasExperimentalStages ? pipelineStages.join('-') : 'none';
     const stageSignature = buildExperimentalStageConfigSignature(pipelineStages, baseExperimentalConfig, sectionEnabled);
     const qualitySettings = getExperimentalQualitySettingsFn() || {};
+    const scaleSettings = getExperimentalScaleSettingsFn() || {};
+    const sectionScaleBias = {
+      expTone: clamp(((scaleSettings.expTone ?? state.expToneScale ?? 100) / 100), 0, 5),
+      expEdge: clamp(((scaleSettings.expEdge ?? state.expEdgeScale ?? 100) / 100), 0, 5),
+      expGrain: clamp(((scaleSettings.expGrain ?? state.expGrainScale ?? 100) / 100), 0, 5),
+      expDefects: clamp(((scaleSettings.expDefects ?? state.expDefectsScale ?? 100) / 100), 0, 5),
+    };
     const detailResolutionConfig = buildDetailResolutionConfig(qualitySettings);
     const qualitySignature = detailResolutionConfig?.signature || 'base';
     const overallKey = Math.round(overallStrength * 1000);
@@ -919,6 +966,7 @@ export function createGlyphAtlas(options) {
             const canRun = hasProcessor && inkPixelCount > 0;
             if (canRun) {
               const params = applySectionEnableMask(cloneParams(), sectionEnabled);
+              applySectionScaleBias(params, sectionScaleBias);
               const fontPxRaw = getFontSizeFn() || FONT_SIZE || 48;
               const fontPx = Number.isFinite(fontPxRaw) && fontPxRaw > 0 ? fontPxRaw : 48;
               const supersample = clamp(

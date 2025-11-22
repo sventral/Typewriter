@@ -4,6 +4,7 @@ import {
   getInkSectionOrder,
   getExperimentalEffectsConfig,
   getExperimentalQualitySettings,
+  getExperimentalScaleSettings,
   isInkSectionEnabled,
 } from '../../config/inkSettingsPanel.js';
 import { createGlyphAtlas } from '../../rendering/glyphAtlas.js';
@@ -37,6 +38,7 @@ export function registerRenderingControllers(options) {
     getInkSectionOrder,
     getExperimentalEffectsConfig,
     getExperimentalQualitySettings,
+    getExperimentalScaleSettings,
     isInkSectionEnabled,
   });
 

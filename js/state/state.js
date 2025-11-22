@@ -23,6 +23,13 @@ const SECTION_QUALITY_DEFAULTS = {
   expDefects: getDefaultInkSectionQuality('expDefects'),
 };
 
+const SECTION_SCALE_DEFAULTS = {
+  expTone: 100,
+  expEdge: 100,
+  expGrain: 100,
+  expDefects: 100,
+};
+
 export const DEFAULT_INK_SECTION_ORDER = PRESET_INK_SECTION_ORDER.slice();
 
 export function createMainState(app, gridDiv = 8) {
@@ -59,6 +66,10 @@ export function createMainState(app, gridDiv = 8) {
     expEdgeQuality: SECTION_QUALITY_DEFAULTS.expEdge,
     expGrainQuality: SECTION_QUALITY_DEFAULTS.expGrain,
     expDefectsQuality: SECTION_QUALITY_DEFAULTS.expDefects,
+    expToneScale: SECTION_SCALE_DEFAULTS.expTone,
+    expEdgeScale: SECTION_SCALE_DEFAULTS.expEdge,
+    expGrainScale: SECTION_SCALE_DEFAULTS.expGrain,
+    expDefectsScale: SECTION_SCALE_DEFAULTS.expDefects,
     altSeed: 0x51F15EED,
     inkSectionOrder: DEFAULT_INK_SECTION_ORDER.slice(),
     glyphJitterEnabled: GLYPH_JITTER_DEFAULTS.enabled,
@@ -116,5 +127,9 @@ export function resetInkEffectsState(state) {
   state.expEdgeQuality = SECTION_QUALITY_DEFAULTS.expEdge;
   state.expGrainQuality = SECTION_QUALITY_DEFAULTS.expGrain;
   state.expDefectsQuality = SECTION_QUALITY_DEFAULTS.expDefects;
+  state.expToneScale = SECTION_SCALE_DEFAULTS.expTone;
+  state.expEdgeScale = SECTION_SCALE_DEFAULTS.expEdge;
+  state.expGrainScale = SECTION_SCALE_DEFAULTS.expGrain;
+  state.expDefectsScale = SECTION_SCALE_DEFAULTS.expDefects;
   state.inkSectionOrder = DEFAULT_INK_SECTION_ORDER.slice();
 }

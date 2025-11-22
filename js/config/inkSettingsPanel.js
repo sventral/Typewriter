@@ -184,6 +184,10 @@ const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
 const EFFECT_QUALITY_MAX = 200;
 
+const EFFECT_SCALE_DEFAULT = 100;
+const EFFECT_SCALE_MIN = 0;
+const EFFECT_SCALE_MAX = 200;
+
 const SECTION_QUALITY_CONFIG = Object.freeze({
   expTone: {
     stateKey: 'expToneQuality',
@@ -204,6 +208,29 @@ const SECTION_QUALITY_CONFIG = Object.freeze({
     stateKey: 'expDefectsQuality',
     label: 'Defects quality',
     defaultValue: getDefaultInkSectionQuality('expDefects'),
+  },
+});
+
+const SECTION_SCALE_CONFIG = Object.freeze({
+  expTone: {
+    stateKey: 'expToneScale',
+    label: 'Tone scale',
+    defaultValue: EFFECT_SCALE_DEFAULT,
+  },
+  expEdge: {
+    stateKey: 'expEdgeScale',
+    label: 'Edge scale',
+    defaultValue: EFFECT_SCALE_DEFAULT,
+  },
+  expGrain: {
+    stateKey: 'expGrainScale',
+    label: 'Texture scale',
+    defaultValue: EFFECT_SCALE_DEFAULT,
+  },
+  expDefects: {
+    stateKey: 'expDefectsScale',
+    label: 'Defects scale',
+    defaultValue: EFFECT_SCALE_DEFAULT,
   },
 });
 
@@ -1018,6 +1045,31 @@ function setSectionQualityPercent(sectionId, value) {
   return normalized;
 }
 
+function clampScaleValue(value, fallback = EFFECT_SCALE_DEFAULT) {
+  if (!Number.isFinite(value)) return fallback;
+  return clamp(value, EFFECT_SCALE_MIN, EFFECT_SCALE_MAX);
+}
+
+function getSectionScalePercent(sectionId, fallback = EFFECT_SCALE_DEFAULT) {
+  const cfg = SECTION_SCALE_CONFIG[sectionId];
+  const defaultValue = Number.isFinite(cfg?.defaultValue) ? cfg.defaultValue : fallback;
+  if (!cfg) return clampScaleValue(defaultValue, defaultValue);
+  return getScalarFromState(
+    cfg.stateKey,
+    clampScaleValue(defaultValue, defaultValue),
+    EFFECT_SCALE_MIN,
+    EFFECT_SCALE_MAX,
+  );
+}
+
+function setSectionScalePercent(sectionId, value) {
+  const cfg = SECTION_SCALE_CONFIG[sectionId];
+  if (!cfg) return EFFECT_SCALE_DEFAULT;
+  const normalized = clampScaleValue(value);
+  setScalarOnState(cfg.stateKey, normalized, EFFECT_SCALE_MIN, EFFECT_SCALE_MAX);
+  return normalized;
+}
+
 function normalizedPercent(value) {
   return clamp((Number(value) || 0) / 100, 0, 1);
 }
@@ -1429,6 +1481,48 @@ function createQualityControl(meta, container) {
   };
 }
 
+function createScaleControl(meta, container) {
+  if (!meta || !container) return null;
+  const cfg = SECTION_SCALE_CONFIG[meta.id];
+  if (!cfg) return null;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'ink-section-quality';
+  const labels = document.createElement('div');
+  labels.className = 'ink-section-quality-labels';
+  const mainLabel = document.createElement('span');
+  mainLabel.className = 'ink-section-quality-label';
+  mainLabel.textContent = cfg.label || 'Scale';
+  const hint = document.createElement('span');
+  hint.className = 'ink-section-quality-hint';
+  hint.textContent = 'Smaller ↔ Larger';
+  labels.appendChild(mainLabel);
+  labels.appendChild(hint);
+  const controls = document.createElement('div');
+  controls.className = 'ink-section-controls ink-section-quality-controls';
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = String(EFFECT_SCALE_MIN);
+  slider.max = String(EFFECT_SCALE_MAX);
+  slider.step = '5';
+  const numberInput = document.createElement('input');
+  numberInput.type = 'number';
+  numberInput.min = slider.min;
+  numberInput.max = slider.max;
+  numberInput.step = slider.step;
+  numberInput.setAttribute('aria-label', `${cfg.label || 'Scale'} value`);
+  controls.appendChild(slider);
+  controls.appendChild(numberInput);
+  wrapper.appendChild(labels);
+  wrapper.appendChild(controls);
+  container.appendChild(wrapper);
+  return {
+    stateKey: cfg.stateKey,
+    slider,
+    numberInput,
+    wrapper,
+  };
+}
+
 function buildSection(def, root) {
   if (def?.hidden) return null;
   const sectionEl = document.createElement('section');
@@ -1499,6 +1593,7 @@ function buildSection(def, root) {
     defaultStrength: def.defaultStrength ?? 0,
     hasStrengthControl,
     qualityControl: null,
+    scaleControl: null,
   };
 
   dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
@@ -1541,6 +1636,15 @@ function buildSection(def, root) {
     }
   }
 
+  if (SECTION_SCALE_CONFIG[def.id]) {
+    meta.scaleControl = createScaleControl(meta, body);
+    if (meta.scaleControl) {
+      const startScale = getSectionScalePercent(meta.id, EFFECT_SCALE_DEFAULT);
+      meta.scaleControl.slider.value = String(startScale);
+      meta.scaleControl.numberInput.value = String(startScale);
+    }
+  }
+
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
   panelState.metas.push(meta);
@@ -1573,6 +1677,27 @@ function buildSection(def, root) {
         if (qc.numberInput.value !== '') return;
         const fallback = getSectionQualityPercent(meta.id, EFFECT_QUALITY_DEFAULT);
         applySectionQuality(meta, fallback, { silent: true });
+      });
+    }
+  }
+
+  if (meta.scaleControl) {
+    const sc = meta.scaleControl;
+    if (sc.slider) {
+      sc.slider.addEventListener('input', () => {
+        applySectionScale(meta, Number.parseFloat(sc.slider.value));
+      });
+    }
+    if (sc.numberInput) {
+      sc.numberInput.addEventListener('input', () => {
+        const raw = Number.parseFloat(sc.numberInput.value);
+        if (!Number.isFinite(raw)) return;
+        applySectionScale(meta, raw);
+      });
+      sc.numberInput.addEventListener('blur', () => {
+        if (sc.numberInput.value !== '') return;
+        const fallback = getSectionScalePercent(meta.id, EFFECT_SCALE_DEFAULT);
+        applySectionScale(meta, fallback, { silent: true });
       });
     }
   }
@@ -1700,6 +1825,25 @@ function applySectionQuality(meta, value, options = {}) {
   return normalized;
 }
 
+function applySectionScale(meta, value, options = {}) {
+  if (!meta || !meta.scaleControl) return;
+  const sc = meta.scaleControl;
+  const normalized = clampScaleValue(value);
+  if (options.syncInputs !== false) {
+    if (sc.slider && sc.slider.value !== String(normalized)) {
+      sc.slider.value = String(normalized);
+    }
+    if (sc.numberInput && sc.numberInput.value !== String(normalized)) {
+      sc.numberInput.value = String(normalized);
+    }
+  }
+  if (options.silent) return normalized;
+  setSectionScalePercent(meta.id, normalized);
+  scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
+  persistPanelState();
+  return normalized;
+}
+
 function syncQualityControl(meta) {
   if (!meta || !meta.qualityControl) return;
   const qc = meta.qualityControl;
@@ -1709,6 +1853,18 @@ function syncQualityControl(meta) {
   }
   if (qc.numberInput && qc.numberInput.value !== String(value)) {
     qc.numberInput.value = String(value);
+  }
+}
+
+function syncScaleControl(meta) {
+  if (!meta || !meta.scaleControl) return;
+  const sc = meta.scaleControl;
+  const value = getSectionScalePercent(meta.id, EFFECT_SCALE_DEFAULT);
+  if (sc.slider && sc.slider.value !== String(value)) {
+    sc.slider.value = String(value);
+  }
+  if (sc.numberInput && sc.numberInput.value !== String(value)) {
+    sc.numberInput.value = String(value);
   }
 }
 
@@ -2184,6 +2340,14 @@ export function getExperimentalQualitySettings() {
   return settings;
 }
 
+export function getExperimentalScaleSettings() {
+  const settings = {};
+  Object.keys(SECTION_SCALE_CONFIG).forEach(sectionId => {
+    settings[sectionId] = getSectionScalePercent(sectionId, EFFECT_SCALE_DEFAULT);
+  });
+  return settings;
+}
+
 function syncOverallStrengthUI() {
   const pct = getPercentFromState('effectsOverallStrength', 100);
   if (panelState.overallSlider && panelState.overallSlider.value !== String(pct)) {
@@ -2218,6 +2382,7 @@ export function syncInkStrengthDisplays(sectionId) {
       const pct = getPercentFromState(meta.stateKey, fallback);
       applySectionStrength(meta, pct, { silent: true });
       syncQualityControl(meta);
+      syncScaleControl(meta);
     });
     return;
   }
@@ -2231,6 +2396,7 @@ export function syncInkStrengthDisplays(sectionId) {
   const pct = getPercentFromState(meta.stateKey, fallback);
   applySectionStrength(meta, pct, { silent: true });
   syncQualityControl(meta);
+  syncScaleControl(meta);
 }
 
 export function setupInkSettingsPanel(options = {}) {
