@@ -101,6 +101,7 @@ const EXP_EDGE_KEYS = [
   { path: 'edgeFuzz.rough', label: 'Fuzz roughness' },
   { path: 'edgeFuzz.scale', label: 'Fuzz scale (px)' },
   { path: 'edgeFuzz.mix', label: 'Fuzz mix' },
+  { path: 'enable.experimentalFuzz', label: 'Experimental fuzz' },
   { path: 'enable.centerEdge', label: 'Center/edge' },
   { path: 'centerEdge.center', label: 'Center boost' },
   { path: 'centerEdge.edge', label: 'Edge thinning' },

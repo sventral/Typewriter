@@ -40,6 +40,7 @@ const BASE_SECTION_CONFIG = deepFreeze({
     edgeFuzz: true,
     smudge: false,
     punch: true,
+    experimentalFuzz: false,
   },
   ink: {
     pressureMid: 0.72,
