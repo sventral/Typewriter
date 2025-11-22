@@ -797,7 +797,12 @@ export function createExperimentalStagePipeline(deps = {}) {
 
   function applyCenterEdgeShape(coverage, ctx) {
     const { w, h, params, alpha0, dm, seed } = ctx;
-    if (!params.enable.centerEdge || !params.centerEdge) return;
+    const fuzzEnabled = params.fuzzExp?.enable !== false;
+    const fuzzThicken = fuzzEnabled ? (params.fuzzExp?.thicken || 0) : 0;
+    const fuzzCoverage = fuzzEnabled ? clamp(params.fuzzExp?.coverage ?? 1, 0, 1) : 0;
+    const hasFuzz = fuzzEnabled && Math.abs(fuzzThicken) > 1e-6;
+    const centerEdgeEnabled = (params.enable.centerEdge || false) || hasFuzz;
+    if (!centerEdgeEnabled || !params.centerEdge) return;
     const inside = dm?.raw?.inside;
     const outside = dm?.raw?.outside;
     const maxInside = dm?.getMaxInside ? dm.getMaxInside() : 0;
@@ -817,7 +822,6 @@ export function createExperimentalStagePipeline(deps = {}) {
     const tK = params.centerEdge.thicken || 0;
     const patchFill = clamp(params.centerEdge.patchFill ?? 1, 0, 1);   // coverage probability
     const patchSize = clamp(params.centerEdge.patchSize ?? 0.5, 0, 1); // 0 small, 1 large
-    // independent seeds per control so patches differ per knob
     const seedCenter = (seed ^ 0xC1CE1C31) >>> 0;
     const seedEdge = (seed ^ 0xC1CE2D42) >>> 0;
     const seedThicken = (seed ^ 0xC1CE3E53) >>> 0;
@@ -833,10 +837,10 @@ export function createExperimentalStagePipeline(deps = {}) {
       }
       const x = i % w;
       const y = (i / w) | 0;
-      const maskVal = (seedVal) => sampleSpeckValueNoise(hash2Fn, x * freq, y * freq, seedVal);
-      const onCenter = patchFill >= 0.999 ? true : maskVal(seedCenter) <= patchFill;
-      const onEdge = patchFill >= 0.999 ? true : maskVal(seedEdge) <= patchFill;
-      const onThicken = patchFill >= 0.999 ? true : maskVal(seedThicken) <= patchFill;
+      const maskVal = (seedVal, fill) => sampleSpeckValueNoise(hash2Fn, x * freq, y * freq, seedVal) <= fill;
+      const onCenter = patchFill >= 0.999 ? true : maskVal(seedCenter, patchFill);
+      const onEdge = patchFill >= 0.999 ? true : maskVal(seedEdge, patchFill);
+      const onThicken = patchFill >= 0.999 ? true : maskVal(seedThicken, patchFill);
       let mod = 1;
       const hasAlpha = alpha0[i] !== 0;
       if (hasAlpha) {
@@ -844,9 +848,10 @@ export function createExperimentalStagePipeline(deps = {}) {
         if (onEdge && eK !== 0) mod *= clampFn(1 - eK * (1 - norm), 0, 3);
         if (onThicken && tK !== 0) mod *= clampFn(1 + tK * (1 - norm), 0, 12);
         coverage[i] = clamp01Fn(coverage[i] * mod);
-      } else if (onThicken && tK > 0 && outside && maxOutside > 0) {
+      } else if (outside && maxOutside > 0) {
         const distOut = outside[i] || 0;
         if (distOut > 0) {
+          if (!onThicken || tK <= 0) continue;
           const radiusPx = 0.8 + tK * 1.8;
           if (distOut <= radiusPx) {
             const falloff = clamp((radiusPx - distOut) / radiusPx, 0, 1);

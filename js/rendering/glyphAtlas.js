@@ -315,6 +315,12 @@ export function createGlyphAtlas(options) {
       enable.rim = false;
       enable.centerEdge = false;
     }
+    // If experimental fuzz is active, force centerEdge stage on so fuzz can apply
+    const fuzzThicken = params?.fuzzExp?.thicken || 0;
+    const fuzzEnabled = params?.fuzzExp?.enable !== false;
+    if (sectionEnabled.expEdge && fuzzEnabled && Math.abs(fuzzThicken) > 1e-6) {
+      enable.centerEdge = true;
+    }
     if (!sectionEnabled.expGrain) {
       enable.grainSpeck = false;
     }
@@ -349,6 +355,9 @@ export function createGlyphAtlas(options) {
     mul(params.centerEdge, 'center', edgeS);
     mul(params.centerEdge, 'edge', edgeS);
     mul(params.centerEdge, 'thicken', edgeS);
+    if (params.fuzzExp) {
+      mul(params.fuzzExp, 'thicken', edgeS);
+    }
 
     const grainS = clampScale(scaleBias.expGrain);
     mul(params.noise, 'lfScale', grainS);
@@ -390,7 +399,8 @@ export function createGlyphAtlas(options) {
       { path: 'centerEdge.center', section: 'expEdge', require: 'enable.centerEdge' },
       { path: 'centerEdge.edge', section: 'expEdge', require: 'enable.centerEdge' },
       { path: 'centerEdge.thicken', section: 'expEdge', require: 'enable.centerEdge' },
-      { path: 'centerEdge.variation', section: 'expEdge', require: 'enable.centerEdge' },
+      { path: 'centerEdge.patchFill', section: 'expEdge', require: 'enable.centerEdge' },
+      { path: 'centerEdge.patchSize', section: 'expEdge', require: 'enable.centerEdge' },
     ],
     texture: [
       { path: 'enable.grainSpeck', section: 'expGrain' },
