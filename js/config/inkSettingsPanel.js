@@ -36,12 +36,12 @@ const INPUT_OVERRIDES = {
   'expGrain.ink.speckDark': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
   'expGrain.ink.speckLight': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
   'expGrain.ink.speckGrayBias': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expDefects.dropouts.amount': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
-  'expDefects.dropouts.width': { type: 'range', min: 0, max: 5, step: 0.01, precision: 2 },
-  'expDefects.dropouts.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
-  'expDefects.dropouts.pinhole': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expDefects.dropouts.streakDensity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expDefects.dropouts.pinholeWeight': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expGrain.dropouts.amount': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
+  'expGrain.dropouts.width': { type: 'range', min: 0, max: 5, step: 0.01, precision: 2 },
+  'expGrain.dropouts.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
+  'expGrain.dropouts.pinhole': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expGrain.dropouts.streakDensity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expGrain.dropouts.pinholeWeight': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expDefects.smudge.strength': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
   'expDefects.smudge.radius': { type: 'range', min: 0, max: 32, step: 0.25, precision: 2 },
   'expDefects.smudge.falloff': { type: 'range', min: 0, max: 4, step: 0.01, precision: 2 },
@@ -124,9 +124,6 @@ const EXP_GRAIN_KEYS = [
   { path: 'ink.speckDark', label: 'Dark specks' },
   { path: 'ink.speckLight', label: 'Light specks' },
   { path: 'ink.speckGrayBias', label: 'Speck gray bias' },
-];
-
-const EXP_DEFECT_KEYS = [
   { path: 'enable.dropouts', label: 'Dropouts' },
   { path: 'dropouts.amount', label: 'Dropout amount' },
   { path: 'dropouts.width', label: 'Dropout width (px)' },
@@ -134,6 +131,9 @@ const EXP_DEFECT_KEYS = [
   { path: 'dropouts.pinhole', label: 'Pinhole density' },
   { path: 'dropouts.streakDensity', label: 'Streak density' },
   { path: 'dropouts.pinholeWeight', label: 'Pinhole weight' },
+];
+
+const EXP_DEFECT_KEYS = [
   { path: 'enable.smudge', label: 'Smudge halo' },
   { path: 'smudge.strength', label: 'Smudge strength' },
   { path: 'smudge.radius', label: 'Smudge radius (px)' },
@@ -344,6 +344,25 @@ function deepCloneValue(value) {
   return value;
 }
 
+function extractDropoutsConfig(source) {
+  if (!source || typeof source !== 'object') return null;
+  const config = source.config != null
+    ? source.config
+    : source.settings != null
+      ? source.settings
+      : source;
+  const dropouts = config && typeof config === 'object' && config.dropouts && typeof config.dropouts === 'object'
+    ? deepCloneValue(config.dropouts)
+    : null;
+  const enabled = config && typeof config.enable === 'object' && typeof config.enable.dropouts === 'boolean'
+    ? config.enable.dropouts
+    : null;
+  if (dropouts || enabled !== null) {
+    return { dropouts, enabled };
+  }
+  return null;
+}
+
 function sanitizeStyleName(name) {
   if (typeof name !== 'string') return '';
   const trimmed = name.trim();
@@ -411,6 +430,19 @@ function normalizeStyleRecord(style, index = 0) {
         );
       }
     });
+    const legacyDropouts = extractDropoutsConfig(style?.sections?.expDefects || style?.expDefects);
+    if (legacyDropouts) {
+      const textureSection = record.sections.expGrain;
+      if (legacyDropouts.dropouts) {
+        textureSection.config.dropouts = legacyDropouts.dropouts;
+      }
+      if (legacyDropouts.enabled !== null) {
+        textureSection.config.enable = {
+          ...(textureSection.config.enable || {}),
+          dropouts: legacyDropouts.enabled,
+        };
+      }
+    }
     return record;
   } catch (error) {
     if (typeof console !== 'undefined' && typeof console.error === 'function') {

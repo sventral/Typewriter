@@ -318,9 +318,9 @@ export function createGlyphAtlas(options) {
     }
     if (!sectionEnabled.expGrain) {
       enable.grainSpeck = false;
+      enable.dropouts = false;
     }
     if (!sectionEnabled.expDefects) {
-      enable.dropouts = false;
       enable.punch = false;
       enable.smudge = false;
     }
@@ -357,10 +357,10 @@ export function createGlyphAtlas(options) {
     const grainS = clampScale(scaleBias.expGrain);
     mul(params.noise, 'lfScale', grainS);
     mul(params.noise, 'hfScale', grainS);
+    mul(params.dropouts, 'width', grainS);
+    mul(params.dropouts, 'scale', grainS);
 
     const defectS = clampScale(scaleBias.expDefects);
-    mul(params.dropouts, 'width', defectS);
-    mul(params.dropouts, 'scale', defectS);
     mul(params.punch, 'rMin', defectS);
     mul(params.punch, 'rMax', defectS);
     mul(params.punch, 'soft', defectS);
@@ -410,13 +410,13 @@ export function createGlyphAtlas(options) {
       { path: 'ink.speckGrayBias', section: 'expGrain', require: 'enable.grainSpeck' },
     ],
     dropouts: [
-      { path: 'enable.dropouts', section: 'expDefects' },
-      { path: 'dropouts.amount', section: 'expDefects', require: 'enable.dropouts' },
-      { path: 'dropouts.width', section: 'expDefects', require: 'enable.dropouts' },
-      { path: 'dropouts.scale', section: 'expDefects', require: 'enable.dropouts' },
-      { path: 'dropouts.pinhole', section: 'expDefects', require: 'enable.dropouts' },
-      { path: 'dropouts.streakDensity', section: 'expDefects', require: 'enable.dropouts' },
-      { path: 'dropouts.pinholeWeight', section: 'expDefects', require: 'enable.dropouts' },
+      { path: 'enable.dropouts', section: 'expGrain' },
+      { path: 'dropouts.amount', section: 'expGrain', require: 'enable.dropouts' },
+      { path: 'dropouts.width', section: 'expGrain', require: 'enable.dropouts' },
+      { path: 'dropouts.scale', section: 'expGrain', require: 'enable.dropouts' },
+      { path: 'dropouts.pinhole', section: 'expGrain', require: 'enable.dropouts' },
+      { path: 'dropouts.streakDensity', section: 'expGrain', require: 'enable.dropouts' },
+      { path: 'dropouts.pinholeWeight', section: 'expGrain', require: 'enable.dropouts' },
     ],
     punch: [
       { path: 'enable.punch', section: 'expDefects' },
@@ -505,8 +505,8 @@ export function createGlyphAtlas(options) {
   const EXPERIMENTAL_SECTION_STAGE_MAP = {
     expTone: ['fill'],
     expEdge: ['fuzz', 'fuzzExp', 'centerEdge'],
-    expGrain: ['texture'],
-    expDefects: ['dropouts', 'punch', 'smudge'],
+    expGrain: ['texture', 'dropouts'],
+    expDefects: ['punch', 'smudge'],
   };
   const QUALITY_DEFAULT = 100;
   const QUALITY_MIN = 0;
@@ -616,7 +616,7 @@ export function createGlyphAtlas(options) {
       && !!enable.edgeFuzz
       && hasPositive(edgeFuzzCfg.opacity)
       && (hasPositive(edgeFuzzCfg.inBand) || hasPositive(edgeFuzzCfg.outBand));
-    const dropoutsActive = sectionActive.expDefects
+    const dropoutsActive = sectionActive.expGrain
       && !!enable.dropouts
       && hasPositive(dropoutsCfg.amount)
       && hasPositive(dropoutsCfg.width);
