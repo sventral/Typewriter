@@ -816,7 +816,8 @@ export function createExperimentalStagePipeline(deps = {}) {
     const quantLevels = stageQuality >= 1
       ? Math.max(8, Math.round(8 + (stageQuality - 1) * 12))
       : Math.max(2, Math.round(2 + stageQuality * 10));
-    const thickenRadiusPx = Math.max(0, tK) * 1.6 + 0.35;
+    const hasThicken = tK > 1e-6;
+    const thickenRadiusPx = hasThicken ? Math.max(0, tK) * 1.6 + 0.35 : 0;
     const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
     const thickenSoftPx = softnessBase * 0.9;
     const seedCenter = (seed ^ 0xC1CE1C31) >>> 0;
@@ -843,7 +844,7 @@ export function createExperimentalStagePipeline(deps = {}) {
       const maskVal = (seedVal, fill) => sampleSpeckValueNoise(hash2Fn, x * freq, y * freq, seedVal) <= fill;
       const onCenter = centerEdgeActive && (patchFill >= 0.999 ? true : maskVal(seedCenter, patchFill));
       const onEdge = centerEdgeActive && (patchFill >= 0.999 ? true : maskVal(seedEdge, patchFill));
-      const onThicken = centerEdgeActive && (patchFill >= 0.999 ? true : maskVal(seedThicken, patchFill));
+      const onThicken = hasThicken && centerEdgeActive && (patchFill >= 0.999 ? true : maskVal(seedThicken, patchFill));
       let cov = coverage[i];
       const hasAlpha = alpha0[i] !== 0;
       if (hasAlpha) {
