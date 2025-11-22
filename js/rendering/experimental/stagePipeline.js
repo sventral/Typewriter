@@ -540,6 +540,7 @@ export const GLYPH_PIPELINE_ORDER = Object.freeze([
   'fill',
   'dropouts',
   'texture',
+  'fuzzExp',
   'centerEdge',
   'punch',
   'fuzz',
@@ -797,11 +798,6 @@ export function createExperimentalStagePipeline(deps = {}) {
 
   function applyCenterEdgeShape(coverage, ctx) {
     const { w, h, params, alpha0, dm, seed } = ctx;
-    const fuzzEnabled = params.fuzzExp?.enable !== false;
-    const fuzzThicken = fuzzEnabled ? (params.fuzzExp?.thicken || 0) : 0;
-    const fuzzPatchFill = fuzzEnabled ? clamp(params.fuzzExp?.patchFill ?? 1, 0, 1) : 0;
-    const hasFuzz = fuzzEnabled && Math.abs(fuzzThicken) > 1e-6 && fuzzPatchFill > 0;
-
     const centerEdgeCfg = params.centerEdge || {};
     const centerEdgeEnabled = !!params.enable.centerEdge;
     const cK = centerEdgeCfg.center || 0;
@@ -811,7 +807,7 @@ export function createExperimentalStagePipeline(deps = {}) {
     const patchSize = clamp(centerEdgeCfg.patchSize ?? 0.5, 0, 1); // 0 small, 1 large
     const centerEdgeActive = centerEdgeEnabled && (Math.abs(cK) > 1e-6 || Math.abs(eK) > 1e-6 || Math.abs(tK) > 1e-6 || patchFill < 0.999);
 
-    if (!centerEdgeActive && !hasFuzz) return;
+    if (!centerEdgeActive) return;
     const inside = dm?.raw?.inside;
     const outside = dm?.raw?.outside;
     const maxInside = dm?.getMaxInside ? dm.getMaxInside() : 0;
@@ -821,18 +817,14 @@ export function createExperimentalStagePipeline(deps = {}) {
       ? Math.max(8, Math.round(8 + (stageQuality - 1) * 12))
       : Math.max(2, Math.round(2 + stageQuality * 10));
     const thickenRadiusPx = Math.max(0, tK) * 1.6 + 0.35;
-    const fuzzThickenRadiusPx = hasFuzz ? Math.max(0, fuzzThicken) * 1.5 + 0.25 : 0;
     const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
     const thickenSoftPx = softnessBase * 0.9;
-    const fuzzSoftPx = softnessBase * 1.35;
     const seedCenter = (seed ^ 0xC1CE1C31) >>> 0;
     const seedEdge = (seed ^ 0xC1CE2D42) >>> 0;
     const seedThicken = (seed ^ 0xC1CE3E53) >>> 0;
-    const seedFuzz = (seed ^ 0xF077F00D) >>> 0;
     const minFreq = 4;    // larger patches
     const maxFreq = 22;   // tiny patches
     const freq = minFreq + (1 - patchSize) * (maxFreq - minFreq);
-    const fuzzFreq = minFreq; // assume large patches for experimental fuzz (patch size ~1)
     const applyDilateAlpha = (signedDist, radiusPx, softPx) => {
       if (radiusPx <= 0) return 0;
       const span = Math.max(1e-6, softPx * 2);
@@ -852,7 +844,6 @@ export function createExperimentalStagePipeline(deps = {}) {
       const onCenter = centerEdgeActive && (patchFill >= 0.999 ? true : maskVal(seedCenter, patchFill));
       const onEdge = centerEdgeActive && (patchFill >= 0.999 ? true : maskVal(seedEdge, patchFill));
       const onThicken = centerEdgeActive && (patchFill >= 0.999 ? true : maskVal(seedThicken, patchFill));
-      const onFuzzThicken = hasFuzz && (fuzzPatchFill >= 0.999 ? true : sampleSpeckValueNoise(hash2Fn, x * fuzzFreq, y * fuzzFreq, seedFuzz) <= fuzzPatchFill);
       let cov = coverage[i];
       const hasAlpha = alpha0[i] !== 0;
       if (hasAlpha) {
@@ -866,11 +857,54 @@ export function createExperimentalStagePipeline(deps = {}) {
         const boldAlpha = applyDilateAlpha(signedDist, thickenRadiusPx, thickenSoftPx);
         cov = Math.max(cov, boldAlpha);
       }
-      if (onFuzzThicken && fuzzThickenRadiusPx > 0) {
-        const fuzzAlpha = applyDilateAlpha(signedDist, fuzzThickenRadiusPx, fuzzSoftPx);
-        cov = Math.max(cov, fuzzAlpha);
-      }
       coverage[i] = clamp01Fn(cov);
+    }
+  }
+
+  function applyExperimentalFuzz(coverage, ctx) {
+    const { w, h, params, alpha0, dm, seed } = ctx;
+    const fuzzEnabled = params.fuzzExp?.enable !== false;
+    const fuzzThicken = fuzzEnabled ? (params.fuzzExp?.thicken || 0) : 0;
+    const fuzzPatchFill = fuzzEnabled ? clamp(params.fuzzExp?.patchFill ?? 1, 0, 1) : 0;
+    const hasFuzz = fuzzEnabled && Math.abs(fuzzThicken) > 1e-6 && fuzzPatchFill > 0;
+    if (!hasFuzz) return;
+
+    const inside = dm?.raw?.inside;
+    const outside = dm?.raw?.outside;
+    const maxInside = dm?.getMaxInside ? dm.getMaxInside() : 0;
+    if (!inside || maxInside <= 0) return;
+
+    const stageQuality = getStageQualityFromContext(ctx);
+    const fuzzThickenRadiusPx = Math.max(0, fuzzThicken) * 1.5 + 0.25;
+    const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
+    const fuzzSoftPx = softnessBase * 1.35;
+    const seedFuzz = (seed ^ 0xF077F00D) >>> 0;
+    const minFreq = 4;
+    const fuzzFreq = minFreq; // large-ish patches to mirror prior behaviour
+    const applyDilateAlpha = (signedDist, radiusPx, softPx) => {
+      if (radiusPx <= 0) return 0;
+      const span = Math.max(1e-6, softPx * 2);
+      const shifted = signedDist - radiusPx;
+      const t = clamp01Fn((-shifted + softPx) / span);
+      return smoothStep(t);
+    };
+
+    for (let i = 0; i < w * h; i++) {
+      const x = i % w;
+      const y = (i / w) | 0;
+      const onFuzzThicken = fuzzPatchFill >= 0.999
+        ? true
+        : sampleSpeckValueNoise(hash2Fn, x * fuzzFreq, y * fuzzFreq, seedFuzz) <= fuzzPatchFill;
+      if (!onFuzzThicken) continue;
+
+      const insideDist = inside[i] || 0;
+      const outsideDist = outside ? (outside[i] || 0) : 0;
+      const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
+      if (fuzzThickenRadiusPx > 0) {
+        const fuzzAlpha = applyDilateAlpha(signedDist, fuzzThickenRadiusPx, fuzzSoftPx);
+        const cov = Math.max(coverage[i], fuzzAlpha);
+        coverage[i] = clamp01Fn(cov);
+      }
     }
   }
 
@@ -1097,6 +1131,7 @@ function applySmudgeHalo(coverage, ctx) {
     fill: applyFillAdjustments,
     dropouts: applyDropoutsMask,
     texture: applyGrainSpeckTexture,
+    fuzzExp: applyExperimentalFuzz,
     centerEdge: applyCenterEdgeShape,
     punch: (coverage, ctx) => {
       const holes = createPunchSet(ctx);
