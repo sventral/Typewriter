@@ -725,14 +725,11 @@ export function createExperimentalStagePipeline(deps = {}) {
     if (!params.enable.grainSpeck) return;
     const stageQuality = getStageQualityFromContext(ctx);
     // Use mottling to shift blotch size: low = bigger blotches, high = finer specks.
-    // Keep current feel for 0–0.8, add headroom above that for stronger effect.
+    // Map 0→large blobs (low frequency) and 1.5→very fine specks (high frequency) with a wider spread.
     const mottlingRaw = clamp(params?.ink?.mottling ?? 0, 0, 1.5);
-    const baseBand = Math.min(mottlingRaw, 0.8);
-    const baseScale = 0.6 + baseBand * 2; // matches previous 0.6–2.2 range when <=0.8
-    const extraBand = Math.max(0, mottlingRaw - 0.8);
-    const extraScale = 1 + extraBand * 1.8; // additional boost up to ~2.26x at max
-    const mottlingScale = baseScale * extraScale;
-    const detailCss = getDetailDensityCss(ctx, 1.5 * mottlingScale);
+    const t = mottlingRaw / 1.5; // 0..1
+    const freqScale = 0.4 + t * 2.4; // ~0.4–2.8x frequency swing
+    const detailCss = getDetailDensityCss(ctx, 1.5 * freqScale);
     let sampleOffsets = SPECK_SUBPIXEL_OFFSETS;
     if (stageQuality < 1) {
       const subsetCount = Math.max(1, Math.round(sampleOffsets.length * stageQuality));
