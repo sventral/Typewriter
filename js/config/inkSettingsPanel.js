@@ -2191,6 +2191,11 @@ function randomizeInkSection(meta) {
     applySectionQuality(meta, EFFECT_QUALITY_DEFAULT, { syncInputs: true });
   }
 
+  if (meta.scaleControl) {
+    const randScale = randomBetween(EFFECT_SCALE_MIN, EFFECT_SCALE_MAX, 5);
+    applySectionScale(meta, randScale, { syncInputs: true });
+  }
+
   applySection(meta);
 }
 
