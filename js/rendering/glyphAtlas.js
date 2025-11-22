@@ -316,12 +316,6 @@ export function createGlyphAtlas(options) {
       enable.centerEdge = false;
       enable.fuzzExp = false;
     }
-    // If experimental fuzz is active, force centerEdge stage on so fuzz can apply
-    const fuzzThicken = params?.fuzzExp?.thicken || 0;
-    const fuzzEnabled = params?.fuzzExp?.enable !== false;
-    if (sectionEnabled.expEdge && fuzzEnabled && Math.abs(fuzzThicken) > 1e-6) {
-      enable.centerEdge = true;
-    }
     if (!sectionEnabled.expGrain) {
       enable.grainSpeck = false;
     }
@@ -402,6 +396,8 @@ export function createGlyphAtlas(options) {
       { path: 'centerEdge.thicken', section: 'expEdge', require: 'enable.centerEdge' },
       { path: 'centerEdge.patchFill', section: 'expEdge', require: 'enable.centerEdge' },
       { path: 'centerEdge.patchSize', section: 'expEdge', require: 'enable.centerEdge' },
+    ],
+    fuzzExp: [
       { path: 'fuzzExp.enable', section: 'expEdge' },
       { path: 'fuzzExp.thicken', section: 'expEdge', require: 'fuzzExp.enable' },
       { path: 'fuzzExp.patchFill', section: 'expEdge', require: 'fuzzExp.enable' },
@@ -508,7 +504,7 @@ export function createGlyphAtlas(options) {
   const EXPERIMENTAL_SECTION_IDS = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
   const EXPERIMENTAL_SECTION_STAGE_MAP = {
     expTone: ['fill'],
-    expEdge: ['fuzz', 'centerEdge'],
+    expEdge: ['fuzz', 'fuzzExp', 'centerEdge'],
     expGrain: ['texture'],
     expDefects: ['dropouts', 'punch', 'smudge'],
   };
@@ -644,7 +640,8 @@ export function createGlyphAtlas(options) {
       fill: needsFill,
       dropouts: dropoutsActive,
       texture: textureActive,
-      centerEdge: centerEdgeActive || fuzzExpActive,
+      centerEdge: centerEdgeActive,
+      fuzzExp: fuzzExpActive,
       punch: punchActive,
       fuzz: fuzzActive,
       smudge: smudgeActive,
