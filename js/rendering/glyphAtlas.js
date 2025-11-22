@@ -952,30 +952,16 @@ export function createGlyphAtlas(options) {
           const basePixels = glyphData.data;
 
           // 4. Perform Pixel Subtraction (Eliminates ghosts)
+          // For light inks the safest approach is to hard-mask away any pixel touched by the prefix.
           if (prefixData) {
             const pData = prefixData.data;
             const len = basePixels.length;
-            for (let i = 3; i < len; i += 4) {
-              const pA = pData[i];
-              if (pA > 0) {
-                const fA = basePixels[i];
-                if (fA === 0) continue;
-                // Subtract prefix alpha from full alpha, and premultiply RGB to avoid bright fringes.
-                let newA = fA - pA;
-                if (newA <= 0) {
-                  basePixels[i] = 0;
-                  basePixels[i - 1] = 0;
-                  basePixels[i - 2] = 0;
-                  basePixels[i - 3] = 0;
-                } else {
-                  const scale = newA / fA;
-                  basePixels[i] = newA;
-                  if (scale < 1) {
-                    basePixels[i - 1] = Math.round(basePixels[i - 1] * scale);
-                    basePixels[i - 2] = Math.round(basePixels[i - 2] * scale);
-                    basePixels[i - 3] = Math.round(basePixels[i - 3] * scale);
-                  }
-                }
+            for (let k = 0; k < len; k += 4) {
+              if (pData[k + 3] > 0) { // prefix drew here
+                basePixels[k] = 0;
+                basePixels[k + 1] = 0;
+                basePixels[k + 2] = 0;
+                basePixels[k + 3] = 0;
               }
             }
           }
