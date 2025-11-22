@@ -57,6 +57,13 @@ export function createGlyphAtlas(options) {
     : (() => ({}));
   const ALT_VARIANTS = 9;
   const overhangCache = new Map();
+  let baselineCharWidthCss = null;
+
+  // Optional user-tunable scale bias for ink effects (keeps visual size consistent across CPI/fonts)
+  const getEffectScaleBias = () => {
+    const v = state?.inkEffectScaleBias;
+    return Number.isFinite(v) && v > 0 ? v : 1;
+  };
   const experimentalAtlases = new Map();
   const experimentalProcessorCache = new Map();
 
@@ -709,6 +716,9 @@ export function createGlyphAtlas(options) {
     const GLYPH_BLEED = Math.ceil((ASC + DESC) * 0.5);
     const ORIGIN_Y_CSS = ASC + GLYPH_BLEED;
     const CELL_W_CSS = CHAR_W;
+    if (!baselineCharWidthCss && Number.isFinite(CELL_W_CSS) && CELL_W_CSS > 0) {
+      baselineCharWidthCss = CELL_W_CSS;
+    }
     const CELL_H_CSS = Math.ceil(ASC + DESC + 2 * GLYPH_BLEED);
 
     // Dynamic overhang: measure actual glyph extents for this font to avoid clipping
@@ -919,10 +929,12 @@ export function createGlyphAtlas(options) {
               params.smul = (fontPx / 72) * supersample;
               params.ink = { ...(params.ink || {}), colorRgb };
               const dpPerCssRaw = Math.max(1e-6, (Number(RENDER_SCALE) || 1) * (Number(sampleScale) || 1));
-              // Compensate effect scale so punch/edge fuzz sizes stay comparable to legacy cell width
+              // Compensate effect scale so punch/edge fuzz sizes stay comparable to a stable baseline
               const widthComp = Math.max(1e-6, CELL_W_CSS);
               const drawComp = Math.max(1e-6, GLYPH_DRAW_W_CSS);
-              const dpPerCss = dpPerCssRaw * (widthComp / drawComp);
+              const baselineW = Math.max(1e-6, baselineCharWidthCss || CELL_W_CSS);
+              const effectScaleBias = getEffectScaleBias();
+              const dpPerCss = dpPerCssRaw * (baselineW / widthComp) * (widthComp / drawComp) * effectScaleBias;
               const dm = createLazyDistanceMapProvider({
                 alpha,
                 width: glyphWidth,
