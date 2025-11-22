@@ -799,10 +799,19 @@ export function createExperimentalStagePipeline(deps = {}) {
     const { w, h, params, alpha0, dm, seed } = ctx;
     const fuzzEnabled = params.fuzzExp?.enable !== false;
     const fuzzThicken = fuzzEnabled ? (params.fuzzExp?.thicken || 0) : 0;
-    const fuzzCoverage = fuzzEnabled ? clamp(params.fuzzExp?.coverage ?? 1, 0, 1) : 0;
-    const hasFuzz = fuzzEnabled && Math.abs(fuzzThicken) > 1e-6;
-    const centerEdgeEnabled = (params.enable.centerEdge || false) || hasFuzz;
-    if (!centerEdgeEnabled || !params.centerEdge) return;
+    const fuzzPatchFill = fuzzEnabled ? clamp(params.fuzzExp?.patchFill ?? 1, 0, 1) : 0;
+    const hasFuzz = fuzzEnabled && Math.abs(fuzzThicken) > 1e-6 && fuzzPatchFill > 0;
+
+    const centerEdgeCfg = params.centerEdge || {};
+    const centerEdgeEnabled = !!params.enable.centerEdge;
+    const cK = centerEdgeCfg.center || 0;
+    const eK = centerEdgeCfg.edge || 0;
+    const tK = centerEdgeCfg.thicken || 0;
+    const patchFill = clamp(centerEdgeCfg.patchFill ?? 1, 0, 1);   // coverage probability
+    const patchSize = clamp(centerEdgeCfg.patchSize ?? 0.5, 0, 1); // 0 small, 1 large
+    const centerEdgeActive = centerEdgeEnabled && (Math.abs(cK) > 1e-6 || Math.abs(eK) > 1e-6 || Math.abs(tK) > 1e-6 || patchFill < 0.999);
+
+    if (!centerEdgeActive && !hasFuzz) return;
     const inside = dm?.raw?.inside;
     const outside = dm?.raw?.outside;
     const maxInside = dm?.getMaxInside ? dm.getMaxInside() : 0;
@@ -817,18 +826,14 @@ export function createExperimentalStagePipeline(deps = {}) {
     const quantLevels = stageQuality >= 1
       ? Math.max(8, Math.round(8 + (stageQuality - 1) * 12))
       : Math.max(2, Math.round(2 + stageQuality * 10));
-    const cK = params.centerEdge.center || 0;
-    const eK = params.centerEdge.edge || 0;
-    const tK = params.centerEdge.thicken || 0;
-    const patchFill = clamp(params.centerEdge.patchFill ?? 1, 0, 1);   // coverage probability
-    const patchSize = clamp(params.centerEdge.patchSize ?? 0.5, 0, 1); // 0 small, 1 large
     const seedCenter = (seed ^ 0xC1CE1C31) >>> 0;
     const seedEdge = (seed ^ 0xC1CE2D42) >>> 0;
     const seedThicken = (seed ^ 0xC1CE3E53) >>> 0;
+    const seedFuzz = (seed ^ 0xF077F00D) >>> 0;
     const minFreq = 4;    // larger patches
     const maxFreq = 22;   // tiny patches
     const freq = minFreq + (1 - patchSize) * (maxFreq - minFreq);
-    if (cK === 0 && eK === 0 && tK === 0 && patchFill >= 0.999) return;
+    const fuzzFreq = minFreq; // assume large patches for experimental fuzz (patch size ~1)
     for (let i = 0; i < w * h; i++) {
       let norm = (inside[i] || 0) / maxInside;
       if (quantLevels > 1) {
@@ -838,25 +843,36 @@ export function createExperimentalStagePipeline(deps = {}) {
       const x = i % w;
       const y = (i / w) | 0;
       const maskVal = (seedVal, fill) => sampleSpeckValueNoise(hash2Fn, x * freq, y * freq, seedVal) <= fill;
-      const onCenter = patchFill >= 0.999 ? true : maskVal(seedCenter, patchFill);
-      const onEdge = patchFill >= 0.999 ? true : maskVal(seedEdge, patchFill);
-      const onThicken = patchFill >= 0.999 ? true : maskVal(seedThicken, patchFill);
+      const onCenter = centerEdgeActive && (patchFill >= 0.999 ? true : maskVal(seedCenter, patchFill));
+      const onEdge = centerEdgeActive && (patchFill >= 0.999 ? true : maskVal(seedEdge, patchFill));
+      const onThicken = centerEdgeActive && (patchFill >= 0.999 ? true : maskVal(seedThicken, patchFill));
+      const onFuzzThicken = hasFuzz && (fuzzPatchFill >= 0.999 ? true : sampleSpeckValueNoise(hash2Fn, x * fuzzFreq, y * fuzzFreq, seedFuzz) <= fuzzPatchFill);
       let mod = 1;
       const hasAlpha = alpha0[i] !== 0;
       if (hasAlpha) {
         if (onCenter && cK !== 0) mod *= clampFn(1 + cK * norm, 0, 3);
         if (onEdge && eK !== 0) mod *= clampFn(1 - eK * (1 - norm), 0, 3);
         if (onThicken && tK !== 0) mod *= clampFn(1 + tK * (1 - norm), 0, 12);
+        if (onFuzzThicken && fuzzThicken !== 0) mod *= clampFn(1 + fuzzThicken * (1 - norm), 0, 12);
         coverage[i] = clamp01Fn(coverage[i] * mod);
       } else if (outside && maxOutside > 0) {
         const distOut = outside[i] || 0;
         if (distOut > 0) {
-          if (!onThicken || tK <= 0) continue;
-          const radiusPx = 0.8 + tK * 1.8;
-          if (distOut <= radiusPx) {
-            const falloff = clamp((radiusPx - distOut) / radiusPx, 0, 1);
-            const added = clamp01(falloff * tK * 0.35);
-            coverage[i] = Math.max(coverage[i], added);
+          if (onThicken && tK > 0) {
+            const radiusPx = 0.8 + tK * 1.8;
+            if (distOut <= radiusPx) {
+              const falloff = clamp((radiusPx - distOut) / radiusPx, 0, 1);
+              const added = clamp01(falloff * tK * 0.35);
+              coverage[i] = Math.max(coverage[i], added);
+            }
+          }
+          if (onFuzzThicken && fuzzThicken > 0) {
+            const radiusPxFuzz = 0.8 + fuzzThicken * 1.8;
+            if (distOut <= radiusPxFuzz) {
+              const falloff = clamp((radiusPxFuzz - distOut) / radiusPxFuzz, 0, 1);
+              const added = clamp01(falloff * fuzzThicken * 0.35);
+              coverage[i] = Math.max(coverage[i], added);
+            }
           }
         }
       }

@@ -35,12 +35,12 @@ const BASE_SECTION_CONFIG = deepFreeze({
     ribbonBands: false,
     rim: false,
     centerEdge: false,
+    fuzzExp: false,
     grainSpeck: true,
     dropouts: true,
     edgeFuzz: true,
     smudge: false,
     punch: true,
-    experimentalFuzz: false,
   },
   ink: {
     pressureMid: 0.72,
@@ -87,6 +87,11 @@ const BASE_SECTION_CONFIG = deepFreeze({
     rough: 1,
     scale: 18,
     mix: 1,
+  },
+  fuzzExp: {
+    enable: false,
+    thicken: 0,
+    patchFill: 1,
   },
   smudge: {
     strength: 0.74,
