@@ -346,6 +346,8 @@ export function createGlyphAtlas(options) {
     mul(params.edgeFuzz, 'inBand', edgeS);
     mul(params.edgeFuzz, 'outBand', edgeS);
     mul(params.edgeFuzz, 'scale', edgeS);
+    mul(params.centerEdge, 'center', edgeS);
+    mul(params.centerEdge, 'edge', edgeS);
 
     const grainS = clampScale(scaleBias.expGrain);
     mul(params.noise, 'lfScale', grainS);
