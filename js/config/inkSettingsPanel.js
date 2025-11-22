@@ -155,7 +155,7 @@ const EXP_DEFECT_KEYS = [
 const SECTION_DEFS = [
   {
     id: 'expTone',
-    label: 'Tone variations',
+    label: 'Tone',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_TONE_KEYS,
@@ -165,7 +165,7 @@ const SECTION_DEFS = [
   },
   {
     id: 'expEdge',
-    label: 'Edge shaping',
+    label: 'Edge',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_EDGE_KEYS,
@@ -207,22 +207,22 @@ const EFFECT_SCALE_MAX = 200;
 const SECTION_QUALITY_CONFIG = Object.freeze({
   expTone: {
     stateKey: 'expToneQuality',
-    label: 'Tone variations quality',
+    label: 'Quality',
     defaultValue: getDefaultInkSectionQuality('expTone'),
   },
   expEdge: {
     stateKey: 'expEdgeQuality',
-    label: 'Edge shaping quality',
+    label: 'Quality',
     defaultValue: getDefaultInkSectionQuality('expEdge'),
   },
   expGrain: {
     stateKey: 'expGrainQuality',
-    label: 'Texture quality',
+    label: 'Quality',
     defaultValue: getDefaultInkSectionQuality('expGrain'),
   },
   expDefects: {
     stateKey: 'expDefectsQuality',
-    label: 'Defects quality',
+    label: 'Quality',
     defaultValue: getDefaultInkSectionQuality('expDefects'),
   },
 });
@@ -230,22 +230,22 @@ const SECTION_QUALITY_CONFIG = Object.freeze({
 const SECTION_SCALE_CONFIG = Object.freeze({
   expTone: {
     stateKey: 'expToneScale',
-    label: 'Tone scale',
+    label: 'Scale',
     defaultValue: EFFECT_SCALE_DEFAULT,
   },
   expEdge: {
     stateKey: 'expEdgeScale',
-    label: 'Edge scale',
+    label: 'Scale',
     defaultValue: EFFECT_SCALE_DEFAULT,
   },
   expGrain: {
     stateKey: 'expGrainScale',
-    label: 'Texture scale',
+    label: 'Scale',
     defaultValue: EFFECT_SCALE_DEFAULT,
   },
   expDefects: {
     stateKey: 'expDefectsScale',
-    label: 'Defects scale',
+    label: 'Scale',
     defaultValue: EFFECT_SCALE_DEFAULT,
   },
 });
@@ -1507,34 +1507,31 @@ function createQualityControl(meta, container) {
   const cfg = SECTION_QUALITY_CONFIG[meta.id];
   if (!cfg) return null;
   const wrapper = document.createElement('div');
-  wrapper.className = 'ink-section-quality';
-  const labels = document.createElement('div');
-  labels.className = 'ink-section-quality-labels';
-  const mainLabel = document.createElement('span');
-  mainLabel.className = 'ink-section-quality-label';
-  mainLabel.textContent = cfg.label || 'Quality';
-  const hint = document.createElement('span');
-  hint.className = 'ink-section-quality-hint';
-  hint.textContent = 'Performance ↔ Fidelity';
-  labels.appendChild(mainLabel);
-  labels.appendChild(hint);
-  const controls = document.createElement('div');
-  controls.className = 'ink-section-controls ink-section-quality-controls';
+  wrapper.className = 'control-row control-row--quality';
+  const label = document.createElement('label');
+  label.textContent = cfg.label || 'Quality';
   const slider = document.createElement('input');
   slider.type = 'range';
   slider.min = String(EFFECT_QUALITY_MIN);
   slider.max = String(EFFECT_QUALITY_MAX);
   slider.step = '5';
+  slider.dataset.slider = '1';
+  slider.dataset.precision = '0';
   const numberInput = document.createElement('input');
   numberInput.type = 'number';
   numberInput.min = slider.min;
   numberInput.max = slider.max;
   numberInput.step = slider.step;
   numberInput.setAttribute('aria-label', `${cfg.label || 'Quality'} value`);
-  controls.appendChild(slider);
-  controls.appendChild(numberInput);
-  wrapper.appendChild(labels);
-  wrapper.appendChild(controls);
+  const display = document.createElement('span');
+  display.className = 'ink-control-value';
+  slider._valueDisplay = display;
+  updateSliderDisplay(slider);
+  slider.addEventListener('input', () => updateSliderDisplay(slider));
+  wrapper.appendChild(label);
+  wrapper.appendChild(slider);
+  wrapper.appendChild(numberInput);
+  wrapper.appendChild(display);
   container.appendChild(wrapper);
   return {
     stateKey: cfg.stateKey,
@@ -1549,34 +1546,31 @@ function createScaleControl(meta, container) {
   const cfg = SECTION_SCALE_CONFIG[meta.id];
   if (!cfg) return null;
   const wrapper = document.createElement('div');
-  wrapper.className = 'ink-section-quality';
-  const labels = document.createElement('div');
-  labels.className = 'ink-section-quality-labels';
-  const mainLabel = document.createElement('span');
-  mainLabel.className = 'ink-section-quality-label';
-  mainLabel.textContent = cfg.label || 'Scale';
-  const hint = document.createElement('span');
-  hint.className = 'ink-section-quality-hint';
-  hint.textContent = 'Smaller ↔ Larger';
-  labels.appendChild(mainLabel);
-  labels.appendChild(hint);
-  const controls = document.createElement('div');
-  controls.className = 'ink-section-controls ink-section-quality-controls';
+  wrapper.className = 'control-row control-row--quality';
+  const label = document.createElement('label');
+  label.textContent = cfg.label || 'Scale';
   const slider = document.createElement('input');
   slider.type = 'range';
   slider.min = String(EFFECT_SCALE_MIN);
   slider.max = String(EFFECT_SCALE_MAX);
   slider.step = '5';
+  slider.dataset.slider = '1';
+  slider.dataset.precision = '0';
   const numberInput = document.createElement('input');
   numberInput.type = 'number';
   numberInput.min = slider.min;
   numberInput.max = slider.max;
   numberInput.step = slider.step;
   numberInput.setAttribute('aria-label', `${cfg.label || 'Scale'} value`);
-  controls.appendChild(slider);
-  controls.appendChild(numberInput);
-  wrapper.appendChild(labels);
-  wrapper.appendChild(controls);
+  const display = document.createElement('span');
+  display.className = 'ink-control-value';
+  slider._valueDisplay = display;
+  updateSliderDisplay(slider);
+  slider.addEventListener('input', () => updateSliderDisplay(slider));
+  wrapper.appendChild(label);
+  wrapper.appendChild(slider);
+  wrapper.appendChild(numberInput);
+  wrapper.appendChild(display);
   container.appendChild(wrapper);
   return {
     stateKey: cfg.stateKey,
@@ -1876,6 +1870,7 @@ function applySectionQuality(meta, value, options = {}) {
   if (options.syncInputs !== false) {
     if (qc.slider && qc.slider.value !== String(normalized)) {
       qc.slider.value = String(normalized);
+      updateSliderDisplay(qc.slider);
     }
     if (qc.numberInput && qc.numberInput.value !== String(normalized)) {
       qc.numberInput.value = String(normalized);
@@ -1895,6 +1890,7 @@ function applySectionScale(meta, value, options = {}) {
   if (options.syncInputs !== false) {
     if (sc.slider && sc.slider.value !== String(normalized)) {
       sc.slider.value = String(normalized);
+      updateSliderDisplay(sc.slider);
     }
     if (sc.numberInput && sc.numberInput.value !== String(normalized)) {
       sc.numberInput.value = String(normalized);
