@@ -184,6 +184,21 @@ export function createMeasurementControls({
       });
     }
   }
+  function updateWordWrapAvailability() {
+    if (!app.wordWrapCb) return;
+    const disabled = state.realTypewriterEnabled === true;
+    app.wordWrapCb.disabled = disabled;
+    const note = app.wordWrapNote;
+    const row = app.wordWrapRow;
+    if (disabled) {
+      app.wordWrapCb.checked = true;
+      if (note) note.hidden = false;
+      if (row) row.classList.add('is-disabled');
+    } else if (note) {
+      note.hidden = true;
+      if (row) row.classList.remove('is-disabled');
+    }
+  }
 
   function sanitizeLowResZoomInputs() {
     const normalized = normalizeLowResZoomSettings({
@@ -270,6 +285,7 @@ export function createMeasurementControls({
       state.typewriterMarginRelease = false;
       hideMarginReleaseBtn();
     }
+    updateWordWrapAvailability();
   }
 
   function applyLowResZoomEffects() {
@@ -367,6 +383,7 @@ export function createMeasurementControls({
           state.typewriterMarginRelease = false;
           hideMarginReleaseBtn();
         }
+        updateWordWrapAvailability();
         queueDirtySave();
         focusStage();
       });

@@ -87,6 +87,8 @@ const DOM_ID_GROUPS = {
     toggleMarginsBtn: 'toggleMarginsBtn',
     showMarginBoxCb: 'showMarginBoxCb',
     wordWrapCb: 'wordWrapCb',
+    wordWrapNote: 'wordWrapNote',
+    wordWrapRow: 'wordWrapRow',
     mmLeft: 'mmLeft',
     mmRight: 'mmRight',
     mmTop: 'mmTop',
