@@ -900,7 +900,7 @@ body[data-page-tone='dark']{
   .low-res-zoom-fields input { width: 100%; }
   .low-res-zoom-controls.disabled { opacity: 0.6; }
   .ink-settings-content h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.75; }
-  .ink-settings-content { --ink-heading-width: 140px; }
+  .ink-settings-content { --ink-heading-width: 110px; }
   .settings-section {
     border: 1px solid var(--panel-border);
     border-radius: 12px;
@@ -995,8 +995,8 @@ body[data-page-tone='dark']{
   .ink-settings-divider { margin: 16px 0; }
   .ink-section-body .control-row {
     display: grid;
-    grid-template-columns: minmax(110px, var(--ink-heading-width)) minmax(0, 1fr) auto;
-    column-gap: 8px;
+    grid-template-columns: minmax(90px, var(--ink-heading-width)) minmax(0, 1fr) auto;
+    column-gap: 4px;
     align-items: center;
     margin-bottom: 6px;
   }
