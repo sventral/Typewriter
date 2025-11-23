@@ -362,6 +362,9 @@ export function deserializeDocumentState(data, context) {
     page.lineSlantDeg = state.lineSlantEnabled
       ? clampLineSlantDeg(pg?.slant ?? sampleLineSlantDeg(state.lineSlantRangeDeg), state.lineSlantRangeDeg)
       : 0;
+    if (page.marginBoxEl) {
+      page.marginBoxEl.style.setProperty('--line-slant-deg', `${page.lineSlantDeg}deg`);
+    }
     state.pages.push(page);
     if (Array.isArray(pg?.rows)) {
       for (const [rmu, cols] of pg.rows) {
@@ -407,6 +410,9 @@ export function deserializeDocumentState(data, context) {
       page.lineSlantDeg = state.lineSlantEnabled
         ? clampLineSlantDeg(sampleLineSlantDeg(state.lineSlantRangeDeg), state.lineSlantRangeDeg)
         : 0;
+      if (page.marginBoxEl) {
+        page.marginBoxEl.style.setProperty('--line-slant-deg', `${page.lineSlantDeg}deg`);
+      }
       state.pages.push(page);
     }
   }
