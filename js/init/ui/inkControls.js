@@ -336,6 +336,18 @@ export function createInkControls({
     bindGlyphJitterControls();
     bindLineSlantControls();
     bindAppearanceControls();
+
+    if (app.inkDockHandle && app.inkDock && app.inkDockExtras) {
+      const handle = app.inkDockHandle;
+      const dock = app.inkDock;
+      const extras = app.inkDockExtras;
+      const toggle = () => {
+        const expanded = dock.classList.toggle('ink-dock--expanded');
+        handle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        extras.setAttribute('aria-hidden', expanded ? 'false' : 'true');
+      };
+      handle.addEventListener('click', toggle);
+    }
   }
 
   function applyInkDefaults(loaded) {
