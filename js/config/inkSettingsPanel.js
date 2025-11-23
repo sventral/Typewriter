@@ -258,7 +258,7 @@ const SUBGROUP_CONFIG = {
   expEdge: [
     { id: 'rim', label: 'Rim', paths: ['enable.rim', 'ink.rim', 'ink.rimCurve'] },
     { id: 'fuzz', label: 'Fuzz', paths: ['enable.edgeFuzz', 'edgeFuzz.opacity', 'edgeFuzz.inBand', 'edgeFuzz.outBand', 'edgeFuzz.rough', 'edgeFuzz.scale', 'edgeFuzz.mix'] },
-    { id: 'grain', label: 'Grain', paths: ['fuzzExp', 'fuzzExp.thicken', 'fuzzExp.patchFill'] },
+    { id: 'grain', label: 'Grain', paths: ['fuzzExp.enable', 'fuzzExp.thicken', 'fuzzExp.patchFill'] },
     { id: 'weight', label: 'Weight', paths: ['enable.centerEdge', 'centerEdge.center', 'centerEdge.edge', 'centerEdge.thicken', 'centerEdge.patchFill', 'centerEdge.patchSize'] },
   ],
   expGrain: [
@@ -1884,6 +1884,7 @@ function buildSection(def, root) {
     const found = subgroupDefs.find(entry => entry.paths.includes(path));
     if (!found) return null;
     if (subgroupMap.has(found.id)) return subgroupMap.get(found.id);
+    const togglePath = found.paths.find(p => p.startsWith('enable.')) || null;
     const group = document.createElement('div');
     group.className = 'ink-subgroup';
     group.dataset.groupPath = found.id;
@@ -1895,12 +1896,23 @@ function buildSection(def, root) {
     heading.appendChild(lock);
     heading.appendChild(document.createTextNode(found.label));
     headingRow.appendChild(heading);
+    if (togglePath) {
+      const toggle = document.createElement('input');
+      toggle.type = 'checkbox';
+      toggle.classList.add('ink-subheading-toggle');
+      toggle.dataset.groupPath = found.id;
+      toggle.setAttribute('aria-label', `Toggle ${found.label}`);
+      toggle.title = `Toggle ${found.label}`;
+      headingRow.appendChild(toggle);
+      registerMetaInput(meta, togglePath, toggle);
+    }
     group.appendChild(headingRow);
     meta.groupElements.set(found.id, group);
     meta.body.appendChild(group);
     setGroupLocked(meta, found.id, isGroupLocked(meta, found.id));
-    subgroupMap.set(found.id, group);
-    return group;
+    const info = { group, togglePath, headingRow };
+    subgroupMap.set(found.id, info);
+    return info;
   };
 
   dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
@@ -1931,9 +1943,18 @@ function buildSection(def, root) {
     if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
     const row = buildControlRow(labelText || path, input);
     const subgroup = getSubgroup(path);
+    if (subgroup && subgroup.togglePath === path) {
+      // Toggle lives in the heading row; no separate control row.
+      const toggle = subgroup.headingRow.querySelector('.ink-subheading-toggle');
+      if (toggle) {
+        toggle.checked = !!value;
+        toggle.disabled = isGroupLocked(meta, subgroup.group.dataset.groupPath);
+      }
+      return;
+    }
     if (subgroup) {
-      tagRowWithGroup(row, subgroup.dataset.groupPath);
-      subgroup.appendChild(row);
+      tagRowWithGroup(row, subgroup.group.dataset.groupPath);
+      subgroup.group.appendChild(row);
     } else {
       body.appendChild(row);
     }
