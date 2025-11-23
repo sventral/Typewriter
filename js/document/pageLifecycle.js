@@ -286,6 +286,9 @@ export function createPageLifecycleController(context, editingController) {
     };
     const slantDeg = state.lineSlantEnabled ? sampleLineSlantDeg(state.lineSlantRangeDeg) : 0;
     page.lineSlantDeg = clampLineSlantDeg(slantDeg, state.lineSlantRangeDeg);
+    if (marginBoxEl) {
+      marginBoxEl.style.setProperty('--line-slant-deg', `${page.lineSlantDeg}deg`);
+    }
     const handler = (e) => handlePageClick(e, idx);
     pageEl.addEventListener('mousedown', handler, { capture: false });
     canvas.addEventListener('mousedown', handler, { capture: false });

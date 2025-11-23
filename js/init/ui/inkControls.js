@@ -249,6 +249,9 @@ export function createInkControls({
         p.lineSlantDeg = state.lineSlantEnabled
           ? clampLineSlantDeg(sampleLineSlantDeg(state.lineSlantRangeDeg), state.lineSlantRangeDeg)
           : 0;
+        if (p.marginBoxEl) {
+          p.marginBoxEl.style.setProperty('--line-slant-deg', `${p.lineSlantDeg}deg`);
+        }
         p.dirtyAll = true;
         if (p.active) schedulePaint(p);
       }

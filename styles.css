@@ -751,6 +751,9 @@ body[data-page-tone='dark']{
     pointer-events:none;
     visibility:hidden;
     inset: var(--margin-top-px) var(--margin-right-px) var(--margin-bottom-px) var(--margin-left-px);
+    transform-origin: center center;
+    transform: rotate(var(--line-slant-deg, 0deg));
+    will-change: transform;
   }
 
 
