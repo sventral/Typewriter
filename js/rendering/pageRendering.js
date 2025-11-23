@@ -332,7 +332,7 @@ export function createPageRenderer(options) {
       const rowBotCss = baseline + BLEED_BOTTOM_CSS;
       for (const [col, stack] of rowMap) {
         const x = col * charWidth;
-        drawGlyphStack(backCtx, stack, x, baseline, page.index, rowMu, col);
+        drawGlyphStack(backCtx, stack, x, baseline, page, rowMu, col);
       }
       rawBands.push([rowTopCss, rowBotCss]);
     }
@@ -349,22 +349,34 @@ export function createPageRenderer(options) {
     scheduleNextFullPaintChunk(page);
   }
 
-  function drawGlyphStack(ctx, stack, x, baseline, pageIndex, rowMu, col) {
+  function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
     if (!Array.isArray(stack) || stack.length === 0) return;
     const gridHeight = getGridHeightFn();
+    const angleRad = Number.isFinite(page?.lineSlantDeg)
+      ? (page.lineSlantDeg * Math.PI) / 180
+      : 0;
+    const slantOffset = angleRad === 0 ? 0 : (x - (app.PAGE_W / 2)) * Math.tan(angleRad);
     for (let k = 0; k < stack.length; k++) {
       const glyph = stack[k];
       if (!glyph) continue;
       const jitterOffset = computeGlyphJitterOffset(
         state,
-        pageIndex,
+        page?.index,
         rowMu,
         col,
         gridHeight,
         glyph?.jitterSalt,
       );
-      const baselineAdjusted = Number.isFinite(jitterOffset) ? baseline + jitterOffset : baseline;
-      drawGlyph(ctx, glyph.char, glyph.ink || 'b', x, baselineAdjusted, k, stack.length, pageIndex, rowMu, col, undefined);
+      const baselineAdjusted = baseline + slantOffset + (Number.isFinite(jitterOffset) ? jitterOffset : 0);
+      if (angleRad !== 0) {
+        ctx.save();
+        ctx.translate(x, baselineAdjusted);
+        ctx.rotate(angleRad);
+        drawGlyph(ctx, glyph.char, glyph.ink || 'b', 0, 0, k, stack.length, page?.index, rowMu, col, undefined);
+        ctx.restore();
+      } else {
+        drawGlyph(ctx, glyph.char, glyph.ink || 'b', x, baselineAdjusted, k, stack.length, page?.index, rowMu, col, undefined);
+      }
     }
   }
 
@@ -432,14 +444,14 @@ export function createPageRenderer(options) {
       const baseline = rowMu * gridHeight;
       for (const [col, stack] of rowMap) {
         const x = col * charWidth;
-        drawGlyphStack(backCtx, stack, x, baseline, page.index, rowMu, col);
+        drawGlyphStack(backCtx, stack, x, baseline, page, rowMu, col);
       }
     }
     if (pageNumberRow?.rowMap) {
       const baseline = pageNumberRow.rowMu * gridHeight;
       for (const [col, stack] of pageNumberRow.rowMap) {
         const x = col * charWidth;
-        drawGlyphStack(backCtx, stack, x, baseline, page.index, pageNumberRow.rowMu, col);
+        drawGlyphStack(backCtx, stack, x, baseline, page, pageNumberRow.rowMu, col);
       }
     }
     page.ctx.drawImage(page.backCanvas, 0, 0, page.backCanvas.width, page.backCanvas.height, 0, 0, app.PAGE_W, app.PAGE_H);
@@ -481,7 +493,7 @@ export function createPageRenderer(options) {
 
       for (const [col, stack] of rowMap) {
         const x = col * charWidth;
-        drawGlyphStack(backCtx, stack, x, baseline, page.index, rowMu, col);
+        drawGlyphStack(backCtx, stack, x, baseline, page, rowMu, col);
       }
     };
 

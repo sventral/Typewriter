@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-      <div class="app-version">v.29.3b</div>
+      <div class="app-version">v.29.5b</div>
   <div id="storageNotice" class="storage-notice" role="status" aria-live="polite"></div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
@@ -240,6 +240,31 @@
             <div class="control-row">
               <div></div>
               <button class="btn apply-btn" id="shuffleGlyphJitterSeedBtn" type="button" title="Reshuffle glyph jitter pattern">Reshuffle</button>
+            </div>
+            <div class="tight-spacer" aria-hidden="true"></div>
+
+            <div class="control-row">
+              <label for="lineSlantToggle">Line slant</label>
+              <input id="lineSlantToggle" type="checkbox" checked />
+            </div>
+            <div class="control-row">
+              <label for="lineSlantMin">Slant range</label>
+              <div class="range-input-pair">
+                <div class="input-with-suffix">
+                  <input id="lineSlantMin" type="number" min="0" max="20" step="0.1" aria-label="Minimum line slant degrees" />
+                  <span aria-hidden="true">°</span>
+                </div>
+                <span class="range-separator">–</span>
+                <div class="input-with-suffix">
+                  <input id="lineSlantMax" type="number" min="0" max="20" step="0.1" aria-label="Maximum line slant degrees" />
+                  <span aria-hidden="true">°</span>
+                </div>
+                <span class="slider-value" id="lineSlantValue"></span>
+              </div>
+            </div>
+            <div class="control-row">
+              <div></div>
+              <button class="btn apply-btn" id="shuffleLineSlantBtn" type="button" title="Reshuffle page slants">Reshuffle</button>
             </div>
           </div>
         </div>
