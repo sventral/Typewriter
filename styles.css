@@ -44,7 +44,7 @@
     --control-border: #ccc;
     --divider-color: #e0e0e0;
     --caret-color:#111111;
-    --active-outline:#8aa2ff;
+    --active-outline:#a7abb3;
     --accent-color:#556cd6;
     --danger-color:#c24040;
     --danger-hover:#a83232;
@@ -81,7 +81,7 @@
     --control-border: #ccc;
     --divider-color: #e0e0e0;
     --caret-color:#111111;
-    --active-outline:#8aa2ff;
+    --active-outline:#a7abb3;
     --accent-color:#556cd6;
     --danger-color:#c24040;
     --danger-hover:#a83232;
@@ -119,7 +119,7 @@
       --control-border: #3f4047;
       --divider-color: #3f4047;
       --caret-color:#111111;
-      --active-outline:#9ca3b5;
+      --active-outline:#6c6f78;
       --accent-color:#9ca3ff;
       --danger-color:#ff6b6b;
       --danger-hover:#ff8787;
@@ -156,7 +156,7 @@
     --control-border: #3f4047;
     --divider-color: #3f4047;
     --caret-color:#111111;
-    --active-outline:#9ca3b5;
+    --active-outline:#6c6f78;
     --accent-color:#9ca3ff;
     --danger-color:#ff6b6b;
     --danger-hover:#ff8787;
@@ -277,6 +277,72 @@ body[data-page-tone='dark']{
     --corner-ruler-shift-y: calc(-1 * var(--ruler-thickness));
     color: var(--tri-red);
     opacity: 0.9;
+  }
+
+  .ink-dock{
+    position:fixed;
+    right:12px;
+    bottom:calc(var(--toolbar-h) + 12px);
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    padding:10px 8px;
+    background:var(--panel-bg);
+    border:1px solid var(--panel-border);
+    border-radius:14px;
+    box-shadow:0 4px 14px rgba(0,0,0,0.16);
+    z-index:64;
+    --ink-dock-shift-x: 0px;
+    --ink-dock-shift-y: 0px;
+    transform:translate(var(--ink-dock-shift-x), var(--ink-dock-shift-y));
+    backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
+  }
+
+  body:not(.rulers-off) .ink-dock{
+    --ink-dock-shift-y: calc(-1 * var(--ruler-thickness));
+  }
+
+  .ink-dock__core,
+  .ink-dock__extra{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+
+  .ink-dock__extra{
+    display:none;
+  }
+
+  .ink-dock--expanded .ink-dock__extra{
+    display:flex;
+  }
+
+  .ink-dock__handle{
+    border:none;
+    background:transparent;
+    color:var(--btn-fg);
+    border-radius:8px;
+    height:auto;
+    padding:4px 6px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    font-size:14px;
+  }
+
+  .ink-dock__handle:hover{ background:transparent; }
+  .ink-dock__handle:active{ background:transparent; }
+  .ink-dock__handle:focus-visible{
+    outline:2px solid var(--active-outline);
+    outline-offset:2px;
+  }
+
+  .ink-dock__handle-icon{
+    font-size:16px;
+    line-height:1;
   }
 
   .lag-notice {
