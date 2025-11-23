@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-      <div class="app-version">v.29.1b</div>
+      <div class="app-version">v.29.2b</div>
   <div id="storageNotice" class="storage-notice" role="status" aria-live="polite"></div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
@@ -90,6 +90,7 @@
       <button class="btn" id="exportTxtBtn">Export</button>
     </div>
     <div class="toolbar-right">
+      <button class="btn typewriter-mr-btn" id="marginReleaseBtn" aria-hidden="true" title="Margin release">MR</button>
       <button class="btn" id="inkSettingsBtn">Settings</button>
       <div class="ink-control-group">
         <button class="btn" id="inkBlackBtn" title="Black Ink. Long-press for transparency."><span class="sw black"></span></button>
@@ -541,6 +542,37 @@
                   <span>Right</span>
                 </label>
               </div>
+            </div>
+          </div>
+        </div>
+      </details>
+      <details class="settings-section" id="typewriterSettings">
+        <summary>
+          <span class="settings-toggle-icon" aria-hidden="true"></span>
+          <span class="settings-summary-label">Real typewriter</span>
+        </summary>
+        <div class="settings-section-content">
+          <div class="settings-group-new">
+            <label class="appearance-toggle">
+              <input type="checkbox" id="realTypewriterToggle" />
+              <span>Enable real typewriter mode</span>
+            </label>
+            <div class="control-row">
+              <label for="typewriterBellSelect">Bell sound</label>
+              <select id="typewriterBellSelect">
+                <option value="bell-1">Bell 1</option>
+                <option value="bell-2">Bell 2</option>
+                <option value="bell-3">Bell 3</option>
+              </select>
+            </div>
+            <div class="control-row">
+              <label for="typewriterBellVolume">Bell volume</label>
+              <input id="typewriterBellVolume" type="range" min="0" max="100" step="1" value="70" />
+              <span class="range-value" id="typewriterBellVolumeValue">70%</span>
+            </div>
+            <div class="control-row">
+              <label for="typewriterBellLead">Bell warning (chars)</label>
+              <input id="typewriterBellLead" type="number" min="0" max="40" step="1" value="5" />
             </div>
           </div>
         </div>

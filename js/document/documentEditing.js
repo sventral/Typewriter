@@ -12,6 +12,8 @@ import { resetInkEffectsState } from '../state/state.js';
 import { createGlyphEntry, cloneGlyphEntry } from './glyphStack.js';
 import { createDefaultPageNumberingSettings } from '../config/pageNumbering.js';
 import { INK_PALETTE, normalizeInkId } from '../config/inkPalette.js';
+import { createTypewriterMode } from './typewriterMode.js';
+import { createBellPlayer } from '../utils/bellPlayer.js';
 
 export function createDocumentEditingController(context) {
   const {
@@ -250,11 +252,38 @@ export function createDocumentEditingController(context) {
     const Tmu = Math.ceil((state.marginTop + getAsc()) / getGridHeight());
     const Bmu = Math.floor((app.PAGE_H - state.marginBottom - getDesc()) / getGridHeight());
     const clamp2 = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-    const allowEdgeOverflow = state.marginR >= app.PAGE_W - 0.5;
+    const allowEdgeOverflow = state.marginR >= app.PAGE_W - 0.5 || state.typewriterMarginRelease === true;
     const Lc = clamp2(L, 0, pageMaxStart);
     const RcStrict = clamp2(Rstrict, 0, pageMaxStart);
     const Rc = allowEdgeOverflow ? pageMaxStart : RcStrict;
-    return { L: Math.min(Lc, Rc), R: Math.max(Lc, Rc), Tmu, Bmu, gridDiv };
+    return { L: Math.min(Lc, Rc), R: Math.max(Lc, Rc), Tmu, Bmu, gridDiv, pageMaxStart };
+  }
+
+  const bellPlayer = createBellPlayer({ basePath: 'audio/' });
+
+  function setMarginReleaseVisible(visible) {
+    if (!app?.marginReleaseBtn) return;
+    const btn = app.marginReleaseBtn;
+    btn.classList.toggle('is-visible', !!visible);
+    btn.disabled = !visible;
+    btn.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  }
+
+  const typewriterMode = createTypewriterMode({
+    state,
+    onStopChange: setMarginReleaseVisible,
+    playBell: (soundId, volume) => bellPlayer.play(soundId, volume),
+  });
+  setMarginReleaseVisible(false);
+
+  if (app?.marginReleaseBtn) {
+    app.marginReleaseBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      typewriterMode.activateMarginRelease();
+      typewriterMode.afterCaretMove(getCurrentBounds());
+      updateCaretPosition();
+      focusStage();
+    });
   }
 
   function snapRowMuToStep(rowMu, bounds) {
@@ -268,6 +297,7 @@ export function createDocumentEditingController(context) {
   }
 
   function updateCaretPosition() {
+    typewriterMode.afterCaretMove(getCurrentBounds());
     const p = state.pages[state.caret.page];
     if (!p) return;
     const layoutScale = layoutZoomFactor();
@@ -295,6 +325,7 @@ export function createDocumentEditingController(context) {
     const bounds = getCurrentBounds();
     state.caret.col = clamp(state.caret.col, bounds.L, bounds.R);
     state.caret.rowMu = snapRowMuToStep(clamp(state.caret.rowMu, bounds.Tmu, bounds.Bmu), bounds);
+    typewriterMode.afterCaretMove(bounds);
     updateCaretPosition();
   }
 
@@ -328,9 +359,9 @@ export function createDocumentEditingController(context) {
     }
     if (changed) markRowAsDirty(page, rowMu);
   }
-function insertStringFast(s) {
-  const text = (s || '').replace(/\r\n?/g, '\n');
-  const bounds = getCurrentBounds();
+  function insertStringFast(s) {
+    const text = (s || '').replace(/\r\n?/g, '\n');
+    const bounds = getCurrentBounds();
 
   let pageIndex = state.caret.page;
   let page = state.pages[pageIndex] || addPage();
@@ -338,11 +369,11 @@ function insertStringFast(s) {
   let startCol = state.caret.col;
   const ink = state.ink;
 
-  const prevFreeze = getFreezeVirtual();
-  setFreezeVirtual(true);
-  try {
-    const newline = () => {
-      startCol = bounds.L;
+    const prevFreeze = getFreezeVirtual();
+    setFreezeVirtual(true);
+    try {
+      const newline = () => {
+        startCol = bounds.L;
       rowMu += state.lineStepMu;
       if (rowMu > bounds.Bmu) {
         pageIndex++;
@@ -362,6 +393,20 @@ function insertStringFast(s) {
         lastSpacePos = -1;
       }
     };
+
+    if (state.realTypewriterEnabled) {
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '\n') {
+          newline();
+          continue;
+        }
+        const page = state.pages[state.caret.page] || addPage();
+        overtypeCharacter(page, state.caret.rowMu, state.caret.col, ch, state.ink);
+        advanceCaret();
+      }
+      return;
+    }
 
     for (let i = 0; i < text.length; i++) {
       const ch = text[i];
@@ -412,28 +457,43 @@ function insertStringFast(s) {
 
   function advanceCaret() {
     const bounds = getCurrentBounds();
-    state.caret.col++;
+    const nextCol = state.caret.col + 1;
+    if (state.realTypewriterEnabled) {
+      if (typewriterMode.shouldHoldAtMargin(nextCol, bounds)) {
+        typewriterMode.afterCaretMove(bounds);
+        updateCaretPosition();
+        return;
+      }
+      state.caret.col = clamp(nextCol, bounds.L, bounds.pageMaxStart);
+      typewriterMode.afterCaretMove(bounds);
+      updateCaretPosition();
+      return;
+    }
+
+    state.caret.col = nextCol;
     if (state.caret.col > bounds.R) {
       const moved = attemptWordWrapAtOverflow(state.caret.rowMu, state.caret.page, bounds, true);
       if (!moved) {
         state.caret.col = bounds.L;
-      state.caret.rowMu += state.lineStepMu;
-      if (state.caret.rowMu > bounds.Bmu) {
-        state.caret.page++;
-        const np = state.pages[state.caret.page] || addPage();
-        viewSetActivePageIndex(np.index);
-        requestVirtualization();
-        state.caret.rowMu = bounds.Tmu;
-        state.caret.col = bounds.L;
-        positionRulers();
-      }
+        state.caret.rowMu += state.lineStepMu;
+        if (state.caret.rowMu > bounds.Bmu) {
+          state.caret.page++;
+          const np = state.pages[state.caret.page] || addPage();
+          viewSetActivePageIndex(np.index);
+          requestVirtualization();
+          state.caret.rowMu = bounds.Tmu;
+          state.caret.col = bounds.L;
+          positionRulers();
+        }
       }
     }
+    typewriterMode.afterCaretMove(bounds);
     updateCaretPosition();
   }
 
   function handleNewline() {
     const bounds = getCurrentBounds();
+    typewriterMode.resetForNewLine();
     state.caret.col = bounds.L;
     state.caret.rowMu += state.lineStepMu;
     if (state.caret.rowMu > bounds.Bmu) {
@@ -445,11 +505,13 @@ function insertStringFast(s) {
       state.caret.col = bounds.L;
       positionRulers();
     }
+    typewriterMode.afterCaretMove(getCurrentBounds());
     updateCaretPosition();
   }
 
   function handleBackspace() {
     const bounds = getCurrentBounds();
+    const prevKey = `${state.caret.page}:${state.caret.rowMu}`;
     if (state.caret.col > bounds.L) {
       state.caret.col--;
     } else if (state.caret.rowMu > bounds.Tmu) {
@@ -462,6 +524,9 @@ function insertStringFast(s) {
       state.caret.col = bounds.R;
       positionRulers();
     }
+    const movedRow = prevKey !== `${state.caret.page}:${state.caret.rowMu}`;
+    if (movedRow) typewriterMode.resetForNewLine();
+    typewriterMode.afterCaretMove(getCurrentBounds());
     updateCaretPosition();
   }
 
@@ -507,6 +572,9 @@ function insertStringFast(s) {
       positionRulers();
     }
 
+    const moved = nextPageIndex !== prevPageIndex || state.caret.rowMu !== targetRowMu;
+    if (moved) typewriterMode.resetForNewLine();
+    typewriterMode.afterCaretMove(getCurrentBounds());
     updateCaretPosition();
   }
 

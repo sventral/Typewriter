@@ -7,6 +7,7 @@ import {
   ZOOM_SLIDER_MIN_PCT,
 } from '../../config/lowResZoom.js';
 import { createDefaultPageNumberingSettings, sanitizePageNumberingSettings } from '../../config/pageNumbering.js';
+import { TYPEWRITER_DEFAULTS, normalizeTypewriterSettings } from '../../config/typewriterMode.js';
 
 export function createMeasurementControls({
   app,
@@ -238,6 +239,39 @@ export function createMeasurementControls({
     return normalized;
   }
 
+  function hideMarginReleaseBtn() {
+    if (!app.marginReleaseBtn) return;
+    app.marginReleaseBtn.classList.remove('is-visible');
+    app.marginReleaseBtn.disabled = true;
+    app.marginReleaseBtn.setAttribute('aria-hidden', 'true');
+  }
+
+  function syncTypewriterUI() {
+    const normalized = normalizeTypewriterSettings(
+      {
+        enabled: state.realTypewriterEnabled,
+        bellSound: state.realTypewriterBellSound,
+        bellVolume: state.realTypewriterBellVolume,
+        bellLead: state.realTypewriterBellLead,
+      },
+      TYPEWRITER_DEFAULTS,
+    );
+    state.realTypewriterEnabled = normalized.enabled;
+    state.realTypewriterBellSound = normalized.bellSound;
+    state.realTypewriterBellVolume = normalized.bellVolume;
+    state.realTypewriterBellLead = normalized.bellLead;
+
+    if (app.typewriterToggle) app.typewriterToggle.checked = normalized.enabled;
+    if (app.typewriterBellSelect) app.typewriterBellSelect.value = normalized.bellSound;
+    if (app.typewriterBellVolume) app.typewriterBellVolume.value = String(normalized.bellVolume);
+    if (app.typewriterBellVolumeValue) app.typewriterBellVolumeValue.textContent = `${normalized.bellVolume}%`;
+    if (app.typewriterBellLead) app.typewriterBellLead.value = String(normalized.bellLead);
+    if (!normalized.enabled) {
+      state.typewriterMarginRelease = false;
+      hideMarginReleaseBtn();
+    }
+  }
+
   function applyLowResZoomEffects() {
     if (typeof setRenderScaleForZoom === 'function') {
       setRenderScaleForZoom();
@@ -325,6 +359,50 @@ export function createMeasurementControls({
     });
   }
 
+  function bindTypewriterControls() {
+    if (app.typewriterToggle) {
+      app.typewriterToggle.addEventListener('change', () => {
+        state.realTypewriterEnabled = !!app.typewriterToggle.checked;
+        if (!state.realTypewriterEnabled) {
+          state.typewriterMarginRelease = false;
+          hideMarginReleaseBtn();
+        }
+        queueDirtySave();
+        focusStage();
+      });
+    }
+
+    if (app.typewriterBellSelect) {
+      app.typewriterBellSelect.addEventListener('change', () => {
+        const val = app.typewriterBellSelect.value || TYPEWRITER_DEFAULTS.bellSound;
+        state.realTypewriterBellSound = val;
+        queueDirtySave();
+      });
+    }
+
+    if (app.typewriterBellVolume) {
+      const applyVolume = () => {
+        const value = clamp(Math.round(Number(app.typewriterBellVolume.value) || 0), 0, 100);
+        state.realTypewriterBellVolume = value;
+        if (app.typewriterBellVolumeValue) app.typewriterBellVolumeValue.textContent = `${value}%`;
+        queueDirtySave();
+      };
+      app.typewriterBellVolume.addEventListener('input', applyVolume);
+      app.typewriterBellVolume.addEventListener('change', applyVolume);
+    }
+
+    if (app.typewriterBellLead) {
+      const applyLead = () => {
+        sanitizeIntegerField(app.typewriterBellLead, { min: 0, max: 40, allowEmpty: true });
+        const value = clamp(Math.round(Number(app.typewriterBellLead.value) || 0), 0, 40);
+        state.realTypewriterBellLead = value;
+        queueDirtySave();
+      };
+      app.typewriterBellLead.addEventListener('input', applyLead);
+      app.typewriterBellLead.addEventListener('change', applyLead);
+    }
+  }
+
   function bindLowResZoomControls() {
     if (app.lowResZoomToggle) {
       app.lowResZoomToggle.addEventListener('change', () => {
@@ -399,6 +477,7 @@ export function createMeasurementControls({
     bindToolbarInputs();
     bindLowResZoomControls();
     bindPageNumberingControls();
+    bindTypewriterControls();
     bindRulerInteractions();
     bindZoomControls();
     if (app.stage) {
@@ -427,6 +506,11 @@ export function createMeasurementControls({
       state.pageNumbering,
       createDefaultPageNumberingSettings(),
     );
+    state.realTypewriterEnabled = TYPEWRITER_DEFAULTS.enabled;
+    state.realTypewriterBellSound = TYPEWRITER_DEFAULTS.bellSound;
+    state.realTypewriterBellVolume = TYPEWRITER_DEFAULTS.bellVolume;
+    state.realTypewriterBellLead = TYPEWRITER_DEFAULTS.bellLead;
+    state.typewriterMarginRelease = false;
     applyDefaultMargins();
   }
 
@@ -451,6 +535,7 @@ export function createMeasurementControls({
     if (app.stageHeightPct) app.stageHeightPct.value = String(Math.round(sanitizedStageHeightFactor() * 100));
     syncPageNumberingUI();
     syncLowResZoomUI();
+    syncTypewriterUI();
   }
 
   return {

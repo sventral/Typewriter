@@ -8,6 +8,7 @@ import {
 } from '../config/inkEffectDefaultStyle.js';
 import { createDefaultPageNumberingSettings } from '../config/pageNumbering.js';
 import { createDefaultInkOpacity } from '../config/inkPalette.js';
+import { TYPEWRITER_DEFAULTS } from '../config/typewriterMode.js';
 
 const SECTION_STRENGTH_DEFAULTS = {
   expTone: getDefaultInkSectionStrength('expTone'),
@@ -89,6 +90,11 @@ export function createMainState(app, gridDiv = 8) {
     lagInputBlocked: false,
     lagAssistEnabled: true,
     pageNumbering: createDefaultPageNumberingSettings(),
+    realTypewriterEnabled: TYPEWRITER_DEFAULTS.enabled,
+    realTypewriterBellSound: TYPEWRITER_DEFAULTS.bellSound,
+    realTypewriterBellVolume: TYPEWRITER_DEFAULTS.bellVolume,
+    realTypewriterBellLead: TYPEWRITER_DEFAULTS.bellLead,
+    typewriterMarginRelease: false,
   };
 }
 
