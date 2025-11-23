@@ -873,11 +873,11 @@ export function createExperimentalStagePipeline(deps = {}) {
   }
 
 function applyExperimentalFuzz(coverage, ctx) {
-    const { w, h, params, alpha0, dm, seed, originX, originY } = ctx;
+    const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
     const fuzzEnabled = params.fuzzExp?.enable !== false;
     const fuzzThicken = fuzzEnabled ? (params.fuzzExp?.thicken || 0) : 0;
     const fuzzPatchFill = fuzzEnabled ? clamp(params.fuzzExp?.patchFill ?? 1, 0, 1) : 0;
-    const hasFuzz = fuzzEnabled && Math.abs(fuzzThicken) > 1e-6 && fuzzPatchFill > 0;
+    const hasFuzz = fuzzEnabled && Math.abs(fuzzThicken) > 1e-6;
     if (!hasFuzz) return;
 
     const inside = dm?.raw?.inside;
@@ -896,11 +896,14 @@ function applyExperimentalFuzz(coverage, ctx) {
     const fuzzSoftPx = softnessBase * 1.35;
     const seedFuzz = (seed ^ 0xF077F00D) >>> 0;
 
-    // Constant frequency in CSS space locks texture size to the glyph
-    const fuzzFreq = 2.5;
+    // Frequencies:
+    // bleedFreq: Low frequency (1.5) creates large, organic protrusions/blobs.
+    // fuzzFreq: Higher frequency (4.0) creates the internal grain texture/holes.
+    const bleedFreq = 1.5;
+    const fuzzFreq = 4.0;
     
-    const originXCss = Number.isFinite(originX) ? originX : 0;
-    const originYCss = Number.isFinite(originY) ? originY : 0;
+    const originXCss = Number.isFinite(anchorX) ? anchorX : 0;
+    const originYCss = Number.isFinite(anchorY) ? anchorY : 0;
 
     // Determine if we need supersampling (at low zoom levels) to prevent aliasing/swimming
     const useSupersampling = dpPerCss < 2.5;
@@ -928,25 +931,41 @@ function applyExperimentalFuzz(coverage, ctx) {
       const outsideDist = outside ? (outside[i] || 0) : 0;
       const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
 
-      // Optimization: Skip complex noise sampling if we are far outside the effect radius
-      // We add a safety margin of 2 pixels to account for softness and noise variance
+      // Optimization: Skip if far outside the max possible effect radius
       if (signedDist > fuzzThickenRadiusPx + 2.0) continue;
 
       let accumAlpha = 0;
 
       for (let s = 0; s < samples.length; s++) {
         const offset = samples[s];
-        // Add small epsilon (0.123) to avoid integer boundary flipping artifacts
         const sampleXCss = xCssBase + (offset[0] * invDp) + 0.123;
         const sampleYCss = yCssBase + (offset[1] * invDp) + 0.123;
 
-        const noiseVal = sampleSpeckValueNoise(hash2Fn, sampleXCss * fuzzFreq, sampleYCss * fuzzFreq, seedFuzz);
+        // 1. Calculate Bleed (Shape/Protrusions) - Low Frequency
+        const bleedVal = sampleSpeckValueNoise(hash2Fn, sampleXCss * bleedFreq, sampleYCss * bleedFreq, seedFuzz ^ 0x12345);
         
+        // Modulate radius to create irregular, organic thickening
+        // Range: 0.0x to 1.3x the user setting. This creates "dips" (no thickening) and "bumps" (extra thickening).
+        const effectiveRadius = fuzzThickenRadiusPx * (bleedVal * 1.3);
+
+        // 2. Calculate Patch Fill (Grain Texture) - High Frequency
+        const noiseVal = sampleSpeckValueNoise(hash2Fn, sampleXCss * fuzzFreq, sampleYCss * fuzzFreq, seedFuzz);
         const noiseSoft = 0.15;
-        const noiseAlpha = 1.0 - smoothStep(clamp01Fn((noiseVal - (fuzzPatchFill - noiseSoft * 0.5)) / noiseSoft));
+        
+        // Calculate base mask from Fill slider
+        let noiseAlpha = 1.0 - smoothStep(clamp01Fn((noiseVal - (fuzzPatchFill - noiseSoft * 0.5)) / noiseSoft));
+
+        // 3. Visibility Interaction
+        // Even if Fill is low, force the strongest "protrusions" (high bleedVal) to remain visible.
+        // This ensures "Thicken" adds coarse chunks/bleed on its own, without needing high Fill.
+        if (fuzzPatchFill < 0.999) {
+           const bleedVisibility = Math.max(0, (bleedVal - 0.6) * 3.0); 
+           noiseAlpha = Math.max(noiseAlpha, bleedVisibility);
+        }
         
         if (noiseAlpha > 0.01 || fuzzPatchFill >= 0.999) {
-          let fuzzAlpha = applyDilateAlpha(signedDist, fuzzThickenRadiusPx, fuzzSoftPx);
+          let fuzzAlpha = applyDilateAlpha(signedDist, effectiveRadius, fuzzSoftPx);
+          
           if (fuzzPatchFill < 0.999) {
             fuzzAlpha *= noiseAlpha;
           }
