@@ -94,6 +94,8 @@ export function createMainState(app, gridDiv = 8) {
     realTypewriterBellSound: TYPEWRITER_DEFAULTS.bellSound,
     realTypewriterBellVolume: TYPEWRITER_DEFAULTS.bellVolume,
     realTypewriterBellLead: TYPEWRITER_DEFAULTS.bellLead,
+    realTypewriterStopSound: TYPEWRITER_DEFAULTS.stopSound,
+    realTypewriterStopEnabled: TYPEWRITER_DEFAULTS.stopEnabled,
     typewriterMarginRelease: false,
   };
 }

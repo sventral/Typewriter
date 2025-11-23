@@ -390,6 +390,7 @@ body[data-page-tone='dark']{
     color: var(--fg-muted, #6b6b6b);
     line-height: 1.4;
   }
+  .subtle-note[hidden] { display: none !important; }
   @media (prefers-color-scheme: dark) {
     .subtle-note { color: #b6b6c6; opacity: 0.9; }
     #wordWrapRow.is-disabled label { color: #b6b6c6; opacity: 0.65; }
