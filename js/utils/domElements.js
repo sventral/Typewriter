@@ -86,6 +86,7 @@ const DOM_ID_GROUPS = {
     lineSlantMin: 'lineSlantMin',
     lineSlantMax: 'lineSlantMax',
     lineSlantValue: 'lineSlantValue',
+    shuffleLineSlantBtn: 'shuffleLineSlantBtn',
   },
   layout: {
     toggleMarginsBtn: 'toggleMarginsBtn',
