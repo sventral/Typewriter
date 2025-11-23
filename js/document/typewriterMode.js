@@ -6,6 +6,7 @@ export function createTypewriterMode({
   playBell = () => {},
   onArmChange = () => {},
   onUse = () => {},
+  onStopSound = () => {},
 }) {
   let warnedRowKey = null;
   let armed = false;
@@ -48,6 +49,7 @@ export function createTypewriterMode({
     if (state.typewriterMarginRelease) return false;
     if (nextCol > bounds.R) {
       setStop(true);
+      onStopSound();
       return true;
     }
     return false;

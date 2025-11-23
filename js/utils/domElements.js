@@ -119,9 +119,13 @@ const DOM_ID_GROUPS = {
   typewriter: {
     typewriterToggle: 'realTypewriterToggle',
     typewriterBellSelect: 'typewriterBellSelect',
+    typewriterBellPreview: 'typewriterBellPreview',
     typewriterBellVolume: 'typewriterBellVolume',
     typewriterBellVolumeValue: 'typewriterBellVolumeValue',
     typewriterBellLead: 'typewriterBellLead',
+    typewriterStopSelect: 'typewriterStopSelect',
+    typewriterStopPreview: 'typewriterStopPreview',
+    typewriterStopToggle: 'typewriterStopToggle',
     marginReleaseBtn: 'marginReleaseBtn',
   },
   lowResZoom: {

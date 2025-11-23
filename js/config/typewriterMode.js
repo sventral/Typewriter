@@ -5,6 +5,8 @@ export const TYPEWRITER_DEFAULTS = {
   bellSound: 'bell-1',
   bellVolume: 70,
   bellLead: 5,
+  stopSound: 'stop-1',
+  stopEnabled: true,
 };
 
 export function normalizeTypewriterSettings(raw = {}, defaults = TYPEWRITER_DEFAULTS) {
@@ -13,8 +15,13 @@ export function normalizeTypewriterSettings(raw = {}, defaults = TYPEWRITER_DEFA
     typeof raw.bellSound === 'string' && raw.bellSound.trim()
       ? raw.bellSound.trim()
       : base.bellSound;
+  const stopSound =
+    typeof raw.stopSound === 'string' && raw.stopSound.trim()
+      ? raw.stopSound.trim()
+      : base.stopSound;
   const bellVolume = clamp(Math.round(Number(raw.bellVolume ?? base.bellVolume)), 0, 100);
   const bellLead = clamp(Math.round(Number(raw.bellLead ?? base.bellLead)), 0, 40);
   const enabled = raw.enabled === true;
-  return { enabled, bellSound, bellVolume, bellLead };
+  const stopEnabled = raw.stopEnabled !== false;
+  return { enabled, bellSound, bellVolume, bellLead, stopSound, stopEnabled };
 }

@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-      <div class="app-version">v.29.2b</div>
+      <div class="app-version">v.29.3b</div>
   <div id="storageNotice" class="storage-notice" role="status" aria-live="polite"></div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
@@ -567,6 +567,9 @@
                 <option value="bell-2">Bell 2</option>
                 <option value="bell-3">Bell 3</option>
               </select>
+              <button type="button" class="btn icon-only" id="typewriterBellPreview" title="Play bell sound">
+                ▶
+              </button>
             </div>
             <div class="control-row">
               <label for="typewriterBellVolume">Bell volume</label>
@@ -576,6 +579,20 @@
             <div class="control-row">
               <label for="typewriterBellLead">Bell warning (chars)</label>
               <input id="typewriterBellLead" type="number" min="0" max="40" step="1" value="5" />
+            </div>
+            <div class="control-row">
+              <label for="typewriterStopToggle">Play stop sound</label>
+              <input type="checkbox" id="typewriterStopToggle" checked />
+            </div>
+            <div class="control-row">
+              <label for="typewriterStopSelect">Stop sound</label>
+              <select id="typewriterStopSelect">
+                <option value="stop-1">Stop 1</option>
+                <option value="stop-2">Stop 2</option>
+              </select>
+              <button type="button" class="btn icon-only" id="typewriterStopPreview" title="Play stop sound">
+                ▶
+              </button>
             </div>
           </div>
         </div>

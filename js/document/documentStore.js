@@ -214,12 +214,14 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       bellSound: state.realTypewriterBellSound,
       bellVolume: state.realTypewriterBellVolume,
       bellLead: state.realTypewriterBellLead,
+      stopSound: state.realTypewriterStopSound,
+      stopEnabled: state.realTypewriterStopEnabled,
     },
     TYPEWRITER_DEFAULTS,
   );
 
   return {
-    v: 28,
+    v: 29,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -293,7 +295,7 @@ export function deserializeDocumentState(data, context) {
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 28) return false;
+  if (!data || data.v < 2 || data.v > 29) return false;
   const targetPaperSize = typeof data.paperSize === 'string'
     ? data.paperSize
     : state.paperSize || DEFAULT_PAPER_SIZE;
@@ -513,6 +515,8 @@ export function deserializeDocumentState(data, context) {
     realTypewriterBellSound: normalizedTypewriter.bellSound,
     realTypewriterBellVolume: normalizedTypewriter.bellVolume,
     realTypewriterBellLead: normalizedTypewriter.bellLead,
+    realTypewriterStopSound: normalizedTypewriter.stopSound,
+    realTypewriterStopEnabled: normalizedTypewriter.stopEnabled,
     typewriterMarginRelease: false,
     pageFillColor: typeof data.pageFillColor === 'string' && data.pageFillColor.trim()
       ? data.pageFillColor

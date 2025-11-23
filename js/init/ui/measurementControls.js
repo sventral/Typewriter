@@ -192,10 +192,16 @@ export function createMeasurementControls({
     const row = app.wordWrapRow;
     if (disabled) {
       app.wordWrapCb.checked = true;
-      if (note) note.hidden = false;
+      if (note) {
+        note.hidden = false;
+        note.setAttribute('aria-hidden', 'false');
+      }
       if (row) row.classList.add('is-disabled');
-    } else if (note) {
-      note.hidden = true;
+    } else {
+      if (note) {
+        note.hidden = true;
+        note.setAttribute('aria-hidden', 'true');
+      }
       if (row) row.classList.remove('is-disabled');
     }
   }
@@ -268,6 +274,8 @@ export function createMeasurementControls({
         bellSound: state.realTypewriterBellSound,
         bellVolume: state.realTypewriterBellVolume,
         bellLead: state.realTypewriterBellLead,
+        stopSound: state.realTypewriterStopSound,
+        stopEnabled: state.realTypewriterStopEnabled,
       },
       TYPEWRITER_DEFAULTS,
     );
@@ -275,12 +283,16 @@ export function createMeasurementControls({
     state.realTypewriterBellSound = normalized.bellSound;
     state.realTypewriterBellVolume = normalized.bellVolume;
     state.realTypewriterBellLead = normalized.bellLead;
+    state.realTypewriterStopSound = normalized.stopSound;
+    state.realTypewriterStopEnabled = normalized.stopEnabled;
 
     if (app.typewriterToggle) app.typewriterToggle.checked = normalized.enabled;
     if (app.typewriterBellSelect) app.typewriterBellSelect.value = normalized.bellSound;
     if (app.typewriterBellVolume) app.typewriterBellVolume.value = String(normalized.bellVolume);
     if (app.typewriterBellVolumeValue) app.typewriterBellVolumeValue.textContent = `${normalized.bellVolume}%`;
     if (app.typewriterBellLead) app.typewriterBellLead.value = String(normalized.bellLead);
+    if (app.typewriterStopSelect) app.typewriterStopSelect.value = normalized.stopSound;
+    if (app.typewriterStopToggle) app.typewriterStopToggle.checked = normalized.stopEnabled;
     if (!normalized.enabled) {
       state.typewriterMarginRelease = false;
       hideMarginReleaseBtn();
@@ -396,6 +408,20 @@ export function createMeasurementControls({
         queueDirtySave();
       });
     }
+    const playSample = (id, volumePct) => {
+      if (!id) return;
+      const isBell = id.startsWith('bell-');
+      const ext = isBell ? 'mp3' : 'wav';
+      const audio = new Audio(`audio/${id}.${ext}`);
+      const vol = clamp(Math.round(Number(volumePct ?? state.realTypewriterBellVolume ?? 70)), 0, 100) / 100 * 0.75;
+      audio.volume = vol;
+      audio.play().catch(() => {});
+    };
+    if (app.typewriterBellPreview) {
+      app.typewriterBellPreview.addEventListener('click', () => {
+        playSample(state.realTypewriterBellSound || TYPEWRITER_DEFAULTS.bellSound, state.realTypewriterBellVolume);
+      });
+    }
 
     if (app.typewriterBellVolume) {
       const applyVolume = () => {
@@ -417,6 +443,26 @@ export function createMeasurementControls({
       };
       app.typewriterBellLead.addEventListener('input', applyLead);
       app.typewriterBellLead.addEventListener('change', applyLead);
+    }
+
+    if (app.typewriterStopToggle) {
+      app.typewriterStopToggle.addEventListener('change', () => {
+        state.realTypewriterStopEnabled = !!app.typewriterStopToggle.checked;
+        queueDirtySave();
+      });
+    }
+
+    if (app.typewriterStopSelect) {
+      app.typewriterStopSelect.addEventListener('change', () => {
+        const val = app.typewriterStopSelect.value || TYPEWRITER_DEFAULTS.stopSound;
+        state.realTypewriterStopSound = val;
+        queueDirtySave();
+      });
+    }
+    if (app.typewriterStopPreview) {
+      app.typewriterStopPreview.addEventListener('click', () => {
+        playSample(state.realTypewriterStopSound || TYPEWRITER_DEFAULTS.stopSound, state.realTypewriterBellVolume);
+      });
     }
   }
 
@@ -527,6 +573,8 @@ export function createMeasurementControls({
     state.realTypewriterBellSound = TYPEWRITER_DEFAULTS.bellSound;
     state.realTypewriterBellVolume = TYPEWRITER_DEFAULTS.bellVolume;
     state.realTypewriterBellLead = TYPEWRITER_DEFAULTS.bellLead;
+    state.realTypewriterStopSound = TYPEWRITER_DEFAULTS.stopSound;
+    state.realTypewriterStopEnabled = TYPEWRITER_DEFAULTS.stopEnabled;
     state.typewriterMarginRelease = false;
     applyDefaultMargins();
   }
