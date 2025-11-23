@@ -833,7 +833,7 @@ body[data-page-tone='dark']{
     position: fixed;
     top: 0;
     bottom: var(--toolbar-h);
-    width: 360px;
+    width: 432px;
     background: var(--panel-bg);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
