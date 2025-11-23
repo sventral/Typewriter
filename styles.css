@@ -366,6 +366,17 @@ body[data-page-tone='dark']{
   }
   .toolbar-left, .toolbar-right { display:flex; align-items:center; gap:.5rem; }
 
+  .typewriter-mr-btn {
+    display: none;
+    min-width: 46px;
+    justify-content: center;
+    font-weight: 700;
+  }
+
+  .typewriter-mr-btn.is-visible {
+    display: inline-flex;
+  }
+
   .btn.icon-only {
     padding: 0;
     min-width: 30px;
@@ -1121,6 +1132,11 @@ body[data-page-tone='dark']{
   #typographySettings .range-input-pair { display: flex; align-items: center; gap: 8px; }
   #typographySettings .range-input-pair .input-with-suffix { width: 88px; }
   #typographySettings .range-input-pair .range-separator { font-weight: 600; opacity: 0.6; }
+  #typewriterSettings .control-row { display: flex; align-items: center; gap: 10px; }
+  #typewriterSettings .control-row label { flex: 1; }
+  #typewriterSettings .control-row input[type="range"] { flex: 2; }
+  #typewriterSettings .control-row input[type="number"] { width: 96px; }
+  #typewriterSettings .range-value { min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; opacity: .8; }
 
   .fonts-settings-group { gap: 8px; }
   .fonts-settings-group .font-option {

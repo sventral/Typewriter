@@ -114,6 +114,14 @@ const DOM_ID_GROUPS = {
     darkPageToggle: 'darkPageToggle',
     lagAssistToggle: 'lagAssistToggle',
   },
+  typewriter: {
+    typewriterToggle: 'realTypewriterToggle',
+    typewriterBellSelect: 'typewriterBellSelect',
+    typewriterBellVolume: 'typewriterBellVolume',
+    typewriterBellVolumeValue: 'typewriterBellVolumeValue',
+    typewriterBellLead: 'typewriterBellLead',
+    marginReleaseBtn: 'marginReleaseBtn',
+  },
   lowResZoom: {
     lowResZoomToggle: 'lowResZoomToggle',
     lowResZoomSoftCap: 'lowResZoomSoftCap',

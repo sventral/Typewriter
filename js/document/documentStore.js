@@ -18,6 +18,7 @@ import {
   getDefaultInkSectionQuality,
   getDefaultInkSectionStrength,
 } from '../config/inkEffectDefaultStyle.js';
+import { TYPEWRITER_DEFAULTS, normalizeTypewriterSettings } from '../config/typewriterMode.js';
 import { hydrateGlyphEntry, serializeGlyphEntry } from './glyphStack.js';
 import { STAGE_HEIGHT_MAX, STAGE_HEIGHT_MIN, STAGE_WIDTH_MAX, STAGE_WIDTH_MIN } from '../layout/stageLayout.js';
 import { encodeDocumentDataForStorage, decodeDocumentDataFromStorage } from '../storage/jsonCompression.js';
@@ -207,8 +208,18 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     createDefaultPageNumberingSettings(),
   );
 
+  const realTypewriter = normalizeTypewriterSettings(
+    {
+      enabled: state.realTypewriterEnabled,
+      bellSound: state.realTypewriterBellSound,
+      bellVolume: state.realTypewriterBellVolume,
+      bellLead: state.realTypewriterBellLead,
+    },
+    TYPEWRITER_DEFAULTS,
+  );
+
   return {
-    v: 27,
+    v: 28,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -251,6 +262,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     savedInkStyles: sanitizeSavedInkStyles(state.savedInkStyles),
     currentInkStyle: state.currentInkStyle ? sanitizeSavedInkStyle(state.currentInkStyle) : null,
     pageNumbering,
+    realTypewriter,
     glyphJitter: {
       enabled: !!state.glyphJitterEnabled,
       amountPct: cloneGlyphJitterRange(glyphJitterAmount),
@@ -281,7 +293,7 @@ export function deserializeDocumentState(data, context) {
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 27) return false;
+  if (!data || data.v < 2 || data.v > 28) return false;
   const targetPaperSize = typeof data.paperSize === 'string'
     ? data.paperSize
     : state.paperSize || DEFAULT_PAPER_SIZE;
@@ -420,6 +432,10 @@ export function deserializeDocumentState(data, context) {
     { maxZoomPct: ZOOM_SLIDER_MAX_PCT, minSoftCapPct: ZOOM_SLIDER_MIN_PCT },
   );
   const lowResZoomEnabled = lowResZoomBlock.enabled !== false;
+  const normalizedTypewriter = normalizeTypewriterSettings(
+    data.realTypewriter,
+    TYPEWRITER_DEFAULTS,
+  );
 
   Object.assign(state, {
     marginL: data.margins?.L ?? state.marginL,
@@ -493,6 +509,11 @@ export function deserializeDocumentState(data, context) {
       : (state.themeMode || 'auto'),
     darkPageInDarkMode: data.darkPageInDarkMode === true,
     lagAssistEnabled: data.lagAssistEnabled !== false,
+    realTypewriterEnabled: normalizedTypewriter.enabled,
+    realTypewriterBellSound: normalizedTypewriter.bellSound,
+    realTypewriterBellVolume: normalizedTypewriter.bellVolume,
+    realTypewriterBellLead: normalizedTypewriter.bellLead,
+    typewriterMarginRelease: false,
     pageFillColor: typeof data.pageFillColor === 'string' && data.pageFillColor.trim()
       ? data.pageFillColor
       : state.pageFillColor,
