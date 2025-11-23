@@ -303,8 +303,10 @@ export function createPageRenderer(options) {
     const desc = getDescFn();
     const gridHeight = getGridHeightFn();
     const charWidth = getCharWidthFn();
-    const BLEED_TOP_CSS = Math.ceil(asc + 2);
-    const BLEED_BOTTOM_CSS = Math.ceil(desc + 2);
+    const angleRad = Number.isFinite(page?.lineSlantDeg) ? (page.lineSlantDeg * Math.PI) / 180 : 0;
+    const slantBleed = Math.abs((app.PAGE_W / 2) * Math.tan(angleRad));
+    const BLEED_TOP_CSS = Math.ceil(asc + 2 + slantBleed);
+    const BLEED_BOTTOM_CSS = Math.ceil(desc + 2 + slantBleed);
 
     const { backCtx } = page;
     if (!backCtx) {
@@ -432,6 +434,9 @@ export function createPageRenderer(options) {
     const { backCtx } = page;
     const gridHeight = getGridHeightFn();
     const charWidth = getCharWidthFn();
+    const angleRad = Number.isFinite(page?.lineSlantDeg) ? (page.lineSlantDeg * Math.PI) / 180 : 0;
+    const slantBleedTop = Math.abs((app.PAGE_W / 2) * Math.tan(angleRad));
+    const slantBleedBot = slantBleedTop;
     const pageNumberRow = computePageNumberRow(page);
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
@@ -439,6 +444,12 @@ export function createPageRenderer(options) {
     backCtx.fillStyle = state.pageFillColor || '#f7f5ee';
     backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
     backCtx.restore();
+    const asc = getAscFn();
+    const desc = getDescFn();
+    const slantBleed = Math.abs((app.PAGE_W / 2) * Math.tan(angleRad));
+    const bleedTop = Math.ceil(asc + 2 + slantBleed);
+    const bleedBottom = Math.ceil(desc + 2 + slantBleed);
+
     for (const [rowMu, rowMap] of page.grid) {
       if (!rowMap) continue;
       const baseline = rowMu * gridHeight;
@@ -463,9 +474,11 @@ export function createPageRenderer(options) {
     const desc = getDescFn();
     const charWidth = getCharWidthFn();
     const gridHeight = getGridHeightFn();
+    const angleRad = Number.isFinite(page?.lineSlantDeg) ? (page.lineSlantDeg * Math.PI) / 180 : 0;
+    const slantBleed = Math.abs((app.PAGE_W / 2) * Math.tan(angleRad));
 
-    const BLEED_TOP_CSS = Math.ceil(asc + 2);
-    const BLEED_BOTTOM_CSS = Math.ceil(desc + 2);
+    const BLEED_TOP_CSS = Math.ceil(asc + 2 + slantBleed);
+    const BLEED_BOTTOM_CSS = Math.ceil(desc + 2 + slantBleed);
 
     const bandTopCss = Math.max(0, dirtyRowMinMu * gridHeight - BLEED_TOP_CSS);
     const bandBotCss = Math.min(app.PAGE_H, dirtyRowMaxMu * gridHeight + BLEED_BOTTOM_CSS);
