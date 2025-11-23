@@ -970,7 +970,26 @@ body[data-page-tone='dark']{
   .ink-section-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; justify-self: stretch; justify-content: flex-start; white-space: nowrap; flex: 1; min-width: 0; }
   .ink-section-toggle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
   .ink-section-toggle-icon { display: inline-flex; width: 16px; justify-content: center; transition: transform 0.18s ease; transform: rotate(90deg); font-size: 16px; line-height: 1; }
-  .ink-section-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.75; }
+  .ink-section-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.9; }
+  .ink-lock-toggle {
+    appearance: none;
+    border: 1px solid var(--control-border, rgba(0,0,0,0.25));
+    background: var(--control-bg, rgba(255,255,255,0.08));
+    color: inherit;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+    transition: background 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
+  }
+  .ink-lock-toggle[data-locked="1"] { background: var(--control-bg-strong, rgba(0,0,0,0.1)); border-color: var(--panel-border, rgba(0,0,0,0.28)); }
+  .ink-lock-toggle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
   .ink-section-enable { margin-left: auto; display: flex; align-items: center; }
   .ink-section-enable-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-color); }
   .ink-section.is-collapsed .ink-section-toggle-icon { transform: rotate(0deg); }
@@ -993,12 +1012,16 @@ body[data-page-tone='dark']{
   .ink-overall-controls input[type="number"] { width: 64px; padding: 0 6px; }
   .ink-overall-spacer { width: 16px; display: inline-flex; flex: 0 0 16px; visibility: hidden; }
   .ink-settings-divider { margin: 16px 0; }
-  .ink-section-body .control-row {
+.ink-section-body .control-row {
     display: grid;
     grid-template-columns: minmax(90px, var(--ink-heading-width)) minmax(0, 1fr) auto;
     column-gap: 4px;
     align-items: center;
     margin-bottom: 6px;
+  }
+  .ink-section-body .control-row.control-row--with-lock {
+    grid-template-columns: auto minmax(90px, var(--ink-heading-width)) minmax(0, 1fr) auto;
+    column-gap: 8px;
   }
   .ink-section-body .control-row--quality { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.28); }
   .ink-section-body .control-row--quality + .control-row--quality { margin-top: 6px; padding-top: 0; border-top: none; }
@@ -1013,11 +1036,16 @@ body[data-page-tone='dark']{
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.ink-section-body .ink-subgroup.is-locked,
+.ink-section-body .control-row.is-locked {
+  opacity: 0.55;
+}
 .ink-subgroup { border-left: 2px solid rgba(0,0,0,0.06); padding-left: 10px; margin: 6px 0 10px; }
-.ink-subheading { font-size: 11px; font-weight: 600; opacity: 0.65; margin: 8px 0 6px; text-transform: uppercase; }
+.ink-subheading { font-size: 13px; font-weight: 700; opacity: 0.8; margin: 8px 0 6px; text-transform: uppercase; letter-spacing: 0.4px; display: inline-flex; align-items: center; gap: 6px; }
 .ink-subgroup-plain { border-left: 0; padding-left: 0; margin-left: 0; }
 .ink-subheading-plain { text-transform: none; font-size: 13px; opacity: 1; font-weight: 600; }
 .ink-subheading-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ink-subheading-row .ink-subheading { display: inline-flex; align-items: center; gap: 6px; }
 .ink-subheading-toggle { margin-left: 6px; }
   .ink-array-item { border: 1px solid rgba(0,0,0,0.08); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
   .ink-array-title { font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 6px; text-transform: uppercase; }

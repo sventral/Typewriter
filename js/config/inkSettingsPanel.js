@@ -250,6 +250,27 @@ const SECTION_SCALE_CONFIG = Object.freeze({
   },
 });
 
+const SUBGROUP_CONFIG = {
+  expTone: [
+    { id: 'variations', label: 'Variations', paths: ['enable.toneDynamics', 'ink.pressureMid', 'ink.pressureVar', 'ink.inkGamma', 'ink.toneJitter', 'noise.lfScale'] },
+    { id: 'ribbon', label: 'Ribbon', paths: ['enable.ribbonBands', 'ribbon.height', 'ribbon.position', 'ribbon.delta', 'ribbon.fade', 'ribbon.wobble'] },
+  ],
+  expEdge: [
+    { id: 'rim', label: 'Rim', paths: ['enable.rim', 'ink.rim', 'ink.rimCurve'] },
+    { id: 'fuzz', label: 'Fuzz', paths: ['enable.edgeFuzz', 'edgeFuzz.opacity', 'edgeFuzz.inBand', 'edgeFuzz.outBand', 'edgeFuzz.rough', 'edgeFuzz.scale', 'edgeFuzz.mix'] },
+    { id: 'grain', label: 'Grain', paths: ['fuzzExp', 'fuzzExp.thicken', 'fuzzExp.patchFill'] },
+    { id: 'weight', label: 'Weight', paths: ['enable.centerEdge', 'centerEdge.center', 'centerEdge.edge', 'centerEdge.thicken', 'centerEdge.patchFill', 'centerEdge.patchSize'] },
+  ],
+  expGrain: [
+    { id: 'speckle', label: 'Speckle', paths: ['enable.grainSpeck', 'ink.mottling', 'ink.speckDark', 'ink.speckLight', 'ink.speckGrayBias'] },
+    { id: 'dropouts', label: 'Dropouts', paths: ['enable.dropouts', 'dropouts.amount', 'dropouts.width', 'dropouts.scale', 'dropouts.pinhole', 'dropouts.streakDensity', 'dropouts.pinholeWeight'] },
+  ],
+  expDefects: [
+    { id: 'smudge', label: 'Smudge halo', paths: ['enable.smudge', 'smudge.strength', 'smudge.radius', 'smudge.falloff', 'smudge.scale', 'smudge.density', 'smudge.dirDeg', 'smudge.spread'] },
+    { id: 'punch', label: 'Punch defects', paths: ['enable.punch', 'punch.chance', 'punch.count', 'punch.rMin', 'punch.rMax', 'punch.edgeBias', 'punch.soft', 'punch.intensity'] },
+  ],
+};
+
 const VISIBLE_SECTION_DEFS = SECTION_DEFS.filter(def => !def.hidden);
 const DEFAULT_SECTION_ORDER = VISIBLE_SECTION_DEFS.map(def => def.id);
 const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
@@ -310,11 +331,110 @@ const panelState = {
   importInput: null,
   resetButton: null,
   randomizeButton: null,
+  lockState: {
+    groups: {},
+    quality: {},
+    scale: {},
+  },
   sectionsRoot: null,
   sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   dragState: null,
   persistDepth: 0,
 };
+
+function lockKey(metaId, path) {
+  return `${metaId || 'unknown'}:${path || 'root'}`;
+}
+
+function setGroupLocked(meta, path, locked) {
+  if (!meta || !path) return;
+  const key = lockKey(meta.id, path);
+  panelState.lockState.groups[key] = !!locked;
+  const groupEl = meta.groupElements?.get(path);
+  if (groupEl) {
+    groupEl.classList.toggle('is-locked', !!locked);
+    const lockBtn = groupEl.querySelector('.ink-lock-toggle');
+    if (lockBtn) {
+      lockBtn.dataset.locked = locked ? '1' : '0';
+      lockBtn.textContent = locked ? '🔒' : '🔓';
+      lockBtn.setAttribute('aria-pressed', locked ? 'true' : 'false');
+      const labelText = lockBtn.getAttribute('title')?.replace(/^(Lock|Unlock)\s+/i, '') || '';
+      lockBtn.setAttribute('aria-label', `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim());
+      lockBtn.title = `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim();
+    }
+    groupEl.querySelectorAll('input, select, textarea, button').forEach(el => {
+      if (el.classList.contains('ink-lock-toggle')) return;
+      el.disabled = !!locked;
+      if (locked) el.blur();
+    });
+  }
+}
+
+function isGroupLocked(meta, path) {
+  if (!meta || !path) return false;
+  const key = lockKey(meta.id, path);
+  return !!panelState.lockState.groups[key];
+}
+
+function setQualityLocked(meta, locked) {
+  if (!meta) return;
+  const key = lockKey(meta.id, 'quality');
+  panelState.lockState.quality[key] = !!locked;
+  const qc = meta.qualityControl;
+  if (qc) {
+    qc.wrapper.classList.toggle('is-locked', !!locked);
+    const lockBtn = qc.wrapper.querySelector('.ink-lock-toggle');
+    if (lockBtn) {
+      lockBtn.dataset.locked = locked ? '1' : '0';
+      lockBtn.textContent = locked ? '🔒' : '🔓';
+      lockBtn.setAttribute('aria-pressed', locked ? 'true' : 'false');
+      const labelText = lockBtn.getAttribute('title')?.replace(/^(Lock|Unlock)\s+/i, '') || qc.wrapper.dataset.lockLabel || 'Quality';
+      lockBtn.setAttribute('aria-label', `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim());
+      lockBtn.title = `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim();
+    }
+    [qc.slider, qc.numberInput].forEach(input => {
+      if (!input) return;
+      input.disabled = !!locked;
+      if (locked) input.blur();
+    });
+  }
+}
+
+function isQualityLocked(meta) {
+  if (!meta) return false;
+  const key = lockKey(meta.id, 'quality');
+  return !!panelState.lockState.quality[key];
+}
+
+function setScaleLocked(meta, locked) {
+  if (!meta) return;
+  const key = lockKey(meta.id, 'scale');
+  panelState.lockState.scale[key] = !!locked;
+  const sc = meta.scaleControl;
+  if (sc) {
+    sc.wrapper.classList.toggle('is-locked', !!locked);
+    const lockBtn = sc.wrapper.querySelector('.ink-lock-toggle');
+    if (lockBtn) {
+      lockBtn.dataset.locked = locked ? '1' : '0';
+      lockBtn.textContent = locked ? '🔒' : '🔓';
+      lockBtn.setAttribute('aria-pressed', locked ? 'true' : 'false');
+      const labelText = lockBtn.getAttribute('title')?.replace(/^(Lock|Unlock)\s+/i, '') || sc.wrapper.dataset.lockLabel || 'Scale';
+      lockBtn.setAttribute('aria-label', `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim());
+      lockBtn.title = `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim();
+    }
+    [sc.slider, sc.numberInput].forEach(input => {
+      if (!input) return;
+      input.disabled = !!locked;
+      if (locked) input.blur();
+    });
+  }
+}
+
+function isScaleLocked(meta) {
+  if (!meta) return false;
+  const key = lockKey(meta.id, 'scale');
+  return !!panelState.lockState.scale[key];
+}
 
 const HEX_MATCH_RE = /seed|hash/i;
 const STYLE_NAME_MAX_LEN = 60;
@@ -1184,6 +1304,59 @@ function formatSliderNumber(value, precision = 2) {
   return text;
 }
 
+function createLockToggle(labelText, onToggle) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ink-lock-toggle';
+  const setState = locked => {
+    btn.dataset.locked = locked ? '1' : '0';
+    btn.textContent = locked ? '🔒' : '🔓';
+    btn.setAttribute('aria-pressed', locked ? 'true' : 'false');
+    btn.setAttribute('aria-label', `${locked ? 'Unlock' : 'Lock'} ${labelText}`);
+    btn.title = `${locked ? 'Unlock' : 'Lock'} ${labelText}`;
+  };
+  btn.addEventListener('click', () => {
+    const next = btn.dataset.locked !== '1';
+    setState(next);
+    if (typeof onToggle === 'function') onToggle(next, btn);
+  });
+  setState(false);
+  return btn;
+}
+
+function tagRowWithGroup(row, groupPath) {
+  if (!row || !groupPath) return;
+  row.dataset.groupPath = groupPath;
+  row.querySelectorAll('input, select, textarea').forEach(el => {
+    if (!el.dataset.groupPath) el.dataset.groupPath = groupPath;
+  });
+}
+
+function ensureSubgroupLocks(meta) {
+  if (!meta?.body) return;
+  const groups = Array.from(meta.body.querySelectorAll('.ink-subgroup'));
+  groups.forEach(group => {
+    const path = group.dataset.groupPath || group.getAttribute('data-group-path') || null;
+    if (path && !meta.groupElements.has(path)) {
+      meta.groupElements.set(path, group);
+    }
+    const heading = group.querySelector('.ink-subheading');
+    if (!heading) return;
+    const hasLock = heading.querySelector('.ink-lock-toggle');
+    const labelText = heading.textContent?.trim() || 'Group';
+    if (!hasLock) {
+      const lock = createLockToggle(labelText, locked => setGroupLocked(meta, path || labelText, locked));
+      heading.prepend(lock);
+    }
+    const effectivePath = path || labelText;
+    if (effectivePath && !group.dataset.groupPath) {
+      group.dataset.groupPath = effectivePath;
+      meta.groupElements.set(effectivePath, group);
+    }
+    if (effectivePath) setGroupLocked(meta, effectivePath, isGroupLocked(meta, effectivePath));
+  });
+}
+
 function updateSliderDisplay(input) {
   if (!input) return;
   const setDisplay = value => {
@@ -1415,10 +1588,14 @@ function buildArrayControls(meta, container, arr, path, label) {
   if (isPrimitive) {
     const group = document.createElement('div');
     group.className = 'ink-subgroup';
+    group.dataset.groupPath = path;
+    meta.groupElements?.set(path, group);
     if (label) {
       const heading = document.createElement('div');
       heading.className = 'ink-subheading';
-      heading.textContent = label;
+      const lock = createLockToggle(label, locked => setGroupLocked(meta, path, locked));
+      heading.prepend(lock);
+      heading.appendChild(document.createTextNode(label));
       group.appendChild(heading);
     }
     arr.forEach((value, idx) => {
@@ -1426,18 +1603,24 @@ function buildArrayControls(meta, container, arr, path, label) {
       const input = createInputForValue(value, itemPath, meta?.id);
       if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
       const row = buildControlRow(`${label ? label : 'Item'} ${idx + 1}`, input);
+      tagRowWithGroup(row, path);
       group.appendChild(row);
       registerMetaInput(meta, itemPath, input);
     });
+    setGroupLocked(meta, path, isGroupLocked(meta, path));
     container.appendChild(group);
     return;
   }
   const group = document.createElement('div');
   group.className = 'ink-subgroup';
+  group.dataset.groupPath = path;
+  meta.groupElements?.set(path, group);
   if (label) {
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
-    heading.textContent = label;
+    const lock = createLockToggle(label, locked => setGroupLocked(meta, path, locked));
+    heading.prepend(lock);
+    heading.appendChild(document.createTextNode(label));
     group.appendChild(heading);
   }
   arr.forEach((value, idx) => {
@@ -1462,11 +1645,13 @@ function buildArrayControls(meta, container, arr, path, label) {
       const input = createInputForValue(val, itemPath, meta?.id);
       const row = buildControlRow(key, input);
       if (!input.dataset.enumOptions && typeof val === 'string') input.dataset.string = '1';
+      tagRowWithGroup(row, path);
       item.appendChild(row);
       registerMetaInput(meta, itemPath, input);
     });
     group.appendChild(item);
   });
+  setGroupLocked(meta, path, isGroupLocked(meta, path));
   container.appendChild(group);
 }
 
@@ -1475,13 +1660,18 @@ function buildObjectControls(meta, container, obj, path, label) {
   const group = document.createElement('div');
   group.className = 'ink-subgroup';
   if (path === 'fuzzExp') group.classList.add('ink-subgroup-plain');
+  group.dataset.groupPath = path;
+  meta.groupElements?.set(path, group);
   if (label) {
     const headingRow = document.createElement('div');
     headingRow.className = 'ink-subheading-row';
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
     if (path === 'fuzzExp') heading.classList.add('ink-subheading-plain');
-    heading.textContent = meta.labels?.[path] || label;
+    const headingLabel = meta.labels?.[path] || label;
+    const lock = createLockToggle(headingLabel, locked => setGroupLocked(meta, path, locked));
+    heading.appendChild(lock);
+    heading.appendChild(document.createTextNode(headingLabel));
     headingRow.appendChild(heading);
     if (path === 'fuzzExp') {
       const toggle = createInputForValue(obj.enable ?? false, `${path}.enable`, meta?.id);
@@ -1510,9 +1700,11 @@ function buildObjectControls(meta, container, obj, path, label) {
     if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
     const rowLabel = meta.labels?.[keyPath] || key;
     const row = buildControlRow(rowLabel, input);
+    tagRowWithGroup(row, path);
     group.appendChild(row);
     registerMetaInput(meta, keyPath, input);
   });
+  setGroupLocked(meta, path, isGroupLocked(meta, path));
   container.appendChild(group);
 }
 
@@ -1536,9 +1728,11 @@ function createQualityControl(meta, container) {
   const cfg = SECTION_QUALITY_CONFIG[meta.id];
   if (!cfg) return null;
   const wrapper = document.createElement('div');
-  wrapper.className = 'control-row control-row--quality';
+  wrapper.className = 'control-row control-row--quality control-row--with-lock';
+  wrapper.dataset.lockLabel = cfg.label || 'Quality';
   const label = document.createElement('label');
   label.textContent = cfg.label || 'Quality';
+  const lock = createLockToggle(cfg.label || 'Quality', locked => setQualityLocked(meta, locked));
   const slider = document.createElement('input');
   slider.type = 'range';
   slider.min = String(EFFECT_QUALITY_MIN);
@@ -1554,16 +1748,20 @@ function createQualityControl(meta, container) {
   numberInput.setAttribute('aria-label', `${cfg.label || 'Quality'} value`);
   updateSliderDisplay(slider);
   slider.addEventListener('input', () => updateSliderDisplay(slider));
+  wrapper.appendChild(lock);
   wrapper.appendChild(label);
   wrapper.appendChild(slider);
   wrapper.appendChild(numberInput);
   container.appendChild(wrapper);
-  return {
+  const control = {
     stateKey: cfg.stateKey,
     slider,
     numberInput,
     wrapper,
+    lock,
   };
+  setQualityLocked(meta, isQualityLocked(meta));
+  return control;
 }
 
 function createScaleControl(meta, container) {
@@ -1571,9 +1769,11 @@ function createScaleControl(meta, container) {
   const cfg = SECTION_SCALE_CONFIG[meta.id];
   if (!cfg) return null;
   const wrapper = document.createElement('div');
-  wrapper.className = 'control-row control-row--quality';
+  wrapper.className = 'control-row control-row--quality control-row--with-lock';
+  wrapper.dataset.lockLabel = cfg.label || 'Scale';
   const label = document.createElement('label');
   label.textContent = cfg.label || 'Scale';
+  const lock = createLockToggle(cfg.label || 'Scale', locked => setScaleLocked(meta, locked));
   const slider = document.createElement('input');
   slider.type = 'range';
   slider.min = String(EFFECT_SCALE_MIN);
@@ -1589,16 +1789,20 @@ function createScaleControl(meta, container) {
   numberInput.setAttribute('aria-label', `${cfg.label || 'Scale'} value`);
   updateSliderDisplay(slider);
   slider.addEventListener('input', () => updateSliderDisplay(slider));
+  wrapper.appendChild(lock);
   wrapper.appendChild(label);
   wrapper.appendChild(slider);
   wrapper.appendChild(numberInput);
   container.appendChild(wrapper);
-  return {
+  const control = {
     stateKey: cfg.stateKey,
     slider,
     numberInput,
     wrapper,
+    lock,
   };
+  setScaleLocked(meta, isScaleLocked(meta));
+  return control;
 }
 
 function buildSection(def, root) {
@@ -1665,6 +1869,7 @@ function buildSection(def, root) {
     stateKey: def.stateKey,
     root: sectionEl,
     inputs: new Map(),
+    groupElements: new Map(),
     checkbox,
     body,
     toggleButton: toggleBtn,
@@ -1672,6 +1877,32 @@ function buildSection(def, root) {
     hasStrengthControl,
     qualityControl: null,
     scaleControl: null,
+  };
+
+  const subgroupDefs = SUBGROUP_CONFIG[def.id] || [];
+  const subgroupMap = new Map();
+
+  const getSubgroup = path => {
+    const found = subgroupDefs.find(entry => entry.paths.includes(path));
+    if (!found) return null;
+    if (subgroupMap.has(found.id)) return subgroupMap.get(found.id);
+    const group = document.createElement('div');
+    group.className = 'ink-subgroup';
+    group.dataset.groupPath = found.id;
+    const headingRow = document.createElement('div');
+    headingRow.className = 'ink-subheading-row';
+    const heading = document.createElement('div');
+    heading.className = 'ink-subheading';
+    const lock = createLockToggle(found.label, locked => setGroupLocked(meta, found.id, locked));
+    heading.appendChild(lock);
+    heading.appendChild(document.createTextNode(found.label));
+    headingRow.appendChild(heading);
+    group.appendChild(headingRow);
+    meta.groupElements.set(found.id, group);
+    meta.body.appendChild(group);
+    setGroupLocked(meta, found.id, isGroupLocked(meta, found.id));
+    subgroupMap.set(found.id, group);
+    return group;
   };
 
   dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
@@ -1701,9 +1932,17 @@ function buildSection(def, root) {
     const input = createInputForValue(value, path, meta.id);
     if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
     const row = buildControlRow(labelText || path, input);
-    body.appendChild(row);
+    const subgroup = getSubgroup(path);
+    if (subgroup) {
+      tagRowWithGroup(row, subgroup.dataset.groupPath);
+      subgroup.appendChild(row);
+    } else {
+      body.appendChild(row);
+    }
     registerMetaInput(meta, path, input);
   });
+
+  ensureSubgroupLocks(meta);
 
   if (SECTION_QUALITY_CONFIG[def.id]) {
     meta.qualityControl = createQualityControl(meta, body);
@@ -2265,13 +2504,17 @@ function randomizeInkSection(meta) {
   const targetStrength = enabled ? Math.round(randomBetween(20, 100, 1)) : 0;
   applySectionStrength(meta, targetStrength, { syncSlider: true, syncNumber: true });
 
-  meta.inputs.forEach(input => randomizeSingleInput(input, { offChance: TOGGLE_OFF_CHANCE }));
-  if (meta.qualityControl) {
+  meta.inputs.forEach(input => {
+    const groupPath = input.dataset.groupPath;
+    if (groupPath && isGroupLocked(meta, groupPath)) return;
+    randomizeSingleInput(input, { offChance: TOGGLE_OFF_CHANCE });
+  });
+  if (meta.qualityControl && !isQualityLocked(meta)) {
     // Randomization should bias toward maximum fidelity for quality controls.
     applySectionQuality(meta, EFFECT_QUALITY_DEFAULT, { syncInputs: true });
   }
 
-  if (meta.scaleControl) {
+  if (meta.scaleControl && !isScaleLocked(meta)) {
     const randScale = randomBetween(EFFECT_SCALE_MIN, EFFECT_SCALE_MAX, 5);
     applySectionScale(meta, randScale, { syncInputs: true });
   }
