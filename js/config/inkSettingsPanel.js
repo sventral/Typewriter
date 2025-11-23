@@ -1185,8 +1185,9 @@ function formatSliderNumber(value, precision = 2) {
 }
 
 function updateSliderDisplay(input) {
-  if (!input || !input._valueDisplay) return;
+  if (!input) return;
   const setDisplay = value => {
+    if (!input._valueDisplay) return;
     if (typeof input._valueDisplay.value === 'string') {
       input._valueDisplay.value = value;
     } else {
@@ -1551,15 +1552,11 @@ function createQualityControl(meta, container) {
   numberInput.max = slider.max;
   numberInput.step = slider.step;
   numberInput.setAttribute('aria-label', `${cfg.label || 'Quality'} value`);
-  const display = document.createElement('span');
-  display.className = 'ink-control-value';
-  slider._valueDisplay = display;
   updateSliderDisplay(slider);
   slider.addEventListener('input', () => updateSliderDisplay(slider));
   wrapper.appendChild(label);
   wrapper.appendChild(slider);
   wrapper.appendChild(numberInput);
-  wrapper.appendChild(display);
   container.appendChild(wrapper);
   return {
     stateKey: cfg.stateKey,
@@ -1590,15 +1587,11 @@ function createScaleControl(meta, container) {
   numberInput.max = slider.max;
   numberInput.step = slider.step;
   numberInput.setAttribute('aria-label', `${cfg.label || 'Scale'} value`);
-  const display = document.createElement('span');
-  display.className = 'ink-control-value';
-  slider._valueDisplay = display;
   updateSliderDisplay(slider);
   slider.addEventListener('input', () => updateSliderDisplay(slider));
   wrapper.appendChild(label);
   wrapper.appendChild(slider);
   wrapper.appendChild(numberInput);
-  wrapper.appendChild(display);
   container.appendChild(wrapper);
   return {
     stateKey: cfg.stateKey,
