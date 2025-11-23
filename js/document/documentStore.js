@@ -14,6 +14,12 @@ import {
   ZOOM_SLIDER_MIN_PCT,
 } from '../config/lowResZoom.js';
 import {
+  LINE_SLANT_DEFAULTS,
+  normalizeLineSlantRange,
+  clampLineSlantDeg,
+  sampleLineSlantDeg,
+} from '../config/lineSlantConfig.js';
+import {
   DEFAULT_INK_SECTION_ORDER as PRESET_INK_SECTION_ORDER,
   getDefaultInkSectionQuality,
   getDefaultInkSectionStrength,
@@ -189,7 +195,8 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
           }
           rows.push([rmu, cols]);
         }
-        return { rows };
+        const slant = Number.isFinite(p.lineSlantDeg) ? p.lineSlantDeg : undefined;
+        return { rows, slant };
       })
     : [];
   const glyphJitterAmount = normalizeGlyphJitterAmount(state.glyphJitterAmountPct, GLYPH_JITTER_DEFAULTS.amountPct);
@@ -207,6 +214,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     state.pageNumbering,
     createDefaultPageNumberingSettings(),
   );
+  const lineSlantRange = normalizeLineSlantRange(state.lineSlantRangeDeg, LINE_SLANT_DEFAULTS.range);
 
   const realTypewriter = normalizeTypewriterSettings(
     {
@@ -221,7 +229,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
   );
 
   return {
-    v: 29,
+    v: 30,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -265,6 +273,10 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     currentInkStyle: state.currentInkStyle ? sanitizeSavedInkStyle(state.currentInkStyle) : null,
     pageNumbering,
     realTypewriter,
+    lineSlant: {
+      enabled: state.lineSlantEnabled !== false,
+      range: lineSlantRange,
+    },
     glyphJitter: {
       enabled: !!state.glyphJitterEnabled,
       amountPct: cloneGlyphJitterRange(glyphJitterAmount),
@@ -295,7 +307,7 @@ export function deserializeDocumentState(data, context) {
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 29) return false;
+  if (!data || data.v < 2 || data.v > 30) return false;
   const targetPaperSize = typeof data.paperSize === 'string'
     ? data.paperSize
     : state.paperSize || DEFAULT_PAPER_SIZE;
@@ -347,6 +359,9 @@ export function deserializeDocumentState(data, context) {
       ? makePageRecord(idx, wrap, pageEl, cv, mb)
       : null;
     if (!page) return;
+    page.lineSlantDeg = state.lineSlantEnabled
+      ? clampLineSlantDeg(pg?.slant ?? sampleLineSlantDeg(state.lineSlantRangeDeg), state.lineSlantRangeDeg)
+      : 0;
     state.pages.push(page);
     if (Array.isArray(pg?.rows)) {
       for (const [rmu, cols] of pg.rows) {
@@ -389,6 +404,9 @@ export function deserializeDocumentState(data, context) {
       : null;
     if (page) {
       page.canvas.style.visibility = 'hidden';
+      page.lineSlantDeg = state.lineSlantEnabled
+        ? clampLineSlantDeg(sampleLineSlantDeg(state.lineSlantRangeDeg), state.lineSlantRangeDeg)
+        : 0;
       state.pages.push(page);
     }
   }
@@ -437,6 +455,11 @@ export function deserializeDocumentState(data, context) {
   const normalizedTypewriter = normalizeTypewriterSettings(
     data.realTypewriter,
     TYPEWRITER_DEFAULTS,
+  );
+  const storedLineSlant = data.lineSlant && typeof data.lineSlant === 'object' ? data.lineSlant : null;
+  const normalizedLineSlantRange = normalizeLineSlantRange(
+    storedLineSlant?.range,
+    state.lineSlantRangeDeg ?? LINE_SLANT_DEFAULTS.range,
   );
 
   Object.assign(state, {
@@ -518,6 +541,8 @@ export function deserializeDocumentState(data, context) {
     realTypewriterStopSound: normalizedTypewriter.stopSound,
     realTypewriterStopEnabled: normalizedTypewriter.stopEnabled,
     typewriterMarginRelease: false,
+    lineSlantEnabled: storedLineSlant?.enabled !== false,
+    lineSlantRangeDeg: normalizedLineSlantRange,
     pageFillColor: typeof data.pageFillColor === 'string' && data.pageFillColor.trim()
       ? data.pageFillColor
       : state.pageFillColor,

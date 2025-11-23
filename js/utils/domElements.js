@@ -82,6 +82,10 @@ const DOM_ID_GROUPS = {
     glyphJitterFrequencyMin: 'glyphJitterFrequencyMin',
     glyphJitterFrequencyMax: 'glyphJitterFrequencyMax',
     shuffleGlyphJitterSeedBtn: 'shuffleGlyphJitterSeedBtn',
+    lineSlantToggle: 'lineSlantToggle',
+    lineSlantMin: 'lineSlantMin',
+    lineSlantMax: 'lineSlantMax',
+    lineSlantValue: 'lineSlantValue',
   },
   layout: {
     toggleMarginsBtn: 'toggleMarginsBtn',

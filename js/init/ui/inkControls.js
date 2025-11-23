@@ -4,6 +4,12 @@ import {
   normalizeGlyphJitterAmount,
   normalizeGlyphJitterFrequency,
 } from '../../config/glyphJitterConfig.js';
+import {
+  LINE_SLANT_DEFAULTS,
+  normalizeLineSlantRange,
+  sampleLineSlantDeg,
+  clampLineSlantDeg,
+} from '../../config/lineSlantConfig.js';
 import { INK_PALETTE, createDefaultInkOpacity } from '../../config/inkPalette.js';
 
 function formatNumberForInput(value, fractionDigits = 2) {
@@ -228,6 +234,71 @@ export function createInkControls({
     }
   }
 
+  function bindLineSlantControls() {
+    const updateValueLabel = (minVal, maxVal) => {
+      const fmt = (v) => {
+        const rounded = Math.round(v * 100) / 100;
+        return Number.isFinite(rounded) ? `${rounded.toFixed(2).replace(/\.00?$/, '')}°` : '';
+      };
+      if (app.lineSlantValue) app.lineSlantValue.textContent = `${fmt(minVal)} – ${fmt(maxVal)}`;
+    };
+
+    const reseedPages = () => {
+      for (const p of state.pages) {
+        if (!p) continue;
+        p.lineSlantDeg = state.lineSlantEnabled
+          ? clampLineSlantDeg(sampleLineSlantDeg(state.lineSlantRangeDeg), state.lineSlantRangeDeg)
+          : 0;
+        p.dirtyAll = true;
+        if (p.active) schedulePaint(p);
+      }
+    };
+
+    if (app.lineSlantToggle) {
+      app.lineSlantToggle.checked = state.lineSlantEnabled !== false;
+      app.lineSlantToggle.addEventListener('change', () => {
+        state.lineSlantEnabled = !!app.lineSlantToggle.checked;
+        reseedPages();
+        queueDirtySave();
+        focusStage();
+      });
+    }
+
+    const applyRangeInputs = ({ reseed = false } = {}) => {
+      const raw = {
+        min: Number.parseFloat(app.lineSlantMin?.value),
+        max: Number.parseFloat(app.lineSlantMax?.value),
+      };
+      const normalized = normalizeLineSlantRange(raw, state.lineSlantRangeDeg || LINE_SLANT_DEFAULTS.range);
+      state.lineSlantRangeDeg = normalized;
+      if (app.lineSlantMin) app.lineSlantMin.value = String(normalized.min);
+      if (app.lineSlantMax) app.lineSlantMax.value = String(normalized.max);
+      updateValueLabel(normalized.min, normalized.max);
+      if (reseed) reseedPages();
+    };
+
+    [app.lineSlantMin, app.lineSlantMax].forEach((inp) => {
+      if (!inp) return;
+      inp.addEventListener('input', () => applyRangeInputs({ reseed: false }));
+      inp.addEventListener('change', () => {
+        applyRangeInputs({ reseed: true });
+        queueDirtySave();
+        focusStage();
+      });
+    });
+
+    if (app.shuffleLineSlantBtn) {
+      app.shuffleLineSlantBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        reseedPages();
+        queueDirtySave();
+        focusStage();
+      });
+    }
+
+    applyRangeInputs({ reseed: false });
+  }
+
   function bindAppearanceControls() {
     const themeApi = theme || {};
     if (typeof themeApi.setThemeModePreference === 'function') {
@@ -260,6 +331,7 @@ export function createInkControls({
     bindInkButtons();
     bindDialogToggles();
     bindGlyphJitterControls();
+    bindLineSlantControls();
     bindAppearanceControls();
   }
 
@@ -270,6 +342,8 @@ export function createInkControls({
     state.glyphJitterAmountPct = normalizeGlyphJitterAmount(GLYPH_JITTER_DEFAULTS.amountPct, GLYPH_JITTER_DEFAULTS.amountPct);
     state.glyphJitterFrequencyPct = normalizeGlyphJitterFrequency(GLYPH_JITTER_DEFAULTS.frequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
     state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
+    state.lineSlantEnabled = LINE_SLANT_DEFAULTS.enabled;
+    state.lineSlantRangeDeg = normalizeLineSlantRange(LINE_SLANT_DEFAULTS.range);
   }
 
   function populateInkUI({ loaded } = {}) {
@@ -299,6 +373,16 @@ export function createInkControls({
     if (app.glyphJitterFrequencyMin) app.glyphJitterFrequencyMin.value = formatNumberForInput(jitterFrequency.min, 1);
     if (app.glyphJitterFrequencyMax) app.glyphJitterFrequencyMax.value = formatNumberForInput(jitterFrequency.max, 1);
     setGlyphJitterInputsDisabled(app, !state.glyphJitterEnabled);
+
+    state.lineSlantEnabled = state.lineSlantEnabled !== false;
+    state.lineSlantRangeDeg = normalizeLineSlantRange(state.lineSlantRangeDeg, LINE_SLANT_DEFAULTS.range);
+    if (app.lineSlantToggle) app.lineSlantToggle.checked = !!state.lineSlantEnabled;
+    if (app.lineSlantMin) app.lineSlantMin.value = String(state.lineSlantRangeDeg.min);
+    if (app.lineSlantMax) app.lineSlantMax.value = String(state.lineSlantRangeDeg.max);
+    if (app.lineSlantValue) {
+      const { min, max } = state.lineSlantRangeDeg;
+      app.lineSlantValue.textContent = `${min}° – ${max}°`;
+    }
 
     if (app.appearanceAuto) app.appearanceAuto.checked = !['light', 'dark'].includes(state.themeMode);
     if (app.appearanceLight) app.appearanceLight.checked = state.themeMode === 'light';

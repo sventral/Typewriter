@@ -1,6 +1,7 @@
 import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitterConfig.js';
 import { LOW_RES_ZOOM_DEFAULTS } from '../config/lowResZoom.js';
 import { DEFAULT_PAPER_SIZE } from '../config/paperSizes.js';
+import { LINE_SLANT_DEFAULTS, normalizeLineSlantRange } from '../config/lineSlantConfig.js';
 import {
   DEFAULT_INK_SECTION_ORDER as PRESET_INK_SECTION_ORDER,
   getDefaultInkSectionQuality,
@@ -77,6 +78,8 @@ export function createMainState(app, gridDiv = 8) {
     glyphJitterAmountPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.amountPct),
     glyphJitterFrequencyPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.frequencyPct),
     glyphJitterSeed: GLYPH_JITTER_DEFAULTS.seed >>> 0,
+    lineSlantEnabled: LINE_SLANT_DEFAULTS.enabled,
+    lineSlantRangeDeg: normalizeLineSlantRange(LINE_SLANT_DEFAULTS.range),
     wordWrap: true,
     themeMode: 'auto',
     darkPageInDarkMode: false,
