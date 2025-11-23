@@ -796,16 +796,15 @@ export function createExperimentalStagePipeline(deps = {}) {
     }
   }
 
-  function applyCenterEdgeShape(coverage, ctx) {
-    const { w, h, params, alpha0, dm, seed } = ctx;
+function applyCenterEdgeShape(coverage, ctx) {
+    const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
     const centerEdgeCfg = params.centerEdge || {};
     const centerEdgeEnabled = !!params.enable.centerEdge;
     const cK = centerEdgeCfg.center || 0;
     const eK = centerEdgeCfg.edge || 0;
     const tK = centerEdgeCfg.thicken || 0;
-    // Patch controls: gate only the thicken pass with large, coherent blobs.
-    const patchFillThicken = clamp(centerEdgeCfg.patchFill ?? 1, 0, 1);   // coverage probability
-    const patchSizeThicken = clamp(centerEdgeCfg.patchSize ?? 0.5, 0, 1); // 0 → small blobs, 1 → few large blobs
+    const patchFillThicken = clamp(centerEdgeCfg.patchFill ?? 1, 0, 1);
+    const patchSizeThicken = clamp(centerEdgeCfg.patchSize ?? 0.5, 0, 1);
     const hasCenterEdgeShaping = Math.abs(cK) > 1e-6 || Math.abs(eK) > 1e-6;
     const centerEdgeActive = centerEdgeEnabled && (hasCenterEdgeShaping || (tK > 1e-6 && patchFillThicken > 0));
 
@@ -814,23 +813,44 @@ export function createExperimentalStagePipeline(deps = {}) {
     const outside = dm?.raw?.outside;
     const maxInside = dm?.getMaxInside ? dm.getMaxInside() : 0;
     if (!inside || maxInside <= 0) return;
+
+    const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
+    const invDp = 1 / dpPerCss;
     const stageQuality = getStageQualityFromContext(ctx);
-    const quantLevels = stageQuality >= 1
-      ? Math.max(8, Math.round(8 + (stageQuality - 1) * 12))
-      : Math.max(2, Math.round(2 + stageQuality * 10));
-    const hasThicken = tK > 1e-6;
-    const thickenRadiusPx = hasThicken ? Math.max(0, tK) * 1.6 + 0.35 : 0;
+    
+    // 1. Radius Scaling:
+    // Scale radius by dpPerCss so the visual weight is constant across zoom levels.
+    // Subtract a small bias at low resolution to prevent the "overwhelming" look.
+    const resolutionBias = dpPerCss < 1.5 ? -0.25 : 0;
+    const effectiveTK = Math.max(0, tK + resolutionBias / dpPerCss);
+    // Multiplier tuned to match the user's preference at 400% baseline
+    const thickenRadiusPx = (effectiveTK * 1.0 + 0.15) * dpPerCss;
+
     const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
     const thickenSoftPx = softnessBase * 0.9;
+    
     const seedCenter = (seed ^ 0xC1CE1C31) >>> 0;
     const seedEdge = (seed ^ 0xC1CE2D42) >>> 0;
     const seedThicken = (seed ^ 0xC1CE3E53) >>> 0;
-    // Coherent patch noise: pick 0.5–3 cycles across glyph box.
-    const usePatchMask = hasThicken && patchFillThicken < 0.999;
-    const glyphSpanPx = Math.max(1, Math.max(w, h));
-    const cyclesAcrossGlyph = 0.5 + patchSizeThicken * 2.5; // 0.5 .. 3 cycles
-    const freq = usePatchMask ? (cyclesAcrossGlyph / glyphSpanPx) : 0;
-    const patchSoft = 0.12; // soft edge for masks (in noise units, 0-1)
+
+    // 2. Stable Frequency:
+    // Calculate frequency in CSS space so the pattern size scales with the glyph.
+    const usePatchMask = tK > 1e-6 && patchFillThicken < 0.999;
+    const glyphSpanCss = Math.max(1, Math.max(w, h) * invDp);
+    const cyclesAcrossGlyph = 0.5 + patchSizeThicken * 2.5;
+    const freqCss = usePatchMask ? (cyclesAcrossGlyph / glyphSpanCss) : 0;
+    
+    const patchSoft = 0.15; 
+    
+    const originXCss = Number.isFinite(anchorX) ? anchorX : 0;
+    const originYCss = Number.isFinite(anchorY) ? anchorY : 0;
+
+    // 3. Supersampling Setup:
+    const useSupersampling = dpPerCss < 2.5;
+    const samples = useSupersampling 
+      ? [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]]
+      : [[0, 0]];
+
     const applyDilateAlpha = (signedDist, radiusPx, softPx) => {
       if (radiusPx <= 0) return 0;
       const span = Math.max(1e-6, softPx * 2);
@@ -838,36 +858,71 @@ export function createExperimentalStagePipeline(deps = {}) {
       const t = clamp01Fn((-shifted + softPx) / span);
       return smoothStep(t);
     };
+
+    const quantLevels = stageQuality >= 1
+      ? Math.max(8, Math.round(8 + (stageQuality - 1) * 12))
+      : Math.max(2, Math.round(2 + stageQuality * 10));
+
     for (let i = 0; i < w * h; i++) {
       let norm = (inside[i] || 0) / maxInside;
       if (quantLevels > 1) {
         const steps = quantLevels - 1;
         norm = clamp((Math.round(norm * steps) / steps) || 0, 0, 1);
       }
-      const x = i % w;
-      const y = (i / w) | 0;
-      const maskVal = (seedVal, fill) => {
-        if (!usePatchMask) return 1;
-        const n = sampleSpeckValueNoise(hash2Fn, x * freq, y * freq, seedVal);
-        // soft threshold to avoid grainy speckling
-        return clamp01Fn((fill - n) / patchSoft);
-      };
-      const onCenter = centerEdgeEnabled; // always apply center shaping uniformly
-      const onEdge = centerEdgeEnabled;   // always apply edge shaping uniformly
-      const thickenMask = hasThicken && centerEdgeEnabled ? maskVal(seedThicken, patchFillThicken) : 0;
+      
       let cov = coverage[i];
       const hasAlpha = alpha0[i] !== 0;
+      
+      // Apply core shaping (Center/Edge thinning)
+      // This is uniform and doesn't need supersampling
       if (hasAlpha && hasCenterEdgeShaping) {
-        if (onCenter && cK !== 0) cov *= clampFn(1 + cK * norm, 0, 3);
-        if (onEdge && eK !== 0) cov *= clampFn(1 - eK * (1 - norm), 0, 3);
+        if (centerEdgeEnabled && cK !== 0) cov *= clampFn(1 + cK * norm, 0, 3);
+        if (centerEdgeEnabled && eK !== 0) cov *= clampFn(1 - eK * (1 - norm), 0, 3);
       }
-      const insideDist = inside[i] || 0;
-      const outsideDist = outside ? (outside[i] || 0) : 0;
-      const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
-      if (thickenMask > 0 && thickenRadiusPx > 0) {
-        const boldAlpha = applyDilateAlpha(signedDist, thickenRadiusPx, thickenSoftPx) * thickenMask;
-        cov = Math.max(cov, boldAlpha);
+
+      // Apply Thickening with Patch Mask (Supersampled)
+      if (thickenRadiusPx > 0) {
+        const x = i % w;
+        const y = (i / w) | 0;
+        const xCssBase = (x * invDp) - originXCss;
+        const yCssBase = (y * invDp) - originYCss;
+        
+        const insideDist = inside[i] || 0;
+        const outsideDist = outside ? (outside[i] || 0) : 0;
+        const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
+
+        // Optimization: Skip if far outside radius
+        if (signedDist > thickenRadiusPx + 2.0) {
+          coverage[i] = clamp01Fn(cov);
+          continue;
+        }
+
+        let accumThicken = 0;
+
+        for (let s = 0; s < samples.length; s++) {
+          const offset = samples[s];
+          const sampleXCss = xCssBase + (offset[0] * invDp) + 0.123;
+          const sampleYCss = yCssBase + (offset[1] * invDp) + 0.123;
+
+          let maskVal = 1;
+          if (usePatchMask) {
+            const n = sampleSpeckValueNoise(hash2Fn, sampleXCss * freqCss, sampleYCss * freqCss, seedThicken);
+            // Soft threshold logic
+            maskVal = clamp01Fn((patchFillThicken - n) / patchSoft); 
+            // Remap for sharper falloff if needed, but keep soft for antialiasing
+            maskVal = smoothStep(maskVal);
+          }
+
+          if (maskVal > 0.01) {
+            const boldAlpha = applyDilateAlpha(signedDist, thickenRadiusPx, thickenSoftPx);
+            accumThicken += boldAlpha * maskVal;
+          }
+        }
+
+        const finalThickenAlpha = accumThicken / samples.length;
+        cov = Math.max(cov, finalThickenAlpha);
       }
+
       coverage[i] = clamp01Fn(cov);
     }
   }
