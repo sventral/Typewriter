@@ -357,6 +357,11 @@ export function createPageRenderer(options) {
     const angleRad = Number.isFinite(page?.lineSlantDeg)
       ? (page.lineSlantDeg * Math.PI) / 180
       : 0;
+    const renderScale = getRenderScaleFn();
+    const snapToRenderScale = (value) => {
+      const scale = Number.isFinite(renderScale) && renderScale > 0 ? renderScale : 1;
+      return Math.round(value * scale) / scale;
+    };
     const slantOffset = angleRad === 0 ? 0 : (x - (app.PAGE_W / 2)) * Math.tan(angleRad);
     for (let k = 0; k < stack.length; k++) {
       const glyph = stack[k];
@@ -372,8 +377,10 @@ export function createPageRenderer(options) {
       const posX = x;
       const posY = baseline + slantOffset + (Number.isFinite(jitterOffset) ? jitterOffset : 0);
       if (angleRad !== 0) {
+        const snapX = snapToRenderScale(posX);
+        const snapY = snapToRenderScale(posY);
         ctx.save();
-        ctx.translate(posX, posY);
+        ctx.translate(snapX, snapY);
         ctx.rotate(angleRad);
         drawGlyph(ctx, glyph.char, glyph.ink || 'b', 0, 0, k, stack.length, page?.index, rowMu, col, undefined);
         ctx.restore();
