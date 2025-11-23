@@ -4,8 +4,11 @@ export function createTypewriterMode({
   state,
   onStopChange = () => {},
   playBell = () => {},
+  onArmChange = () => {},
+  onUse = () => {},
 }) {
   let warnedRowKey = null;
+  let armed = false;
 
   const rowKey = () => `${state.caret?.page ?? 0}:${state.caret?.rowMu ?? 0}`;
 
@@ -20,6 +23,11 @@ export function createTypewriterMode({
     onStopChange(!!active);
   }
 
+  function setArmed(value) {
+    armed = !!value;
+    onArmChange(armed);
+  }
+
   function maybeRingBell(bounds) {
     if (!state.realTypewriterEnabled) return;
     const lead = clamp(Math.round(Number(state.realTypewriterBellLead ?? 0)), 0, 40);
@@ -31,6 +39,7 @@ export function createTypewriterMode({
     if (state.caret.col >= threshold) {
       warnedRowKey = key;
       playBell(state.realTypewriterBellSound, state.realTypewriterBellVolume);
+      setArmed(true);
     }
   }
 
@@ -47,6 +56,7 @@ export function createTypewriterMode({
   function afterCaretMove(bounds) {
     if (!state.realTypewriterEnabled) {
       setStop(false);
+      setArmed(false);
       return;
     }
     maybeRingBell(bounds);
@@ -58,12 +68,15 @@ export function createTypewriterMode({
     state.typewriterMarginRelease = false;
     warnedRowKey = null;
     setStop(false);
+    setArmed(false);
   }
 
   function activateMarginRelease() {
     if (!state.realTypewriterEnabled) return;
     state.typewriterMarginRelease = true;
     setStop(false);
+    setArmed(false);
+    onUse();
   }
 
   function handleRowChange(bounds) {
@@ -76,6 +89,7 @@ export function createTypewriterMode({
       state.typewriterMarginRelease = false;
       warnedRowKey = null;
       setStop(false);
+      setArmed(false);
     }
   }
 

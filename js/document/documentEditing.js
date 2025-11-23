@@ -261,20 +261,37 @@ export function createDocumentEditingController(context) {
 
   const bellPlayer = createBellPlayer({ basePath: 'audio/' });
 
-  function setMarginReleaseVisible(visible) {
+  const marginReleaseState = { armed: false, used: false, enabled: false };
+  function setMarginReleaseState(next = {}) {
+    Object.assign(marginReleaseState, next);
     if (!app?.marginReleaseBtn) return;
     const btn = app.marginReleaseBtn;
-    btn.classList.toggle('is-visible', !!visible);
-    btn.disabled = !visible;
-    btn.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    const enabled = !!marginReleaseState.enabled;
+    const armed = !!marginReleaseState.armed && enabled;
+    const used = !!marginReleaseState.used;
+    btn.classList.toggle('is-armed', armed);
+    btn.classList.toggle('is-used', used);
+    btn.disabled = !armed;
+    btn.setAttribute('aria-disabled', btn.disabled ? 'true' : 'false');
   }
 
   const typewriterMode = createTypewriterMode({
     state,
-    onStopChange: setMarginReleaseVisible,
+    onStopChange: () => {
+      const enabled = state.realTypewriterEnabled;
+      setMarginReleaseState({ enabled });
+    },
+    onArmChange: (armed) => {
+      const enabled = state.realTypewriterEnabled;
+      setMarginReleaseState({ armed, used: false, enabled });
+    },
+    onUse: () => {
+      const enabled = state.realTypewriterEnabled;
+      setMarginReleaseState({ armed: false, used: true, enabled });
+    },
     playBell: (soundId, volume) => bellPlayer.play(soundId, volume),
   });
-  setMarginReleaseVisible(false);
+  setMarginReleaseState({ armed: false, used: false, enabled: false });
 
   if (app?.marginReleaseBtn) {
     app.marginReleaseBtn.addEventListener('click', (e) => {
