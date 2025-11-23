@@ -863,7 +863,7 @@ body[data-page-tone='dark']{
   .control-row label { text-align: left; }
   .control-row span { text-align: left; font-weight: 500; }
   .side-panel .apply-btn { width: 80px; min-width: 80px; padding: 0 12px; }
-  .side-panel input[type="number"], .side-panel select, .input-with-suffix { width: 110px; }
+  .side-panel input[type="number"], .side-panel select, .input-with-suffix { width: 70px; }
   .side-panel input[type="number"], .side-panel select {
     box-sizing: border-box;
     height: 28px;
@@ -1002,11 +1002,12 @@ body[data-page-tone='dark']{
   }
   .ink-section-body .control-row--quality { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.28); }
   .ink-section-body .control-row--quality + .control-row--quality { margin-top: 6px; padding-top: 0; border-top: none; }
-  .ink-section-body .control-row input[type="range"] {
-    width: 100%;
-    min-width: 0;
-    margin: 0;
-  }
+.ink-section-body .control-row input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
 .ink-section-body .control-row .ink-control-value {
   min-width: 56px;
   text-align: right;

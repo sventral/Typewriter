@@ -1186,13 +1186,20 @@ function formatSliderNumber(value, precision = 2) {
 
 function updateSliderDisplay(input) {
   if (!input || !input._valueDisplay) return;
+  const setDisplay = value => {
+    if (typeof input._valueDisplay.value === 'string') {
+      input._valueDisplay.value = value;
+    } else {
+      input._valueDisplay.textContent = value;
+    }
+  };
   if (input.dataset.enumOptions) {
     const options = input.dataset.enumOptions.split('|');
     const raw = Number.parseFloat(input.value);
     const idx = clamp(Number.isFinite(raw) ? Math.round(raw) : 0, 0, Math.max(0, options.length - 1));
     const label = options[idx] || '';
     input.dataset.enumValue = label;
-    input._valueDisplay.textContent = label;
+    setDisplay(label);
     input.setAttribute('aria-valuetext', label);
     return;
   }
@@ -1201,7 +1208,7 @@ function updateSliderDisplay(input) {
     : 2;
   const num = Number.parseFloat(input.value);
   const text = Number.isFinite(num) ? formatSliderNumber(num, precision) : (input.value || '');
-  input._valueDisplay.textContent = text;
+  setDisplay(text);
   input.setAttribute('aria-valuetext', text);
 }
 
@@ -1213,12 +1220,33 @@ function buildControlRow(labelText, input) {
   row.appendChild(label);
   row.appendChild(input);
   if (input.dataset.slider === '1') {
-    const display = document.createElement('span');
-    display.className = 'ink-control-value';
-    input._valueDisplay = display;
+    const number = document.createElement('input');
+    number.type = 'number';
+    number.className = 'ink-control-number';
+    number.min = input.min ?? '';
+    number.max = input.max ?? '';
+    number.step = input.step ?? '0.01';
+    number.setAttribute('aria-label', `${labelText} value`);
+    const precision = Number.isFinite(Number.parseInt(input.dataset.precision, 10))
+      ? Math.max(0, Number.parseInt(input.dataset.precision, 10))
+      : 2;
+    input._valueDisplay = number;
     updateSliderDisplay(input);
-    row.appendChild(display);
     input.addEventListener('input', () => updateSliderDisplay(input));
+    number.addEventListener('input', () => {
+      const raw = Number.parseFloat(number.value);
+      if (!Number.isFinite(raw)) return;
+      const min = Number.parseFloat(number.min);
+      const max = Number.parseFloat(number.max);
+      const clamped = clamp(
+        raw,
+        Number.isFinite(min) ? min : -Infinity,
+        Number.isFinite(max) ? max : Infinity,
+      );
+      input.value = formatSliderNumber(clamped, precision);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    row.appendChild(number);
   }
   return row;
 }
