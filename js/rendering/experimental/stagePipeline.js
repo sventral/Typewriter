@@ -872,8 +872,8 @@ export function createExperimentalStagePipeline(deps = {}) {
     }
   }
 
-  function applyExperimentalFuzz(coverage, ctx) {
-    const { w, h, params, alpha0, dm, seed } = ctx;
+function applyExperimentalFuzz(coverage, ctx) {
+    const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
     const fuzzEnabled = params.fuzzExp?.enable !== false;
     const fuzzThicken = fuzzEnabled ? (params.fuzzExp?.thicken || 0) : 0;
     const fuzzPatchFill = fuzzEnabled ? clamp(params.fuzzExp?.patchFill ?? 1, 0, 1) : 0;
@@ -885,13 +885,28 @@ export function createExperimentalStagePipeline(deps = {}) {
     const maxInside = dm?.getMaxInside ? dm.getMaxInside() : 0;
     if (!inside || maxInside <= 0) return;
 
+    const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
+    const invDp = 1 / dpPerCss;
     const stageQuality = getStageQualityFromContext(ctx);
-    const fuzzThickenRadiusPx = Math.max(0, fuzzThicken) * 1.5 + 0.25;
+
+    // Radius logic:
+    // We want the thickness to appear constant in physical size.
+    // fuzzThicken is a user value (roughly pixels at 100% zoom).
+    // We multiply by dpPerCss to convert that physical size into device pixels for the current buffer.
+    const fuzzThickenRadiusPx = (Math.max(0, fuzzThicken) * 0.75 + 0.12) * dpPerCss;
+    
     const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
     const fuzzSoftPx = softnessBase * 1.35;
     const seedFuzz = (seed ^ 0xF077F00D) >>> 0;
-    const minFreq = 4;
-    const fuzzFreq = minFreq; // large-ish patches to mirror prior behaviour
+
+    // FIX: Constant frequency in CSS space.
+    // This ensures the grain pattern is locked to the glyph's physical dimensions.
+    // It will naturally scale up/down with zoom because xCss/yCss scale.
+    const fuzzFreq = 2.5;
+    
+    const originXCss = Number.isFinite(anchorX) ? anchorX : 0;
+    const originYCss = Number.isFinite(anchorY) ? anchorY : 0;
+
     const applyDilateAlpha = (signedDist, radiusPx, softPx) => {
       if (radiusPx <= 0) return 0;
       const span = Math.max(1e-6, softPx * 2);
@@ -903,16 +918,28 @@ export function createExperimentalStagePipeline(deps = {}) {
     for (let i = 0; i < w * h; i++) {
       const x = i % w;
       const y = (i / w) | 0;
-      const onFuzzThicken = fuzzPatchFill >= 0.999
-        ? true
-        : sampleSpeckValueNoise(hash2Fn, x * fuzzFreq, y * fuzzFreq, seedFuzz) <= fuzzPatchFill;
-      if (!onFuzzThicken) continue;
+      
+      // Calculate position relative to the logical glyph origin (baseline/insertion point)
+      const xCss = (x * invDp) - originXCss;
+      const yCss = (y * invDp) - originYCss;
+
+      const noiseVal = sampleSpeckValueNoise(hash2Fn, xCss * fuzzFreq, yCss * fuzzFreq, seedFuzz);
+      
+      // Soft thresholding prevents hard pixel aliasing when zooming out
+      const noiseSoft = 0.15;
+      const noiseAlpha = 1.0 - smoothStep(clamp01Fn((noiseVal - (fuzzPatchFill - noiseSoft * 0.5)) / noiseSoft));
+      
+      if (noiseAlpha <= 0.01 && fuzzPatchFill < 0.999) continue;
 
       const insideDist = inside[i] || 0;
       const outsideDist = outside ? (outside[i] || 0) : 0;
       const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
+      
       if (fuzzThickenRadiusPx > 0) {
-        const fuzzAlpha = applyDilateAlpha(signedDist, fuzzThickenRadiusPx, fuzzSoftPx);
+        let fuzzAlpha = applyDilateAlpha(signedDist, fuzzThickenRadiusPx, fuzzSoftPx);
+        if (fuzzPatchFill < 0.999) {
+          fuzzAlpha *= noiseAlpha;
+        }
         const cov = Math.max(coverage[i], fuzzAlpha);
         coverage[i] = clamp01Fn(cov);
       }
