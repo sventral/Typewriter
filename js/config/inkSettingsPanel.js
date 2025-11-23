@@ -1659,7 +1659,6 @@ function buildObjectControls(meta, container, obj, path, label) {
   if (!obj || typeof obj !== 'object') return;
   const group = document.createElement('div');
   group.className = 'ink-subgroup';
-  if (path === 'fuzzExp') group.classList.add('ink-subgroup-plain');
   group.dataset.groupPath = path;
   meta.groupElements?.set(path, group);
   if (label) {
@@ -1667,7 +1666,6 @@ function buildObjectControls(meta, container, obj, path, label) {
     headingRow.className = 'ink-subheading-row';
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
-    if (path === 'fuzzExp') heading.classList.add('ink-subheading-plain');
     const headingLabel = meta.labels?.[path] || label;
     const lock = createLockToggle(headingLabel, locked => setGroupLocked(meta, path, locked));
     heading.appendChild(lock);

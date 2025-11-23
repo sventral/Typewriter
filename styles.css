@@ -1043,7 +1043,7 @@ body[data-page-tone='dark']{
 .ink-subgroup { border-left: 2px solid rgba(0,0,0,0.06); padding-left: 10px; margin: 6px 0 10px; }
 .ink-subheading { font-size: 13px; font-weight: 700; opacity: 0.8; margin: 8px 0 6px; text-transform: uppercase; letter-spacing: 0.4px; display: inline-flex; align-items: center; gap: 6px; }
 .ink-subgroup-plain { border-left: 0; padding-left: 0; margin-left: 0; }
-.ink-subheading-plain { text-transform: none; font-size: 13px; opacity: 1; font-weight: 600; }
+.ink-subheading-plain { text-transform: none; font-size: 13px; opacity: 1; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .ink-subheading-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ink-subheading-row .ink-subheading { display: inline-flex; align-items: center; gap: 6px; }
 .ink-subheading-toggle { margin-left: 6px; }
