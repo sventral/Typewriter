@@ -256,38 +256,45 @@ export function createDocumentEditingController(context) {
     const Lc = clamp2(L, 0, pageMaxStart);
     const RcStrict = clamp2(Rstrict, 0, pageMaxStart);
     const Rc = allowEdgeOverflow ? pageMaxStart : RcStrict;
-    return { L: Math.min(Lc, Rc), R: Math.max(Lc, Rc), Tmu, Bmu, gridDiv, pageMaxStart };
+    return {
+      L: Math.min(Lc, Rc),
+      R: Math.max(Lc, Rc),
+      Rstrict: RcStrict,
+      Tmu,
+      Bmu,
+      gridDiv,
+      pageMaxStart,
+    };
   }
 
   const bellPlayer = createBellPlayer({ basePath: 'audio/' });
 
-  const marginReleaseState = { armed: false, used: false, enabled: true };
+  const marginReleaseState = { available: false, active: false, enabled: true };
   function setMarginReleaseState(next = {}) {
     Object.assign(marginReleaseState, next);
     if (!app?.marginReleaseBtn) return;
     const btn = app.marginReleaseBtn;
-    const enabled = !!marginReleaseState.enabled;
-    const armed = !!marginReleaseState.armed && enabled;
-    const used = !!marginReleaseState.used;
-    btn.classList.toggle('is-armed', armed);
-    btn.classList.toggle('is-used', used);
-    btn.disabled = !armed;
+    const enabled = marginReleaseState.enabled !== false;
+    const available = enabled && !!marginReleaseState.available;
+    const active = enabled && !!marginReleaseState.active;
+    const interactive = available || active;
+    btn.classList.toggle('is-armed', interactive);
+    btn.classList.toggle('is-used', active);
+    btn.disabled = !interactive;
     btn.setAttribute('aria-disabled', btn.disabled ? 'true' : 'false');
   }
 
   const typewriterMode = createTypewriterMode({
     state,
     onStopChange: () => {
-      const enabled = true;
-      setMarginReleaseState({ enabled });
+      setMarginReleaseState({ enabled: true });
     },
-    onArmChange: (armed) => {
-      const enabled = true;
-      setMarginReleaseState({ armed, used: false, enabled });
+    onArmChange: (available) => {
+      const active = state.typewriterMarginRelease && marginReleaseState.active;
+      setMarginReleaseState({ available, active, enabled: true });
     },
     onUse: () => {
-      const enabled = true;
-      setMarginReleaseState({ armed: false, used: true, enabled });
+      setMarginReleaseState({ active: true, available: true, enabled: true });
     },
     playBell: (soundId, volume) => bellPlayer.play(soundId, volume),
     onStopSound: () => {
@@ -295,7 +302,7 @@ export function createDocumentEditingController(context) {
       bellPlayer.playStop(state.realTypewriterStopSound, state.realTypewriterBellVolume);
     },
   });
-  setMarginReleaseState({ armed: false, used: false, enabled: true });
+  setMarginReleaseState({ available: false, active: false, enabled: true });
 
   if (app?.marginReleaseBtn) {
     app.marginReleaseBtn.addEventListener('click', (e) => {
