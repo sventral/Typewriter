@@ -34,16 +34,28 @@ export function createTypewriterMode({
     onArmChange(armed);
   }
 
+  function clearWarnings() {
+    warnedRowKey = null;
+    lastCaretCol = null;
+    lastCaretKey = null;
+  }
+
   function marginLeadThreshold(bounds) {
     const lead = clamp(Math.round(Number(state.realTypewriterBellLead ?? 0)), 0, 40);
     if (lead <= 0) return null;
-    return Math.max(bounds.L, bounds.R - lead + 1);
+    const rightLimit = Number.isFinite(bounds?.Rstrict) ? bounds.Rstrict : bounds.R;
+    return Math.max(bounds.L, rightLimit - lead + 1);
   }
 
   function isCaretInLead(bounds) {
     const threshold = marginLeadThreshold(bounds);
     if (threshold == null) return false;
     return state.caret.col >= threshold;
+  }
+
+  function isInMarginZone(bounds) {
+    const rightLimit = Number.isFinite(bounds?.Rstrict) ? bounds.Rstrict : bounds.R;
+    return isCaretInLead(bounds) || state.caret.col >= rightLimit;
   }
 
   function maybeRingBell(bounds) {
@@ -83,11 +95,17 @@ export function createTypewriterMode({
   }
 
   function afterCaretMove(bounds) {
+    const inMarginZone = isInMarginZone(bounds);
+
+    if (state.typewriterMarginRelease && !inMarginZone) {
+      state.typewriterMarginRelease = false;
+      clearWarnings();
+    }
+
     maybeRingBell(bounds);
 
     const atStop = !state.typewriterMarginRelease && state.caret.col >= bounds.R;
-    const inLead = isCaretInLead(bounds);
-    const shouldArm = !state.typewriterMarginRelease && (inLead || atStop);
+    const shouldArm = !state.typewriterMarginRelease && inMarginZone;
 
     if (state.realTypewriterEnabled) {
       setStop(atStop);
@@ -95,15 +113,12 @@ export function createTypewriterMode({
       setStop(false);
     }
 
-    if (!shouldArm) setArmed(false);
-    else setArmed(true);
+    setArmed(shouldArm);
   }
 
   function resetForNewLine() {
     state.typewriterMarginRelease = false;
-    warnedRowKey = null;
-    lastCaretCol = null;
-    lastCaretKey = null;
+    clearWarnings();
     setStop(false);
     setArmed(false);
   }
