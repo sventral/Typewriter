@@ -261,10 +261,13 @@ export function createMeasurementControls({
   }
 
   function hideMarginReleaseBtn() {
-    if (!app.marginReleaseBtn) return;
-    app.marginReleaseBtn.classList.remove('is-visible');
-    app.marginReleaseBtn.disabled = true;
-    app.marginReleaseBtn.setAttribute('aria-hidden', 'true');
+    const buttons = [app.marginReleaseBtn, app.inkMarginReleaseBtn].filter(Boolean);
+    if (!buttons.length) return;
+    buttons.forEach((btn) => {
+      btn.classList.remove('is-visible');
+      btn.disabled = true;
+      btn.setAttribute('aria-hidden', 'true');
+    });
   }
 
   function syncTypewriterUI() {

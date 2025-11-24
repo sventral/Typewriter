@@ -269,19 +269,22 @@ export function createDocumentEditingController(context) {
 
   const bellPlayer = createBellPlayer({ basePath: 'audio/' });
 
+  const marginReleaseButtons = () => [app.marginReleaseBtn, app.inkMarginReleaseBtn].filter(Boolean);
   const marginReleaseState = { available: false, active: false, enabled: true };
   function setMarginReleaseState(next = {}) {
     Object.assign(marginReleaseState, next);
-    if (!app?.marginReleaseBtn) return;
-    const btn = app.marginReleaseBtn;
+    const buttons = marginReleaseButtons();
+    if (!buttons.length) return;
     const enabled = marginReleaseState.enabled !== false;
     const available = enabled && !!marginReleaseState.available;
     const active = enabled && !!marginReleaseState.active;
     const interactive = available || active;
-    btn.classList.toggle('is-armed', interactive);
-    btn.classList.toggle('is-used', active);
-    btn.disabled = !interactive;
-    btn.setAttribute('aria-disabled', btn.disabled ? 'true' : 'false');
+    buttons.forEach((btn) => {
+      btn.classList.toggle('is-armed', interactive);
+      btn.classList.toggle('is-used', active);
+      btn.disabled = !interactive;
+      btn.setAttribute('aria-disabled', btn.disabled ? 'true' : 'false');
+    });
   }
 
   const typewriterMode = createTypewriterMode({
@@ -304,15 +307,15 @@ export function createDocumentEditingController(context) {
   });
   setMarginReleaseState({ available: false, active: false, enabled: true });
 
-  if (app?.marginReleaseBtn) {
-    app.marginReleaseBtn.addEventListener('click', (e) => {
+  marginReleaseButtons().forEach((btn) => {
+    btn.addEventListener('click', (e) => {
       e.preventDefault();
       typewriterMode.activateMarginRelease();
       typewriterMode.afterCaretMove(getCurrentBounds());
       updateCaretPosition();
       focusStage();
     });
-  }
+  });
 
   function snapRowMuToStep(rowMu, bounds) {
     const step = state.lineStepMu;
