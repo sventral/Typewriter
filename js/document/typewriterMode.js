@@ -47,7 +47,6 @@ export function createTypewriterMode({
   }
 
   function maybeRingBell(bounds) {
-    if (!state.realTypewriterEnabled) return;
     const threshold = marginLeadThreshold(bounds);
     if (threshold == null) return;
     const key = rowKey();
@@ -63,7 +62,9 @@ export function createTypewriterMode({
     const crossedIntoLead = movedForward && previousCol < threshold && state.caret.col >= threshold;
     if (crossedIntoLead) {
       warnedRowKey = key;
-      playBell(state.realTypewriterBellSound, state.realTypewriterBellVolume);
+      if (state.realTypewriterEnabled) {
+        playBell(state.realTypewriterBellSound, state.realTypewriterBellVolume);
+      }
       setArmed(true);
     }
     lastCaretKey = key;
@@ -82,19 +83,18 @@ export function createTypewriterMode({
   }
 
   function afterCaretMove(bounds) {
-    if (!state.realTypewriterEnabled) {
-      setStop(false);
-      setArmed(false);
-      return;
-    }
-
     maybeRingBell(bounds);
 
     const atStop = !state.typewriterMarginRelease && state.caret.col >= bounds.R;
-    setStop(atStop);
-
     const inLead = isCaretInLead(bounds);
     const shouldArm = !state.typewriterMarginRelease && (inLead || atStop);
+
+    if (state.realTypewriterEnabled) {
+      setStop(atStop);
+    } else {
+      setStop(false);
+    }
+
     if (!shouldArm) setArmed(false);
     else setArmed(true);
   }
@@ -109,7 +109,6 @@ export function createTypewriterMode({
   }
 
   function activateMarginRelease() {
-    if (!state.realTypewriterEnabled) return;
     state.typewriterMarginRelease = true;
     setStop(false);
     setArmed(false);
