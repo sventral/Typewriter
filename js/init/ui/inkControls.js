@@ -329,6 +329,82 @@ export function createInkControls({
     }
   }
 
+  let inkFileToolbarOpen = false;
+
+  function positionInkFileToolbar() {
+    if (!app.inkFileToolbar || !app.inkMenuBtn || !app.inkDock) return;
+    const dockRect = app.inkDock.getBoundingClientRect();
+    const btnRect = app.inkMenuBtn.getBoundingClientRect();
+    const offsetTop = btnRect.top - dockRect.top - 2;
+    app.inkFileToolbar.style.top = `${Math.max(0, offsetTop)}px`;
+  }
+
+  function closeInkFileToolbar() {
+    inkFileToolbarOpen = false;
+    if (app.inkFileToolbar) {
+      app.inkFileToolbar.classList.remove('ink-file-toolbar--open');
+      app.inkFileToolbar.setAttribute('aria-hidden', 'true');
+    }
+    if (app.inkMenuBtn) app.inkMenuBtn.setAttribute('aria-expanded', 'false');
+    if (app.inkFileDocMenuPopup) app.inkFileDocMenuPopup.classList.remove('open');
+    if (app.inkFileDocMenuBtn) app.inkFileDocMenuBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  function openInkFileToolbar() {
+    positionInkFileToolbar();
+    inkFileToolbarOpen = true;
+    if (app.inkFileToolbar) {
+      app.inkFileToolbar.classList.add('ink-file-toolbar--open');
+      app.inkFileToolbar.setAttribute('aria-hidden', 'false');
+    }
+    if (app.inkMenuBtn) app.inkMenuBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function toggleInkFileToolbar() {
+    if (inkFileToolbarOpen) {
+      closeInkFileToolbar();
+    } else {
+      openInkFileToolbar();
+    }
+  }
+
+  function bindInkFileToolbarButtons() {
+    const proxy = (source, target) => {
+      if (!source || !target) return;
+      source.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        target.click();
+        closeInkFileToolbar();
+      });
+    };
+    proxy(app.inkFileDeleteDocBtn, app.deleteDocBtn);
+    proxy(app.inkFileNewDocBtn, app.newDocBtn);
+    proxy(app.inkFileExportBtn, app.exportBtn);
+  }
+
+  function bindInkMenuToolbar() {
+    if (app.inkMenuBtn && app.inkFileToolbar) {
+      app.inkMenuBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleInkFileToolbar();
+      });
+      window.addEventListener('resize', positionInkFileToolbar);
+    }
+    bindInkFileToolbarButtons();
+
+    document.addEventListener('pointerdown', (e) => {
+      if (!inkFileToolbarOpen) return;
+      if (app.inkFileToolbar?.contains(e.target) || app.inkMenuBtn?.contains(e.target)) return;
+      closeInkFileToolbar();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (!inkFileToolbarOpen) return;
+      if (e.key === 'Escape') closeInkFileToolbar();
+    });
+  }
+
   function bindInkControls() {
     bindOpacitySliders();
     bindInkButtons();
@@ -336,6 +412,7 @@ export function createInkControls({
     bindGlyphJitterControls();
     bindLineSlantControls();
     bindAppearanceControls();
+    bindInkMenuToolbar();
 
     if (app.inkDockHandle && app.inkDock && app.inkDockExtras) {
       const handle = app.inkDockHandle;
@@ -345,6 +422,7 @@ export function createInkControls({
         const expanded = dock.classList.toggle('ink-dock--expanded');
         handle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
         extras.setAttribute('aria-hidden', expanded ? 'false' : 'true');
+        if (!expanded) closeInkFileToolbar();
       };
       handle.addEventListener('click', toggle);
     }

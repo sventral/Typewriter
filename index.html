@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-      <div class="app-version">v.31.6b</div>
+      <div class="app-version">v.31.7b</div>
   <div id="storageNotice" class="storage-notice" role="status" aria-live="polite"></div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
@@ -145,6 +145,31 @@
     </div>
     <div class="ink-control-group">
       <button class="ink-icon-btn ink-gear" id="inkGearBtn" title="Ink settings"></button>
+    </div>
+    <div class="ink-file-toolbar" id="inkFileToolbar" aria-hidden="true">
+      <div class="doc-controls doc-controls--mini" id="inkFileDocControls">
+        <button class="btn icon-only" id="inkFileDocMenuBtn" aria-haspopup="true" aria-expanded="false" title="Documents" aria-label="Documents">
+          <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+            <path d="M4 5.25a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 5.25Zm0 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 9.25Zm0 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 13.25Z" fill="currentColor" />
+          </svg>
+        </button>
+        <input class="doc-title-input doc-title-input--mini" id="inkFileDocTitleInput" type="text" maxlength="200" placeholder="Untitled Document" aria-label="Document title" />
+        <div class="doc-menu-popup doc-menu-popup--mini" id="inkFileDocMenuPopup" role="menu" aria-labelledby="inkFileDocMenuBtn">
+          <div class="doc-menu-header">Documents</div>
+          <div class="doc-menu-list" id="inkFileDocMenuList"></div>
+        </div>
+      </div>
+      <button class="btn icon-only" id="inkFileDeleteDocBtn" aria-label="Delete document">
+        <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+          <path d="M7.25 3a1 1 0 0 1 .97-.75h3.56a1 1 0 0 1 .97.75l.3 1.25h3.75a.75.75 0 0 1 0 1.5h-.7l-.73 10.01A2.25 2.25 0 0 1 12.13 18H7.87a2.25 2.25 0 0 1-2.24-2.24L4.9 5.75h-.65a.75.75 0 0 1 0-1.5h3.75ZM6.4 5.75l.7 9.72c.05.4.38.7.77.7h4.26c.4 0 .73-.3.77-.7l.7-9.72H6.4Zm3.1 2a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5a.75.75 0 0 1 .75-.75Z" fill="currentColor" />
+        </svg>
+      </button>
+      <button class="btn icon-only" id="inkFileNewDocBtn" aria-label="New document">
+        <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+          <path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z" fill="currentColor" />
+        </svg>
+      </button>
+      <button class="btn" id="inkFileExportBtn">Export</button>
     </div>
     <button class="ink-dock__handle" id="inkDockHandle" type="button" aria-expanded="false" aria-controls="inkDockExtras" title="More ink colors" aria-label="More ink colors">
       <span class="ink-dock__handle-icon" aria-hidden="true">…</span>
