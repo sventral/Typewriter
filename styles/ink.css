@@ -247,22 +247,22 @@ body.dark .ink-icon-btn,
     display: none;
     position: absolute;
     top: 50%;
-    right: calc(100% + 10px);
+    right: calc(100% + 14px);
     transform: translateY(-50%);
-    width: 140px;
-    height: 48px;
+    width: 176px;
+    height: 44px;
     box-sizing: border-box;
     background: var(--panel-bg);
     backdrop-filter: blur(10px);
     border: 1px solid var(--panel-border);
     border-radius: 10px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 52;
-    padding: 8px 10px;
+    z-index: 65;
+    padding: 6px 12px;
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
   }
   .ink-slider-popup.active { display: flex; }
   .slider-container {
@@ -279,7 +279,7 @@ body.dark .ink-icon-btn,
     background: transparent;
     cursor: pointer;
     width: 110px; /* same track length as zoom slider */
-    height: 16px;
+    height: 14px;
   }
   input[type="range"].ink-slider::-webkit-slider-runnable-track {
     background: rgba(120, 120, 128, 0.36);
@@ -310,4 +310,4 @@ body.dark .ink-icon-btn,
     border: 1px solid rgba(0,0,0,0.12);
     box-shadow: 0 1px 3px rgba(0,0,0,0.12);
   }
-  .slider-value { font-size: 11px; color: var(--ui-text); text-align: center; }
+  .slider-value { font-size: 11px; color: var(--ui-text); text-align: center; min-width: 34px; }
