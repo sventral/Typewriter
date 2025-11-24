@@ -60,21 +60,21 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       lastLagPhase = phaseInput;
     }
     const lagAssistEnabled = state.lagAssistEnabled !== false;
-    const active = phase === 'pending' || phase === 'lag';
-    const shouldEngage = lagAssistEnabled && active;
-    state.lagInputBlocked = shouldEngage;
+    const overlayActive = phase === 'pending' || phase === 'lag';
+    const shouldBlockInput = phase === 'lag';
+    state.lagInputBlocked = lagAssistEnabled && shouldBlockInput;
 
     const overlay = app.lagOverlay;
     if (overlay) {
-      overlay.classList.toggle('lag-overlay--visible', shouldEngage);
-      overlay.setAttribute('aria-hidden', shouldEngage ? 'false' : 'true');
-      overlay.dataset.phase = shouldEngage ? (phase || 'lag') : 'idle';
+      overlay.classList.toggle('lag-overlay--visible', lagAssistEnabled && overlayActive);
+      overlay.setAttribute('aria-hidden', lagAssistEnabled && overlayActive ? 'false' : 'true');
+      overlay.dataset.phase = lagAssistEnabled && overlayActive ? (phase || 'lag') : 'idle';
     }
 
     const notice = app.lagNotice;
     if (notice) {
-      notice.classList.toggle('lag-notice--visible', shouldEngage);
-      notice.setAttribute('aria-hidden', shouldEngage ? 'false' : 'true');
+      notice.classList.toggle('lag-notice--visible', lagAssistEnabled && overlayActive);
+      notice.setAttribute('aria-hidden', lagAssistEnabled && overlayActive ? 'false' : 'true');
     }
   };
 
