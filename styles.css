@@ -628,6 +628,20 @@ body.dark .ink-icon-btn,
     opacity: 1;
   }
 
+  .ink-icon-btn.typewriter-mr-btn.is-used {
+    color: var(--tri-red);
+  }
+
+  .typewriter-mr-btn--ink {
+    min-width: 24px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
+    border-radius: 6px;
+  }
+
   .subtle-note {
     font-size: 12px;
     color: var(--fg-muted, #6b6b6b);
