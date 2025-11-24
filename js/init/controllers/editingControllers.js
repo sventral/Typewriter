@@ -65,6 +65,13 @@ export function registerEditingControllers(options) {
     if (!rootStyle) return;
     const safeValue = Number.isFinite(valuePx) ? Math.max(0, valuePx) : 0;
     rootStyle.setProperty('--ink-panel-shift', `${safeValue}px`);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new Event('zoom-contrast-update'));
+      // Dispatch again on the next frame so contrast recalculates after layout shifts.
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => window.dispatchEvent(new Event('zoom-contrast-update')));
+      }
+    }
   }
 
   function syncZoomControlsPanelOffset() {
