@@ -134,6 +134,10 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       zoomSliderContrast.scheduleUpdate();
     }
   };
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('zoom-contrast-update', scheduleZoomSliderContrastUpdate, { passive: true });
+    window.addEventListener('transitionend', scheduleZoomSliderContrastUpdate, { passive: true });
+  }
   const hasElementApi = typeof Element !== 'undefined';
   const SCROLLBAR_VISIBILITY_EPSILON = 4;
   let suppressScrollLaneEvent = false;
