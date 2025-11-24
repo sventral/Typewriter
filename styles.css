@@ -369,39 +369,55 @@ body[data-page-tone='dark']{
     border-radius:5px;
   }
 
-  .ink-gear{
+  .ink-icon-btn{
     width:22px;
     height:22px;
     border-radius:5px;
     border:1px solid var(--btn-border);
     background:var(--btn-bg);
     color:#8f96a3;
-    font-size:21px;
     display:inline-flex;
     align-items:center;
     justify-content:center;
     transition:background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.1s ease;
   }
 
-  .ink-gear::before{
-    content:'⚙︎';
+  .ink-icon-btn::before{
     line-height:1;
     display:block;
+  }
+
+  .ink-gear{
+    font-size:21px;
+  }
+
+  .ink-gear::before{
+    content:'⚙︎';
     transform:translateY(-2px);
   }
 
-  .ink-gear:hover{
+  .ink-menu{
+    font-size:17px;
+  }
+
+  .ink-menu::before{
+    content:'≡';
+    transform:translateY(-1px);
+  }
+
+  .ink-icon-btn:hover{
     background:var(--btn-hover);
     color:#7b8290;
   }
 
-  .ink-gear:active{
+  .ink-icon-btn:active{
     background:var(--btn-active);
     transform:scale(0.97);
   }
 
   .ink-swatch:focus-visible,
-  .ink-swatch[data-active="true"]{
+  .ink-swatch[data-active="true"],
+  .ink-icon-btn:focus-visible{
     outline:2px solid var(--active-outline);
     outline-offset:2px;
   }
