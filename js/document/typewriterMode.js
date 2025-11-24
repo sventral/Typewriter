@@ -34,13 +34,24 @@ export function createTypewriterMode({
     onArmChange(armed);
   }
 
+  function marginLeadThreshold(bounds) {
+    const lead = clamp(Math.round(Number(state.realTypewriterBellLead ?? 0)), 0, 40);
+    if (lead <= 0) return null;
+    return Math.max(bounds.L, bounds.R - lead + 1);
+  }
+
+  function isCaretInLead(bounds) {
+    const threshold = marginLeadThreshold(bounds);
+    if (threshold == null) return false;
+    return state.caret.col >= threshold;
+  }
+
   function maybeRingBell(bounds) {
     if (!state.realTypewriterEnabled) return;
-    const lead = clamp(Math.round(Number(state.realTypewriterBellLead ?? 0)), 0, 40);
-    if (lead <= 0) return;
+    const threshold = marginLeadThreshold(bounds);
+    if (threshold == null) return;
     const key = rowKey();
     clearWarningIfRowChanged(key);
-    const threshold = Math.max(bounds.L, bounds.R - lead + 1);
     if (warnedRowKey === key) {
       lastCaretKey = key;
       lastCaretCol = state.caret.col;
@@ -76,9 +87,16 @@ export function createTypewriterMode({
       setArmed(false);
       return;
     }
+
     maybeRingBell(bounds);
+
     const atStop = !state.typewriterMarginRelease && state.caret.col >= bounds.R;
     setStop(atStop);
+
+    const inLead = isCaretInLead(bounds);
+    const shouldArm = !state.typewriterMarginRelease && (inLead || atStop);
+    if (!shouldArm) setArmed(false);
+    else setArmed(true);
   }
 
   function resetForNewLine() {
