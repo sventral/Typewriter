@@ -203,10 +203,20 @@ export function createDocumentControls({
     renderInto(app.inkFileDocMenuList);
   }
 
+  function getTitleInputs() {
+    return [app.docTitleInput, app.inkFileDocTitleInput].filter(Boolean);
+  }
+
+  function primaryTitleInput() {
+    const [first] = getTitleInputs();
+    return first || null;
+  }
+
   function ensureDocumentTitleInput() {
     if (isEditingTitle) return;
-    if (app.docTitleInput) app.docTitleInput.value = state.documentTitle || '';
-    if (app.inkFileDocTitleInput) app.inkFileDocTitleInput.value = state.documentTitle || '';
+    getTitleInputs().forEach((input) => {
+      input.value = state.documentTitle || '';
+    });
   }
 
   function getDocMenuTargets(source = 'main') {
@@ -387,9 +397,13 @@ export function createDocumentControls({
     closeDocMenu();
   }
 
-  function handleDocumentTitleInput() {
-    if (!app.docTitleInput) return;
-    const raw = app.docTitleInput.value.slice(0, 200);
+  function handleDocumentTitleInput(sourceInput = primaryTitleInput()) {
+    const input = sourceInput;
+    if (!input) return;
+    const raw = input.value.slice(0, 200);
+    getTitleInputs().forEach((el) => {
+      if (el !== input) el.value = raw;
+    });
     state.documentTitle = raw;
     const active = getActiveDocument();
     if (active) {
@@ -398,10 +412,11 @@ export function createDocumentControls({
     renderDocumentList();
   }
 
-  function commitDocumentTitle() {
-    if (!app.docTitleInput) return;
-    const sanitized = normalizeDocumentTitle(app.docTitleInput.value);
-    app.docTitleInput.value = sanitized;
+  function commitDocumentTitle(sourceInput = primaryTitleInput()) {
+    const input = sourceInput;
+    if (!input) return;
+    const sanitized = normalizeDocumentTitle(input.value);
+    getTitleInputs().forEach((el) => { el.value = sanitized; });
     const active = getActiveDocument();
     state.documentTitle = sanitized;
     let changed = false;
@@ -612,15 +627,10 @@ export function createDocumentControls({
         input.addEventListener('focus', () => { isEditingTitle = true; });
         input.addEventListener('blur', () => {
           isEditingTitle = false;
-          commitDocumentTitle();
+          commitDocumentTitle(input);
         });
-        input.addEventListener('input', (e) => {
-          if (input !== app.docTitleInput && app.docTitleInput) {
-            app.docTitleInput.value = input.value;
-            app.docTitleInput.dispatchEvent(new Event('input', { bubbles: true }));
-          } else {
-            handleDocumentTitleInput(e);
-          }
+        input.addEventListener('input', () => {
+          handleDocumentTitleInput(input);
         });
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') {
