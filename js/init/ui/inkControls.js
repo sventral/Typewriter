@@ -134,7 +134,13 @@ export function createInkControls({
   }
 
   function bindDialogToggles() {
-    if (app.inkSettingsBtn) app.inkSettingsBtn.onclick = toggleInkSettingsPanel;
+    const settingsButtons = [app.inkSettingsBtn, app.inkGearBtn].filter(Boolean);
+    settingsButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleInkSettingsPanel();
+      });
+    });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         if (app.inkSettingsPanel) app.inkSettingsPanel.classList.remove('is-open');
