@@ -318,6 +318,10 @@ body[data-page-tone='dark']{
     display:flex;
   }
 
+  .ink-dock:not(.ink-dock--expanded) .ink-dock__core .btn[data-active="true"]{
+    display:none;
+  }
+
   .ink-dock__handle{
     border:none;
     background:transparent;
