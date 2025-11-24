@@ -446,7 +446,28 @@ body[data-page-tone='dark']{
 
 .ink-gear::before{
     content:'⚙︎';
-    transform: translateY(-1.5px); /* Added to fix vertical centering */
+    transform: translateY(-3px); /* Added to fix vertical centering */
+  }
+
+.ink-gear {
+    font-size: 26px;
+  }
+
+  body.dark .ink-gear,
+  :root[data-theme='dark'] .ink-gear {
+    border-color: #4a4b51;
+    background: #424348;
+    color: #b6becc;
+  }
+
+  body.dark .ink-gear:hover,
+  :root[data-theme='dark'] .ink-gear:hover,
+  body.dark .ink-gear:active,
+  :root[data-theme='dark'] .ink-gear:active {
+    border-color: #4a4b51;
+    background: #424348;
+    color: #b6becc;
+    transform: scale(0.97);
   }
 
   .ink-menu::before{
@@ -460,6 +481,37 @@ body[data-page-tone='dark']{
 
   .ink-icon-btn:active{
     background:var(--btn-active);
+    transform:scale(0.97);
+  }
+
+body.dark .ink-icon-btn,
+:root[data-theme='dark'] .ink-icon-btn {
+  border:1px solid #4a4b51;
+  background:#424348;
+  color:#b6becc;
+}
+
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme]) .ink-icon-btn {
+    border:1px solid #4a4b51;
+    background:#424348;
+    color:#b6becc;
+  }
+
+  :root:not([data-theme]) .ink-gear {
+    border-color: #4a4b51;
+    background: #424348;
+    color: #b6becc;
+  }
+}
+
+  body.dark .ink-icon-btn:hover,
+  :root[data-theme='dark'] .ink-icon-btn:hover,
+  body.dark .ink-icon-btn:active,
+  :root[data-theme='dark'] .ink-icon-btn:active {
+    border:1px solid #4a4b51;
+    background:#424348;
+    color:#b6becc;
     transform:scale(0.97);
   }
 
