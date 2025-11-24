@@ -261,7 +261,7 @@ export function createDocumentEditingController(context) {
 
   const bellPlayer = createBellPlayer({ basePath: 'audio/' });
 
-  const marginReleaseState = { armed: false, used: false, enabled: false };
+  const marginReleaseState = { armed: false, used: false, enabled: true };
   function setMarginReleaseState(next = {}) {
     Object.assign(marginReleaseState, next);
     if (!app?.marginReleaseBtn) return;
@@ -278,15 +278,15 @@ export function createDocumentEditingController(context) {
   const typewriterMode = createTypewriterMode({
     state,
     onStopChange: () => {
-      const enabled = state.realTypewriterEnabled;
+      const enabled = true;
       setMarginReleaseState({ enabled });
     },
     onArmChange: (armed) => {
-      const enabled = state.realTypewriterEnabled;
+      const enabled = true;
       setMarginReleaseState({ armed, used: false, enabled });
     },
     onUse: () => {
-      const enabled = state.realTypewriterEnabled;
+      const enabled = true;
       setMarginReleaseState({ armed: false, used: true, enabled });
     },
     playBell: (soundId, volume) => bellPlayer.play(soundId, volume),
@@ -295,7 +295,7 @@ export function createDocumentEditingController(context) {
       bellPlayer.playStop(state.realTypewriterStopSound, state.realTypewriterBellVolume);
     },
   });
-  setMarginReleaseState({ armed: false, used: false, enabled: false });
+  setMarginReleaseState({ armed: false, used: false, enabled: true });
 
   if (app?.marginReleaseBtn) {
     app.marginReleaseBtn.addEventListener('click', (e) => {
@@ -682,6 +682,8 @@ export function createDocumentEditingController(context) {
 
   function attemptWordWrapAtOverflow(prevRowMu, pageIndex, bounds, mutateCaret = true) {
     if (!state.wordWrap) return false;
+    // Skip wrapping when margin release is active for this line.
+    if (state.typewriterMarginRelease) return false;
     const page = state.pages[pageIndex] || addPage();
     const rowMap = page.grid.get(prevRowMu);
     if (!rowMap) return false;

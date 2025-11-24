@@ -293,10 +293,6 @@ export function createMeasurementControls({
     if (app.typewriterBellLead) app.typewriterBellLead.value = String(normalized.bellLead);
     if (app.typewriterStopSelect) app.typewriterStopSelect.value = normalized.stopSound;
     if (app.typewriterStopToggle) app.typewriterStopToggle.checked = normalized.stopEnabled;
-    if (!normalized.enabled) {
-      state.typewriterMarginRelease = false;
-      hideMarginReleaseBtn();
-    }
     updateWordWrapAvailability();
   }
 
@@ -393,7 +389,6 @@ export function createMeasurementControls({
         state.realTypewriterEnabled = !!app.typewriterToggle.checked;
         if (!state.realTypewriterEnabled) {
           state.typewriterMarginRelease = false;
-          hideMarginReleaseBtn();
         }
         updateWordWrapAvailability();
         queueDirtySave();
