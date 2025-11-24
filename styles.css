@@ -285,7 +285,7 @@ body[data-page-tone='dark']{
     bottom:calc(var(--toolbar-h) + 12px);
     display:flex;
     flex-direction:column;
-    gap:8px;
+    gap:4px;
     padding:10px 8px;
     background:var(--panel-bg);
     border:1px solid var(--panel-border);
@@ -307,7 +307,7 @@ body[data-page-tone='dark']{
   .ink-dock__extra{
     display:flex;
     flex-direction:column;
-    gap:8px;
+    gap:4px;
   }
 
   .ink-dock__extra{
@@ -350,6 +350,10 @@ body[data-page-tone='dark']{
   }
 
   .ink-dock:not(.ink-dock--expanded) .ink-menu{
+    display:none;
+  }
+
+  .ink-dock:not(.ink-dock--expanded) .ink-menu-group{
     display:none;
   }
 
