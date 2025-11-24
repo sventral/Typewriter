@@ -10,6 +10,8 @@ export function createTypewriterMode({
 }) {
   let warnedRowKey = null;
   let armed = false;
+  let lastCaretKey = null;
+  let lastCaretCol = null;
 
   const rowKey = () => `${state.caret?.page ?? 0}:${state.caret?.rowMu ?? 0}`;
 
@@ -17,6 +19,9 @@ export function createTypewriterMode({
     if (!currentKey) return;
     if (warnedRowKey && warnedRowKey !== currentKey) {
       warnedRowKey = null;
+    }
+    if (lastCaretKey && lastCaretKey !== currentKey) {
+      lastCaretCol = null;
     }
   }
 
@@ -36,12 +41,22 @@ export function createTypewriterMode({
     const key = rowKey();
     clearWarningIfRowChanged(key);
     const threshold = Math.max(bounds.L, bounds.R - lead + 1);
-    if (warnedRowKey === key) return;
-    if (state.caret.col >= threshold) {
+    if (warnedRowKey === key) {
+      lastCaretKey = key;
+      lastCaretCol = state.caret.col;
+      return;
+    }
+
+    const previousCol = lastCaretKey === key ? lastCaretCol : null;
+    const movedForward = Number.isFinite(previousCol) && state.caret.col > previousCol;
+    const crossedIntoLead = movedForward && previousCol < threshold && state.caret.col >= threshold;
+    if (crossedIntoLead) {
       warnedRowKey = key;
       playBell(state.realTypewriterBellSound, state.realTypewriterBellVolume);
       setArmed(true);
     }
+    lastCaretKey = key;
+    lastCaretCol = state.caret.col;
   }
 
   function shouldHoldAtMargin(nextCol, bounds) {
@@ -69,6 +84,8 @@ export function createTypewriterMode({
   function resetForNewLine() {
     state.typewriterMarginRelease = false;
     warnedRowKey = null;
+    lastCaretCol = null;
+    lastCaretKey = null;
     setStop(false);
     setArmed(false);
   }
@@ -90,6 +107,8 @@ export function createTypewriterMode({
     if (!state.realTypewriterEnabled) {
       state.typewriterMarginRelease = false;
       warnedRowKey = null;
+      lastCaretCol = null;
+      lastCaretKey = null;
       setStop(false);
       setArmed(false);
     }
