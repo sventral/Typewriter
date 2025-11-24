@@ -246,25 +246,27 @@ body.dark .ink-icon-btn,
   .ink-slider-popup {
     display: none;
     position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-    width: 56px;
-    height: 160px;
+    top: 50%;
+    right: calc(100% + 10px);
+    transform: translateY(-50%);
+    width: 140px;
+    height: 48px;
     box-sizing: border-box;
     background: var(--panel-bg);
     backdrop-filter: blur(10px);
     border: 1px solid var(--panel-border);
-    border-radius: 8px;
+    border-radius: 10px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     z-index: 52;
-    padding: 12px 0;
-    flex-direction: column;
+    padding: 8px 10px;
+    flex-direction: row;
     align-items: center;
+    justify-content: center;
+    gap: 8px;
   }
   .ink-slider-popup.active { display: flex; }
   .slider-container {
-    flex-grow: 1;
+    flex: 1 1 auto;
     position: relative;
     width: 100%;
     display: flex;
@@ -276,8 +278,8 @@ body.dark .ink-icon-btn,
     appearance: none;
     background: transparent;
     cursor: pointer;
-    width: 110px; /* This is the track length */
-    transform: rotate(270deg);
+    width: 110px; /* same track length as zoom slider */
+    height: 16px;
   }
   input[type="range"].ink-slider::-webkit-slider-runnable-track {
     background: rgba(120, 120, 128, 0.36);
@@ -292,21 +294,20 @@ body.dark .ink-icon-btn,
   input[type="range"].ink-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    margin-top: -8px; /* (thumb height - track height) / 2 */
-    background: #fff;
-    height: 20px;
-    width: 20px;
+    margin-top: -8px; /* center thumb on 4px track */
+    background: var(--zoom-slider-color, #5c5c5c);
+    height: 13px;
+    width: 13px;
     border-radius: 50%;
-    border: 1px solid rgba(0,0,0,0.1);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border: 1px solid rgba(0,0,0,0.12);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
   }
   input[type="range"].ink-slider::-moz-range-thumb {
-    background: #fff;
-    height: 20px;
-    width: 20px;
+    background: var(--zoom-slider-color, #5c5c5c);
+    height: 13px;
+    width: 13px;
     border-radius: 50%;
-    border: 1px solid rgba(0,0,0,0.1);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border: 1px solid rgba(0,0,0,0.12);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
   }
   .slider-value { font-size: 11px; color: var(--ui-text); text-align: center; }
-
