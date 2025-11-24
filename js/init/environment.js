@@ -41,7 +41,8 @@ export function detectCanvasDimensionLimit() {
         try {
           probeCanvas.width = dimension === 'width' ? size : 1;
           probeCanvas.height = dimension === 'height' ? size : 1;
-          const ctx = probeCanvas.getContext('2d');
+          // Hint frequent readbacks so Chrome avoids perf warning during probe loop
+          const ctx = probeCanvas.getContext('2d', { willReadFrequently: true }) || probeCanvas.getContext('2d');
           if (!ctx) continue;
           ctx.fillStyle = '#000';
           ctx.fillRect(0, 0, 1, 1);
