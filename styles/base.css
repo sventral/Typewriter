@@ -1,0 +1,80 @@
+  html,body{margin:0;height:100%;background:var(--stage-bg);font:16px system-ui, -apple-system, sans-serif;color:var(--ui-text)}
+
+  .toolbar{
+    box-sizing:border-box; position:fixed; left:0; right:0; bottom:0; height:var(--toolbar-h);
+    z-index:51; display:flex; align-items:center; justify-content: space-between;
+    padding:.6rem .8rem; background:var(--ui); color:var(--ui-text);
+    border-top:1px solid var(--ui-border);
+  }
+
+  .corner-ruler-toggle{
+    position:fixed;
+    left:12px;
+    bottom:calc(var(--toolbar-h) + 12px);
+    width:46px;
+    height:46px;
+    border-radius:12px;
+    border:1px solid var(--panel-border);
+    background:var(--corner-ruler-bg);
+    color:#8c909b;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    backdrop-filter:blur(4px);
+    -webkit-backdrop-filter:blur(4px);
+    cursor:pointer;
+    z-index:65;
+    --corner-ruler-shift-x: 0px;
+    --corner-ruler-shift-y: 0px;
+    transform:translate(var(--corner-ruler-shift-x), var(--corner-ruler-shift-y));
+    transition:transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+
+  .corner-ruler-toggle:hover{
+    background: var(--corner-ruler-bg-hover);
+    border-color: rgba(0, 0, 0, 0.14);
+  }
+
+  .corner-ruler-toggle:active{
+    transform:translate(var(--corner-ruler-shift-x), var(--corner-ruler-shift-y)) scale(0.98);
+  }
+
+  .corner-ruler-toggle:focus-visible{
+    outline:2px solid var(--active-outline);
+    outline-offset:2px;
+  }
+
+  .corner-ruler-toggle__icon{
+    position:relative;
+    width:28px;
+    height:28px;
+  }
+
+  .corner-ruler-toggle__leg{
+    position:absolute;
+    background:currentColor;
+    border-radius:1px;
+  }
+
+  .corner-ruler-toggle__leg--h{
+    left:7px;
+    bottom:7px;
+    width:16px;
+    height:2px;
+  }
+
+  .corner-ruler-toggle__leg--v{
+    left:7px;
+    bottom:7px;
+    width:2px;
+    height:16px;
+  }
+
+  body:not(.rulers-off) .corner-ruler-toggle{
+    --corner-ruler-shift-x: var(--ruler-thickness);
+    --corner-ruler-shift-y: calc(-1 * var(--ruler-thickness));
+    color: var(--tri-red);
+    opacity: 0.9;
+  }
+

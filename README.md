@@ -25,7 +25,15 @@ Any static file server (for example, `python -m http.server 8080`) can also host
 ```
 Typewriter/
 ├── index.html         # Application shell and UI markup
-├── styles.css         # Theme variables, layout, and responsive rules
+├── styles.css         # Aggregates modular CSS imports
+├── styles/            # Modular CSS partials (variables, fonts, base, ink, UI, stage, settings)
+│   ├── variables.css
+│   ├── fonts.css
+│   ├── base.css
+│   ├── ink.css
+│   ├── ui.css
+│   ├── stage.css
+│   └── settings.css
 ├── js/
 │   ├── main.js        # Entry point that bootstraps the app
 │   ├── initApp.js     # Core initialization and wiring
@@ -41,4 +49,3 @@ Typewriter/
 
 ## License
 The project is currently distributed without a declared license (marked `UNLICENSED` in `package.json`).
-
