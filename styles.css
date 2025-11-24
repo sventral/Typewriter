@@ -279,14 +279,18 @@ body[data-page-tone='dark']{
     opacity: 0.9;
   }
 
+  :root{
+    --ink-dock-gap: 6px;
+  }
+
   .ink-dock{
     position:fixed;
     right:12px;
     bottom:calc(var(--toolbar-h) + 12px);
     display:flex;
     flex-direction:column;
-    gap:4px;
-    padding:10px 8px;
+    gap:var(--ink-dock-gap);
+    padding:var(--ink-dock-gap);
     background:var(--panel-bg);
     border:1px solid var(--panel-border);
     border-radius:14px;
@@ -307,7 +311,7 @@ body[data-page-tone='dark']{
   .ink-dock__extra{
     display:flex;
     flex-direction:column;
-    gap:4px;
+    gap:var(--ink-dock-gap);
   }
 
   .ink-dock__extra{
@@ -318,23 +322,35 @@ body[data-page-tone='dark']{
     display:flex;
   }
 
-  .ink-dock:not(.ink-dock--expanded) .ink-dock__core button[data-active="true"]{
-    display:none;
+     
+/* --- DELETE OR COMMENT OUT THIS BLOCK --- */
+/*
+  .ink-dock:not(.ink-dock--expanded) .ink-dock__core{
+    position:relative;
   }
+  .ink-dock:not(.ink-dock--expanded) .ink-dock__core button[data-active="true"]{
+    position:absolute;
+    opacity:0;
+    pointer-events:none;
+  }
+*/
+/* ---------------------------------------- */
 
+  
   .ink-dock__handle{
     border:none;
     background:transparent;
     color:var(--btn-fg);
     border-radius:8px;
-    height:auto;
-    padding:4px 6px;
+    height:24px;
+    padding:0 6px;
     cursor:pointer;
     display:flex;
     align-items:center;
     justify-content:center;
     gap:6px;
     font-size:14px;
+    line-height:1;
   }
 
   .ink-dock__handle:hover{ background:transparent; }
@@ -403,22 +419,23 @@ body[data-page-tone='dark']{
     cursor:pointer;
   }
 
-  .ink-swatch.sw{
-    width:22px;
-    height:22px;
-    border-radius:5px;
+  .ink-swatch.sw,
+  .ink-icon-btn{
+    width:24px;
+    height:24px;
+    border-radius:6px;
+    box-sizing:border-box;
   }
 
   .ink-icon-btn{
-    width:22px;
-    height:22px;
-    border-radius:5px;
     border:1px solid var(--btn-border);
     background:var(--btn-bg);
     color:#8f96a3;
     display:inline-flex;
     align-items:center;
     justify-content:center;
+    line-height:1;
+    font-size:16px;
     transition:background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.1s ease;
   }
 
@@ -427,22 +444,13 @@ body[data-page-tone='dark']{
     display:block;
   }
 
-  .ink-gear{
-    font-size:21px;
-  }
-
-  .ink-gear::before{
+.ink-gear::before{
     content:'⚙︎';
-    transform:translateY(-2px);
-  }
-
-  .ink-menu{
-    font-size:17px;
+    transform: translateY(-1.5px); /* Added to fix vertical centering */
   }
 
   .ink-menu::before{
     content:'≡';
-    transform:translateY(-1px);
   }
 
   .ink-icon-btn:hover{
