@@ -298,9 +298,11 @@ body[data-page-tone='dark']{
     z-index:64;
     --ink-dock-shift-x: 0px;
     --ink-dock-shift-y: 0px;
-    transform:translate(var(--ink-dock-shift-x), var(--ink-dock-shift-y));
+    transform:translate(calc(var(--ink-dock-shift-x) - var(--ink-panel-shift, 0px)), var(--ink-dock-shift-y));
     backdrop-filter:blur(6px);
     -webkit-backdrop-filter:blur(6px);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
   }
 
   body:not(.rulers-off) .ink-dock{
