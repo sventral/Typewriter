@@ -188,6 +188,9 @@ export function createZoomLagMonitor({
       state.smoothFrames += 1;
       if (state.smoothFrames >= recoveryFrameCount) {
         hideNotice();
+        // We’re back to stable; drop the armed window early to avoid
+        // running RAF/perf observers for the full checkWindowMs.
+        state.armedUntil = 0;
         stopWatchersIfIdle();
       }
     } else {
