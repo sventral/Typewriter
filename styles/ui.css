@@ -174,9 +174,10 @@
     display:flex;
     align-items:center;
     gap:6px;
-    position:static;
+    position:relative;
     flex:1 1 auto;
     width:100%;
+    min-width:100%;
   }
 
   .doc-title-input--mini{
@@ -189,13 +190,14 @@
   .doc-menu-popup--mini{
     left:0;
     right:0;
-    width:auto;
+    width:100%;
     min-width:0;
   }
 
   .doc-menu-popup {
     position: absolute;
-    bottom: calc(100% + 8px);
+    top: calc(100% + 8px);
+    bottom: auto;
     left: 0;
     width: 100%;
     max-height: 240px;
