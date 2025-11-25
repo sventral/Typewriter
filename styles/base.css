@@ -7,7 +7,8 @@
     border-top:1px solid var(--ui-border);
   }
 
-  .corner-ruler-toggle{
+  .corner-ruler-toggle,
+  .corner-mr-toggle{
     position:fixed;
     left:12px;
     bottom:calc(var(--toolbar-h) + 12px);
@@ -31,16 +32,19 @@
     transition:transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
   }
 
-  .corner-ruler-toggle:hover{
+  .corner-ruler-toggle:hover,
+  .corner-mr-toggle:hover{
     background: var(--corner-ruler-bg-hover);
     border-color: rgba(0, 0, 0, 0.14);
   }
 
-  .corner-ruler-toggle:active{
+  .corner-ruler-toggle:active,
+  .corner-mr-toggle:active{
     transform:translate(var(--corner-ruler-shift-x), var(--corner-ruler-shift-y)) scale(0.98);
   }
 
-  .corner-ruler-toggle:focus-visible{
+  .corner-ruler-toggle:focus-visible,
+  .corner-mr-toggle:focus-visible{
     outline:2px solid var(--active-outline);
     outline-offset:2px;
   }
@@ -71,10 +75,21 @@
     height:16px;
   }
 
-  body:not(.rulers-off) .corner-ruler-toggle{
+  .corner-mr-toggle{
+    bottom:calc(var(--toolbar-h) + 12px + 46px + 8px);
+    font-weight:700;
+    letter-spacing:0.4px;
+    font-size:14px;
+    line-height:1;
+  }
+
+  body:not(.rulers-off) .corner-ruler-toggle,
+  body:not(.rulers-off) .corner-mr-toggle{
     --corner-ruler-shift-x: var(--ruler-thickness);
     --corner-ruler-shift-y: calc(-1 * var(--ruler-thickness));
+  }
+
+  body:not(.rulers-off) .corner-ruler-toggle{
     color: var(--tri-red);
     opacity: 0.9;
   }
-
