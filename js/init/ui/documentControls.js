@@ -12,6 +12,7 @@ import {
 import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../../state/saveRevision.js';
 import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/inkSettingsPanel.js';
 import { createExportDialog } from './exportDialog.js';
+import { exportDocumentAsPdf } from '../../export/pdfExporter.js';
 
 export function createDocumentControls({
   app,
@@ -33,6 +34,8 @@ export function createDocumentControls({
   deserializeState,
   getSaveTimer,
   setSaveTimer,
+  schedulePaint,
+  lifecycleController,
 }) {
   const docState = { documents: [], activeId: null };
   const docMenuState = { open: false };
@@ -61,6 +64,7 @@ export function createDocumentControls({
     app,
     onExportRaw: exportDocumentData,
     onExportPlain: exportPlainTextFile,
+    onExportPdf: exportPdfFile,
   });
 
   function clearStorageNotice() {
@@ -490,6 +494,29 @@ export function createDocumentControls({
     const payload = JSON.stringify(serialized, null, 2);
     const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
     downloadBlob(blob, buildExportFileName({ suffix: 'raw', ext: 'json' }));
+  }
+
+  async function exportPdfFile() {
+    try {
+      await exportDocumentAsPdf({
+        app,
+        state,
+        buildExportFileName,
+        downloadBlob,
+        schedulePaint,
+        setPageActive: lifecycleController?.setPageActive,
+        requestVirtualization,
+      });
+    } catch (err) {
+      if (typeof console !== 'undefined' && typeof console.error === 'function') {
+        console.error('Typewriter: PDF export failed', err);
+      }
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert('Could not create PDF. Check your connection and try again.');
+      }
+    } finally {
+      requestVirtualization?.();
+    }
   }
 
   function queueDirtySave() {

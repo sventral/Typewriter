@@ -42,7 +42,7 @@ export function setupUIBindings(context, controllers) {
     schedulePaint,
   } = context;
 
-  const { editing, layout, input, theme } = controllers;
+  const { editing, layout, input, theme, lifecycle } = controllers;
   const { setInk, createNewDocument, serializeState, deserializeState } = editing;
 
   const {
@@ -81,6 +81,8 @@ export function setupUIBindings(context, controllers) {
     deserializeState,
     getSaveTimer,
     setSaveTimer,
+    schedulePaint,
+    lifecycleController: lifecycle,
   });
 
   const queueDirtySave = () => {

@@ -151,6 +151,7 @@ export function registerControllers({
       },
       input: editingDomain.document.inputController,
       theme: themeDomain.controller,
+      lifecycle: editingDomain.lifecycleController,
     },
   );
 
