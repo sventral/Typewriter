@@ -55,6 +55,7 @@
     --scrollbar-thumb-hover: rgba(0,0,0,0.50);
     --ink-panel-shift: 0px;
     --ink-dock-gap: 6px;
+    --ink-gear-toolbar-height: calc(24px + (var(--ink-dock-gap) * 2) + 2px);
   }
 
 :root[data-theme='light']{

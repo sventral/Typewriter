@@ -1,5 +1,6 @@
   :root{
     --ink-dock-gap: 6px;
+    --ink-gear-toolbar-height: calc(24px + (var(--ink-dock-gap) * 2) + 2px);
   }
 
   .ink-file-launcher{
@@ -60,10 +61,10 @@
     height:26px;
   }
 
-  .ink-dock{
+  .ink-dock,
+  .ink-gear-toolbar{
     position:fixed;
     right:12px;
-    bottom:calc(var(--toolbar-h) + 12px);
     display:flex;
     flex-direction:column;
     gap:var(--ink-dock-gap);
@@ -82,7 +83,16 @@
     will-change: transform;
   }
 
-  body:not(.rulers-off) .ink-dock{
+  .ink-dock{
+    bottom:calc(var(--toolbar-h) + 12px + var(--ink-gear-toolbar-height) + var(--ink-dock-gap));
+  }
+
+  .ink-gear-toolbar{
+    bottom:calc(var(--toolbar-h) + 12px);
+  }
+
+  body:not(.rulers-off) .ink-dock,
+  body:not(.rulers-off) .ink-gear-toolbar{
     --ink-dock-shift-y: calc(-1 * var(--ruler-thickness));
   }
 
