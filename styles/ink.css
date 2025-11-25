@@ -144,14 +144,6 @@
     line-height:1;
   }
 
-  .ink-dock:not(.ink-dock--expanded) .ink-menu{
-    display:none;
-  }
-
-  .ink-dock:not(.ink-dock--expanded) .ink-menu-group{
-    display:none;
-  }
-
   .ink-file-toolbar{
     position:absolute;
     top:50%;
@@ -243,10 +235,6 @@
     background: #424348;
     color: #b6becc;
     transform: scale(0.97);
-  }
-
-  .ink-menu::before{
-    content:'≡';
   }
 
   .ink-icon-btn:hover{
