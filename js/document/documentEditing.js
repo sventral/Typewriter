@@ -401,6 +401,47 @@ export function createDocumentEditingController(context) {
     return changed;
   }
 
+  function ensurePage(index) {
+    if (!state.pages[index]) addPage(index);
+    return state.pages[index];
+  }
+
+  function shiftRowsDownFrom(pageIndex, startRowMu, deltaMu) {
+    if (!Number.isFinite(deltaMu) || deltaMu <= 0) return;
+    const bounds = getCurrentBounds();
+    const page = ensurePage(pageIndex);
+    const rows = page.grid ? Array.from(page.grid.keys()).filter((r) => r >= startRowMu) : [];
+    rows.sort((a, b) => b - a);
+    for (const row of rows) {
+      const target = row + deltaMu;
+      const rowMap = page.grid.get(row);
+      if (!rowMap) continue;
+      page.grid.delete(row);
+      if (target <= bounds.Bmu) {
+        page.grid.set(target, rowMap);
+        markRowAsDirty(page, target);
+      } else {
+        // Overflow into next page
+        const overflowOffset = target - bounds.Bmu - state.lineStepMu;
+        shiftRowsDownFrom(pageIndex + 1, bounds.Tmu, deltaMu);
+        const nextPage = ensurePage(pageIndex + 1);
+        const destRow = bounds.Tmu + Math.max(0, overflowOffset);
+        const destMap = nextPage.grid.get(destRow);
+        if (destMap) {
+          // merge if destination already exists
+          for (const [col, stack] of rowMap.entries()) {
+            const existing = destMap.get(col) || [];
+            destMap.set(col, existing.concat(stack));
+          }
+        } else {
+          nextPage.grid.set(destRow, rowMap);
+        }
+        markRowAsDirty(nextPage, destRow);
+      }
+      markRowAsDirty(page, row);
+    }
+  }
+
   function splitLineAtCaret(bounds) {
     const page = state.pages[state.caret.page] || addPage();
     const rowMap = page.grid.get(state.caret.rowMu);
@@ -600,6 +641,7 @@ export function createDocumentEditingController(context) {
     const bounds = getCurrentBounds();
     if (state.realTypewriterBackspaceEnabled) {
       typewriterMode.resetForNewLine();
+      shiftRowsDownFrom(state.caret.page, state.caret.rowMu + state.lineStepMu, state.lineStepMu);
       splitLineAtCaret(bounds);
     } else {
       typewriterMode.resetForNewLine();
