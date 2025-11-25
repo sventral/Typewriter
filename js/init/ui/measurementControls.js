@@ -553,6 +553,17 @@ export function createMeasurementControls({
     if (app.toggleMarginsBtn) app.toggleMarginsBtn.onclick = toggleRulers;
   }
 
+  let resizeRafId = null;
+  const scheduleResizeWork = () => {
+    if (resizeRafId !== null) return;
+    resizeRafId = requestAnimationFrame(() => {
+      resizeRafId = null;
+      positionRulers();
+      if (!isZooming()) requestHammerNudge();
+      requestVirtualization();
+    });
+  };
+
   function bindMeasurementControls() {
     bindPrimaryControls();
     bindMarginInputs();
@@ -569,11 +580,7 @@ export function createMeasurementControls({
     if (app.scrollLane) {
       app.scrollLane.addEventListener('scroll', handleScrollLaneScroll, { passive: true });
     }
-    window.addEventListener('resize', () => {
-      positionRulers();
-      if (!isZooming()) requestHammerNudge();
-      requestVirtualization();
-    }, { passive: true });
+    window.addEventListener('resize', scheduleResizeWork, { passive: true });
   }
 
   function applyMeasurementDefaults(loaded) {
