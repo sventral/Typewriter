@@ -149,6 +149,7 @@ const DOM_ID_GROUPS = {
     typewriterStopToggle: 'typewriterStopToggle',
     marginReleaseBtn: 'marginReleaseBtn',
     inkMarginReleaseBtn: 'inkMarginReleaseBtn',
+    marginReleaseCornerBtn: 'marginReleaseCornerBtn',
   },
   lowResZoom: {
     lowResZoomToggle: 'lowResZoomToggle',

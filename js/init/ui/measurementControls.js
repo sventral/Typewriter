@@ -261,7 +261,7 @@ export function createMeasurementControls({
   }
 
   function hideMarginReleaseBtn() {
-    const buttons = [app.marginReleaseBtn, app.inkMarginReleaseBtn].filter(Boolean);
+    const buttons = [app.marginReleaseBtn, app.inkMarginReleaseBtn, app.marginReleaseCornerBtn].filter(Boolean);
     if (!buttons.length) return;
     buttons.forEach((btn) => {
       btn.classList.remove('is-visible');

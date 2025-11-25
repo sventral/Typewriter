@@ -269,7 +269,7 @@ export function createDocumentEditingController(context) {
 
   const bellPlayer = createBellPlayer({ basePath: 'audio/' });
 
-  const marginReleaseButtons = () => [app.marginReleaseBtn, app.inkMarginReleaseBtn].filter(Boolean);
+  const marginReleaseButtons = () => [app.marginReleaseBtn, app.inkMarginReleaseBtn, app.marginReleaseCornerBtn].filter(Boolean);
   const marginReleaseState = { available: false, active: false, enabled: true };
   function setMarginReleaseState(next = {}) {
     Object.assign(marginReleaseState, next);
