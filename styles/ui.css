@@ -80,6 +80,7 @@
 
   .lag-overlay--visible {
     opacity: 1;
+    pointer-events: auto;
   }
 
   @keyframes lag-spin {
