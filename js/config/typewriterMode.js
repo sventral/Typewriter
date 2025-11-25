@@ -8,6 +8,7 @@ export const TYPEWRITER_DEFAULTS = {
   stopSound: 'stop-1',
   stopEnabled: true,
   backspaceEnabled: false,
+  caretLockEnabled: true,
 };
 
 export function normalizeTypewriterSettings(raw = {}, defaults = TYPEWRITER_DEFAULTS) {
@@ -30,5 +31,20 @@ export function normalizeTypewriterSettings(raw = {}, defaults = TYPEWRITER_DEFA
       : raw.backspaceEnabled === false
         ? false
         : base.backspaceEnabled === true;
-  return { enabled, bellSound, bellVolume, bellLead, stopSound, stopEnabled, backspaceEnabled };
+  const caretLockEnabled =
+    raw.caretLockEnabled === true
+      ? true
+      : raw.caretLockEnabled === false
+        ? false
+        : base.caretLockEnabled === true;
+  return {
+    enabled,
+    bellSound,
+    bellVolume,
+    bellLead,
+    stopSound,
+    stopEnabled,
+    backspaceEnabled,
+    caretLockEnabled,
+  };
 }

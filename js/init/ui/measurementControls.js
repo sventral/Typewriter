@@ -270,6 +270,16 @@ export function createMeasurementControls({
     });
   }
 
+  function setCaretLockEnabled(value, { save = false, requestNudge = false } = {}) {
+    const enabled = !!value;
+    state.realTypewriterCaretLockEnabled = enabled;
+    state.hammerLock = enabled;
+    if (enabled && requestNudge && typeof requestHammerNudge === 'function' && !isZooming()) {
+      requestHammerNudge();
+    }
+    if (save) queueDirtySave();
+  }
+
   function syncTypewriterUI() {
     const normalized = normalizeTypewriterSettings(
       {
@@ -280,6 +290,7 @@ export function createMeasurementControls({
         stopSound: state.realTypewriterStopSound,
         stopEnabled: state.realTypewriterStopEnabled,
         backspaceEnabled: state.realTypewriterBackspaceEnabled,
+        caretLockEnabled: state.realTypewriterCaretLockEnabled,
       },
       TYPEWRITER_DEFAULTS,
     );
@@ -290,6 +301,7 @@ export function createMeasurementControls({
     state.realTypewriterStopSound = normalized.stopSound;
     state.realTypewriterStopEnabled = normalized.stopEnabled;
     state.realTypewriterBackspaceEnabled = normalized.backspaceEnabled;
+    setCaretLockEnabled(normalized.caretLockEnabled, { save: false, requestNudge: false });
 
     if (app.typewriterToggle) app.typewriterToggle.checked = normalized.enabled;
     if (app.typewriterBellSelect) app.typewriterBellSelect.value = normalized.bellSound;
@@ -299,6 +311,7 @@ export function createMeasurementControls({
     if (app.typewriterStopSelect) app.typewriterStopSelect.value = normalized.stopSound;
     if (app.typewriterStopToggle) app.typewriterStopToggle.checked = normalized.stopEnabled;
     if (app.typewriterBackspaceToggle) app.typewriterBackspaceToggle.checked = normalized.backspaceEnabled;
+    if (app.typewriterCaretLockToggle) app.typewriterCaretLockToggle.checked = normalized.caretLockEnabled;
     updateWordWrapAvailability();
   }
 
@@ -460,6 +473,12 @@ export function createMeasurementControls({
       });
     }
 
+    if (app.typewriterCaretLockToggle) {
+      app.typewriterCaretLockToggle.addEventListener('change', () => {
+        setCaretLockEnabled(app.typewriterCaretLockToggle.checked, { save: true, requestNudge: true });
+      });
+    }
+
     if (app.typewriterStopSelect) {
       app.typewriterStopSelect.addEventListener('change', () => {
         const val = app.typewriterStopSelect.value || TYPEWRITER_DEFAULTS.stopSound;
@@ -613,6 +632,7 @@ export function createMeasurementControls({
     state.realTypewriterStopSound = TYPEWRITER_DEFAULTS.stopSound;
     state.realTypewriterStopEnabled = TYPEWRITER_DEFAULTS.stopEnabled;
     state.realTypewriterBackspaceEnabled = TYPEWRITER_DEFAULTS.backspaceEnabled;
+    setCaretLockEnabled(TYPEWRITER_DEFAULTS.caretLockEnabled, { save: false, requestNudge: false });
     state.typewriterMarginRelease = false;
     applyDefaultMargins();
   }
