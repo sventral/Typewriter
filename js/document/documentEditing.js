@@ -700,6 +700,7 @@ export function createDocumentEditingController(context) {
     let nextPage = state.caret.page;
     let nextRowMu = state.caret.rowMu;
     let nextCol = state.caret.col;
+    let mergedLine = false;
 
     if (nextCol > bounds.L) {
       nextCol -= 1;
@@ -733,6 +734,7 @@ export function createDocumentEditingController(context) {
         nextPage = prevPage;
         nextRowMu = prevRowMu;
         nextCol = appendStart;
+        mergedLine = true;
       } else if (nextRowMu > bounds.Tmu) {
         nextRowMu -= state.lineStepMu;
         nextCol = bounds.R;
@@ -759,7 +761,7 @@ export function createDocumentEditingController(context) {
     state.caret.rowMu = nextRowMu;
     state.caret.col = nextCol;
 
-    if (state.realTypewriterBackspaceEnabled) {
+    if (state.realTypewriterBackspaceEnabled && !mergedLine) {
       const page = state.pages[state.caret.page] || addPage();
       eraseCharacters(page, state.caret.rowMu, state.caret.col, 1);
       shiftRow(page, state.caret.rowMu, state.caret.col + 1, -1);
