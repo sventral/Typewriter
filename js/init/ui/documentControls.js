@@ -47,6 +47,12 @@ export function createDocumentControls({
   let pdfExportInProgress = false;
   let pdfExportRestoreState = null;
   let pdfVisualMaskRestore = null;
+  let pdfOverlayStartTs = 0;
+
+  const waitForOverlayPaint = () => new Promise((resolve) => {
+    const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+    raf(() => raf(resolve));
+  });
 
   const docUpdatedFormatter = (() => {
     if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
@@ -146,18 +152,15 @@ export function createDocumentControls({
     a.remove();
   }
 
-  function beginPdfExportUi(message = 'Preparing PDF…') {
+  function beginPdfExportUi(message = 'Preparing PDF…', previewUrl) {
     if (pdfExportInProgress) return;
     pdfExportInProgress = true;
     pdfExportRestoreState = {
-      noticeVisible: app.lagNotice?.classList.contains('lag-notice--visible'),
       noticeText: app.lagNotice?.textContent,
-      overlayVisible: app.lagOverlay?.classList.contains('lag-overlay--visible'),
-      overlayPhase: app.lagOverlay?.dataset?.phase,
       btnDisabled: app.exportPdfBtn?.disabled,
-      stageOpacity: app.stage?.style?.opacity,
-      stagePointer: app.stage?.style?.pointerEvents,
+      lagPreview: app.lagOverlay?.style?.getPropertyValue('--lag-preview-url') || '',
     };
+    pdfOverlayStartTs = performance.now ? performance.now() : Date.now();
     if (app.exportPdfBtn) {
       app.exportPdfBtn.disabled = true;
       app.exportPdfBtn.textContent = 'Exporting…';
@@ -168,14 +171,12 @@ export function createDocumentControls({
       app.lagNotice.setAttribute('aria-hidden', 'false');
     }
     if (app.lagOverlay) {
-      app.lagOverlay.classList.add('lag-overlay--visible');
+      if (previewUrl) {
+        app.lagOverlay.style.setProperty('--lag-preview-url', `url("${previewUrl}")`);
+      }
+      app.lagOverlay.classList.add('lag-overlay--visible', 'lag-overlay--export');
       app.lagOverlay.setAttribute('aria-hidden', 'false');
       app.lagOverlay.dataset.phase = 'pending';
-    }
-
-    if (app.stage?.style) {
-      app.stage.style.opacity = '0';
-      app.stage.style.pointerEvents = 'none';
     }
   }
 
@@ -187,38 +188,77 @@ export function createDocumentControls({
       app.exportPdfBtn.textContent = 'Save as PDF';
     }
     if (app.lagNotice) {
-      if (finalText) {
-        app.lagNotice.textContent = finalText;
-        setTimeout(() => {
-          if (!restore.noticeVisible) {
-            app.lagNotice.classList.remove('lag-notice--visible');
-            app.lagNotice.setAttribute('aria-hidden', 'true');
-            app.lagNotice.textContent = restore.noticeText || '';
-          }
-        }, 1400);
-      } else if (!restore.noticeVisible) {
+      app.lagNotice.textContent = finalText || restore.noticeText || '';
+    }
+
+    const minVisibleMs = 1200;
+    const elapsed = (performance.now ? performance.now() : Date.now()) - pdfOverlayStartTs;
+    const hideDelay = Math.max(0, minVisibleMs - elapsed);
+
+    setTimeout(() => {
+      if (app.lagOverlay) {
+        app.lagOverlay.classList.remove('lag-overlay--visible', 'lag-overlay--export');
+        app.lagOverlay.setAttribute('aria-hidden', 'true');
+        app.lagOverlay.dataset.phase = 'idle';
+        if (restore.lagPreview) {
+          app.lagOverlay.style.setProperty('--lag-preview-url', restore.lagPreview);
+        } else {
+          app.lagOverlay.style.removeProperty('--lag-preview-url');
+        }
+      }
+      if (app.lagNotice) {
         app.lagNotice.classList.remove('lag-notice--visible');
         app.lagNotice.setAttribute('aria-hidden', 'true');
         app.lagNotice.textContent = restore.noticeText || '';
-      } else {
-        app.lagNotice.textContent = restore.noticeText || '';
+      }
+      pdfExportInProgress = false;
+      pdfExportRestoreState = null;
+    }, hideDelay);
+  }
+
+  function makeStagePreview() {
+    if (!app?.stage) return null;
+    const vpW = Math.max(10, Math.round(window.innerWidth || document.documentElement.clientWidth || 800));
+    const vpH = Math.max(10, Math.round(window.innerHeight || document.documentElement.clientHeight || 600));
+    const stageRect = app.stage.getBoundingClientRect();
+    const width = vpW;
+    const height = vpH;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const bodyBg = getComputedStyle(document.body).backgroundColor || '#111';
+    ctx.fillStyle = bodyBg;
+    ctx.fillRect(0, 0, width, height);
+
+    // draw stage background
+    const stageBg = getComputedStyle(app.stage).backgroundColor || bodyBg;
+    ctx.fillStyle = stageBg;
+    const sx = Math.round(stageRect.left);
+    const sy = Math.round(stageRect.top);
+    ctx.fillRect(sx, sy, Math.round(stageRect.width), Math.round(stageRect.height));
+
+    if (Array.isArray(state.pages)) {
+      for (const page of state.pages) {
+        const c = page?.canvas;
+        if (!c || !c.getBoundingClientRect) continue;
+        const rect = c.getBoundingClientRect();
+        const dstW = Math.max(1, Math.round(rect.width));
+        const dstH = Math.max(1, Math.round(rect.height));
+        const dx = Math.round(rect.left);
+        const dy = Math.round(rect.top);
+        try {
+          ctx.drawImage(c, 0, 0, c.width, c.height, dx, dy, dstW, dstH);
+        } catch {}
       }
     }
-    if (app.lagOverlay) {
-      if (!restore.overlayVisible) {
-        app.lagOverlay.classList.remove('lag-overlay--visible');
-        app.lagOverlay.setAttribute('aria-hidden', 'true');
-      }
-      if (restore.overlayPhase) {
-        app.lagOverlay.dataset.phase = restore.overlayPhase;
-      }
+    try {
+      return canvas.toDataURL('image/png');
+    } catch {
+      return null;
     }
-    if (app.stage?.style) {
-      app.stage.style.opacity = restore.stageOpacity || '';
-      app.stage.style.pointerEvents = restore.stagePointer || '';
-    }
-    pdfExportInProgress = false;
-    pdfExportRestoreState = null;
   }
 
   function refreshPageBuffersForCurrentZoom() {
@@ -598,7 +638,9 @@ export function createDocumentControls({
   }
 
   async function exportPdfFile() {
-    beginPdfExportUi('Preparing PDF…');
+    const previewUrl = makeStagePreview();
+    beginPdfExportUi('Preparing PDF…', previewUrl);
+    await waitForOverlayPaint();
     const prevZoomPct = Math.round(Math.max(1, (state.zoom || 1) * 100));
     const prevLowRes = state.lowResZoomEnabled;
     state.lowResZoomEnabled = false;
