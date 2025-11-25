@@ -153,6 +153,8 @@
     gap:6px;
     padding:6px 8px;
     height:auto;
+    min-width:420px;
+    width:clamp(420px, 48vw, 520px);
     background:var(--panel-bg);
     border:1px solid var(--panel-border);
     border-radius:14px;
