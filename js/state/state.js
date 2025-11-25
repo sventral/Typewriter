@@ -99,6 +99,7 @@ export function createMainState(app, gridDiv = 8) {
     realTypewriterBellLead: TYPEWRITER_DEFAULTS.bellLead,
     realTypewriterStopSound: TYPEWRITER_DEFAULTS.stopSound,
     realTypewriterStopEnabled: TYPEWRITER_DEFAULTS.stopEnabled,
+    realTypewriterBackspaceEnabled: TYPEWRITER_DEFAULTS.backspaceEnabled,
     typewriterMarginRelease: false,
   };
 }

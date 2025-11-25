@@ -224,6 +224,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       bellLead: state.realTypewriterBellLead,
       stopSound: state.realTypewriterStopSound,
       stopEnabled: state.realTypewriterStopEnabled,
+      backspaceEnabled: state.realTypewriterBackspaceEnabled,
     },
     TYPEWRITER_DEFAULTS,
   );
@@ -546,6 +547,7 @@ export function deserializeDocumentState(data, context) {
     realTypewriterBellLead: normalizedTypewriter.bellLead,
     realTypewriterStopSound: normalizedTypewriter.stopSound,
     realTypewriterStopEnabled: normalizedTypewriter.stopEnabled,
+    realTypewriterBackspaceEnabled: normalizedTypewriter.backspaceEnabled,
     typewriterMarginRelease: false,
     lineSlantEnabled: storedLineSlant?.enabled !== false,
     lineSlantRangeDeg: normalizedLineSlantRange,
