@@ -22,6 +22,7 @@ export function createZoomRenderManager(options) {
 
   let pendingZoomRedrawRAF = 0;
   let pendingZoomRedrawIsTimeout = false;
+  let lastAtlasRenderZoom = null;
   const MAX_FALLBACK_ACTIVE_PRIORITY = 6;
   const SECONDARY_WINDOW_PAD = 1;
 
@@ -88,6 +89,8 @@ export function createZoomRenderManager(options) {
       }
     };
 
+    const windowInfo = resolveVisibleWindowRange();
+
     const enqueue = (page, target) => {
       if (!page || seen.has(page)) return;
       seen.add(page);
@@ -100,7 +103,6 @@ export function createZoomRenderManager(options) {
     const caretIndex = Number.isInteger(state.caret?.page) ? state.caret.page : null;
     if (caretIndex != null) enqueue(state.pages[caretIndex], priority);
 
-    const windowInfo = resolveVisibleWindowRange();
     if (windowInfo?.set?.size) {
       windowInfo.set.forEach((idx) => {
         const page = state.pages[idx];
@@ -154,7 +156,17 @@ export function createZoomRenderManager(options) {
     for (const page of priority) prepPage(page);
     const deferredQueue = secondary.slice();
 
-    rebuildAllAtlases();
+    const effectiveZoom = typeof getEffectiveRenderZoom === 'function'
+      ? getEffectiveRenderZoom()
+      : (state.zoom || 1);
+    const zoomDeltaBigEnough =
+      !Number.isFinite(lastAtlasRenderZoom)
+      || Math.abs(effectiveZoom - lastAtlasRenderZoom) / Math.max(effectiveZoom, 1) >= 0.02;
+    const hasVisiblePages = !!(windowInfo?.set?.size);
+    if (zoomDeltaBigEnough && hasVisiblePages) {
+      rebuildAllAtlases();
+      lastAtlasRenderZoom = effectiveZoom;
+    }
 
     let finalized = false;
     const finalize = () => {
