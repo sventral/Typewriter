@@ -74,7 +74,15 @@ function resolvePdfPageSize(state) {
   return { widthPts, heightPts };
 }
 
-export async function exportDocumentAsPdf({ app, state, buildExportFileName, downloadBlob, schedulePaint, setPageActive, requestVirtualization }) {
+export async function exportDocumentAsPdf({
+  app,
+  state,
+  buildExportFileName,
+  downloadBlob,
+  schedulePaint,
+  setPageActive,
+  requestVirtualization,
+}) {
   if (!state?.pages || !state.pages.length) {
     throw new Error('No pages to export');
   }
@@ -82,12 +90,13 @@ export async function exportDocumentAsPdf({ app, state, buildExportFileName, dow
   const pdfDoc = await PDFDocument.create();
   const { widthPts, heightPts } = resolvePdfPageSize(state);
 
-  for (let i = 0; i < state.pages.length; i++) {
-    const page = state.pages[i];
-    const canvas = await capturePageCanvas(page, { app, schedulePaint, setPageActive });
-    if (!canvas) continue;
-    const blob = await canvasToBlob(canvas);
-    const imgBytes = await blob.arrayBuffer();
+  try {
+    for (let i = 0; i < state.pages.length; i++) {
+      const page = state.pages[i];
+      const canvas = await capturePageCanvas(page, { app, schedulePaint, setPageActive });
+      if (!canvas) continue;
+      const blob = await canvasToBlob(canvas);
+      const imgBytes = await blob.arrayBuffer();
     const pngImage = await pdfDoc.embedPng(imgBytes);
     const pageWidth = widthPts;
     const pageHeight = heightPts;
@@ -100,8 +109,10 @@ export async function exportDocumentAsPdf({ app, state, buildExportFileName, dow
     pdfPage.drawImage(pngImage, { x, y, width: drawWidth, height: drawHeight });
   }
 
-  const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
-  const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-  downloadBlob(pdfBlob, buildExportFileName({ suffix: 'pages', ext: 'pdf' }));
-  requestVirtualization?.();
+    const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
+    const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+    downloadBlob(pdfBlob, buildExportFileName({ suffix: 'pages', ext: 'pdf' }));
+  } finally {
+    requestVirtualization?.();
+  }
 }

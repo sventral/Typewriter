@@ -20,6 +20,7 @@ export function createDocumentControls({
   storageKey,
   focusStage,
   updateStageEnvironment,
+  setRenderScaleForZoom,
   setZoomPercent,
   renderMargins,
   setMarginBoxesVisible,
@@ -43,6 +44,9 @@ export function createDocumentControls({
   let lastSaveNowTs = 0;
   let storageNoticeTimer = 0;
   const LARGE_DOC_SIZE_WARNING = 4.5 * 1024 * 1024; // ~4.5 MB
+  let pdfExportInProgress = false;
+  let pdfExportRestoreState = null;
+  let pdfVisualMaskRestore = null;
 
   const docUpdatedFormatter = (() => {
     if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
@@ -140,6 +144,103 @@ export function createDocumentControls({
     a.click();
     URL.revokeObjectURL(a.href);
     a.remove();
+  }
+
+  function beginPdfExportUi(message = 'Preparing PDF…') {
+    if (pdfExportInProgress) return;
+    pdfExportInProgress = true;
+    pdfExportRestoreState = {
+      noticeVisible: app.lagNotice?.classList.contains('lag-notice--visible'),
+      noticeText: app.lagNotice?.textContent,
+      overlayVisible: app.lagOverlay?.classList.contains('lag-overlay--visible'),
+      overlayPhase: app.lagOverlay?.dataset?.phase,
+      btnDisabled: app.exportPdfBtn?.disabled,
+      stageOpacity: app.stage?.style?.opacity,
+      stagePointer: app.stage?.style?.pointerEvents,
+    };
+    if (app.exportPdfBtn) {
+      app.exportPdfBtn.disabled = true;
+      app.exportPdfBtn.textContent = 'Exporting…';
+    }
+    if (app.lagNotice) {
+      app.lagNotice.textContent = message;
+      app.lagNotice.classList.add('lag-notice--visible');
+      app.lagNotice.setAttribute('aria-hidden', 'false');
+    }
+    if (app.lagOverlay) {
+      app.lagOverlay.classList.add('lag-overlay--visible');
+      app.lagOverlay.setAttribute('aria-hidden', 'false');
+      app.lagOverlay.dataset.phase = 'pending';
+    }
+
+    if (app.stage?.style) {
+      app.stage.style.opacity = '0';
+      app.stage.style.pointerEvents = 'none';
+    }
+  }
+
+  function endPdfExportUi(finalText) {
+    if (!pdfExportInProgress) return;
+    const restore = pdfExportRestoreState || {};
+    if (app.exportPdfBtn) {
+      app.exportPdfBtn.disabled = restore.btnDisabled || false;
+      app.exportPdfBtn.textContent = 'Save as PDF';
+    }
+    if (app.lagNotice) {
+      if (finalText) {
+        app.lagNotice.textContent = finalText;
+        setTimeout(() => {
+          if (!restore.noticeVisible) {
+            app.lagNotice.classList.remove('lag-notice--visible');
+            app.lagNotice.setAttribute('aria-hidden', 'true');
+            app.lagNotice.textContent = restore.noticeText || '';
+          }
+        }, 1400);
+      } else if (!restore.noticeVisible) {
+        app.lagNotice.classList.remove('lag-notice--visible');
+        app.lagNotice.setAttribute('aria-hidden', 'true');
+        app.lagNotice.textContent = restore.noticeText || '';
+      } else {
+        app.lagNotice.textContent = restore.noticeText || '';
+      }
+    }
+    if (app.lagOverlay) {
+      if (!restore.overlayVisible) {
+        app.lagOverlay.classList.remove('lag-overlay--visible');
+        app.lagOverlay.setAttribute('aria-hidden', 'true');
+      }
+      if (restore.overlayPhase) {
+        app.lagOverlay.dataset.phase = restore.overlayPhase;
+      }
+    }
+    if (app.stage?.style) {
+      app.stage.style.opacity = restore.stageOpacity || '';
+      app.stage.style.pointerEvents = restore.stagePointer || '';
+    }
+    pdfExportInProgress = false;
+    pdfExportRestoreState = null;
+  }
+
+  function refreshPageBuffersForCurrentZoom() {
+    if (!Array.isArray(state.pages)) return;
+    for (const page of state.pages) {
+      if (!page) continue;
+      lifecycleController?.prepareCanvas?.(page.canvas);
+      lifecycleController?.prepareCanvas?.(page.backCanvas);
+      lifecycleController?.configureCanvasContext?.(page.ctx);
+      lifecycleController?.configureCanvasContext?.(page.backCtx);
+      page.dirtyAll = true;
+      page._dirtyRowMinMu = page._dirtyRowMaxMu = undefined;
+      if (page._dirtyRows) page._dirtyRows.clear();
+      schedulePaint?.(page);
+    }
+  }
+
+  function setAllPagesActive(active) {
+    if (!Array.isArray(state.pages)) return;
+    for (const page of state.pages) {
+      lifecycleController?.setPageActive?.(page, active);
+    }
   }
 
   function sortDocumentsInPlace() {
@@ -497,6 +598,15 @@ export function createDocumentControls({
   }
 
   async function exportPdfFile() {
+    beginPdfExportUi('Preparing PDF…');
+    const prevZoomPct = Math.round(Math.max(1, (state.zoom || 1) * 100));
+    const prevLowRes = state.lowResZoomEnabled;
+    state.lowResZoomEnabled = false;
+    setRenderScaleForZoom?.();
+    setZoomPercent(400);
+    setRenderScaleForZoom?.();
+    setAllPagesActive(true);
+    refreshPageBuffersForCurrentZoom();
     try {
       await exportDocumentAsPdf({
         app,
@@ -515,7 +625,13 @@ export function createDocumentControls({
         window.alert('Could not create PDF. Check your connection and try again.');
       }
     } finally {
+      state.lowResZoomEnabled = prevLowRes;
+      setRenderScaleForZoom?.();
+      setZoomPercent(prevZoomPct);
+      setRenderScaleForZoom?.();
+      refreshPageBuffersForCurrentZoom();
       requestVirtualization?.();
+      endPdfExportUi('PDF saved');
     }
   }
 

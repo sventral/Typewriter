@@ -67,6 +67,7 @@ export function setupUIBindings(context, controllers) {
     storageKey,
     focusStage,
     updateStageEnvironment,
+    setRenderScaleForZoom,
     setZoomPercent,
     renderMargins,
     setMarginBoxesVisible,
