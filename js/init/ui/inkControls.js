@@ -57,17 +57,33 @@ export function createInkControls({
   refreshLagAssistState = () => {},
 }) {
   function bindOpacitySliders() {
+    let opacityPaintScheduled = false;
+
+    const flushOpacityPaint = () => {
+      opacityPaintScheduled = false;
+      if (!Array.isArray(state.pages)) return;
+      for (const p of state.pages) {
+        if (!p || !p.active) continue;
+        p.dirtyAll = true;
+        schedulePaint(p);
+      }
+    };
+
+    const scheduleOpacityPaint = () => {
+      if (opacityPaintScheduled) return;
+      opacityPaintScheduled = true;
+      const raf = typeof requestAnimationFrame === 'function'
+        ? requestAnimationFrame
+        : (fn) => setTimeout(fn, 16);
+      raf(flushOpacityPaint);
+    };
+
     const onOpacitySliderInput = (key, sliderEl, valueEl) => {
       const v = parseInt(sliderEl.value, 10);
       valueEl.textContent = `${v}%`;
       state.inkOpacity[key] = v;
       queueDirtySave();
-      for (const p of state.pages) {
-        if (p.active) {
-          p.dirtyAll = true;
-          schedulePaint(p);
-        }
-      }
+      scheduleOpacityPaint();
     };
 
     INK_PALETTE.forEach(({ id, sliderId, valueId }) => {
