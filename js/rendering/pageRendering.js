@@ -540,7 +540,19 @@ export function createPageRenderer(options) {
       addRow(pageNumberRow.rowMu, pageNumberRow.rowMap);
     }
 
+    // Iterate rows in insertion order (monotonic for typical editing) and
+    // bail early once we pass the visible band to avoid scanning every row
+    // on large documents. If we detect out-of-order keys, we fall back to
+    // full scan without early break.
+    let lastMu = -Infinity;
+    let orderTrusted = true;
     for (const [rowMu, rowMap] of page.grid) {
+      if (orderTrusted && rowMu < lastMu) {
+        orderTrusted = false; // grid order not monotonic; disable early exit
+      }
+      lastMu = rowMu;
+      if (rowMu < minMu) continue;
+      if (orderTrusted && rowMu > maxMu) break;
       addRow(rowMu, rowMap);
     }
 
