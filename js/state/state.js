@@ -46,7 +46,7 @@ export function createMainState(app, gridDiv = 8) {
     ink: 'b',
     showRulers: true,
     showMarginBox: false,
-    hammerLock: true,
+    hammerLock: TYPEWRITER_DEFAULTS.caretLockEnabled,
     caretAnchor: { x: 0.5, y: 0.5, unit: 'fraction' },
     paperOffset: { x: 0, y: 0 },
     paperSize: DEFAULT_PAPER_SIZE,
@@ -100,6 +100,7 @@ export function createMainState(app, gridDiv = 8) {
     realTypewriterStopSound: TYPEWRITER_DEFAULTS.stopSound,
     realTypewriterStopEnabled: TYPEWRITER_DEFAULTS.stopEnabled,
     realTypewriterBackspaceEnabled: TYPEWRITER_DEFAULTS.backspaceEnabled,
+    realTypewriterCaretLockEnabled: TYPEWRITER_DEFAULTS.caretLockEnabled,
     typewriterMarginRelease: false,
   };
 }
