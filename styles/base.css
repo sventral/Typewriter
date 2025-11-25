@@ -81,6 +81,17 @@
     letter-spacing:0.4px;
     font-size:14px;
     line-height:1;
+    background: var(--corner-ruler-bg);
+  }
+
+  .corner-mr-toggle.is-armed{
+    opacity:1;
+    cursor:pointer;
+  }
+
+  .corner-mr-toggle:not(.is-armed){
+    opacity:0.45;
+    cursor:not-allowed;
   }
 
   body:not(.rulers-off) .corner-ruler-toggle,
