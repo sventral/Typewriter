@@ -54,6 +54,22 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let lastLagPhase = 'idle';
 
   const syncLagAssistState = (phaseInput) => {
+    if (state.pdfExportActive) {
+      const overlay = app.lagOverlay;
+      if (overlay) {
+        overlay.classList.add('lag-overlay--visible');
+        overlay.setAttribute('aria-hidden', 'false');
+        if (!overlay.dataset.phase || overlay.dataset.phase === 'idle') {
+          overlay.dataset.phase = 'export';
+        }
+      }
+      const notice = app.lagNotice;
+      if (notice) {
+        notice.classList.add('lag-notice--visible');
+        notice.setAttribute('aria-hidden', 'false');
+      }
+      return;
+    }
     const hasExplicitPhase = typeof phaseInput === 'string' && phaseInput.length > 0;
     const phase = hasExplicitPhase ? phaseInput : (lastLagPhase || 'idle');
     if (hasExplicitPhase) {

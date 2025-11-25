@@ -155,6 +155,7 @@ export function createDocumentControls({
   function beginPdfExportUi(message = 'Preparing PDF…', previewUrl) {
     if (pdfExportInProgress) return;
     pdfExportInProgress = true;
+    state.pdfExportActive = true;
     pdfExportRestoreState = {
       noticeText: app.lagNotice?.textContent,
       btnDisabled: app.exportPdfBtn?.disabled,
@@ -176,7 +177,7 @@ export function createDocumentControls({
       }
       app.lagOverlay.classList.add('lag-overlay--visible', 'lag-overlay--export');
       app.lagOverlay.setAttribute('aria-hidden', 'false');
-      app.lagOverlay.dataset.phase = 'pending';
+      app.lagOverlay.dataset.phase = 'export';
     }
   }
 
@@ -213,6 +214,7 @@ export function createDocumentControls({
       }
       pdfExportInProgress = false;
       pdfExportRestoreState = null;
+      state.pdfExportActive = false;
     }, hideDelay);
   }
 
