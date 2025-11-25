@@ -12,6 +12,16 @@
     font-size: 13px;
     color: var(--ui-text);
   }
+  .side-panel .app-version {
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+    font-size: 12px;
+    font-family: system-ui, -apple-system, sans-serif;
+    color: var(--ui-text);
+    opacity: 0.7;
+    pointer-events: none;
+  }
 
   .side-panel.from-left {
     left: 0;
@@ -297,4 +307,3 @@
   #typewriterSettings .control-row input[type="number"] { width: 96px; }
   #typewriterSettings .range-value { min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; opacity: .8; }
   #wordWrapRow.is-disabled label { color: var(--fg-muted, #8a8a8a); opacity: 0.6; }
-

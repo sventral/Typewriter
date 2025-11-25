@@ -354,11 +354,8 @@ export function createInkControls({
   let inkFileToolbarOpen = false;
 
   function positionInkFileToolbar() {
-    if (!app.inkFileToolbar || !app.inkMenuBtn || !app.inkDock) return;
-    const dockRect = app.inkDock.getBoundingClientRect();
-    const btnRect = app.inkMenuBtn.getBoundingClientRect();
-    const offsetTop = btnRect.top - dockRect.top - 2;
-    app.inkFileToolbar.style.top = `${Math.max(0, offsetTop)}px`;
+    if (!app.inkFileToolbar || !app.inkMenuBtn) return;
+    app.inkFileToolbar.style.top = '50%';
   }
 
   function closeInkFileToolbar() {
@@ -367,7 +364,10 @@ export function createInkControls({
       app.inkFileToolbar.classList.remove('ink-file-toolbar--open');
       app.inkFileToolbar.setAttribute('aria-hidden', 'true');
     }
-    if (app.inkMenuBtn) app.inkMenuBtn.setAttribute('aria-expanded', 'false');
+    if (app.inkMenuBtn) {
+      app.inkMenuBtn.setAttribute('aria-expanded', 'false');
+      app.inkMenuBtn.classList.remove('file-toolbar-toggle--active');
+    }
     if (app.inkFileDocMenuPopup) app.inkFileDocMenuPopup.classList.remove('open');
     if (app.inkFileDocMenuBtn) app.inkFileDocMenuBtn.setAttribute('aria-expanded', 'false');
   }
@@ -379,7 +379,10 @@ export function createInkControls({
       app.inkFileToolbar.classList.add('ink-file-toolbar--open');
       app.inkFileToolbar.setAttribute('aria-hidden', 'false');
     }
-    if (app.inkMenuBtn) app.inkMenuBtn.setAttribute('aria-expanded', 'true');
+    if (app.inkMenuBtn) {
+      app.inkMenuBtn.setAttribute('aria-expanded', 'true');
+      app.inkMenuBtn.classList.add('file-toolbar-toggle--active');
+    }
   }
 
   function toggleInkFileToolbar() {
