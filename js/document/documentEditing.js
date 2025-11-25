@@ -406,6 +406,39 @@ export function createDocumentEditingController(context) {
     return state.pages[index];
   }
 
+  function shiftRowsUpFrom(pageIndex, startRowMu, deltaMu) {
+    if (!Number.isFinite(deltaMu) || deltaMu <= 0) return;
+    const bounds = getCurrentBounds();
+    const page = ensurePage(pageIndex);
+    const rows = page.grid ? Array.from(page.grid.keys()).filter((r) => r >= startRowMu) : [];
+    rows.sort((a, b) => a - b);
+    for (const row of rows) {
+      const target = row - deltaMu;
+      const rowMap = page.grid.get(row);
+      if (!rowMap) continue;
+      page.grid.delete(row);
+      if (target >= bounds.Tmu) {
+        page.grid.set(target, rowMap);
+        markRowAsDirty(page, target);
+      } else if (pageIndex > 0) {
+        // move into previous page's bottom region
+        const prevPage = ensurePage(pageIndex - 1);
+        const destRow = bounds.Bmu - (bounds.Tmu - target - state.lineStepMu);
+        const destMap = prevPage.grid.get(destRow);
+        if (destMap) {
+          for (const [col, stack] of rowMap.entries()) {
+            const existing = destMap.get(col) || [];
+            destMap.set(col, existing.concat(stack));
+          }
+        } else {
+          prevPage.grid.set(destRow, rowMap);
+        }
+        markRowAsDirty(prevPage, destRow);
+      }
+      markRowAsDirty(page, row);
+    }
+  }
+
   function shiftRowsDownFrom(pageIndex, startRowMu, deltaMu) {
     if (!Number.isFinite(deltaMu) || deltaMu <= 0) return;
     const bounds = getCurrentBounds();
@@ -670,6 +703,46 @@ export function createDocumentEditingController(context) {
 
     if (nextCol > bounds.L) {
       nextCol -= 1;
+    } else if (state.realTypewriterBackspaceEnabled) {
+      // merge with previous line
+      let prevPage = nextPage;
+      let prevRowMu = nextRowMu - state.lineStepMu;
+      if (prevRowMu < bounds.Tmu && nextPage > 0) {
+        prevPage = nextPage - 1;
+        prevRowMu = bounds.Bmu;
+      }
+      if (prevRowMu >= bounds.Tmu) {
+        const currPage = ensurePage(state.caret.page);
+        const currRowMap = currPage.grid.get(state.caret.rowMu);
+        const targetPage = ensurePage(prevPage);
+        const targetRowMap = ensureRowExists(targetPage, prevRowMu);
+        const existingCols = targetRowMap.size ? Array.from(targetRowMap.keys()) : [];
+        const appendStart = existingCols.length ? Math.max(...existingCols) + 1 : bounds.L;
+        if (currRowMap) {
+          const cols = Array.from(currRowMap.keys()).sort((a, b) => a - b);
+          cols.forEach((col) => {
+            const stack = currRowMap.get(col);
+            currRowMap.delete(col);
+            targetRowMap.set(appendStart + (col - bounds.L), stack);
+          });
+          if (!currRowMap.size) currPage.grid.delete(state.caret.rowMu);
+        }
+        shiftRowsUpFrom(state.caret.page, state.caret.rowMu + state.lineStepMu, state.lineStepMu);
+        markRowAsDirty(targetPage, prevRowMu);
+        markRowAsDirty(currPage, state.caret.rowMu);
+        nextPage = prevPage;
+        nextRowMu = prevRowMu;
+        nextCol = appendStart;
+      } else if (nextRowMu > bounds.Tmu) {
+        nextRowMu -= state.lineStepMu;
+        nextCol = bounds.R;
+      } else if (nextPage > 0) {
+        nextPage -= 1;
+        viewSetActivePageIndex(nextPage);
+        nextRowMu = bounds.Bmu;
+        nextCol = bounds.R;
+        positionRulers();
+      }
     } else if (nextRowMu > bounds.Tmu) {
       nextRowMu -= state.lineStepMu;
       nextCol = bounds.R;
