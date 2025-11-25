@@ -48,15 +48,21 @@ export function createZoomSliderContrastManager({ app } = {}) {
     if (!hasLightPageTone()) return false;
     const sliderRect = slider.getBoundingClientRect();
     if (!sliderRect || sliderRect.width === 0 || sliderRect.height === 0) return false;
-    const center = {
-      x: sliderRect.left + sliderRect.width / 2,
-      y: sliderRect.top + sliderRect.height / 2,
-    };
-    const stack = (typeof document.elementsFromPoint === 'function')
-      ? document.elementsFromPoint(center.x, center.y)
-      : [];
-    if (Array.isArray(stack) && stack.some(el => el?.classList?.contains('page'))) {
-      return true;
+    const pages = collectPageElements(app);
+    const centerX = sliderRect.left + sliderRect.width / 2;
+    const centerY = sliderRect.top + sliderRect.height / 2;
+    for (const page of pages) {
+      if (!page?.getBoundingClientRect) continue;
+      const pageRect = page.getBoundingClientRect();
+      if (!pageRect || pageRect.width === 0 || pageRect.height === 0) continue;
+      const centerInside =
+        centerX >= pageRect.left
+        && centerX <= pageRect.right
+        && centerY >= pageRect.top
+        && centerY <= pageRect.bottom;
+      if (centerInside || overlapAreaRatio(sliderRect, pageRect) > 0.4) {
+        return true;
+      }
     }
     return false;
   };
