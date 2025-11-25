@@ -519,9 +519,31 @@ export function createMeasurementControls({
   }
 
   function bindZoomControls() {
-    if (app.zoomSlider) app.zoomSlider.addEventListener('pointerdown', onZoomPointerDown, { passive: false });
-    window.addEventListener('pointermove', onZoomPointerMove, { passive: true });
-    window.addEventListener('pointerup', onZoomPointerUp, { passive: true });
+    let zoomDragActive = false;
+
+    const handleZoomPointerMove = (e) => {
+      onZoomPointerMove(e);
+    };
+
+    const handleZoomPointerEnd = (e) => {
+      onZoomPointerUp(e);
+      if (!zoomDragActive) return;
+      zoomDragActive = false;
+      window.removeEventListener('pointermove', handleZoomPointerMove);
+      window.removeEventListener('pointerup', handleZoomPointerEnd);
+      window.removeEventListener('pointercancel', handleZoomPointerEnd);
+    };
+
+    const startZoomDrag = (e) => {
+      onZoomPointerDown(e);
+      if (zoomDragActive) return;
+      zoomDragActive = true;
+      window.addEventListener('pointermove', handleZoomPointerMove, { passive: true });
+      window.addEventListener('pointerup', handleZoomPointerEnd, { passive: true });
+      window.addEventListener('pointercancel', handleZoomPointerEnd, { passive: true });
+    };
+
+    if (app.zoomSlider) app.zoomSlider.addEventListener('pointerdown', startZoomDrag, { passive: false });
     if (app.zoomIndicator) {
       app.zoomIndicator.addEventListener('dblclick', () => setZoomPercent(100));
     }
