@@ -147,6 +147,7 @@ const DOM_ID_GROUPS = {
     typewriterStopSelect: 'typewriterStopSelect',
     typewriterStopPreview: 'typewriterStopPreview',
     typewriterStopToggle: 'typewriterStopToggle',
+    typewriterBackspaceToggle: 'typewriterBackspaceToggle',
     marginReleaseBtn: 'marginReleaseBtn',
     marginReleaseCornerBtn: 'marginReleaseCornerBtn',
   },

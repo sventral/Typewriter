@@ -7,6 +7,7 @@ export const TYPEWRITER_DEFAULTS = {
   bellLead: 5,
   stopSound: 'stop-1',
   stopEnabled: true,
+  backspaceEnabled: false,
 };
 
 export function normalizeTypewriterSettings(raw = {}, defaults = TYPEWRITER_DEFAULTS) {
@@ -23,5 +24,11 @@ export function normalizeTypewriterSettings(raw = {}, defaults = TYPEWRITER_DEFA
   const bellLead = clamp(Math.round(Number(raw.bellLead ?? base.bellLead)), 0, 40);
   const enabled = raw.enabled === true;
   const stopEnabled = raw.stopEnabled !== false;
-  return { enabled, bellSound, bellVolume, bellLead, stopSound, stopEnabled };
+  const backspaceEnabled =
+    raw.backspaceEnabled === true
+      ? true
+      : raw.backspaceEnabled === false
+        ? false
+        : base.backspaceEnabled === true;
+  return { enabled, bellSound, bellVolume, bellLead, stopSound, stopEnabled, backspaceEnabled };
 }

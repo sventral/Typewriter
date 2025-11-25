@@ -543,19 +543,33 @@ export function createDocumentEditingController(context) {
   function handleBackspace() {
     const bounds = getCurrentBounds();
     const prevKey = `${state.caret.page}:${state.caret.rowMu}`;
-    if (state.caret.col > bounds.L) {
-      state.caret.col--;
-    } else if (state.caret.rowMu > bounds.Tmu) {
-      state.caret.rowMu -= state.lineStepMu;
-      state.caret.col = bounds.R;
-    } else if (state.caret.page > 0) {
-      state.caret.page--;
-      viewSetActivePageIndex(state.caret.page);
-      state.caret.rowMu = bounds.Bmu;
-      state.caret.col = bounds.R;
+    let nextPage = state.caret.page;
+    let nextRowMu = state.caret.rowMu;
+    let nextCol = state.caret.col;
+
+    if (nextCol > bounds.L) {
+      nextCol -= 1;
+    } else if (nextRowMu > bounds.Tmu) {
+      nextRowMu -= state.lineStepMu;
+      nextCol = bounds.R;
+    } else if (nextPage > 0) {
+      nextPage -= 1;
+      viewSetActivePageIndex(nextPage);
+      nextRowMu = bounds.Bmu;
+      nextCol = bounds.R;
       positionRulers();
     }
-    const movedRow = prevKey !== `${state.caret.page}:${state.caret.rowMu}`;
+
+    const movedRow = prevKey !== `${nextPage}:${nextRowMu}`;
+    state.caret.page = nextPage;
+    state.caret.rowMu = nextRowMu;
+    state.caret.col = nextCol;
+
+    if (state.realTypewriterBackspaceEnabled) {
+      const page = state.pages[state.caret.page] || addPage();
+      eraseCharacters(page, state.caret.rowMu, state.caret.col, 1);
+    }
+
     if (movedRow) typewriterMode.resetForNewLine();
     typewriterMode.afterCaretMove(getCurrentBounds());
     updateCaretPosition();

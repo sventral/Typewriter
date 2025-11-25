@@ -279,6 +279,7 @@ export function createMeasurementControls({
         bellLead: state.realTypewriterBellLead,
         stopSound: state.realTypewriterStopSound,
         stopEnabled: state.realTypewriterStopEnabled,
+        backspaceEnabled: state.realTypewriterBackspaceEnabled,
       },
       TYPEWRITER_DEFAULTS,
     );
@@ -288,6 +289,7 @@ export function createMeasurementControls({
     state.realTypewriterBellLead = normalized.bellLead;
     state.realTypewriterStopSound = normalized.stopSound;
     state.realTypewriterStopEnabled = normalized.stopEnabled;
+    state.realTypewriterBackspaceEnabled = normalized.backspaceEnabled;
 
     if (app.typewriterToggle) app.typewriterToggle.checked = normalized.enabled;
     if (app.typewriterBellSelect) app.typewriterBellSelect.value = normalized.bellSound;
@@ -296,6 +298,7 @@ export function createMeasurementControls({
     if (app.typewriterBellLead) app.typewriterBellLead.value = String(normalized.bellLead);
     if (app.typewriterStopSelect) app.typewriterStopSelect.value = normalized.stopSound;
     if (app.typewriterStopToggle) app.typewriterStopToggle.checked = normalized.stopEnabled;
+    if (app.typewriterBackspaceToggle) app.typewriterBackspaceToggle.checked = normalized.backspaceEnabled;
     updateWordWrapAvailability();
   }
 
@@ -446,6 +449,13 @@ export function createMeasurementControls({
     if (app.typewriterStopToggle) {
       app.typewriterStopToggle.addEventListener('change', () => {
         state.realTypewriterStopEnabled = !!app.typewriterStopToggle.checked;
+        queueDirtySave();
+      });
+    }
+
+    if (app.typewriterBackspaceToggle) {
+      app.typewriterBackspaceToggle.addEventListener('change', () => {
+        state.realTypewriterBackspaceEnabled = !!app.typewriterBackspaceToggle.checked;
         queueDirtySave();
       });
     }
@@ -602,6 +612,7 @@ export function createMeasurementControls({
     state.realTypewriterBellLead = TYPEWRITER_DEFAULTS.bellLead;
     state.realTypewriterStopSound = TYPEWRITER_DEFAULTS.stopSound;
     state.realTypewriterStopEnabled = TYPEWRITER_DEFAULTS.stopEnabled;
+    state.realTypewriterBackspaceEnabled = TYPEWRITER_DEFAULTS.backspaceEnabled;
     state.typewriterMarginRelease = false;
     applyDefaultMargins();
   }
