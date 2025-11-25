@@ -58,6 +58,8 @@ const DOM_ID_GROUPS = {
     inkDockExtras: 'inkDockExtras',
     inkMenuBtn: 'inkMenuBtn',
     inkGearBtn: 'inkGearBtn',
+    inkGearToolbar: 'inkGearToolbar',
+    inkGearToolbarBtn: 'inkGearToolbarBtn',
     inkFileToolbar: 'inkFileToolbar',
     inkBlackSliderPopup: 'inkBlackSliderPopup',
     inkRedSliderPopup: 'inkRedSliderPopup',

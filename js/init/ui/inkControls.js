@@ -150,7 +150,7 @@ export function createInkControls({
   }
 
   function bindDialogToggles() {
-    const settingsButtons = [app.inkSettingsBtn, app.inkGearBtn].filter(Boolean);
+    const settingsButtons = [app.inkSettingsBtn, app.inkGearBtn, app.inkGearToolbarBtn].filter(Boolean);
     settingsButtons.forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
