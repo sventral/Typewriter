@@ -171,20 +171,22 @@
   }
 
   .doc-controls--mini{
-    display:flex;
+    display:grid;
+    grid-template-columns:auto minmax(0, 1fr);
     align-items:center;
-    gap:6px;
+    column-gap:6px;
     position:relative;
-    flex:1 1 auto;
     width:100%;
-    min-width:100%;
+    min-width:0;
+    flex:1 1 auto;
   }
 
   .doc-title-input--mini{
-    width:132px;
-    min-width:118px;
+    width:100%;
+    min-width:0;
     font-size:13px;
     height:30px;
+    justify-self:stretch;
   }
 
   .doc-menu-popup--mini{
