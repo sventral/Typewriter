@@ -52,15 +52,11 @@ export function createZoomSliderContrastManager({ app } = {}) {
       x: sliderRect.left + sliderRect.width / 2,
       y: sliderRect.top + sliderRect.height / 2,
     };
-    const pages = collectPageElements(app);
-    for (const page of pages) {
-      if (!page) continue;
-      const rect = page.getBoundingClientRect();
-      if (!rect || rect.width === 0 || rect.height === 0) continue;
-      const ratio = overlapAreaRatio(sliderRect, rect);
-      const centerInside = center.x > rect.left && center.x < rect.right && center.y > rect.top && center.y < rect.bottom;
-      // Require center to be over the page and a modest overlap to avoid early toggles.
-      if (centerInside && ratio >= 0.1) return true;
+    const stack = (typeof document.elementsFromPoint === 'function')
+      ? document.elementsFromPoint(center.x, center.y)
+      : [];
+    if (Array.isArray(stack) && stack.some(el => el?.classList?.contains('page'))) {
+      return true;
     }
     return false;
   };
