@@ -1,4 +1,4 @@
-export function createExportDialog({ app, onExportRaw, onExportPlain }) {
+export function createExportDialog({ app, onExportRaw, onExportPlain, onExportPdf }) {
   const state = { open: false };
 
   const hasDialog = () => !!app.exportDialog;
@@ -12,7 +12,7 @@ export function createExportDialog({ app, onExportRaw, onExportPlain }) {
   }
 
   function focusDefault() {
-    const target = app.exportRawBtn || app.exportPlainBtn || app.exportDialogCloseBtn;
+    const target = app.exportPdfBtn || app.exportRawBtn || app.exportPlainBtn || app.exportDialogCloseBtn;
     if (target && typeof target.focus === 'function') {
       target.focus();
     }
@@ -53,6 +53,10 @@ export function createExportDialog({ app, onExportRaw, onExportPlain }) {
       });
       app.exportPlainBtn?.addEventListener('click', () => {
         onExportPlain?.();
+        close();
+      });
+      app.exportPdfBtn?.addEventListener('click', () => {
+        onExportPdf?.();
         close();
       });
     }

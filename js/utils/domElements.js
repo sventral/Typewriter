@@ -26,6 +26,7 @@ const DOM_ID_GROUPS = {
     exportDialogScrim: 'exportDialogScrim',
     exportRawBtn: 'exportRawBtn',
     exportPlainBtn: 'exportPlainBtn',
+    exportPdfBtn: 'exportPdfBtn',
     exportDialogCloseBtn: 'exportDialogCloseBtn',
     docMenuBtn: 'docMenuBtn',
     docMenuPopup: 'docMenuPopup',
