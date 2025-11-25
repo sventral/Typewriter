@@ -67,6 +67,7 @@ export function createInputController({
   insertTextFast,
   overtypeCharacter,
   eraseCharacters,
+  shiftRow,
   addPage,
   updateCaretPosition,
   beginBatch,
@@ -118,6 +119,9 @@ export function createInputController({
     if (now - burstTs < BS_WINDOW && burstCount > 0) {
       const page = state.pages[state.caret.page] || addPage();
       eraseCharacters(page, state.caret.rowMu, state.caret.col, burstCount);
+      if (state.realTypewriterBackspaceEnabled) {
+        shiftRow(page, state.caret.rowMu, state.caret.col + burstCount, -burstCount);
+      }
       counters.setBsBurstCount(0);
       counters.setBsBurstTs(0);
       resetTypedRun();
@@ -259,6 +263,9 @@ export function createInputController({
       consumeBackspaceBurstIfAny();
       noteTypedCharPreInsert();
       const page = state.pages[state.caret.page] || addPage();
+      if (state.realTypewriterBackspaceEnabled) {
+        shiftRow(page, state.caret.rowMu, state.caret.col, 1);
+      }
       overtypeCharacter(page, state.caret.rowMu, state.caret.col, key, state.ink);
       advanceCaret();
       markDocumentDirty(state);
