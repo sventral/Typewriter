@@ -3,7 +3,7 @@ const DEFAULT_RECOVERY_THRESHOLD_MS = 60;
 const DEFAULT_RECOVERY_FRAMES = 3;
 const MIN_ZOOM_FOR_NOTICE = 1.08;
 const MIN_ZOOM_DELTA = 0.05;
-const CHECK_WINDOW_MS = 6000;
+const CHECK_WINDOW_MS = 3000;
 
 function isBrowserEnvironment() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -78,6 +78,7 @@ export function createZoomLagMonitor({
   minDelta = MIN_ZOOM_DELTA,
   checkWindowMs = CHECK_WINDOW_MS,
   recoveryFrameCount = DEFAULT_RECOVERY_FRAMES,
+  isLagAssistEnabled,
   onLagStateChange,
 } = {}) {
   if (!isBrowserEnvironment()) return null;
@@ -96,6 +97,17 @@ export function createZoomLagMonitor({
     cachedZoom: 1,
     lastReason: 'zoom',
     preLagActive: false,
+  };
+
+  const lagAssistEnabled = () => {
+    if (typeof isLagAssistEnabled === 'function') {
+      try {
+        return !!isLagAssistEnabled();
+      } catch (err) {
+        return true;
+      }
+    }
+    return true;
   };
 
   const longTaskSupported = typeof PerformanceObserver === 'function';
@@ -144,6 +156,7 @@ export function createZoomLagMonitor({
   }
 
   function ensurePerformanceObserver() {
+    if (!lagAssistEnabled()) return;
     if (!longTaskSupported || state.perfObserver) return;
     try {
       state.perfObserver = new PerformanceObserver((list) => {
@@ -200,6 +213,10 @@ export function createZoomLagMonitor({
 
   function step(timestamp) {
     if (state.disposed) return;
+    if (!lagAssistEnabled()) {
+      resetLoop();
+      return;
+    }
     state.rafHandle = 0;
     const armed = isArmed();
     if (!state.lagActive && !armed) {
@@ -240,6 +257,10 @@ export function createZoomLagMonitor({
 
   function trackZoomEvent({ zoom, delta = 0, reason = 'zoom-change' } = {}) {
     if (state.disposed) return;
+    if (!lagAssistEnabled()) {
+      resetLoop();
+      return;
+    }
     const numericZoom = Number.isFinite(zoom) ? zoom : state.cachedZoom;
     const deltaAbs = Number.isFinite(delta) ? Math.abs(delta) : 0;
     if (numericZoom < minZoom && deltaAbs < minDelta) return;
@@ -262,13 +283,20 @@ export function createZoomLagMonitor({
     resetLoop();
   }
 
+  function syncEnabledState() {
+    if (!lagAssistEnabled()) {
+      resetLoop();
+    }
+  }
+
   if (typeof window !== 'undefined') {
     window.__typewriterLagMonitor = {
       trackZoomEvent,
       dispose,
+      syncEnabledState,
       debug: () => ({ ...state }),
     };
   }
 
-  return { trackZoomEvent, dispose };
+  return { trackZoomEvent, dispose, syncEnabledState };
 }
