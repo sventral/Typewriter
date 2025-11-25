@@ -375,6 +375,77 @@ export function createDocumentEditingController(context) {
     markRowAsDirty(page, rowMu);
   }
 
+  function shiftRow(page, rowMu, startCol, delta) {
+    if (!delta) return false;
+    const rowMap = page.grid.get(rowMu);
+    if (!rowMap) return false;
+    const cols = Array.from(rowMap.keys())
+      .filter((c) => c >= startCol)
+      .sort((a, b) => (delta > 0 ? b - a : a - b));
+    if (!cols.length) return false;
+    let changed = false;
+    for (const col of cols) {
+      const stack = rowMap.get(col);
+      if (!stack) continue;
+      rowMap.delete(col);
+      const target = col + delta;
+      const existing = rowMap.get(target);
+      if (existing && Array.isArray(existing)) {
+        existing.push(...stack);
+      } else {
+        rowMap.set(target, stack);
+      }
+      changed = true;
+    }
+    if (changed) markRowAsDirty(page, rowMu);
+    return changed;
+  }
+
+  function splitLineAtCaret(bounds) {
+    const page = state.pages[state.caret.page] || addPage();
+    const rowMap = page.grid.get(state.caret.rowMu);
+    const caretCol = state.caret.col;
+    const cols = rowMap
+      ? Array.from(rowMap.keys())
+          .filter((c) => c >= caretCol)
+          .sort((a, b) => a - b)
+      : [];
+
+    let targetPageIndex = state.caret.page;
+    let targetRowMu = state.caret.rowMu + state.lineStepMu;
+    let targetPage = page;
+    if (targetRowMu > bounds.Bmu) {
+      targetPageIndex += 1;
+      targetPage = state.pages[targetPageIndex] || addPage();
+      targetRowMu = bounds.Tmu;
+      viewSetActivePageIndex(targetPageIndex);
+      requestVirtualization();
+      positionRulers();
+    }
+
+    if (cols.length) {
+      const stacks = cols.map((c) => {
+        const stack = rowMap.get(c);
+        rowMap.delete(c);
+        return stack;
+      });
+      if (rowMap && !rowMap.size) page.grid.delete(state.caret.rowMu);
+      let writeCol = bounds.L;
+      const targetRowMap = ensureRowExists(targetPage, targetRowMu);
+      stacks.forEach((stack) => {
+        if (!stack) return;
+        targetRowMap.set(writeCol, stack);
+        writeCol += 1;
+      });
+      markRowAsDirty(page, state.caret.rowMu);
+      markRowAsDirty(targetPage, targetRowMu);
+    }
+
+    state.caret.page = targetPageIndex;
+    state.caret.rowMu = targetRowMu;
+    state.caret.col = bounds.L;
+  }
+
   function eraseCharacters(page, rowMu, startCol, count) {
     let changed = false;
     const rowMap = page.grid.get(rowMu);
@@ -425,7 +496,9 @@ export function createDocumentEditingController(context) {
       }
     };
 
-    if (state.realTypewriterEnabled) {
+    const strictTypewriter = state.realTypewriterEnabled && !state.realTypewriterBackspaceEnabled;
+
+    if (strictTypewriter) {
       for (let i = 0; i < text.length; i++) {
         const ch = text[i];
         if (ch === '\n') {
@@ -487,9 +560,10 @@ export function createDocumentEditingController(context) {
 
 
   function advanceCaret() {
+    const strictTypewriter = state.realTypewriterEnabled && !state.realTypewriterBackspaceEnabled;
     const bounds = getCurrentBounds();
     const nextCol = state.caret.col + 1;
-    if (state.realTypewriterEnabled) {
+    if (strictTypewriter) {
       if (typewriterMode.shouldHoldAtMargin(nextCol, bounds)) {
         typewriterMode.afterCaretMove(bounds);
         updateCaretPosition();
@@ -524,17 +598,22 @@ export function createDocumentEditingController(context) {
 
   function handleNewline() {
     const bounds = getCurrentBounds();
-    typewriterMode.resetForNewLine();
-    state.caret.col = bounds.L;
-    state.caret.rowMu += state.lineStepMu;
-    if (state.caret.rowMu > bounds.Bmu) {
-      state.caret.page++;
-      const np = state.pages[state.caret.page] || addPage();
-      viewSetActivePageIndex(np.index);
-      requestVirtualization();
-      state.caret.rowMu = bounds.Tmu;
+    if (state.realTypewriterBackspaceEnabled) {
+      typewriterMode.resetForNewLine();
+      splitLineAtCaret(bounds);
+    } else {
+      typewriterMode.resetForNewLine();
       state.caret.col = bounds.L;
-      positionRulers();
+      state.caret.rowMu += state.lineStepMu;
+      if (state.caret.rowMu > bounds.Bmu) {
+        state.caret.page++;
+        const np = state.pages[state.caret.page] || addPage();
+        viewSetActivePageIndex(np.index);
+        requestVirtualization();
+        state.caret.rowMu = bounds.Tmu;
+        state.caret.col = bounds.L;
+        positionRulers();
+      }
     }
     typewriterMode.afterCaretMove(getCurrentBounds());
     updateCaretPosition();
@@ -568,6 +647,7 @@ export function createDocumentEditingController(context) {
     if (state.realTypewriterBackspaceEnabled) {
       const page = state.pages[state.caret.page] || addPage();
       eraseCharacters(page, state.caret.rowMu, state.caret.col, 1);
+      shiftRow(page, state.caret.rowMu, state.caret.col + 1, -1);
     }
 
     if (movedRow) typewriterMode.resetForNewLine();
@@ -1019,6 +1099,7 @@ export function createDocumentEditingController(context) {
     insertTextFast: insertStringFast,
     overtypeCharacter,
     eraseCharacters,
+    shiftRow,
     moveCaretByLines,
     rewrapDocumentToCurrentBounds,
     serializeState,
