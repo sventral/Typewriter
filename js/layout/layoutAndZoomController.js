@@ -80,6 +80,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   const zoomLagMonitor = createZoomLagMonitor({
     app,
+    isLagAssistEnabled: () => state.lagAssistEnabled !== false,
     onLagStateChange: (phase) => {
       syncLagAssistState(phase);
     },
@@ -87,6 +88,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   const refreshLagAssistState = () => {
     syncLagAssistState();
+    if (zoomLagMonitor?.syncEnabledState) {
+      zoomLagMonitor.syncEnabledState();
+    }
   };
   const trackZoomLag = (payload) => {
     if (!zoomLagMonitor || typeof zoomLagMonitor.trackZoomEvent !== 'function') return;
