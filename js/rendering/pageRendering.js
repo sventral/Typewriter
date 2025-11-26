@@ -351,21 +351,30 @@ export function createPageRenderer(options) {
     scheduleNextFullPaintChunk(page);
   }
 
-  function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
+function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
     if (!Array.isArray(stack) || stack.length === 0) return;
-    const gridHeight = getGridHeightFn();
-    const angleRad = Number.isFinite(page?.lineSlantDeg)
-      ? (page.lineSlantDeg * Math.PI) / 180
-      : 0;
+
     const renderScale = getRenderScaleFn();
     const snapToRenderScale = (value) => {
       const scale = Number.isFinite(renderScale) && renderScale > 0 ? renderScale : 1;
       return Math.round(value * scale) / scale;
     };
-    const slantOffset = angleRad === 0 ? 0 : (x - (app.PAGE_W / 2)) * Math.tan(angleRad);
+
+    const gridHeight = getGridHeightFn();
+    const angleRad = Number.isFinite(page?.lineSlantDeg)
+      ? (page.lineSlantDeg * Math.PI) / 180
+      : 0;
+
+    // Pivot point for rotation: Center of the page
+    const cx = app.PAGE_W / 2;
+    const cy = app.PAGE_H / 2;
+    const cosA = Math.cos(angleRad);
+    const sinA = Math.sin(angleRad);
+
     for (let k = 0; k < stack.length; k++) {
       const glyph = stack[k];
       if (!glyph) continue;
+      
       const jitterOffset = computeGlyphJitterOffset(
         state,
         page?.index,
@@ -374,21 +383,36 @@ export function createPageRenderer(options) {
         gridHeight,
         glyph?.jitterSalt,
       );
-      const posX = x;
-      const posY = baseline + slantOffset + (Number.isFinite(jitterOffset) ? jitterOffset : 0);
+
+      // Original, un-rotated position
+      const ox = x;
+      const oy = baseline + (Number.isFinite(jitterOffset) ? jitterOffset : 0);
+
       if (angleRad !== 0) {
-        const snapX = snapToRenderScale(posX);
-        const snapY = snapToRenderScale(posY);
+        // Rotate the coordinate (ox, oy) around center (cx, cy)
+        const dx = ox - cx;
+        const dy = oy - cy;
+
+        // Apply 2D rotation matrix
+        const rx = dx * cosA - dy * sinA + cx;
+        const ry = dx * sinA + dy * cosA + cy;
+
+        const snapX = snapToRenderScale(rx);
+        const snapY = snapToRenderScale(ry);
+
         ctx.save();
         ctx.translate(snapX, snapY);
         ctx.rotate(angleRad);
+        // Draw at (0,0) relative to the translated context
         drawGlyph(ctx, glyph.char, glyph.ink || 'b', 0, 0, k, stack.length, page?.index, rowMu, col, undefined);
         ctx.restore();
       } else {
-        drawGlyph(ctx, glyph.char, glyph.ink || 'b', posX, posY, k, stack.length, page?.index, rowMu, col, undefined);
+        // Fast path for 0 degrees
+        drawGlyph(ctx, glyph.char, glyph.ink || 'b', ox, oy, k, stack.length, page?.index, rowMu, col, undefined);
       }
     }
   }
+
 
   function refreshGlyphEffects(options = {}) {
     const shouldRebuild = options.rebuild !== false;
