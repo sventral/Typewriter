@@ -101,6 +101,7 @@
   .typewriter-mr-btn.is-armed {
     opacity: 1;
     cursor: pointer;
+    color: #6d717c;
   }
 
   .typewriter-mr-btn.is-used {
