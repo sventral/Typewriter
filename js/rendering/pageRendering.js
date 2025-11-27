@@ -115,6 +115,8 @@ export function createPageRenderer(options) {
     }
     page.fullPaintQueue = undefined;
     page.fullPaintCursor = 0;
+    page.fullPaintCurrentRowCols = null;
+    page.fullPaintColIndex = 0;
     page.fullPaintInProgress = false;
     if (markDirtyAll) {
       page.dirtyAll = true;
@@ -243,6 +245,8 @@ export function createPageRenderer(options) {
     const queue = buildFullPaintQueue(page);
     page.fullPaintQueue = queue;
     page.fullPaintCursor = 0;
+    page.fullPaintCurrentRowCols = null;
+    page.fullPaintColIndex = 0;
     page.fullPaintInProgress = true;
 
     const { backCtx } = page;
@@ -315,35 +319,74 @@ export function createPageRenderer(options) {
     }
 
     const sliceStart = now();
-    let rowsProcessed = 0;
     const rawBands = [];
 
-    while (page.fullPaintCursor < queue.length) {
-      if (rowsProcessed > 0 && (now() - sliceStart) >= FULL_PAINT_TIME_BUDGET_MS) {
-        break;
+    // Process until queue is empty or we yield
+    while (page.fullPaintCursor < queue.length || page.fullPaintCurrentRowCols) {
+      
+      // 1. Ensure we have a row loaded into state
+      if (!page.fullPaintCurrentRowCols) {
+        const rowMu = queue[page.fullPaintCursor];
+        let rowMap = page.grid.get(rowMu);
+        if (!rowMap && pageNumberRow && pageNumberRow.rowMu === rowMu) {
+          rowMap = pageNumberRow.rowMap;
+        }
+        
+        if (rowMap && rowMap.size > 0) {
+          // Convert to array for indexed iteration
+          page.fullPaintCurrentRowCols = Array.from(rowMap.entries());
+          page.fullPaintColIndex = 0;
+          page.fullPaintCurrentRowMu = rowMu;
+        } else {
+          // Empty row, skip
+          page.fullPaintCursor++;
+          continue;
+        }
       }
-      const rowMu = queue[page.fullPaintCursor++];
-      rowsProcessed += 1;
-      let rowMap = page.grid.get(rowMu);
-      if (!rowMap && pageNumberRow && pageNumberRow.rowMu === rowMu) {
-        rowMap = pageNumberRow.rowMap;
-      }
-      if (!rowMap) continue;
+
+      // 2. Process columns in the current row
+      const cols = page.fullPaintCurrentRowCols;
+      const rowMu = page.fullPaintCurrentRowMu;
       const baseline = rowMu * gridHeight;
+      let yielded = false;
+
+      while (page.fullPaintColIndex < cols.length) {
+        const [col, stack] = cols[page.fullPaintColIndex];
+        const x = col * charWidth;
+        
+        drawGlyphStack(backCtx, stack, x, baseline, page, rowMu, col);
+        
+        page.fullPaintColIndex++;
+
+        // Granular budget check: yield per character stack
+        if ((now() - sliceStart) >= FULL_PAINT_TIME_BUDGET_MS) {
+          yielded = true;
+          break;
+        }
+      }
+
+      // 3. If we yielded, flush partial work (optional) or just exit to schedule next frame
+      // To keep visual updates smooth, we calculate the band and flush it even if partial.
       const rowTopCss = baseline - BLEED_TOP_CSS;
       const rowBotCss = baseline + BLEED_BOTTOM_CSS;
-      for (const [col, stack] of rowMap) {
-        const x = col * charWidth;
-        drawGlyphStack(backCtx, stack, x, baseline, page, rowMu, col);
-      }
       rawBands.push([rowTopCss, rowBotCss]);
+
+      if (yielded) {
+        // Break main loop, schedule next frame
+        break;
+      } else {
+        // Row finished
+        page.fullPaintCurrentRowCols = null;
+        page.fullPaintColIndex = 0;
+        page.fullPaintCursor++;
+      }
     }
 
     if (rawBands.length) {
       mergeAndFlushBands(page, rawBands);
     }
 
-    if (page.fullPaintCursor >= queue.length) {
+    if (page.fullPaintCursor >= queue.length && !page.fullPaintCurrentRowCols) {
       resetFullPagePaintState(page);
       return;
     }
