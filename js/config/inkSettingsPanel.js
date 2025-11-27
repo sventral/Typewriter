@@ -895,6 +895,8 @@ function applySectionOrder(order, options = {}) {
   }
 }
 
+
+
 function clearDragIndicators() {
   const root = panelState.sectionsRoot;
   if (!root) return;
@@ -2556,6 +2558,18 @@ function randomizeInkSettings() {
   runWithPersistSuppressed(() => {
     // Randomize should keep overall strength at the default maximum.
     setOverallStrength(100);
+
+    // Randomize section order
+    if (Array.isArray(panelState.sectionOrder) && panelState.sectionOrder.length > 0) {
+      const newOrder = panelState.sectionOrder.slice();
+      for (let i = newOrder.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]];
+      }
+      // Apply order silently to avoid redundant refreshes; the subsequent section randomization will trigger the rebuild.
+      applySectionOrder(newOrder, { syncDom: true, silent: true });
+    }
+
     panelState.metas.forEach(meta => randomizeInkSection(meta));
   });
   persistPanelState();
