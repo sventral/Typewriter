@@ -556,7 +556,8 @@ const runDetailStageAtResolution = (stageId, stageFn, coverage, ctx, config, cla
 };
 
 export const GLYPH_PIPELINE_ORDER = Object.freeze([
-  'fill',
+  'init',
+  'tone',
   'dropouts',
   'texture',
   'fuzzExp',
@@ -591,7 +592,15 @@ export function createExperimentalStagePipeline(deps = {}) {
     hasDetailConfig ? deps.detailResolution : undefined,
   );
 
-  function applyFillAdjustments(coverage, ctx) {
+  function applyInit(coverage, ctx) {
+    const { w, h, alpha0 } = ctx;
+    const len = w * h;
+    for (let i = 0; i < len; i++) {
+      coverage[i] = alpha0[i] / 255;
+    }
+  }
+
+  function applyToneAdjustments(coverage, ctx) {
     const { w, h, alpha0, params, seed, gix, smul } = ctx;
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
@@ -675,9 +684,7 @@ export function createExperimentalStagePipeline(deps = {}) {
       
       for (let x = 0; x < w; x++) {
         const i = rowOffset + x;
-        const a = alpha0[i] / 255;
-        // e is edgeMask, still needs x,y
-        const e = edgeMaskFn(alpha0, w, h, x, y);
+        let cov = coverage[i];
         
         const p = toneDynamicsEn ? baseTile.data[i] : 0.5;
         const m = toneDynamicsEn ? microTile.data[i] : 0.5;
@@ -688,7 +695,8 @@ export function createExperimentalStagePipeline(deps = {}) {
           ? inkPressMid + inkPressVar * (p - 0.5) * 2
           : 1;
         press = clampFn(press, 0.05, 1.6);
-        let cov = a * press;
+        
+        cov *= press;
         
         if (toneDynamicsEn) cov *= 1 + inkToneJitter * ((m - 0.5) * 2);
         
@@ -712,6 +720,7 @@ export function createExperimentalStagePipeline(deps = {}) {
         }
         
         cov *= rhythm; // pre-calculated rhythm
+        const e = edgeMaskFn(alpha0, w, h, x, y);
         const rimBoost = rimLUT[(e * 255) | 0];
         if (rimEn) cov += inkRim * rimBoost * (1 - cov);
         
@@ -1359,7 +1368,8 @@ function applyCenterEdgeShape(coverage, ctx) {
   }
 
   const stageRegistry = {
-    fill: applyFillAdjustments,
+    init: applyInit,
+    tone: applyToneAdjustments,
     dropouts: applyDropoutsMask,
     texture: applyGrainSpeckTexture,
     fuzzExp: applyExperimentalFuzz,
@@ -1390,7 +1400,8 @@ function applyCenterEdgeShape(coverage, ctx) {
   return {
     stageRegistry,
     pipelineOrder: GLYPH_PIPELINE_ORDER,
-    applyFillAdjustments,
+    applyInit,
+    applyToneAdjustments,
     applyDropoutsMask,
     applyGrainSpeckTexture,
     applyCenterEdgeShape,
