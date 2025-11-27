@@ -871,7 +871,9 @@ export function createExperimentalStagePipeline(deps = {}) {
     }
   }
 
-  function applyCenterEdgeShape(coverage, ctx) {
+
+
+function applyCenterEdgeShape(coverage, ctx) {
     const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
     const centerEdgeCfg = params.centerEdge || {};
     const centerEdgeEnabled = !!params.enable.centerEdge;
@@ -900,10 +902,13 @@ export function createExperimentalStagePipeline(deps = {}) {
     const effectiveTK = Math.max(0, tK + resolutionBias / dpPerCss);
     const thickenRadiusPx = (effectiveTK * 1.0 + 0.15) * dpPerCss;
 
+    // OPTIMIZATION: Increased base softness to smooth out the discrete distance map steps
     const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
-    const thickenSoftPx = softnessBase * 0.9;
+    const thickenSoftPx = softnessBase * 1.2; // Increased from 0.9
     
     const seedThicken = (seed ^ 0xC1CE3E53) >>> 0;
+    // New seed for micro-dithering
+    const seedDither = (seed ^ 0x77777777) >>> 0;
 
     const usePatchMask = tK > 1e-6 && patchFillThicken < 0.999;
     const glyphSpanCss = Math.max(1, Math.max(w, h) * invDp);
@@ -915,10 +920,9 @@ export function createExperimentalStagePipeline(deps = {}) {
     const originXCss = Number.isFinite(anchorX) ? anchorX : 0;
     const originYCss = Number.isFinite(anchorY) ? anchorY : 0;
 
-    const useSupersampling = dpPerCss < 2.5;
-    const samples = useSupersampling 
-      ? [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]]
-      : [[0, 0]];
+    // OPTIMIZATION: Widen the sampling kernel slightly (0.35 instead of 0.25)
+    // to blur the underlying grid artifacts more effectively.
+    const samples = [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]];
 
     const applyDilateAlpha = (signedDist, radiusPx, softPx) => {
       if (radiusPx <= 0) return 0;
@@ -933,7 +937,6 @@ export function createExperimentalStagePipeline(deps = {}) {
       ? Math.max(8, Math.round(8 + (stageQuality - 1) * 12))
       : Math.max(2, Math.round(2 + stageQuality * 10));
 
-    // Convert flat loop to nested to allow hoisting
     for (let y = 0; y < h; y++) {
       const rowOffset = y * w;
       const yCssBase = (y * invDp) - originYCss;
@@ -956,16 +959,18 @@ export function createExperimentalStagePipeline(deps = {}) {
         }
 
         if (thickenRadiusPx > 0) {
-          const insideDist = inside[i] || 0;
-          const outsideDist = outside ? (outside[i] || 0) : 0;
-          const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
+          const centerInside = inside[i] || 0;
+          const centerOutside = outside ? (outside[i] || 0) : 0;
+          const centerSigned = centerOutside > 0 ? centerOutside : -centerInside;
 
-          if (signedDist > thickenRadiusPx + 2.0) {
+          // Optimization: Skip if far outside radius
+          if (centerSigned > thickenRadiusPx + 2.5) {
             coverage[i] = clamp01Fn(cov);
             continue;
           }
 
-          if (!usePatchMask && signedDist < -thickenRadiusPx - 2.0) {
+          // Optimization: If deep inside, we are solid.
+          if (!usePatchMask && centerSigned < -thickenRadiusPx - 2.5) {
             coverage[i] = 1;
             continue;
           }
@@ -973,8 +978,22 @@ export function createExperimentalStagePipeline(deps = {}) {
           const xCssBase = (x * invDp) - originXCss;
           let accumThicken = 0;
 
+          // VISUAL FIX: Add micro-dithering to the radius.
+          // This breaks up the stair-stepping of the discrete distance map.
+          // Range +/- 0.35px is enough to hide grid alignment without looking noisy.
+          const dither = (fastHash2(x, y, seedDither) - 0.5) * 0.7; 
+          const effectiveRadius = thickenRadiusPx + dither;
+
           for (let s = 0; s < samples.length; s++) {
             const offset = samples[s];
+            
+            const sx = x + offset[0];
+            const sy = y + offset[1];
+            
+            const dInside = sampleBilinear(inside, w, h, sx, sy);
+            const dOutside = outside ? sampleBilinear(outside, w, h, sx, sy) : 0;
+            const dSigned = dOutside > 0 ? dOutside : -dInside;
+
             const sampleXCss = xCssBase + (offset[0] * invDp) + 0.123;
             const sampleYCss = yCssBase + (offset[1] * invDp) + 0.123;
 
@@ -986,7 +1005,7 @@ export function createExperimentalStagePipeline(deps = {}) {
             }
 
             if (maskVal > 0.01) {
-              const boldAlpha = applyDilateAlpha(signedDist, thickenRadiusPx, thickenSoftPx);
+              const boldAlpha = applyDilateAlpha(dSigned, effectiveRadius, thickenSoftPx);
               accumThicken += boldAlpha * maskVal;
             }
           }
@@ -999,6 +1018,7 @@ export function createExperimentalStagePipeline(deps = {}) {
       }
     }
   }
+
 
   function applyExperimentalFuzz(coverage, ctx) {
     const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
