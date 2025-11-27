@@ -98,7 +98,8 @@ export function createRuntimeContext({ app, metrics, canvasDimensionLimit }) {
     // We snap the internal render resolution to the next highest 25% increment.
     // This allows the expensive glyph atlas and canvas buffers to be reused
     // while the user is scrubbing the zoom slider, eliminating the freeze.
-    // Since we round up (ceil), the visual quality remains crisp (supersampled).
+    // Since we round up (ceil), the visual quality remains crisp (supersampled)
+    // unless Low Res Zoom is actively capping it.
     const step = 25;
     return Math.ceil(rawPct / step) * step;
   }
