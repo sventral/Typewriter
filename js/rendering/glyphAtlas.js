@@ -352,7 +352,7 @@ export function createGlyphAtlas(options) {
   }
 
   const EXPERIMENTAL_SECTION_STAGE_MAP = {
-    expTone: ['fill'],
+    expTone: ['tone'],
     expEdge: ['fuzz', 'fuzzExp', 'centerEdge'],
     expGrain: ['texture', 'dropouts'],
     expDefects: ['punch', 'smudge'],
@@ -520,7 +520,8 @@ export function createGlyphAtlas(options) {
       || fuzzActive
       || smudgeActive;
     return {
-      fill: needsFill,
+      init: needsFill,
+      tone: toneCoreActive,
       dropouts: dropoutsActive,
       texture: textureActive,
       centerEdge: centerEdgeActive,
@@ -557,6 +558,11 @@ export function createGlyphAtlas(options) {
     const seenStages = new Set();
     const stages = [];
 
+    if (stageActivity.init) {
+      stages.push('init');
+      seenStages.add('init');
+    }
+
     const addStageIfActive = stageId => {
       if (!stageActivity[stageId]) return;
       if (seenStages.has(stageId)) return;
@@ -569,11 +575,6 @@ export function createGlyphAtlas(options) {
       if (!stageIds || !stageIds.length) return;
       stageIds.forEach(addStageIfActive);
     });
-
-    if (stageActivity.fill && !seenStages.has('fill')) {
-      stages.unshift('fill');
-      seenStages.add('fill');
-    }
 
     return stages;
   }

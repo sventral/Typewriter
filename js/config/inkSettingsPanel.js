@@ -915,6 +915,13 @@ function endSectionDrag() {
   if (panelState.dragState && panelState.dragState.element) {
     panelState.dragState.element.classList.remove('is-dragging');
   }
+  // Safety: ensure no stray dragging classes remain on any section
+  if (panelState.sectionsRoot) {
+    const stray = panelState.sectionsRoot.querySelectorAll('.ink-section.is-dragging');
+    for (const el of stray) {
+      el.classList.remove('is-dragging');
+    }
+  }
   panelState.dragState = null;
   clearDragIndicators();
 }
@@ -1034,8 +1041,11 @@ function startPointerSectionDrag(event, meta) {
   const upHandler = upEvent => {
     if (!panelState.dragState || panelState.dragState.pointerId !== upEvent.pointerId) return;
     upEvent.preventDefault();
-    commitPointerSectionDrop();
-    endSectionDrag();
+    try {
+      commitPointerSectionDrop();
+    } finally {
+      endSectionDrag();
+    }
   };
 
   const cancelHandler = cancelEvent => {
