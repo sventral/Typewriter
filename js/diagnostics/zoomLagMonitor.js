@@ -263,7 +263,12 @@ export function createZoomLagMonitor({
     }
     const numericZoom = Number.isFinite(zoom) ? zoom : state.cachedZoom;
     const deltaAbs = Number.isFinite(delta) ? Math.abs(delta) : 0;
-    if (numericZoom < minZoom && deltaAbs < minDelta) return;
+
+    // Always monitor explicit redraws regardless of zoom level or delta.
+    // For interactive scrubbing ('zoom-change'), ignore small deltas at low zoom to reduce noise.
+    const forceMonitor = reason === 'zoom-redraw';
+    if (!forceMonitor && numericZoom < minZoom && deltaAbs < minDelta) return;
+
     if (numericZoom > 0) {
       state.cachedZoom = numericZoom;
     }
