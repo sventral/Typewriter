@@ -159,9 +159,13 @@ export function createZoomRenderManager(options) {
     const effectiveZoom = typeof getEffectiveRenderZoom === 'function'
       ? getEffectiveRenderZoom()
       : (state.zoom || 1);
+    
+    // Optimization: Only rebuild atlases if we are zooming IN significantly (requiring more detail).
+    // If zooming out, we reuse the existing high-res atlas to avoid processing lag.
     const zoomDeltaBigEnough =
       !Number.isFinite(lastAtlasRenderZoom)
-      || Math.abs(effectiveZoom - lastAtlasRenderZoom) / Math.max(effectiveZoom, 1) >= 0.02;
+      || (effectiveZoom > lastAtlasRenderZoom && (effectiveZoom - lastAtlasRenderZoom) / lastAtlasRenderZoom >= 0.02);
+
     const hasVisiblePages = !!(windowInfo?.set?.size);
     if (zoomDeltaBigEnough && hasVisiblePages) {
       rebuildAllAtlases();
