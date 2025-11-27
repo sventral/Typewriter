@@ -16,17 +16,79 @@ import {
 } from './textureMath.js';
 import { createDetailNoiseCache, globalDetailNoiseCache } from './detailNoiseCache.js';
 
-const { min, max, abs, floor, ceil, round, sin, cos, pow, hypot } = Math;
+const { min, max, abs, floor, ceil, round, sin, cos, pow, hypot, imul } = Math;
 
-const lerp = (a, b, t) => a + (b - a) * t;
-const smoothStep = t => t * t * (3 - 2 * t);
+// Inline fast hash for internal use to avoid function call overhead in hot loops
+const fastHash2 = (x, y, seed) => {
+  let h = imul(x, 374761393) ^ imul(y, 668265263) ^ seed;
+  h = (h ^ (h >>> 13)) >>> 0;
+  h = imul(h, 1274126177) >>> 0;
+  return (h >>> 0) / 4294967296;
+};
+
+// Inline noise function with inlined smoothStep and lerp
+const sampleSpeckValueNoiseFast = (x, y, seed) => {
+  const xi = floor(x);
+  const yi = floor(y);
+  const xf = x - xi;
+  const yf = y - yi;
+  // smoothStep: t * t * (3 - 2 * t)
+  const sx = xf * xf * (3 - 2 * xf);
+  const sy = yf * yf * (3 - 2 * yf);
+  
+  const h00 = fastHash2(xi, yi, seed);
+  const h10 = fastHash2(xi + 1, yi, seed);
+  const h01 = fastHash2(xi, yi + 1, seed);
+  const h11 = fastHash2(xi + 1, yi + 1, seed);
+  
+  // lerp: a + (b - a) * t
+  const nx0 = h00 + (h10 - h00) * sx;
+  const nx1 = h01 + (h11 - h01) * sx;
+  return nx0 + (nx1 - nx0) * sy;
+};
+
+// Unrolled octave sampling to avoid array iteration overhead
+const sampleSpeckFieldFast = (xCss, yCss, detailCss, seed, quality) => {
+  // Octave 1: freq 0.75, weight 0.28, off 17.31, -9.41, salt 0x13579BDF
+  const freq0 = max(0.0001, detailCss * 0.75);
+  let accum = sampleSpeckValueNoiseFast(
+    xCss * freq0 + 17.31,
+    yCss * freq0 - 9.41,
+    seed ^ 0x13579BDF
+  ) * 0.28;
+  
+  // Quality check to skip octaves if quality is very low, though usually we run full quality
+  // Octave 2: freq 1, weight 0.46, off -3.77, 11.09, salt 0x2468ACE1
+  if (quality >= 0.4) {
+    const freq1 = max(0.0001, detailCss);
+    accum += sampleSpeckValueNoiseFast(
+      xCss * freq1 - 3.77,
+      yCss * freq1 + 11.09,
+      seed ^ 0x2468ACE1
+    ) * 0.46;
+  }
+
+  // Octave 3: freq 1.92, weight 0.26, off 6.51, 4.22, salt 0x9E3779B9
+  if (quality >= 0.8) {
+    const freq2 = max(0.0001, detailCss * 1.92);
+    accum += sampleSpeckValueNoiseFast(
+      xCss * freq2 + 6.51,
+      yCss * freq2 + 4.22,
+      seed ^ 0x9E3779B9
+    ) * 0.26;
+  }
+
+  // Normalize (weights sum to 1.0)
+  // Contrast: (val - 0.5) * 1.25 + 0.5
+  return clamp01((accum - 0.5) * 1.25 + 0.5);
+};
 
 const SPECK_NOISE_OCTAVES = Object.freeze([
   { freq: 0.75, weight: 0.28, offsetX: 17.31, offsetY: -9.41, salt: 0x13579BDF },
   { freq: 1, weight: 0.46, offsetX: -3.77, offsetY: 11.09, salt: 0x2468ACE1 },
   { freq: 1.92, weight: 0.26, offsetX: 6.51, offsetY: 4.22, salt: 0x9E3779B9 },
 ]);
-const SPECK_NOISE_WEIGHT_SUM = SPECK_NOISE_OCTAVES.reduce((sum, octave) => sum + octave.weight, 0);
+const SPECK_NOISE_WEIGHT_SUM = 1.0;
 
 const MIN_DETAIL_DENSITY_CSS = 2;
 const DETAIL_MULTIPLIER = 2.6;
@@ -215,9 +277,10 @@ const sampleBilinear = (data, width, height, x, y) => {
   const v10 = data[i10] ?? v00;
   const v01 = data[i01] ?? v00;
   const v11 = data[i11] ?? v01;
-  const nx0 = lerp(v00, v10, tx);
-  const nx1 = lerp(v01, v11, tx);
-  return lerp(nx0, nx1, ty);
+  // Inline lerp
+  const nx0 = v00 + (v10 - v00) * tx;
+  const nx1 = v01 + (v11 - v01) * tx;
+  return nx0 + (nx1 - nx0) * ty;
 };
 
 const downsampleUint8 = (data, width, height, scale) => {
@@ -494,50 +557,6 @@ const runDetailStageAtResolution = (stageId, stageFn, coverage, ctx, config, cla
   );
 };
 
-const sampleSpeckValueNoise = (hash2Fn, x, y, seed) => {
-  const xi = floor(x);
-  const yi = floor(y);
-  const xf = x - xi;
-  const yf = y - yi;
-  const sx = smoothStep(xf);
-  const sy = smoothStep(yf);
-  const h00 = hash2Fn(xi, yi, seed);
-  const h10 = hash2Fn(xi + 1, yi, seed);
-  const h01 = hash2Fn(xi, yi + 1, seed);
-  const h11 = hash2Fn(xi + 1, yi + 1, seed);
-  const nx0 = lerp(h00, h10, sx);
-  const nx1 = lerp(h01, h11, sx);
-  return lerp(nx0, nx1, sy);
-};
-
-const sampleSpeckField = (hash2Fn, xCss, yCss, detailCss, seed, quality = 1) => {
-  const stageQuality = clampStageQuality(quality);
-  const totalOctaves = SPECK_NOISE_OCTAVES.length;
-  const desiredOctaves = stageQuality >= 1
-    ? totalOctaves
-    : Math.max(1, Math.round(totalOctaves * stageQuality));
-  let accum = 0;
-  let weightSum = 0;
-  for (let o = 0; o < totalOctaves; o++) {
-    if (o >= desiredOctaves) break;
-    const octave = SPECK_NOISE_OCTAVES[o];
-    const freq = max(0.0001, detailCss * octave.freq);
-    const value = sampleSpeckValueNoise(
-      hash2Fn,
-      xCss * freq + octave.offsetX,
-      yCss * freq + octave.offsetY,
-      seed ^ octave.salt,
-    );
-    accum += value * octave.weight;
-    weightSum += octave.weight;
-  }
-  const normalizationWeight = stageQuality >= 1 ? SPECK_NOISE_WEIGHT_SUM : weightSum;
-  const normalized = accum / (normalizationWeight || 1);
-  const centered = normalized - 0.5;
-  const contrast = 1.25;
-  return clamp01(centered * contrast + 0.5);
-};
-
 export const GLYPH_PIPELINE_ORDER = Object.freeze([
   'fill',
   'dropouts',
@@ -683,7 +702,9 @@ export function createExperimentalStagePipeline(deps = {}) {
               bandWeight = 1;
             } else {
               const t = clamp01Fn((dist - innerRadius) / edgeSpan);
-              bandWeight = 1 - smoothStep(t);
+              // smoothStep inline
+              const ss = t * t * (3 - 2 * t);
+              bandWeight = 1 - ss;
             }
           }
           if (bandWeight > 0) {
@@ -748,7 +769,7 @@ export function createExperimentalStagePipeline(deps = {}) {
         const xCss = x * invDp;
         const nlf = dropoutTile.data[i];
         const streak = (nlf > dropThr ? 1 : 0) * band;
-        const nhf = hash2Fn(
+        const nhf = fastHash2(
           floor(xCss * detailCss * dropoutHashDensity + 7),
           floor(yCss * detailCss * dropoutHashDensity + 11),
           seed ^ 0xC0FFEE00,
@@ -795,6 +816,7 @@ export function createExperimentalStagePipeline(deps = {}) {
     const sampleCount = sampleOffsets.length || 1;
     const invSampleCount = 1 / sampleCount;
     const speckSeed = seed ^ 0xBEEFCAFE;
+    const microSeed = speckSeed ^ 0x7F4A7C15;
     
     const { speckDark = 0, speckLight = 0, speckGrayBias = 0 } = pInk;
     const darkGate = 0.85;
@@ -818,14 +840,13 @@ export function createExperimentalStagePipeline(deps = {}) {
           const offset = sampleOffsets[s];
           const xCss = xBase + offset[0] * invDp;
           const yCss = yBase + offset[1] * invDp;
-          const baseMask = sampleSpeckField(hash2Fn, xCss, yCss, detailCss, speckSeed, stageQuality);
+          const baseMask = sampleSpeckFieldFast(xCss, yCss, detailCss, speckSeed, stageQuality);
           let microPerturb = 0;
           if (microNoiseWeight > 0) {
-            const microMask = sampleSpeckValueNoise(
-              hash2Fn,
+            const microMask = sampleSpeckValueNoiseFast(
               xCss * detailCss * 3.37 + 5.71,
               yCss * detailCss * 3.17 - 2.9,
-              speckSeed ^ 0x7F4A7C15,
+              microSeed,
             );
             microPerturb = (microMask - 0.5) * 0.7 * microNoiseWeight;
           }
@@ -906,14 +927,14 @@ export function createExperimentalStagePipeline(deps = {}) {
       const span = Math.max(1e-6, softPx * 2);
       const shifted = signedDist - radiusPx;
       const t = clamp01Fn((-shifted + softPx) / span);
-      return smoothStep(t);
+      // smoothStep inline
+      return t * t * (3 - 2 * t);
     };
 
     const quantLevels = stageQuality >= 1
       ? Math.max(8, Math.round(8 + (stageQuality - 1) * 12))
       : Math.max(2, Math.round(2 + stageQuality * 10));
 
-    // Convert flat loop to nested to allow hoisting
     for (let y = 0; y < h; y++) {
       const rowOffset = y * w;
       const yCssBase = (y * invDp) - originYCss;
@@ -936,10 +957,8 @@ export function createExperimentalStagePipeline(deps = {}) {
         }
 
         if (thickenRadiusPx > 0) {
-          const xCssBase = (x * invDp) - originXCss;
-          
-          const insideDist = inside[i] || 0;
           const outsideDist = outside ? (outside[i] || 0) : 0;
+          const insideDist = inside[i] || 0;
           const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
 
           if (signedDist > thickenRadiusPx + 2.0) {
@@ -947,6 +966,7 @@ export function createExperimentalStagePipeline(deps = {}) {
             continue;
           }
 
+          const xCssBase = (x * invDp) - originXCss;
           let accumThicken = 0;
 
           for (let s = 0; s < samples.length; s++) {
@@ -956,9 +976,9 @@ export function createExperimentalStagePipeline(deps = {}) {
 
             let maskVal = 1;
             if (usePatchMask) {
-              const n = sampleSpeckValueNoise(hash2Fn, sampleXCss * freqCss, sampleYCss * freqCss, seedThicken);
+              const n = sampleSpeckValueNoiseFast(sampleXCss * freqCss, sampleYCss * freqCss, seedThicken);
               maskVal = clamp01Fn((patchFillThicken - n) / patchSoft); 
-              maskVal = smoothStep(maskVal);
+              maskVal = maskVal * maskVal * (3 - 2 * maskVal); // smoothStep
             }
 
             if (maskVal > 0.01) {
@@ -999,6 +1019,7 @@ export function createExperimentalStagePipeline(deps = {}) {
     const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
     const fuzzSoftPx = softnessBase * 1.35;
     const seedFuzz = (seed ^ 0xF077F00D) >>> 0;
+    const seedBleed = seedFuzz ^ 0x12345;
 
     const bleedFreq = 1.5;
     const fuzzFreq = 4.0;
@@ -1016,10 +1037,9 @@ export function createExperimentalStagePipeline(deps = {}) {
       const span = Math.max(1e-6, softPx * 2);
       const shifted = signedDist - radiusPx;
       const t = clamp01Fn((-shifted + softPx) / span);
-      return smoothStep(t);
+      return t * t * (3 - 2 * t);
     };
 
-    // Convert to nested loops for hoisting
     for (let y = 0; y < h; y++) {
       const rowOffset = y * w;
       const yCssBase = (y * invDp) - originYCss;
@@ -1041,13 +1061,14 @@ export function createExperimentalStagePipeline(deps = {}) {
           const sampleXCss = xCssBase + (offset[0] * invDp) + 0.123;
           const sampleYCss = yCssBase + (offset[1] * invDp) + 0.123;
 
-          const bleedVal = sampleSpeckValueNoise(hash2Fn, sampleXCss * bleedFreq, sampleYCss * bleedFreq, seedFuzz ^ 0x12345);
+          const bleedVal = sampleSpeckValueNoiseFast(sampleXCss * bleedFreq, sampleYCss * bleedFreq, seedBleed);
           const effectiveRadius = fuzzThickenRadiusPx * (bleedVal * 1.3);
 
-          const noiseVal = sampleSpeckValueNoise(hash2Fn, sampleXCss * fuzzFreq, sampleYCss * fuzzFreq, seedFuzz);
+          const noiseVal = sampleSpeckValueNoiseFast(sampleXCss * fuzzFreq, sampleYCss * fuzzFreq, seedFuzz);
           const noiseSoft = 0.15;
           
-          let noiseAlpha = 1.0 - smoothStep(clamp01Fn((noiseVal - (fuzzPatchFill - noiseSoft * 0.5)) / noiseSoft));
+          let noiseAlpha = clamp01Fn((noiseVal - (fuzzPatchFill - noiseSoft * 0.5)) / noiseSoft);
+          noiseAlpha = 1.0 - (noiseAlpha * noiseAlpha * (3 - 2 * noiseAlpha));
 
           if (fuzzPatchFill < 0.999) {
              const bleedVisibility = Math.max(0, (bleedVal - 0.6) * 3.0); 
@@ -1225,7 +1246,7 @@ export function createExperimentalStagePipeline(deps = {}) {
         if (covF > 0) {
           const xCss = x * invDp;
           const vNoise = fuzzTile.data[i];
-          const vHash = hash2Fn(
+          const vHash = fastHash2(
             floor(xCss * detailCss),
             floor(yCss * detailCss),
             seed ^ 0xF00DFACE,
