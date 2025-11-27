@@ -57,7 +57,6 @@ const sampleSpeckFieldFast = (xCss, yCss, detailCss, seed, quality) => {
     seed ^ 0x13579BDF
   ) * 0.28;
   
-  // Quality check to skip octaves if quality is very low, though usually we run full quality
   // Octave 2: freq 1, weight 0.46, off -3.77, 11.09, salt 0x2468ACE1
   if (quality >= 0.4) {
     const freq1 = max(0.0001, detailCss);
@@ -78,8 +77,7 @@ const sampleSpeckFieldFast = (xCss, yCss, detailCss, seed, quality) => {
     ) * 0.26;
   }
 
-  // Normalize (weights sum to 1.0)
-  // Contrast: (val - 0.5) * 1.25 + 0.5
+  // Normalize (weights sum to ~1.0) & Contrast
   return clamp01((accum - 0.5) * 1.25 + 0.5);
 };
 
@@ -935,6 +933,7 @@ export function createExperimentalStagePipeline(deps = {}) {
       ? Math.max(8, Math.round(8 + (stageQuality - 1) * 12))
       : Math.max(2, Math.round(2 + stageQuality * 10));
 
+    // Convert flat loop to nested to allow hoisting
     for (let y = 0; y < h; y++) {
       const rowOffset = y * w;
       const yCssBase = (y * invDp) - originYCss;
@@ -957,12 +956,17 @@ export function createExperimentalStagePipeline(deps = {}) {
         }
 
         if (thickenRadiusPx > 0) {
-          const outsideDist = outside ? (outside[i] || 0) : 0;
           const insideDist = inside[i] || 0;
+          const outsideDist = outside ? (outside[i] || 0) : 0;
           const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
 
           if (signedDist > thickenRadiusPx + 2.0) {
             coverage[i] = clamp01Fn(cov);
+            continue;
+          }
+
+          if (!usePatchMask && signedDist < -thickenRadiusPx - 2.0) {
+            coverage[i] = 1;
             continue;
           }
 
@@ -1053,6 +1057,7 @@ export function createExperimentalStagePipeline(deps = {}) {
         const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
 
         if (signedDist > fuzzThickenRadiusPx + 2.0) continue;
+        if (signedDist < -fuzzThickenRadiusPx - 2.0 && coverage[i] >= 0.99) continue;
 
         let accumAlpha = 0;
 
@@ -1305,6 +1310,7 @@ export function createExperimentalStagePipeline(deps = {}) {
           ? outsideNorm[i]
           : ((outsideRaw?.[i] || 0) / scaleDp);
         if (!(outsideDepth > 0)) continue;
+        if (outsideDepth > radiusCss) continue;
 
         let band = Math.max(0, 1 - (outsideDepth / radiusCss));
         band = Math.pow(band, Math.max(0.0001, 1 + sFalloff));
