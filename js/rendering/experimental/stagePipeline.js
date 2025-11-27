@@ -335,8 +335,9 @@ const computeNormalizedGradient = (dist, w, h) => {
   const total = w * h;
   const grad = new Float32Array(total * 2);
   for (let y = 0; y < h; y++) {
+    const rowOffset = y * w;
     for (let x = 0; x < w; x++) {
-      const idx = y * w + x;
+      const idx = rowOffset + x;
       const center = dist[idx] || 0;
       const left = x > 0 ? (dist[idx - 1] || 0) : center;
       const right = x < w - 1 ? (dist[idx + 1] || 0) : center;
@@ -415,10 +416,11 @@ const applyLowResDeltaToCoverage = (
   const clampCoverage = typeof clamp01Fn === 'function' ? clamp01Fn : clamp01;
   for (let y = 0; y < baseHeight; y++) {
     const srcY = (y + 0.5) * scaleY - 0.5;
+    const rowOffset = y * baseWidth;
     for (let x = 0; x < baseWidth; x++) {
       const srcX = (x + 0.5) * scaleX - 0.5;
       const deltaSample = sampleBilinear(delta, lowWidth, lowHeight, srcX, srcY);
-      const idx = y * baseWidth + x;
+      const idx = rowOffset + x;
       coverage[idx] = clampCoverage(coverage[idx] + deltaSample);
     }
   }
@@ -579,14 +581,23 @@ export function createExperimentalStagePipeline(deps = {}) {
     const stageQuality = getStageQualityFromContext(ctx);
     const detailCssRaw = getDetailDensityCss(ctx);
     const detailCss = Math.max(MIN_DETAIL_DENSITY_CSS, detailCssRaw * stageQuality);
-    const lfScale = Math.max(1e-6, (params.noise.lfScale * smul) / detailCss);
-    const hfScale = Math.max(1e-6, (params.noise.hfScale * smul) / detailCss);
-    const gammaLUT = getGamma(params.ink.inkGamma);
-    const rimLUT = getRim(params.ink.rimCurve);
-    const toneCoreEn = !!params.enable.toneCore;
-    const toneDynamicsEn = toneCoreEn && params.enable.toneDynamics !== false;
-    const ribbonEn = toneCoreEn && params.enable.ribbonBands !== false;
-    const rimEn = !!params.enable.rim;
+    
+    // Destructuring params
+    const pNoise = params.noise || {};
+    const pInk = params.ink || {};
+    const pEnable = params.enable || {};
+    const pRibbon = params.ribbon || {};
+
+    const lfScale = Math.max(1e-6, (pNoise.lfScale * smul) / detailCss);
+    const hfScale = Math.max(1e-6, (pNoise.hfScale * smul) / detailCss);
+    const gammaLUT = getGamma(pInk.inkGamma);
+    const rimLUT = getRim(pInk.rimCurve);
+    
+    const toneCoreEn = !!pEnable.toneCore;
+    const toneDynamicsEn = toneCoreEn && pEnable.toneDynamics !== false;
+    const ribbonEn = toneCoreEn && pEnable.ribbonBands !== false;
+    const rimEn = !!pEnable.rim;
+    
     const rhythm = 1 + 0.08 * sin((gix % 23) / 23 * tauConst);
     const baseTile = toneDynamicsEn ? detailNoiseCache.getTile({
       detailCss,
@@ -598,6 +609,7 @@ export function createExperimentalStagePipeline(deps = {}) {
       xOffset: (gix || 0) * 13,
       yOffset: (gix || 0) * 7,
     }) : null;
+    
     const microTile = toneDynamicsEn ? detailNoiseCache.getTile({
       detailCss,
       width: w,
@@ -610,8 +622,9 @@ export function createExperimentalStagePipeline(deps = {}) {
       xOffset: seed,
       yOffset: -seed,
     }) : null;
+    
     const glyphHeightCss = Math.max(1e-6, h * invDp);
-    const ribbonBandCfg = ribbonEn ? normalizeRibbonBandConfig(params.ribbon) : DEFAULT_RIBBON_BAND;
+    const ribbonBandCfg = ribbonEn ? normalizeRibbonBandConfig(pRibbon) : DEFAULT_RIBBON_BAND;
     const bandStrength = ribbonEn ? ribbonBandCfg.delta : 0;
     const applyRibbon = ribbonEn && Math.abs(bandStrength) > 1e-3;
     const bandHalfCss = Math.max(1e-4, ribbonBandCfg.height * glyphHeightCss * 0.5);
@@ -621,6 +634,7 @@ export function createExperimentalStagePipeline(deps = {}) {
     const baseBandCenterCss = clamp01(ribbonBandCfg.position) * glyphHeightCss;
     const wobbleAmount = ribbonBandCfg.wobble;
     const wobbleRangeCss = applyRibbon && wobbleAmount > 0 ? bandHalfCss * 0.8 * wobbleAmount : 0;
+    
     const ribbonTile = wobbleRangeCss > 0 ? detailNoiseCache.getTile({
       detailCss,
       width: w,
@@ -631,23 +645,36 @@ export function createExperimentalStagePipeline(deps = {}) {
       xOffset: (gix || 0) * 17,
       yOffset: (gix || 0) * 5,
     }) : null;
+
+    // Destructure ink params for loop
+    const inkPressMid = pInk.pressureMid;
+    const inkPressVar = pInk.pressureVar;
+    const inkToneJitter = pInk.toneJitter;
+    const inkRim = pInk.rim;
+
     for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
+      const yCss = y * invDp;
+      
       for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        const xCss = x * invDp;
-        const yCss = y * invDp;
+        const i = rowOffset + x;
         const a = alpha0[i] / 255;
+        // e is edgeMask, still needs x,y
         const e = edgeMaskFn(alpha0, w, h, x, y);
+        
         const p = toneDynamicsEn ? baseTile.data[i] : 0.5;
         const m = toneDynamicsEn ? microTile.data[i] : 0.5;
         const wobbleOffset = ribbonTile ? (ribbonTile.data[i] - 0.5) * wobbleRangeCss * 2 : 0;
         const bandCenterCss = baseBandCenterCss + wobbleOffset;
+        
         let press = toneDynamicsEn
-          ? params.ink.pressureMid + params.ink.pressureVar * (p - 0.5) * 2
+          ? inkPressMid + inkPressVar * (p - 0.5) * 2
           : 1;
         press = clampFn(press, 0.05, 1.6);
         let cov = a * press;
-        if (toneDynamicsEn) cov *= 1 + params.ink.toneJitter * ((m - 0.5) * 2);
+        
+        if (toneDynamicsEn) cov *= 1 + inkToneJitter * ((m - 0.5) * 2);
+        
         if (applyRibbon) {
           const dist = Math.abs(yCss - bandCenterCss);
           let bandWeight = 0;
@@ -664,9 +691,11 @@ export function createExperimentalStagePipeline(deps = {}) {
             cov *= modifier <= 0 ? 0 : modifier;
           }
         }
-        cov *= 1 + 0 * rhythm + rhythm - 1;
+        
+        cov *= rhythm; // pre-calculated rhythm
         const rimBoost = rimLUT[(e * 255) | 0];
-        if (rimEn) cov += params.ink.rim * rimBoost * (1 - cov);
+        if (rimEn) cov += inkRim * rimBoost * (1 - cov);
+        
         if (toneDynamicsEn) {
           const idx = (clamp01Fn(cov) * 255) | 0;
           cov = gammaLUT[idx];
@@ -680,15 +709,24 @@ export function createExperimentalStagePipeline(deps = {}) {
     const { w, h, params, seed, smul, alpha0, dm } = ctx;
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
-    if (!params.enable.dropouts || !params.dropouts || params.dropouts.amount <= 0) return;
+    
+    // Destructure params
+    const pDrop = params.dropouts || {};
+    const pEnable = params.enable || {};
+
+    if (!pEnable.dropouts || !pDrop || pDrop.amount <= 0) return;
+    
     const stageQuality = getStageQualityFromContext(ctx);
     const detailCss = getDetailDensityCss(ctx);
     const inside = dm?.raw?.inside;
-    const widthPx = max(0.0001, params.dropouts.width * smul * dpPerCss);
-    const dropScalePx = max(2 / detailCss, (params.dropouts.scale * smul) / detailCss);
-    const dropThr = 1 - clamp01Fn(params.dropouts.streakDensity);
-    const dropPw = clamp01Fn(params.dropouts.pinholeWeight);
+    const widthPx = max(0.0001, pDrop.width * smul * dpPerCss);
+    const dropScalePx = max(2 / detailCss, (pDrop.scale * smul) / detailCss);
+    const dropThr = 1 - clamp01Fn(pDrop.streakDensity);
+    const dropPw = clamp01Fn(pDrop.pinholeWeight);
     const dropoutHashDensity = max(0.1, 3 * stageQuality);
+    const dropAmount = min(2, pDrop.amount);
+    const dropPinhole = pDrop.pinhole;
+
     const dropoutTile = detailNoiseCache.getTile({
       detailCss,
       width: w,
@@ -697,13 +735,17 @@ export function createExperimentalStagePipeline(deps = {}) {
       scale: dropScalePx,
       seed: seed ^ 0x51F1F1F1,
     });
+
     for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
+      const yCss = y * invDp;
+      
       for (let x = 0; x < w; x++) {
-        const i = y * w + x;
+        const i = rowOffset + x;
         if (alpha0[i] === 0) continue;
+        
         const band = inside ? clamp01Fn(1 - ((inside[i] || 0) / widthPx)) : 0;
         const xCss = x * invDp;
-        const yCss = y * invDp;
         const nlf = dropoutTile.data[i];
         const streak = (nlf > dropThr ? 1 : 0) * band;
         const nhf = hash2Fn(
@@ -711,10 +753,9 @@ export function createExperimentalStagePipeline(deps = {}) {
           floor(yCss * detailCss * dropoutHashDensity + 11),
           seed ^ 0xC0FFEE00,
         );
-        const pinh = (nhf > 1 - params.dropouts.pinhole ? 1 : 0) * (1 - band);
+        const pinh = (nhf > 1 - dropPinhole ? 1 : 0) * (1 - band);
         const gap = clamp01Fn((1 - dropPw) * streak + dropPw * pinh);
-        const amt = min(2, params.dropouts.amount);
-        coverage[i] = clamp01Fn(max(0, 1 - amt * gap) * coverage[i]);
+        coverage[i] = clamp01Fn(max(0, 1 - dropAmount * gap) * coverage[i]);
       }
     }
   }
@@ -723,14 +764,19 @@ export function createExperimentalStagePipeline(deps = {}) {
     const { w, h, params, seed, alpha0 } = ctx;
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
-    if (!params.enable.grainSpeck) return;
+    
+    // Destructure params
+    const pEnable = params.enable || {};
+    const pInk = params.ink || {};
+
+    if (!pEnable.grainSpeck) return;
+    
     const stageQuality = getStageQualityFromContext(ctx);
-    // Use mottling to shift blotch size: low = bigger blotches, high = finer specks.
-    // Map 0→large blobs (low frequency) and 1.5→very fine specks (high frequency) with a wider spread.
-    const mottlingRaw = clamp(params?.ink?.mottling ?? 0, 0, 1.5);
-    const t = mottlingRaw / 1.5; // 0..1
-    const freqScale = 0.4 + t * 2.4; // ~0.4–2.8x frequency swing
+    const mottlingRaw = clamp(pInk.mottling ?? 0, 0, 1.5);
+    const t = mottlingRaw / 1.5;
+    const freqScale = 0.4 + t * 2.4;
     const detailCss = getDetailDensityCss(ctx, 1.5 * freqScale);
+    
     let sampleOffsets = SPECK_SUBPIXEL_OFFSETS;
     if (stageQuality < 1) {
       const subsetCount = Math.max(1, Math.round(sampleOffsets.length * stageQuality));
@@ -744,25 +790,34 @@ export function createExperimentalStagePipeline(deps = {}) {
         ? SPECK_SUBPIXEL_OFFSETS.concat(SPECK_SUPERSAMPLE_OFFSETS.slice(0, extraCount))
         : SPECK_SUBPIXEL_OFFSETS;
     }
+    
     const microNoiseWeight = clamp01((stageQuality - 0.5) / 0.5);
     const sampleCount = sampleOffsets.length || 1;
     const invSampleCount = 1 / sampleCount;
     const speckSeed = seed ^ 0xBEEFCAFE;
-    const { speckDark = 0, speckLight = 0, speckGrayBias = 0 } = params.ink || {};
+    
+    const { speckDark = 0, speckLight = 0, speckGrayBias = 0 } = pInk;
     const darkGate = 0.85;
     const lightGate = 0.15;
     const invDarkSpan = 1 / (1 - darkGate);
     const invLightSpan = 1 / lightGate;
+
     for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
+      const yBase = y * invDp;
+      
       for (let x = 0; x < w; x++) {
-        const i = y * w + x;
+        const i = rowOffset + x;
         if (alpha0[i] === 0) continue;
+        
+        const xBase = x * invDp;
         let darkAccum = 0;
         let lightAccum = 0;
+        
         for (let s = 0; s < sampleCount; s++) {
           const offset = sampleOffsets[s];
-          const xCss = (x + offset[0]) * invDp;
-          const yCss = (y + offset[1]) * invDp;
+          const xCss = xBase + offset[0] * invDp;
+          const yCss = yBase + offset[1] * invDp;
           const baseMask = sampleSpeckField(hash2Fn, xCss, yCss, detailCss, speckSeed, stageQuality);
           let microPerturb = 0;
           if (microNoiseWeight > 0) {
@@ -783,6 +838,7 @@ export function createExperimentalStagePipeline(deps = {}) {
             lightAccum += (lightGate - speckMask) * invLightSpan;
           }
         }
+        
         const affect = (1 - speckGrayBias) + speckGrayBias * (1 - coverage[i]);
         const interior = clamp01Fn(alpha0[i] / 255);
         const edgeFade = clamp01Fn(interior * interior * 1.1);
@@ -796,15 +852,18 @@ export function createExperimentalStagePipeline(deps = {}) {
     }
   }
 
-function applyCenterEdgeShape(coverage, ctx) {
+  function applyCenterEdgeShape(coverage, ctx) {
     const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
     const centerEdgeCfg = params.centerEdge || {};
     const centerEdgeEnabled = !!params.enable.centerEdge;
+    
+    // Destructure config
     const cK = centerEdgeCfg.center || 0;
     const eK = centerEdgeCfg.edge || 0;
     const tK = centerEdgeCfg.thicken || 0;
     const patchFillThicken = clamp(centerEdgeCfg.patchFill ?? 1, 0, 1);
     const patchSizeThicken = clamp(centerEdgeCfg.patchSize ?? 0.5, 0, 1);
+    
     const hasCenterEdgeShaping = Math.abs(cK) > 1e-6 || Math.abs(eK) > 1e-6;
     const centerEdgeActive = centerEdgeEnabled && (hasCenterEdgeShaping || (tK > 1e-6 && patchFillThicken > 0));
 
@@ -818,23 +877,15 @@ function applyCenterEdgeShape(coverage, ctx) {
     const invDp = 1 / dpPerCss;
     const stageQuality = getStageQualityFromContext(ctx);
     
-    // 1. Radius Scaling:
-    // Scale radius by dpPerCss so the visual weight is constant across zoom levels.
-    // Subtract a small bias at low resolution to prevent the "overwhelming" look.
     const resolutionBias = dpPerCss < 1.5 ? -0.25 : 0;
     const effectiveTK = Math.max(0, tK + resolutionBias / dpPerCss);
-    // Multiplier tuned to match the user's preference at 400% baseline
     const thickenRadiusPx = (effectiveTK * 1.0 + 0.15) * dpPerCss;
 
     const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
     const thickenSoftPx = softnessBase * 0.9;
     
-    const seedCenter = (seed ^ 0xC1CE1C31) >>> 0;
-    const seedEdge = (seed ^ 0xC1CE2D42) >>> 0;
     const seedThicken = (seed ^ 0xC1CE3E53) >>> 0;
 
-    // 2. Stable Frequency:
-    // Calculate frequency in CSS space so the pattern size scales with the glyph.
     const usePatchMask = tK > 1e-6 && patchFillThicken < 0.999;
     const glyphSpanCss = Math.max(1, Math.max(w, h) * invDp);
     const cyclesAcrossGlyph = 0.5 + patchSizeThicken * 2.5;
@@ -845,7 +896,6 @@ function applyCenterEdgeShape(coverage, ctx) {
     const originXCss = Number.isFinite(anchorX) ? anchorX : 0;
     const originYCss = Number.isFinite(anchorY) ? anchorY : 0;
 
-    // 3. Supersampling Setup:
     const useSupersampling = dpPerCss < 2.5;
     const samples = useSupersampling 
       ? [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]]
@@ -863,75 +913,75 @@ function applyCenterEdgeShape(coverage, ctx) {
       ? Math.max(8, Math.round(8 + (stageQuality - 1) * 12))
       : Math.max(2, Math.round(2 + stageQuality * 10));
 
-    for (let i = 0; i < w * h; i++) {
-      let norm = (inside[i] || 0) / maxInside;
-      if (quantLevels > 1) {
-        const steps = quantLevels - 1;
-        norm = clamp((Math.round(norm * steps) / steps) || 0, 0, 1);
-      }
+    // Convert flat loop to nested to allow hoisting
+    for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
+      const yCssBase = (y * invDp) - originYCss;
       
-      let cov = coverage[i];
-      const hasAlpha = alpha0[i] !== 0;
-      
-      // Apply core shaping (Center/Edge thinning)
-      // This is uniform and doesn't need supersampling
-      if (hasAlpha && hasCenterEdgeShaping) {
-        if (centerEdgeEnabled && cK !== 0) cov *= clampFn(1 + cK * norm, 0, 3);
-        if (centerEdgeEnabled && eK !== 0) cov *= clampFn(1 - eK * (1 - norm), 0, 3);
-      }
-
-      // Apply Thickening with Patch Mask (Supersampled)
-      if (thickenRadiusPx > 0) {
-        const x = i % w;
-        const y = (i / w) | 0;
-        const xCssBase = (x * invDp) - originXCss;
-        const yCssBase = (y * invDp) - originYCss;
+      for (let x = 0; x < w; x++) {
+        const i = rowOffset + x;
         
-        const insideDist = inside[i] || 0;
-        const outsideDist = outside ? (outside[i] || 0) : 0;
-        const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
-
-        // Optimization: Skip if far outside radius
-        if (signedDist > thickenRadiusPx + 2.0) {
-          coverage[i] = clamp01Fn(cov);
-          continue;
+        let norm = (inside[i] || 0) / maxInside;
+        if (quantLevels > 1) {
+          const steps = quantLevels - 1;
+          norm = clamp((Math.round(norm * steps) / steps) || 0, 0, 1);
+        }
+        
+        let cov = coverage[i];
+        const hasAlpha = alpha0[i] !== 0;
+        
+        if (hasAlpha && hasCenterEdgeShaping) {
+          if (centerEdgeEnabled && cK !== 0) cov *= clampFn(1 + cK * norm, 0, 3);
+          if (centerEdgeEnabled && eK !== 0) cov *= clampFn(1 - eK * (1 - norm), 0, 3);
         }
 
-        let accumThicken = 0;
+        if (thickenRadiusPx > 0) {
+          const xCssBase = (x * invDp) - originXCss;
+          
+          const insideDist = inside[i] || 0;
+          const outsideDist = outside ? (outside[i] || 0) : 0;
+          const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
 
-        for (let s = 0; s < samples.length; s++) {
-          const offset = samples[s];
-          const sampleXCss = xCssBase + (offset[0] * invDp) + 0.123;
-          const sampleYCss = yCssBase + (offset[1] * invDp) + 0.123;
-
-          let maskVal = 1;
-          if (usePatchMask) {
-            const n = sampleSpeckValueNoise(hash2Fn, sampleXCss * freqCss, sampleYCss * freqCss, seedThicken);
-            // Soft threshold logic
-            maskVal = clamp01Fn((patchFillThicken - n) / patchSoft); 
-            // Remap for sharper falloff if needed, but keep soft for antialiasing
-            maskVal = smoothStep(maskVal);
+          if (signedDist > thickenRadiusPx + 2.0) {
+            coverage[i] = clamp01Fn(cov);
+            continue;
           }
 
-          if (maskVal > 0.01) {
-            const boldAlpha = applyDilateAlpha(signedDist, thickenRadiusPx, thickenSoftPx);
-            accumThicken += boldAlpha * maskVal;
+          let accumThicken = 0;
+
+          for (let s = 0; s < samples.length; s++) {
+            const offset = samples[s];
+            const sampleXCss = xCssBase + (offset[0] * invDp) + 0.123;
+            const sampleYCss = yCssBase + (offset[1] * invDp) + 0.123;
+
+            let maskVal = 1;
+            if (usePatchMask) {
+              const n = sampleSpeckValueNoise(hash2Fn, sampleXCss * freqCss, sampleYCss * freqCss, seedThicken);
+              maskVal = clamp01Fn((patchFillThicken - n) / patchSoft); 
+              maskVal = smoothStep(maskVal);
+            }
+
+            if (maskVal > 0.01) {
+              const boldAlpha = applyDilateAlpha(signedDist, thickenRadiusPx, thickenSoftPx);
+              accumThicken += boldAlpha * maskVal;
+            }
           }
+
+          const finalThickenAlpha = accumThicken / samples.length;
+          cov = Math.max(cov, finalThickenAlpha);
         }
 
-        const finalThickenAlpha = accumThicken / samples.length;
-        cov = Math.max(cov, finalThickenAlpha);
+        coverage[i] = clamp01Fn(cov);
       }
-
-      coverage[i] = clamp01Fn(cov);
     }
   }
 
-function applyExperimentalFuzz(coverage, ctx) {
+  function applyExperimentalFuzz(coverage, ctx) {
     const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
-    const fuzzEnabled = params.fuzzExp?.enable !== false;
-    const fuzzThicken = fuzzEnabled ? (params.fuzzExp?.thicken || 0) : 0;
-    const fuzzPatchFill = fuzzEnabled ? clamp(params.fuzzExp?.patchFill ?? 1, 0, 1) : 0;
+    const fuzzExp = params.fuzzExp || {};
+    const fuzzEnabled = fuzzExp.enable !== false;
+    const fuzzThicken = fuzzEnabled ? (fuzzExp.thicken || 0) : 0;
+    const fuzzPatchFill = fuzzEnabled ? clamp(fuzzExp.patchFill ?? 1, 0, 1) : 0;
     const hasFuzz = fuzzEnabled && Math.abs(fuzzThicken) > 1e-6;
     if (!hasFuzz) return;
 
@@ -944,27 +994,22 @@ function applyExperimentalFuzz(coverage, ctx) {
     const invDp = 1 / dpPerCss;
     const stageQuality = getStageQualityFromContext(ctx);
 
-    // Radius scaled by dpPerCss to remain visually constant across zoom levels
     const fuzzThickenRadiusPx = (Math.max(0, fuzzThicken) * 0.75 + 0.12) * dpPerCss;
     
     const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
     const fuzzSoftPx = softnessBase * 1.35;
     const seedFuzz = (seed ^ 0xF077F00D) >>> 0;
 
-    // Frequencies:
-    // bleedFreq: Low frequency (1.5) creates large, organic protrusions/blobs.
-    // fuzzFreq: Higher frequency (4.0) creates the internal grain texture/holes.
     const bleedFreq = 1.5;
     const fuzzFreq = 4.0;
     
     const originXCss = Number.isFinite(anchorX) ? anchorX : 0;
     const originYCss = Number.isFinite(anchorY) ? anchorY : 0;
 
-    // Determine if we need supersampling (at low zoom levels) to prevent aliasing/swimming
     const useSupersampling = dpPerCss < 2.5;
     const samples = useSupersampling 
-      ? [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]] // 4x grid
-      : [[0, 0]]; // 1x center
+      ? [[-0.25, -0.25], [0.25, -0.25], [-0.25, 0.25], [0.25, 0.25]]
+      : [[0, 0]];
 
     const applyDilateAlpha = (signedDist, radiusPx, softPx) => {
       if (radiusPx <= 0) return 0;
@@ -974,80 +1019,71 @@ function applyExperimentalFuzz(coverage, ctx) {
       return smoothStep(t);
     };
 
-    for (let i = 0; i < w * h; i++) {
-      const x = i % w;
-      const y = (i / w) | 0;
-      
-      // Base logical coordinate for this pixel
-      const xCssBase = (x * invDp) - originXCss;
+    // Convert to nested loops for hoisting
+    for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
       const yCssBase = (y * invDp) - originYCss;
-
-      const insideDist = inside[i] || 0;
-      const outsideDist = outside ? (outside[i] || 0) : 0;
-      const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
-
-      // Optimization: Skip if far outside the max possible effect radius
-      if (signedDist > fuzzThickenRadiusPx + 2.0) continue;
-
-      let accumAlpha = 0;
-
-      for (let s = 0; s < samples.length; s++) {
-        const offset = samples[s];
-        const sampleXCss = xCssBase + (offset[0] * invDp) + 0.123;
-        const sampleYCss = yCssBase + (offset[1] * invDp) + 0.123;
-
-        // 1. Calculate Bleed (Shape/Protrusions) - Low Frequency
-        const bleedVal = sampleSpeckValueNoise(hash2Fn, sampleXCss * bleedFreq, sampleYCss * bleedFreq, seedFuzz ^ 0x12345);
-        
-        // Modulate radius to create irregular, organic thickening
-        // Range: 0.0x to 1.3x the user setting. This creates "dips" (no thickening) and "bumps" (extra thickening).
-        const effectiveRadius = fuzzThickenRadiusPx * (bleedVal * 1.3);
-
-        // 2. Calculate Patch Fill (Grain Texture) - High Frequency
-        const noiseVal = sampleSpeckValueNoise(hash2Fn, sampleXCss * fuzzFreq, sampleYCss * fuzzFreq, seedFuzz);
-        const noiseSoft = 0.15;
-        
-        // Calculate base mask from Fill slider
-        let noiseAlpha = 1.0 - smoothStep(clamp01Fn((noiseVal - (fuzzPatchFill - noiseSoft * 0.5)) / noiseSoft));
-
-        // 3. Visibility Interaction
-        // Even if Fill is low, force the strongest "protrusions" (high bleedVal) to remain visible.
-        // This ensures "Thicken" adds coarse chunks/bleed on its own, without needing high Fill.
-        if (fuzzPatchFill < 0.999) {
-           const bleedVisibility = Math.max(0, (bleedVal - 0.6) * 3.0); 
-           noiseAlpha = Math.max(noiseAlpha, bleedVisibility);
-        }
-        
-        if (noiseAlpha > 0.01 || fuzzPatchFill >= 0.999) {
-          let fuzzAlpha = applyDilateAlpha(signedDist, effectiveRadius, fuzzSoftPx);
-          
-          if (fuzzPatchFill < 0.999) {
-            fuzzAlpha *= noiseAlpha;
-          }
-          accumAlpha += fuzzAlpha;
-        }
-      }
-
-      const finalFuzzAlpha = accumAlpha / samples.length;
       
-      if (finalFuzzAlpha > 0) {
-        const cov = Math.max(coverage[i], finalFuzzAlpha);
-        coverage[i] = clamp01Fn(cov);
+      for (let x = 0; x < w; x++) {
+        const i = rowOffset + x;
+        const xCssBase = (x * invDp) - originXCss;
+
+        const insideDist = inside[i] || 0;
+        const outsideDist = outside ? (outside[i] || 0) : 0;
+        const signedDist = outsideDist > 0 ? outsideDist : -insideDist;
+
+        if (signedDist > fuzzThickenRadiusPx + 2.0) continue;
+
+        let accumAlpha = 0;
+
+        for (let s = 0; s < samples.length; s++) {
+          const offset = samples[s];
+          const sampleXCss = xCssBase + (offset[0] * invDp) + 0.123;
+          const sampleYCss = yCssBase + (offset[1] * invDp) + 0.123;
+
+          const bleedVal = sampleSpeckValueNoise(hash2Fn, sampleXCss * bleedFreq, sampleYCss * bleedFreq, seedFuzz ^ 0x12345);
+          const effectiveRadius = fuzzThickenRadiusPx * (bleedVal * 1.3);
+
+          const noiseVal = sampleSpeckValueNoise(hash2Fn, sampleXCss * fuzzFreq, sampleYCss * fuzzFreq, seedFuzz);
+          const noiseSoft = 0.15;
+          
+          let noiseAlpha = 1.0 - smoothStep(clamp01Fn((noiseVal - (fuzzPatchFill - noiseSoft * 0.5)) / noiseSoft));
+
+          if (fuzzPatchFill < 0.999) {
+             const bleedVisibility = Math.max(0, (bleedVal - 0.6) * 3.0); 
+             noiseAlpha = Math.max(noiseAlpha, bleedVisibility);
+          }
+          
+          if (noiseAlpha > 0.01 || fuzzPatchFill >= 0.999) {
+            let fuzzAlpha = applyDilateAlpha(signedDist, effectiveRadius, fuzzSoftPx);
+            if (fuzzPatchFill < 0.999) {
+              fuzzAlpha *= noiseAlpha;
+            }
+            accumAlpha += fuzzAlpha;
+          }
+        }
+
+        const finalFuzzAlpha = accumAlpha / samples.length;
+        if (finalFuzzAlpha > 0) {
+          const cov = Math.max(coverage[i], finalFuzzAlpha);
+          coverage[i] = clamp01Fn(cov);
+        }
       }
     }
   }
 
   function createPunchSet(ctx) {
     const { w, h, params, seed, dm, alpha0 } = ctx;
-    if (!params.enable.punch || !params.punch || params.punch.intensity <= 0) return null;
+    const pPunch = params.punch || {};
+    if (!params.enable.punch || !pPunch || pPunch.intensity <= 0) return null;
     const inside = dm?.raw?.inside;
     const maxInside = dm?.getMaxInside ? dm.getMaxInside() : 0;
     const rng = mulberry32Factory((seed ^ 0xC71C71C7) >>> 0);
-    const cnt = max(0, params.punch.count | 0);
+    const cnt = max(0, pPunch.count | 0);
     if (cnt <= 0) return null;
-    const rmin = max(0.001, min(params.punch.rMin, params.punch.rMax));
-    const rmax = max(rmin, params.punch.rMax);
-    const b = clampFn(params.punch.edgeBias || 0, -1, 1);
+    const rmin = max(0.001, min(pPunch.rMin, pPunch.rMax));
+    const rmax = max(rmin, pPunch.rMax);
+    const b = clampFn(pPunch.edgeBias || 0, -1, 1);
     const mag = abs(b);
     const sgn = signFn(b);
     const baseScale = min(w, h);
@@ -1080,7 +1116,7 @@ function applyExperimentalFuzz(coverage, ctx) {
       const ax = r * sxN * anis;
       const ay = r * syN / anis;
       const rot = rng() * tauConst;
-      const soft = (params.punch.soft || 0) * max(ax, ay);
+      const soft = (pPunch.soft || 0) * max(ax, ay);
       const minX = max(0, floor((cxN - ax - soft) * w));
       const maxX = min(w - 1, ceil((cxN + ax + soft) * w));
       const minY = max(0, floor((cyN - ay - soft) * h));
@@ -1094,9 +1130,11 @@ function applyExperimentalFuzz(coverage, ctx) {
     if (!holes || !holes.length) return;
     const { w, h, params, alpha0 } = ctx;
     const punchK = clampFn(params.punch?.intensity || 0, 0, 1.5);
+    
     for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
       for (let x = 0; x < w; x++) {
-        const i = y * w + x;
+        const i = rowOffset + x;
         if (alpha0[i] === 0) continue;
         let hole = 0;
         for (const pf of holes) {
@@ -1139,122 +1177,139 @@ function applyExperimentalFuzz(coverage, ctx) {
     const insideRaw = dm?.raw?.inside;
     const outsideRaw = dm?.raw?.outside;
     const distScale = smulSafe * dpPerCss;
+    
+    // Destructure config
+    const inBand = cfg.inBand;
+    const outBand = cfg.outBand;
+    const mix = cfg.mix;
+    const rough = cfg.rough;
+    const opacity = cfg.opacity;
+
     for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
+      const yCss = y * invDp;
       for (let x = 0; x < w; x++) {
-        const i = y * w + x;
+        const i = rowOffset + x;
         let covF = 0;
         const a = alpha0[i] / 255;
-        if (a > 0 && cfg.inBand > 0) {
+        if (a > 0 && inBand > 0) {
           if (insideNorm) {
             covF = max(
               covF,
-              clamp01Fn(1 - (insideNorm[i] / Math.max(cfg.inBand, DISTANCE_DERIVED_EPSILON))),
+              clamp01Fn(1 - (insideNorm[i] / Math.max(inBand, DISTANCE_DERIVED_EPSILON))),
             );
           } else if (insideRaw) {
             covF = max(
               covF,
               clamp01Fn(
-                1 - ((insideRaw[i] || 0) / (Math.max(cfg.inBand, DISTANCE_DERIVED_EPSILON) * distScale)),
+                1 - ((insideRaw[i] || 0) / (Math.max(inBand, DISTANCE_DERIVED_EPSILON) * distScale)),
               ),
             );
           }
         }
-        if (a === 0 && cfg.outBand > 0) {
+        if (a === 0 && outBand > 0) {
           if (outsideNorm) {
             covF = max(
               covF,
-              clamp01Fn(1 - (outsideNorm[i] / Math.max(cfg.outBand, DISTANCE_DERIVED_EPSILON))),
+              clamp01Fn(1 - (outsideNorm[i] / Math.max(outBand, DISTANCE_DERIVED_EPSILON))),
             );
           } else if (outsideRaw && outsideRaw[i] > 0) {
             covF = max(
               covF,
               clamp01Fn(
-                1 - ((outsideRaw[i] || 0) / (Math.max(cfg.outBand, DISTANCE_DERIVED_EPSILON) * distScale)),
+                1 - ((outsideRaw[i] || 0) / (Math.max(outBand, DISTANCE_DERIVED_EPSILON) * distScale)),
               ),
             );
           }
         }
         if (covF > 0) {
           const xCss = x * invDp;
-          const yCss = y * invDp;
           const vNoise = fuzzTile.data[i];
           const vHash = hash2Fn(
             floor(xCss * detailCss),
             floor(yCss * detailCss),
             seed ^ 0xF00DFACE,
           );
-          const blend = cfg.mix;
+          const blend = mix;
           const n = vNoise * (1 - blend) + vHash * blend;
-          const jitter = 1 + cfg.rough * ((n - 0.5) * 2);
-          const o = clampFn(cfg.opacity * covF * jitter, 0, 0.75);
+          const jitter = 1 + rough * ((n - 0.5) * 2);
+          const o = clampFn(opacity * covF * jitter, 0, 0.75);
           coverage[i] = 1 - (1 - coverage[i]) * (1 - clamp01Fn(o));
         }
       }
     }
   }
 
-function applySmudgeHalo(coverage, ctx) {
-  const { w, h, alpha0, params, smul, seed, dm } = ctx;
-  const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
-  const invDp = 1 / dpPerCss;
-  const s = params.smudge;
-  const smulSafe = Math.max(1e-6, smul || 1);
-  const derived = ensureDistanceDerived(ctx);
-  const outsideNorm = derived?.outside;
-  const outsideNormal = derived?.outsideNormal;
-  const outsideRaw = dm?.raw?.outside;
-  if (!params.enable.smudge || !s || s.strength <= 0 || (!outsideNorm && !outsideRaw)) return;
+  function applySmudgeHalo(coverage, ctx) {
+    const { w, h, alpha0, params, smul, seed, dm } = ctx;
+    const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
+    const invDp = 1 / dpPerCss;
+    const s = params.smudge;
+    const smulSafe = Math.max(1e-6, smul || 1);
+    const derived = ensureDistanceDerived(ctx);
+    const outsideNorm = derived?.outside;
+    const outsideNormal = derived?.outsideNormal;
+    const outsideRaw = dm?.raw?.outside;
+    if (!params.enable.smudge || !s || s.strength <= 0 || (!outsideNorm && !outsideRaw)) return;
 
-  const radiusCss = Math.max(0.0001, s.radius);
-  const scaleDp = smulSafe * dpPerCss;
+    const radiusCss = Math.max(0.0001, s.radius);
+    const scaleDp = smulSafe * dpPerCss;
 
-  const detailCss = getDetailDensityCss(ctx);
-  const ns = Math.max(2 / detailCss, (s.scale * smulSafe) / detailCss);
-  const theta = (s.dirDeg || 0) * (Math.PI / 180); // ← fix
-  const dir = [Math.cos(theta), Math.sin(theta)];
-  const smudgeTile = detailNoiseCache.getTile({
-    detailCss,
-    width: w,
-    height: h,
-    dpPerCss,
-    scale: ns,
-    seed: seed ^ 0xDEADC0DE,
-  });
+    const detailCss = getDetailDensityCss(ctx);
+    const ns = Math.max(2 / detailCss, (s.scale * smulSafe) / detailCss);
+    const theta = (s.dirDeg || 0) * (Math.PI / 180);
+    const dir = [Math.cos(theta), Math.sin(theta)];
+    const smudgeTile = detailNoiseCache.getTile({
+      detailCss,
+      width: w,
+      height: h,
+      dpPerCss,
+      scale: ns,
+      seed: seed ^ 0xDEADC0DE,
+    });
 
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      const outsideDepth = outsideNorm
-        ? outsideNorm[i]
-        : ((outsideRaw?.[i] || 0) / scaleDp);
-      if (!(outsideDepth > 0)) continue;
+    // Destructure params
+    const sFalloff = s.falloff;
+    const sDensity = s.density;
+    const sStrength = s.strength;
+    const sSpread = s.spread;
 
-      let band = Math.max(0, 1 - (outsideDepth / radiusCss));
-      band = Math.pow(band, Math.max(0.0001, 1 + s.falloff));
-
-      const xCss = x * invDp;
+    for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
       const yCss = y * invDp;
-      const n = smudgeTile.data[i];
-      const gate = Math.max(0, (n - (1 - s.density)) * (1 / (s.density + 1e-4)));
+      
+      for (let x = 0; x < w; x++) {
+        const i = rowOffset + x;
+        const outsideDepth = outsideNorm
+          ? outsideNorm[i]
+          : ((outsideRaw?.[i] || 0) / scaleDp);
+        if (!(outsideDepth > 0)) continue;
 
-      let ndotl = 0;
-      if (outsideNormal) {
-        const nx = outsideNormal[i * 2];
-        const ny = outsideNormal[i * 2 + 1];
-        ndotl = max(0, nx * dir[0] + ny * dir[1]);
-      } else if (outsideRaw) {
-        const g = gradOutFn(outsideRaw, w, h, x, y);
-        ndotl = max(0, dotFn(g, dir[0], dir[1]) / lenFn(g));
-      }
-      const dirW = Math.pow(ndotl, Math.max(0.01, 1 - s.spread) * 2 + 0.5);
+        let band = Math.max(0, 1 - (outsideDepth / radiusCss));
+        band = Math.pow(band, Math.max(0.0001, 1 + sFalloff));
 
-      const sm = s.strength * band * gate * dirW;
-      if (alpha0[i] === 0) {
-        coverage[i] = Math.max(coverage[i], Math.min(1, sm));
+        const xCss = x * invDp;
+        const n = smudgeTile.data[i];
+        const gate = Math.max(0, (n - (1 - sDensity)) * (1 / (sDensity + 1e-4)));
+
+        let ndotl = 0;
+        if (outsideNormal) {
+          const nx = outsideNormal[i * 2];
+          const ny = outsideNormal[i * 2 + 1];
+          ndotl = max(0, nx * dir[0] + ny * dir[1]);
+        } else if (outsideRaw) {
+          const g = gradOutFn(outsideRaw, w, h, x, y);
+          ndotl = max(0, dotFn(g, dir[0], dir[1]) / lenFn(g));
+        }
+        const dirW = Math.pow(ndotl, Math.max(0.01, 1 - sSpread) * 2 + 0.5);
+
+        const sm = sStrength * band * gate * dirW;
+        if (alpha0[i] === 0) {
+          coverage[i] = Math.max(coverage[i], Math.min(1, sm));
+        }
       }
     }
   }
-}
 
   const stageRegistry = {
     fill: applyFillAdjustments,
@@ -1271,19 +1326,19 @@ function applySmudgeHalo(coverage, ctx) {
   };
 
   const runPipeline = (coverage, ctx, order = GLYPH_PIPELINE_ORDER) => {
-  const stages = Array.isArray(order) && order.length ? order : GLYPH_PIPELINE_ORDER;
-  for (const id of stages) {
-    const fn = stageRegistry[id];
-    if (typeof fn !== 'function') continue;
-    ctx.stageQuality = resolveStageQuality(detailResolutionConfig, id);
-    if (detailResolutionConfig && shouldRunDetailStageLowRes(id, ctx, detailResolutionConfig)) {
-      runDetailStageAtResolution(id, fn, coverage, ctx, detailResolutionConfig, clamp01Fn);
-    } else {
-      fn(coverage, ctx);
+    const stages = Array.isArray(order) && order.length ? order : GLYPH_PIPELINE_ORDER;
+    for (const id of stages) {
+      const fn = stageRegistry[id];
+      if (typeof fn !== 'function') continue;
+      ctx.stageQuality = resolveStageQuality(detailResolutionConfig, id);
+      if (detailResolutionConfig && shouldRunDetailStageLowRes(id, ctx, detailResolutionConfig)) {
+        runDetailStageAtResolution(id, fn, coverage, ctx, detailResolutionConfig, clamp01Fn);
+      } else {
+        fn(coverage, ctx);
+      }
+      ctx.stageQuality = undefined;
     }
-    ctx.stageQuality = undefined;
-  }
-};
+  };
 
   return {
     stageRegistry,
