@@ -1,72 +1,53 @@
-import { EDGE_BLEED, EDGE_FUZZ, GRAIN_CFG, INK_INTENSITY, INK_TEXTURE, normalizeEdgeBleedConfig, normalizeInkTextureConfig } from './inkConfig.js';
-
-const sanitizedInkTextureDefaults = normalizeInkTextureConfig(INK_TEXTURE);
-Object.assign(INK_TEXTURE, sanitizedInkTextureDefaults);
-
-const sanitizedEdgeBleedDefaults = normalizeEdgeBleedConfig(EDGE_BLEED);
-Object.assign(EDGE_BLEED, sanitizedEdgeBleedDefaults);
+import {
+  cloneDefaultExperimentalConfig,
+  getDefaultInkSectionQuality,
+  getDefaultInkSectionStrength,
+} from './inkEffectDefaultStyle.js';
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
-const DEFAULT_INK_EFFECT_MODE = 'classic';
-const INK_EFFECT_MODE_LABELS = {
-  classic: 'Legacy effects',
-  experimental: 'Experimental effects',
-};
-
 const INPUT_OVERRIDES = {
-  'fill.centerThickenPct': {
-    type: 'range',
-    min: () => CENTER_THICKEN_LIMITS.min,
-    max: () => CENTER_THICKEN_LIMITS.max,
-    step: 1,
-    precision: 0,
-  },
-  'fill.edgeThinPct': {
-    type: 'range',
-    min: () => EDGE_THIN_LIMITS.min,
-    max: () => EDGE_THIN_LIMITS.max,
-    step: 1,
-    precision: 0,
-  },
-  'grain.scale': { type: 'range', min: 0.25, max: 3, step: 0.05, precision: 2 },
-  'grain.gamma': { type: 'range', min: 0.2, max: 3, step: 0.05, precision: 2 },
-  'grain.opacity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'grain.blend_mode': {
-    type: 'enum-range',
-    options: ['destination-out', 'multiply', 'screen', 'overlay', 'soft-light'],
-  },
   'expTone.ink.pressureMid': { type: 'range', min: 0, max: 1.6, step: 0.01, precision: 2 },
   'expTone.ink.pressureVar': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
   'expTone.ink.inkGamma': { type: 'range', min: 0.4, max: 2.5, step: 0.01, precision: 2 },
   'expTone.ink.toneJitter': { type: 'range', min: 0, max: 0.6, step: 0.01, precision: 2 },
-  'expTone.ribbon.amp': { type: 'range', min: 0, max: 0.5, step: 0.01, precision: 2 },
-  'expTone.ribbon.period': { type: 'range', min: 3, max: 30, step: 0.5, precision: 2 },
-  'expTone.ribbon.sharp': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expTone.bias.vertical': { type: 'range', min: -1, max: 1, step: 0.01, precision: 2 },
-  'expTone.bias.amount': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expTone.centerEdge.center': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expTone.centerEdge.edge': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expTone.ribbon.height': { type: 'range', min: 0.05, max: 1, step: 0.01, precision: 2 },
+  'expTone.ribbon.position': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expTone.ribbon.delta': { type: 'range', min: -0.5, max: 0.5, step: 0.01, precision: 2 },
+  'expTone.ribbon.fade': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expTone.ribbon.wobble': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expTone.noise.lfScale': { type: 'range', min: 8, max: 40, step: 0.5, precision: 2 },
+  'expEdge.centerEdge.center': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.centerEdge.edge': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expEdge.ink.rim': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
   'expEdge.ink.rimCurve': { type: 'range', min: 0.4, max: 3, step: 0.01, precision: 2 },
   'expEdge.edgeFuzz.opacity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.edgeFuzz.inBand': { type: 'range', min: 0, max: 24, step: 0.25, precision: 2 },
-  'expEdge.edgeFuzz.outBand': { type: 'range', min: 0, max: 24, step: 0.25, precision: 2 },
+  'expEdge.edgeFuzz.inBand': { type: 'range', min: 0, max: 4, step: 0.01, precision: 2 },
+  'expEdge.edgeFuzz.outBand': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
   'expEdge.edgeFuzz.rough': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expEdge.edgeFuzz.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
   'expEdge.edgeFuzz.mix': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expGrain.ink.mottling': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
-  'expGrain.ink.speckDark': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expGrain.ink.speckLight': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.counterFill.transparency': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.counterFill.fill': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
+  'expEdge.counterFill.coverage': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.counterFill.noise': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.fuzzExp.thicken': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
+  'expEdge.fuzzExp.patchFill': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.centerEdge.thicken': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
+  'expEdge.centerEdge.patchFill': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expEdge.centerEdge.patchSize': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expGrain.ink.mottling': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
+  'expGrain.ink.speckDark': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
+  'expGrain.ink.speckLight': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
   'expGrain.ink.speckGrayBias': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expDefects.dropouts.amount': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
-  'expDefects.dropouts.width': { type: 'range', min: 0, max: 12, step: 0.25, precision: 2 },
-  'expDefects.dropouts.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
-  'expDefects.dropouts.pinhole': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expDefects.dropouts.streakDensity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expDefects.dropouts.pinholeWeight': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expGrain.dropouts.amount': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
+  'expGrain.dropouts.width': { type: 'range', min: 0, max: 5, step: 0.01, precision: 2 },
+  'expGrain.dropouts.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
+  'expGrain.dropouts.pinhole': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expGrain.dropouts.streakDensity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'expGrain.dropouts.pinholeWeight': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
   'expDefects.smudge.strength': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
-  'expDefects.smudge.radius': { type: 'range', min: 0, max: 32, step: 0.25, precision: 2 },
+  'expDefects.smudge.radius': { type: 'range', min: 0, max: 15, step: 0.25, precision: 2 },
   'expDefects.smudge.falloff': { type: 'range', min: 0, max: 4, step: 0.01, precision: 2 },
   'expDefects.smudge.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
   'expDefects.smudge.density': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
@@ -96,270 +77,224 @@ function getInputOverride(sectionId, path) {
   return override;
 }
 
-function resolveIntensityConfig(key) {
-  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
-  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
-  const max = Number.isFinite(source?.maxPct) ? Math.max(source.maxPct, min) : Math.max(200, min);
-  const defaultPct = Number.isFinite(source?.defaultPct) ? source.defaultPct : 100;
-  return {
-    min,
-    max,
-    defaultPct: clamp(defaultPct, min, max),
-  };
-}
+// Classic fill helpers have been removed; experimental sections manage their own config.
 
-const CENTER_THICKEN_LIMITS = resolveIntensityConfig('centerThicken');
-const EDGE_THIN_LIMITS = resolveIntensityConfig('edgeThin');
-
-const FILL_CFG = {
-  enabled: true,
-  centerThickenPct: CENTER_THICKEN_LIMITS.defaultPct,
-  edgeThinPct: EDGE_THIN_LIMITS.defaultPct,
-};
-
-const EXPERIMENTAL_EFFECTS_CONFIG = {
-  enable: {
-    toneCore: true,
-    vBias: true,
-    rim: false,
-    centerEdge: false,
-    grainSpeck: true,
-    dropouts: true,
-    edgeFuzz: true,
-    smudge: true,
-    punch: true,
-  },
-  ink: {
-    pressureMid: 0.53,
-    pressureVar: 0.22,
-    inkGamma: 0.94,
-    toneJitter: 0.2,
-    rim: 0.27,
-    rimCurve: 2.21,
-    mottling: 0.11,
-    speckDark: 0.9,
-    speckLight: 0.62,
-    speckGrayBias: 0.51,
-  },
-  ribbon: {
-    amp: 0.1,
-    period: 8.5,
-    sharp: 0.15,
-    phase: 0,
-  },
-  bias: {
-    vertical: -0.84,
-    amount: 0.36,
-  },
-  noise: {
-    lfScale: 22,
-    hfScale: 1,
-  },
-  centerEdge: {
-    center: 0.28,
-    edge: 0,
-  },
-  dropouts: {
-    amount: 0.9,
-    width: 1.75,
-    scale: 16,
-    pinhole: 0.1,
-    streakDensity: 0.2,
-    pinholeWeight: 0.34,
-  },
-  edgeFuzz: {
-    opacity: 0.23,
-    inBand: 2,
-    outBand: 0.5,
-    rough: 0.63,
-    scale: 6,
-    mix: 0.38,
-  },
-  smudge: {
-    strength: 0.21,
-    radius: 6.75,
-    falloff: 1.39,
-    scale: 24,
-    density: 0.33,
-    dirDeg: 300,
-    spread: 0.16,
-  },
-  punch: {
-    chance: 0.26,
-    count: 1,
-    rMin: 0.004,
-    rMax: 0.082,
-    edgeBias: 0.8,
-    soft: 0.295,
-    intensity: 0.96,
-  },
-};
+const EXPERIMENTAL_EFFECTS_CONFIG = cloneDefaultExperimentalConfig();
 
 const EXP_TONE_KEYS = [
-  { path: 'enable.toneCore', label: 'Enable tone core' },
-  { path: 'ink.pressureMid', label: 'Pressure mid' },
-  { path: 'ink.pressureVar', label: 'Pressure variance' },
-  { path: 'ink.inkGamma', label: 'Ink gamma' },
-  { path: 'ink.toneJitter', label: 'Tone jitter' },
-  { path: 'ribbon.amp', label: 'Ribbon amplitude' },
-  { path: 'ribbon.period', label: 'Ribbon period' },
-  { path: 'ribbon.sharp', label: 'Ribbon sharpness' },
-  { path: 'enable.vBias', label: 'Enable vertical bias' },
-  { path: 'bias.vertical', label: 'Vertical bias' },
-  { path: 'bias.amount', label: 'Bias amount' },
-  { path: 'enable.centerEdge', label: 'Enable center/edge shaping' },
-  { path: 'centerEdge.center', label: 'Center boost' },
-  { path: 'centerEdge.edge', label: 'Edge boost' },
+  { path: 'enable.toneDynamics', label: 'Variations' },
+  { path: 'ink.pressureMid', label: 'Pressure' },
+  { path: 'ink.pressureVar', label: 'Variance' },
+  { path: 'ink.inkGamma', label: 'Gamma' },
+  { path: 'ink.toneJitter', label: 'Jitter' },
+  { path: 'noise.lfScale', label: 'Scale' },
+  { path: 'enable.ribbonBands', label: 'Ribbon' },
+  { path: 'ribbon.height', label: 'Height' },
+  { path: 'ribbon.position', label: 'Position' },
+  { path: 'ribbon.delta', label: 'Shift' },
+  { path: 'ribbon.fade', label: 'Fade' },
+  { path: 'ribbon.wobble', label: 'Wobble' },
 ];
 
 const EXP_EDGE_KEYS = [
-  { path: 'enable.rim', label: 'Enable rim lighting' },
-  { path: 'ink.rim', label: 'Rim strength' },
-  { path: 'ink.rimCurve', label: 'Rim curve' },
-  { path: 'enable.edgeFuzz', label: 'Enable edge fuzz' },
-  { path: 'edgeFuzz.opacity', label: 'Edge fuzz opacity' },
-  { path: 'edgeFuzz.inBand', label: 'Inner fuzz band (px)' },
-  { path: 'edgeFuzz.outBand', label: 'Outer fuzz band (px)' },
-  { path: 'edgeFuzz.rough', label: 'Fuzz roughness' },
-  { path: 'edgeFuzz.scale', label: 'Fuzz scale (px)' },
-  { path: 'edgeFuzz.mix', label: 'Fuzz mix' },
+  { path: 'enable.rim', label: 'Rim' },
+  { path: 'ink.rim', label: 'Strength' },
+  { path: 'ink.rimCurve', label: 'Curve' },
+  { path: 'enable.edgeFuzz', label: 'Fuzz' },
+  { path: 'edgeFuzz.opacity', label: 'Opacity' },
+  { path: 'edgeFuzz.inBand', label: 'Inner' },
+  { path: 'edgeFuzz.outBand', label: 'Outer' },
+  { path: 'edgeFuzz.rough', label: 'Roughness' },
+  { path: 'edgeFuzz.scale', label: 'Scale' },
+  { path: 'edgeFuzz.mix', label: 'Mix' },
+  { path: 'enable.counterFill', label: 'Enable' },
+  { path: 'counterFill.transparency', label: 'Opacity' },
+  { path: 'counterFill.fill', label: 'Fill' },
+  { path: 'counterFill.coverage', label: 'Coverage' },
+  { path: 'counterFill.noise', label: 'Noise' },
+  { path: 'fuzzExp', label: 'Grain' },
+  { path: 'enable.centerEdge', label: 'Weight' },
+  { path: 'centerEdge.center', label: 'Center' },
+  { path: 'centerEdge.edge', label: 'Thinning' },
+  { path: 'centerEdge.thicken', label: 'Thickening' },
+  { path: 'centerEdge.patchFill', label: 'Coverage' },
+  { path: 'centerEdge.patchSize', label: 'Scale' },
 ];
 
+const EXP_EDGE_LABELS = {
+  fuzzExp: 'Grain',
+  'fuzzExp.thicken': 'Thicken',
+  'fuzzExp.patchFill': 'Fill',
+};
+
 const EXP_GRAIN_KEYS = [
-  { path: 'enable.grainSpeck', label: 'Enable grain speckle' },
+  { path: 'enable.grainSpeck', label: 'Speckle' },
   { path: 'ink.mottling', label: 'Mottling' },
-  { path: 'ink.speckDark', label: 'Dark specks' },
-  { path: 'ink.speckLight', label: 'Light specks' },
-  { path: 'ink.speckGrayBias', label: 'Speck gray bias' },
+  { path: 'ink.speckDark', label: 'Dark' },
+  { path: 'ink.speckLight', label: 'Light' },
+  { path: 'ink.speckGrayBias', label: 'Gray bias' },
+  { path: 'enable.dropouts', label: 'Dropouts' },
+  { path: 'dropouts.amount', label: 'Amount' },
+  { path: 'dropouts.width', label: 'Width' },
+  { path: 'dropouts.scale', label: 'Scale' },
+  { path: 'dropouts.pinhole', label: 'Pinholes' },
+  { path: 'dropouts.streakDensity', label: 'Streaks' },
+  { path: 'dropouts.pinholeWeight', label: 'Mix' },
 ];
 
 const EXP_DEFECT_KEYS = [
-  { path: 'enable.dropouts', label: 'Enable dropouts' },
-  { path: 'dropouts.amount', label: 'Dropout amount' },
-  { path: 'dropouts.width', label: 'Dropout width (px)' },
-  { path: 'dropouts.scale', label: 'Dropout scale (px)' },
-  { path: 'dropouts.pinhole', label: 'Pinhole density' },
-  { path: 'dropouts.streakDensity', label: 'Streak density' },
-  { path: 'dropouts.pinholeWeight', label: 'Pinhole weight' },
-  { path: 'enable.smudge', label: 'Enable smudge halo' },
-  { path: 'smudge.strength', label: 'Smudge strength' },
-  { path: 'smudge.radius', label: 'Smudge radius (px)' },
-  { path: 'smudge.falloff', label: 'Smudge falloff' },
-  { path: 'smudge.scale', label: 'Smudge scale (px)' },
-  { path: 'smudge.density', label: 'Smudge density' },
-  { path: 'smudge.dirDeg', label: 'Smudge direction (deg)' },
-  { path: 'smudge.spread', label: 'Smudge spread' },
-  { path: 'enable.punch', label: 'Enable punch defects' },
-  { path: 'punch.chance', label: 'Punch chance' },
-  { path: 'punch.count', label: 'Punch count' },
-  { path: 'punch.rMin', label: 'Punch size min' },
-  { path: 'punch.rMax', label: 'Punch size max' },
+  { path: 'enable.smudge', label: 'Smudge halo' },
+  { path: 'smudge.strength', label: 'Strength' },
+  { path: 'smudge.radius', label: 'Radius' },
+  { path: 'smudge.falloff', label: 'Falloff' },
+  { path: 'smudge.scale', label: 'Scale' },
+  { path: 'smudge.density', label: 'Density' },
+  { path: 'smudge.dirDeg', label: 'Direction' },
+  { path: 'smudge.spread', label: 'Spread' },
+  { path: 'enable.punch', label: 'Punch defects' },
+  { path: 'punch.chance', label: 'Chance' },
+  { path: 'punch.count', label: 'Count' },
+  { path: 'punch.rMin', label: 'Size min' },
+  { path: 'punch.rMax', label: 'Size max' },
   { path: 'punch.edgeBias', label: 'Edge bias' },
-  { path: 'punch.soft', label: 'Punch softness' },
-  { path: 'punch.intensity', label: 'Punch intensity' },
+  { path: 'punch.soft', label: 'Softness' },
+  { path: 'punch.intensity', label: 'Brightness' },
 ];
 
 const SECTION_DEFS = [
   {
-    id: 'fill',
-    label: 'Fill',
-    mode: 'classic',
-    config: FILL_CFG,
-    keyOrder: [
-      { path: 'centerThickenPct', label: 'Center thickening' },
-      { path: 'edgeThinPct', label: 'Edge thinning' },
-    ],
-    trigger: 'glyph',
-    stateKey: 'inkFillStrength',
-    defaultStrength: 100,
-  },
-  {
-    id: 'texture',
-    label: 'Texture',
-    mode: 'classic',
-    config: INK_TEXTURE,
-    keyOrder: ['supersample', 'coarseNoise', 'fineNoise', 'noiseSmoothing', 'centerEdgeBias', 'noiseFloor', 'chip', 'scratch', 'jitterSeed'],
-    trigger: 'glyph',
-    stateKey: 'inkTextureStrength',
-    defaultStrength: INK_TEXTURE.enabled === false ? 0 : 100,
-  },
-  {
-    id: 'fuzz',
-    label: 'Edge Fuzz',
-    mode: 'classic',
-    config: EDGE_FUZZ,
-    keyOrder: ['inks', 'widthPx', 'inwardShare', 'roughness', 'frequency', 'opacity', 'seed'],
-    trigger: 'glyph',
-    stateKey: 'edgeFuzzStrength',
-    defaultStrength: 100,
-  },
-  {
-    id: 'bleed',
-    label: 'Bleed',
-    mode: 'classic',
-    config: EDGE_BLEED,
-    keyOrder: ['inks', 'widthPx', 'feather', 'lightnessShift', 'noiseRoughness', 'intensity', 'seed'],
-    trigger: 'glyph',
-    stateKey: 'edgeBleedStrength',
-    defaultStrength: EDGE_BLEED.enabled === false ? 0 : 100,
-  },
-  {
-    id: 'grain',
-    label: 'Grain',
-    mode: 'classic',
-    config: GRAIN_CFG,
-    keyOrder: ['scale', 'gamma', 'opacity', 'blend_mode', 'tile', 'base_scale_from_char_w', 'octave_rel_scales', 'octave_weights', 'pixel_hash_weight', 'alpha', 'seeds'],
-    trigger: 'grain',
-    stateKey: 'grainPct',
-    defaultStrength: 0,
-  },
-  {
     id: 'expTone',
-    label: 'Experimental tone & ribbon',
+    label: 'Tone',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_TONE_KEYS,
     trigger: 'glyph',
-    stateKey: null,
-    defaultStrength: 100,
+    stateKey: 'expToneStrength',
+    defaultStrength: getDefaultInkSectionStrength('expTone'),
   },
   {
     id: 'expEdge',
-    label: 'Experimental edge shaping',
+    label: 'Edge',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_EDGE_KEYS,
+    labels: EXP_EDGE_LABELS,
     trigger: 'glyph',
-    stateKey: null,
-    defaultStrength: 100,
+    stateKey: 'expEdgeStrength',
+    defaultStrength: getDefaultInkSectionStrength('expEdge'),
   },
   {
     id: 'expGrain',
-    label: 'Experimental texture',
+    label: 'Texture',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_GRAIN_KEYS,
     trigger: 'glyph',
-    stateKey: null,
-    defaultStrength: 100,
+    stateKey: 'expGrainStrength',
+    defaultStrength: getDefaultInkSectionStrength('expGrain'),
   },
   {
     id: 'expDefects',
-    label: 'Experimental defects',
+    label: 'Defects',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: EXP_DEFECT_KEYS,
     trigger: 'glyph',
-    stateKey: null,
-    defaultStrength: 100,
+    stateKey: 'expDefectsStrength',
+    defaultStrength: getDefaultInkSectionStrength('expDefects'),
   },
 ];
 
-const DEFAULT_SECTION_ORDER = SECTION_DEFS.map(def => def.id);
+const EFFECT_QUALITY_DEFAULT = 100;
+const EFFECT_QUALITY_MIN = 0;
+const EFFECT_QUALITY_MAX = 200;
+
+const EFFECT_SCALE_DEFAULT = 100;
+const EFFECT_SCALE_MIN = 0;
+const EFFECT_SCALE_MAX = 200;
+
+const SECTION_QUALITY_CONFIG = Object.freeze({
+  expTone: {
+    stateKey: 'expToneQuality',
+    label: 'Quality',
+    defaultValue: getDefaultInkSectionQuality('expTone'),
+  },
+  expEdge: {
+    stateKey: 'expEdgeQuality',
+    label: 'Quality',
+    defaultValue: getDefaultInkSectionQuality('expEdge'),
+  },
+  expGrain: {
+    stateKey: 'expGrainQuality',
+    label: 'Quality',
+    defaultValue: getDefaultInkSectionQuality('expGrain'),
+  },
+  expDefects: {
+    stateKey: 'expDefectsQuality',
+    label: 'Quality',
+    defaultValue: getDefaultInkSectionQuality('expDefects'),
+  },
+});
+
+const SECTION_SCALE_CONFIG = Object.freeze({
+  expTone: {
+    stateKey: 'expToneScale',
+    label: 'Scale',
+    defaultValue: EFFECT_SCALE_DEFAULT,
+  },
+  expEdge: {
+    stateKey: 'expEdgeScale',
+    label: 'Scale',
+    defaultValue: EFFECT_SCALE_DEFAULT,
+  },
+  expGrain: {
+    stateKey: 'expGrainScale',
+    label: 'Scale',
+    defaultValue: EFFECT_SCALE_DEFAULT,
+  },
+  expDefects: {
+    stateKey: 'expDefectsScale',
+    label: 'Scale',
+    defaultValue: EFFECT_SCALE_DEFAULT,
+  },
+});
+
+const SUBGROUP_CONFIG = {
+  expTone: [
+    { id: 'variations', label: 'Variations', paths: ['enable.toneDynamics', 'ink.pressureMid', 'ink.pressureVar', 'ink.inkGamma', 'ink.toneJitter', 'noise.lfScale'] },
+    { id: 'ribbon', label: 'Ribbon', paths: ['enable.ribbonBands', 'ribbon.height', 'ribbon.position', 'ribbon.delta', 'ribbon.fade', 'ribbon.wobble'] },
+  ],
+  expEdge: [
+    { id: 'rim', label: 'Rim', paths: ['enable.rim', 'ink.rim', 'ink.rimCurve'] },
+    { id: 'fuzz', label: 'Fuzz', paths: ['enable.edgeFuzz', 'edgeFuzz.opacity', 'edgeFuzz.inBand', 'edgeFuzz.outBand', 'edgeFuzz.rough', 'edgeFuzz.scale', 'edgeFuzz.mix'] },
+    { id: 'counterFill', label: 'Counter fill', paths: ['enable.counterFill', 'counterFill.transparency', 'counterFill.fill', 'counterFill.coverage', 'counterFill.noise'] },
+    { id: 'grain', label: 'Grain', paths: ['fuzzExp.enable', 'fuzzExp.thicken', 'fuzzExp.patchFill'] },
+    { id: 'weight', label: 'Weight', paths: ['enable.centerEdge', 'centerEdge.center', 'centerEdge.edge', 'centerEdge.thicken', 'centerEdge.patchFill', 'centerEdge.patchSize'] },
+  ],
+  expGrain: [
+    { id: 'speckle', label: 'Speckle', paths: ['enable.grainSpeck', 'ink.mottling', 'ink.speckDark', 'ink.speckLight', 'ink.speckGrayBias'] },
+    { id: 'dropouts', label: 'Dropouts', paths: ['enable.dropouts', 'dropouts.amount', 'dropouts.width', 'dropouts.scale', 'dropouts.pinhole', 'dropouts.streakDensity', 'dropouts.pinholeWeight'] },
+  ],
+  expDefects: [
+    { id: 'smudge', label: 'Smudge halo', paths: ['enable.smudge', 'smudge.strength', 'smudge.radius', 'smudge.falloff', 'smudge.scale', 'smudge.density', 'smudge.dirDeg', 'smudge.spread'] },
+    { id: 'punch', label: 'Punch defects', paths: ['enable.punch', 'punch.chance', 'punch.count', 'punch.rMin', 'punch.rMax', 'punch.edgeBias', 'punch.soft', 'punch.intensity'] },
+  ],
+};
+
+const VISIBLE_SECTION_DEFS = SECTION_DEFS.filter(def => !def.hidden);
+const DEFAULT_SECTION_ORDER = VISIBLE_SECTION_DEFS.map(def => def.id);
 const SECTION_DEF_MAP = SECTION_DEFS.reduce((acc, def) => {
   acc[def.id] = def;
   return acc;
 }, {});
+const SECTION_STATE_KEY_MAP = SECTION_DEFS.reduce((acc, def) => {
+  if (def.stateKey) {
+    acc[def.id] = def.stateKey;
+  }
+  return acc;
+}, {});
+
+const CURRENT_STYLE_STATE_ID = 'current-style';
 
 function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
   const base = Array.isArray(order) ? order : [];
@@ -369,12 +304,14 @@ function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
     if (typeof id !== 'string') return;
     const trimmed = id.trim();
     if (!trimmed || seen.has(trimmed)) return;
-    if (!Object.prototype.hasOwnProperty.call(SECTION_DEF_MAP, trimmed)) return;
+    const def = SECTION_DEF_MAP[trimmed];
+    if (!def || def.hidden) return;
     seen.add(trimmed);
     normalized.push(trimmed);
   });
   (Array.isArray(fallback) ? fallback : DEFAULT_SECTION_ORDER).forEach(id => {
-    if (!Object.prototype.hasOwnProperty.call(SECTION_DEF_MAP, id)) return;
+    const def = SECTION_DEF_MAP[id];
+    if (!def || def.hidden) return;
     if (seen.has(id)) return;
     seen.add(id);
     normalized.push(id);
@@ -382,85 +319,11 @@ function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
   return normalized;
 }
 
-function normalizeInkEffectsMode(mode) {
-  if (typeof mode !== 'string') return DEFAULT_INK_EFFECT_MODE;
-  const trimmed = mode.trim().toLowerCase();
-  return Object.prototype.hasOwnProperty.call(INK_EFFECT_MODE_LABELS, trimmed)
-    ? trimmed
-    : DEFAULT_INK_EFFECT_MODE;
-}
-
-function clampFillPercent(value, limits) {
-  const raw = Number(value);
-  const min = limits?.min ?? 0;
-  const max = limits?.max ?? Math.max(min, 200);
-  if (!Number.isFinite(raw)) {
-    return clamp(limits?.defaultPct ?? 100, min, max);
-  }
-  return clamp(Math.round(raw), min, max);
-}
-
-function normalizeFillConfig(config, styleFallback = {}) {
-  const src = config && typeof config === 'object' ? config : {};
-  const fallback = styleFallback && typeof styleFallback === 'object' ? styleFallback : {};
-  const centerFallbacks = [
-    src.centerThicken,
-    src.centerThickenPct,
-    fallback.centerThicken,
-    fallback.centerThickenPct,
-  ];
-  const edgeFallbacks = [
-    src.edgeThin,
-    src.edgeThinPct,
-    fallback.edgeThin,
-    fallback.edgeThinPct,
-  ];
-  const resolveValue = (candidates, limits) => {
-    for (const candidate of candidates) {
-      const num = Number(candidate);
-      if (Number.isFinite(num)) {
-        return clampFillPercent(num, limits);
-      }
-    }
-    return clampFillPercent(limits.defaultPct, limits);
-  };
-  const centerThickenPct = resolveValue(centerFallbacks, CENTER_THICKEN_LIMITS);
-  const edgeThinPct = resolveValue(edgeFallbacks, EDGE_THIN_LIMITS);
-  return {
-    enabled: src.enabled === false ? false : true,
-    centerThickenPct,
-    edgeThinPct,
-  };
-}
-
-function syncFillConfigValues() {
-  FILL_CFG.centerThickenPct = getCenterThickenPercent();
-  FILL_CFG.edgeThinPct = getEdgeThinPercent();
-  FILL_CFG.enabled = getFillStrengthPercent() > 0;
-}
-
-function applyFillConfigToState(config, options = {}) {
-  if (!config || typeof config !== 'object') return;
-  const { silent = false } = options;
-  if (Number.isFinite(Number(config.centerThickenPct))) {
-    setCenterThickenPercent(config.centerThickenPct, { silent: true, updateConfig: false });
-  }
-  if (Number.isFinite(Number(config.edgeThinPct))) {
-    setEdgeThinPercent(config.edgeThinPct, { silent: true, updateConfig: false });
-  }
-  if (!silent) {
-    syncFillConfigValues();
-    scheduleGlyphRefresh();
-    persistPanelState();
-  }
-}
-
 const panelState = {
   appState: null,
   app: null,
   callbacks: {
     refreshGlyphs: null,
-    refreshGrain: null,
   },
   metas: [],
   initialized: false,
@@ -468,7 +331,6 @@ const panelState = {
   overallSlider: null,
   overallNumberInput: null,
   pendingGlyphRAF: 0,
-  pendingGrainRAF: 0,
   pendingGlyphOptions: null,
   styleNameInput: null,
   saveStyleButton: null,
@@ -477,12 +339,112 @@ const panelState = {
   exportButton: null,
   importButton: null,
   importInput: null,
+  resetButton: null,
+  randomizeButton: null,
+  lockState: {
+    groups: {},
+    quality: {},
+    scale: {},
+  },
   sectionsRoot: null,
   sectionOrder: DEFAULT_SECTION_ORDER.slice(),
   dragState: null,
-  modeRadios: [],
-  currentMode: DEFAULT_INK_EFFECT_MODE,
+  persistDepth: 0,
 };
+
+function lockKey(metaId, path) {
+  return `${metaId || 'unknown'}:${path || 'root'}`;
+}
+
+function setGroupLocked(meta, path, locked) {
+  if (!meta || !path) return;
+  const key = lockKey(meta.id, path);
+  panelState.lockState.groups[key] = !!locked;
+  const groupEl = meta.groupElements?.get(path);
+  if (groupEl) {
+    groupEl.classList.toggle('is-locked', !!locked);
+    const lockBtn = groupEl.querySelector('.ink-lock-toggle');
+    if (lockBtn) {
+      lockBtn.dataset.locked = locked ? '1' : '0';
+      lockBtn.textContent = locked ? '🔒' : '🔓';
+      lockBtn.setAttribute('aria-pressed', locked ? 'true' : 'false');
+      const labelText = lockBtn.getAttribute('title')?.replace(/^(Lock|Unlock)\s+/i, '') || '';
+      lockBtn.setAttribute('aria-label', `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim());
+      lockBtn.title = `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim();
+    }
+    groupEl.querySelectorAll('input, select, textarea, button').forEach(el => {
+      if (el.classList.contains('ink-lock-toggle')) return;
+      el.disabled = !!locked;
+      if (locked) el.blur();
+    });
+  }
+}
+
+function isGroupLocked(meta, path) {
+  if (!meta || !path) return false;
+  const key = lockKey(meta.id, path);
+  return !!panelState.lockState.groups[key];
+}
+
+function setQualityLocked(meta, locked) {
+  if (!meta) return;
+  const key = lockKey(meta.id, 'quality');
+  panelState.lockState.quality[key] = !!locked;
+  const qc = meta.qualityControl;
+  if (qc) {
+    qc.wrapper.classList.toggle('is-locked', !!locked);
+    const lockBtn = qc.wrapper.querySelector('.ink-lock-toggle');
+    if (lockBtn) {
+      lockBtn.dataset.locked = locked ? '1' : '0';
+      lockBtn.textContent = locked ? '🔒' : '🔓';
+      lockBtn.setAttribute('aria-pressed', locked ? 'true' : 'false');
+      const labelText = lockBtn.getAttribute('title')?.replace(/^(Lock|Unlock)\s+/i, '') || qc.wrapper.dataset.lockLabel || 'Quality';
+      lockBtn.setAttribute('aria-label', `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim());
+      lockBtn.title = `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim();
+    }
+    [qc.slider, qc.numberInput].forEach(input => {
+      if (!input) return;
+      input.disabled = !!locked;
+      if (locked) input.blur();
+    });
+  }
+}
+
+function isQualityLocked(meta) {
+  if (!meta) return false;
+  const key = lockKey(meta.id, 'quality');
+  return !!panelState.lockState.quality[key];
+}
+
+function setScaleLocked(meta, locked) {
+  if (!meta) return;
+  const key = lockKey(meta.id, 'scale');
+  panelState.lockState.scale[key] = !!locked;
+  const sc = meta.scaleControl;
+  if (sc) {
+    sc.wrapper.classList.toggle('is-locked', !!locked);
+    const lockBtn = sc.wrapper.querySelector('.ink-lock-toggle');
+    if (lockBtn) {
+      lockBtn.dataset.locked = locked ? '1' : '0';
+      lockBtn.textContent = locked ? '🔒' : '🔓';
+      lockBtn.setAttribute('aria-pressed', locked ? 'true' : 'false');
+      const labelText = lockBtn.getAttribute('title')?.replace(/^(Lock|Unlock)\s+/i, '') || sc.wrapper.dataset.lockLabel || 'Scale';
+      lockBtn.setAttribute('aria-label', `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim());
+      lockBtn.title = `${locked ? 'Unlock' : 'Lock'} ${labelText}`.trim();
+    }
+    [sc.slider, sc.numberInput].forEach(input => {
+      if (!input) return;
+      input.disabled = !!locked;
+      if (locked) input.blur();
+    });
+  }
+}
+
+function isScaleLocked(meta) {
+  if (!meta) return false;
+  const key = lockKey(meta.id, 'scale');
+  return !!panelState.lockState.scale[key];
+}
 
 const HEX_MATCH_RE = /seed|hash/i;
 const STYLE_NAME_MAX_LEN = 60;
@@ -510,6 +472,25 @@ function deepCloneValue(value) {
     return clone;
   }
   return value;
+}
+
+function extractDropoutsConfig(source) {
+  if (!source || typeof source !== 'object') return null;
+  const config = source.config != null
+    ? source.config
+    : source.settings != null
+      ? source.settings
+      : source;
+  const dropouts = config && typeof config === 'object' && config.dropouts && typeof config.dropouts === 'object'
+    ? deepCloneValue(config.dropouts)
+    : null;
+  const enabled = config && typeof config.enable === 'object' && typeof config.enable.dropouts === 'boolean'
+    ? config.enable.dropouts
+    : null;
+  if (dropouts || enabled !== null) {
+    return { dropouts, enabled };
+  }
+  return null;
 }
 
 function sanitizeStyleName(name) {
@@ -553,54 +534,45 @@ function normalizeStyleRecord(style, index = 0) {
       id: typeof style?.id === 'string' && style.id.trim() ? style.id.trim() : generateStyleId(),
       name: sanitizeStyleName(style?.name) || `Style ${index + 1}`,
       overall: clamp(Math.round(Number(style?.overall ?? 100)), 0, 100),
-      centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
-      edgeThin: EDGE_THIN_LIMITS.defaultPct,
       sections: {},
       sectionOrder: normalizeSectionOrder(style?.sectionOrder),
     };
-    record.inkEffectsMode = normalizeInkEffectsMode(style?.inkEffectsMode ?? style?.effectsMode);
     SECTION_DEFS.forEach(def => {
       const rawSection = style?.sections && typeof style.sections === 'object'
         ? style.sections[def.id]
         : (style && typeof style === 'object' && typeof style[def.id] === 'object' ? style[def.id] : null);
       const section = rawSection && typeof rawSection === 'object' ? rawSection : {};
-      if (def.id === 'fill') {
-        const legacyFill = style && typeof style.fill === 'object' ? style.fill : null;
-        const fillSource = section && Object.keys(section).length ? section : (legacyFill || {});
-        const rawStrength = fillSource?.strength ?? style?.fillStrength ?? legacyFill?.value ?? legacyFill?.percent;
-        const strength = clamp(Math.round(Number.isFinite(Number(rawStrength)) ? Number(rawStrength) : def.defaultStrength ?? 100), 0, 100);
-        const configCandidate = fillSource?.config != null
-          ? fillSource.config
-          : fillSource?.settings != null
-            ? fillSource.settings
-            : ('strength' in fillSource ? null : fillSource);
-        const normalizedFill = normalizeFillConfig(configCandidate, style);
-        normalizedFill.enabled = normalizedFill.enabled && strength > 0;
-        record.centerThicken = normalizedFill.centerThickenPct;
-        record.edgeThin = normalizedFill.edgeThinPct;
-        record.fillStrength = strength;
-        record.sections[def.id] = {
-          strength,
-          config: deepCloneValue(normalizedFill),
-        };
-        return;
-      }
       const strength = clamp(Math.round(Number(section?.strength ?? def.defaultStrength ?? 0)), 0, 100);
       let configSource = section.config != null
         ? section.config
         : section.settings != null
           ? section.settings
           : ('strength' in section ? def.config : section);
-      if (def.id === 'texture') {
-        configSource = normalizeInkTextureConfig(configSource);
-      } else if (def.id === 'bleed') {
-        configSource = normalizeEdgeBleedConfig(configSource);
-      }
       record.sections[def.id] = {
         strength,
         config: deepCloneValue(configSource == null ? def.config : configSource),
       };
+      if (SECTION_QUALITY_CONFIG[def.id]) {
+        const defaultQuality = getDefaultInkSectionQuality(def.id);
+        record.sections[def.id].quality = clampQualityValue(
+          section?.quality ?? defaultQuality,
+          defaultQuality,
+        );
+      }
     });
+    const legacyDropouts = extractDropoutsConfig(style?.sections?.expDefects || style?.expDefects);
+    if (legacyDropouts) {
+      const textureSection = record.sections.expGrain;
+      if (legacyDropouts.dropouts) {
+        textureSection.config.dropouts = legacyDropouts.dropouts;
+      }
+      if (legacyDropouts.enabled !== null) {
+        textureSection.config.enable = {
+          ...(textureSection.config.enable || {}),
+          dropouts: legacyDropouts.enabled,
+        };
+      }
+    }
     return record;
   } catch (error) {
     if (typeof console !== 'undefined' && typeof console.error === 'function') {
@@ -615,12 +587,8 @@ function createDefaultStyleRecord(index = 0) {
     id: generateStyleId(),
     name: index === 0 ? 'Current style' : `Style ${index + 1}`,
     overall: 100,
-    fillStrength: 100,
-    centerThicken: CENTER_THICKEN_LIMITS.defaultPct,
-    edgeThin: EDGE_THIN_LIMITS.defaultPct,
     sections: {},
     sectionOrder: DEFAULT_SECTION_ORDER.slice(),
-    inkEffectsMode: DEFAULT_INK_EFFECT_MODE,
   };
   SECTION_DEFS.forEach(def => {
     record.sections[def.id] = {
@@ -629,6 +597,12 @@ function createDefaultStyleRecord(index = 0) {
     };
   });
   return record;
+}
+
+const DEFAULT_STYLE_SNAPSHOT = createDefaultStyleRecord(0);
+
+function cloneDefaultStyleSnapshot() {
+  return deepCloneValue(DEFAULT_STYLE_SNAPSHOT);
 }
 
 function getSavedStyles() {
@@ -659,14 +633,10 @@ function createStyleSnapshot(name, existingId = null) {
     id: existingId || generateStyleId(),
     name,
     overall: getPercentFromState('effectsOverallStrength', 100),
-    fillStrength: getFillStrengthPercent(),
-    centerThicken: getCenterThickenPercent(),
-    edgeThin: getEdgeThinPercent(),
     sections: {},
     sectionOrder: Array.isArray(panelState.sectionOrder)
       ? panelState.sectionOrder.slice()
       : DEFAULT_SECTION_ORDER.slice(),
-    inkEffectsMode: getInkEffectsModeFromState(),
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
@@ -674,10 +644,15 @@ function createStyleSnapshot(name, existingId = null) {
     const strengthValue = def.stateKey
       ? getPercentFromState(def.stateKey, def.defaultStrength ?? 0)
       : (Number.isFinite(def.defaultStrength) ? def.defaultStrength : 100);
-    base.sections[def.id] = {
+    const sectionRecord = {
       strength: strengthValue,
       config: deepCloneValue(configSource),
     };
+    if (SECTION_QUALITY_CONFIG[def.id]) {
+      const defaultQuality = getDefaultInkSectionQuality(def.id);
+      sectionRecord.quality = getSectionQualityPercent(def.id, defaultQuality);
+    }
+    base.sections[def.id] = sectionRecord;
   });
   return normalizeStyleRecord(base);
 }
@@ -860,20 +835,10 @@ function getAppState() {
   return panelState.appState;
 }
 
-function getInkEffectsModeFromState() {
+function getCurrentStyleFromState() {
   const appState = getAppState();
-  if (!appState) return DEFAULT_INK_EFFECT_MODE;
-  const mode = normalizeInkEffectsMode(appState.inkEffectsMode);
-  appState.inkEffectsMode = mode;
-  return mode;
-}
-
-function setInkEffectsModeOnState(mode) {
-  const appState = getAppState();
-  if (!appState) return DEFAULT_INK_EFFECT_MODE;
-  const normalized = normalizeInkEffectsMode(mode);
-  appState.inkEffectsMode = normalized;
-  return normalized;
+  if (!appState || !appState.currentInkStyle) return null;
+  return normalizeStyleRecord(appState.currentInkStyle, 0);
 }
 
 function getSectionOrderFromState() {
@@ -935,10 +900,12 @@ function applySectionOrder(order, options = {}) {
   reorderMetas(panelState.sectionOrder);
   updateSectionsDomOrder(panelState.sectionOrder);
   if (options.silent !== true) {
-    scheduleGlyphRefresh(true);
+    scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
     scheduleGrainRefresh();
   }
 }
+
+
 
 function clearDragIndicators() {
   const root = panelState.sectionsRoot;
@@ -959,6 +926,13 @@ function endSectionDrag() {
   }
   if (panelState.dragState && panelState.dragState.element) {
     panelState.dragState.element.classList.remove('is-dragging');
+  }
+  // Safety: ensure no stray dragging classes remain on any section
+  if (panelState.sectionsRoot) {
+    const stray = panelState.sectionsRoot.querySelectorAll('.ink-section.is-dragging');
+    for (const el of stray) {
+      el.classList.remove('is-dragging');
+    }
   }
   panelState.dragState = null;
   clearDragIndicators();
@@ -1079,8 +1053,11 @@ function startPointerSectionDrag(event, meta) {
   const upHandler = upEvent => {
     if (!panelState.dragState || panelState.dragState.pointerId !== upEvent.pointerId) return;
     upEvent.preventDefault();
-    commitPointerSectionDrop();
-    endSectionDrag();
+    try {
+      commitPointerSectionDrop();
+    } finally {
+      endSectionDrag();
+    }
   };
 
   const cancelHandler = cancelEvent => {
@@ -1161,6 +1138,128 @@ function setScalarOnState(key, value, min = 0, max = 100) {
   appState[key] = clamp(next, min, max);
 }
 
+function clampQualityValue(value, fallback = EFFECT_QUALITY_DEFAULT) {
+  const safeFallback = Number.isFinite(fallback) ? fallback : EFFECT_QUALITY_DEFAULT;
+  const raw = Number.isFinite(Number(value)) ? Number(value) : safeFallback;
+  const normalized = Number.isFinite(raw) ? raw : safeFallback;
+  return clamp(Math.round(normalized), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
+}
+
+const SECTION_OFF_CHANCE = 0.10;
+const TOGGLE_OFF_CHANCE = 0.20;
+
+function randomBetween(lower, upper, step = null) {
+  const min = Math.min(lower, upper);
+  const max = Math.max(lower, upper);
+  if (max === min) return min;
+  const raw = min + Math.random() * (max - min);
+  if (Number.isFinite(step) && step > 0) {
+    const rounded = Math.round(raw / step) * step;
+    return clamp(rounded, min, max);
+  }
+  return raw;
+}
+
+function deriveNumericBounds(input) {
+  const parsedMin = Number.parseFloat(input?.min);
+  const parsedMax = Number.parseFloat(input?.max);
+  const hasMin = Number.isFinite(parsedMin);
+  const hasMax = Number.isFinite(parsedMax);
+  const base = Number.parseFloat(input?.value);
+  const magnitude = Number.isFinite(base) ? Math.max(Math.abs(base), 1) : 1;
+  let min = hasMin ? parsedMin : (Number.isFinite(base) ? base - magnitude : 0);
+  let max = hasMax ? parsedMax : (Number.isFinite(base) ? base + magnitude : 1);
+  if (hasMin && !hasMax) {
+    max = Math.max(parsedMin + magnitude, parsedMin + Math.max(1, Math.abs(parsedMin)));
+  }
+  if (hasMax && !hasMin) {
+    min = Math.min(parsedMax - magnitude, parsedMax - Math.max(1, Math.abs(parsedMax)));
+  }
+  if (!Number.isFinite(min)) min = 0;
+  if (!Number.isFinite(max)) max = Math.max(min + magnitude, 1);
+  if (max === min) max = min + 1;
+  return { min, max };
+}
+
+function randomizeSingleInput(input, options = {}) {
+  if (!input) return;
+  if (input.dataset.enumOptions) {
+    const optionsList = input.dataset.enumOptions.split('|');
+    const idx = optionsList.length ? Math.floor(Math.random() * optionsList.length) : 0;
+    input.value = String(idx);
+    updateSliderDisplay(input);
+    return;
+  }
+  if (input.type === 'checkbox') {
+    const offChance = Number.isFinite(options.offChance) ? options.offChance : TOGGLE_OFF_CHANCE;
+    input.checked = Math.random() >= offChance;
+    return;
+  }
+  if (input.dataset.hex === '1') {
+    const rand = (Math.random() * 0xFFFFFFFF) >>> 0; // 32-bit seed
+    input.value = toHex(rand);
+    return;
+  }
+  if (input.type === 'range' || input.type === 'number') {
+    const step = Number.parseFloat(input.step);
+    const { min, max } = deriveNumericBounds(input);
+    const value = randomBetween(min, max, Number.isFinite(step) ? Math.abs(step) : null);
+    input.value = String(value);
+    if (input.dataset.slider === '1') updateSliderDisplay(input);
+    return;
+  }
+  if (input.dataset.string === '1') {
+    input.value = Math.random().toString(36).slice(2, 10);
+    return;
+  }
+  input.value = String(randomBetween(0, 1));
+}
+
+function getSectionQualityPercent(sectionId, fallback = EFFECT_QUALITY_DEFAULT) {
+  const cfg = SECTION_QUALITY_CONFIG[sectionId];
+  const defaultValue = Number.isFinite(cfg?.defaultValue) ? cfg.defaultValue : fallback;
+  if (!cfg) return clampQualityValue(defaultValue, defaultValue);
+  return getScalarFromState(
+    cfg.stateKey,
+    clampQualityValue(defaultValue, defaultValue),
+    EFFECT_QUALITY_MIN,
+    EFFECT_QUALITY_MAX,
+  );
+}
+
+function setSectionQualityPercent(sectionId, value) {
+  const cfg = SECTION_QUALITY_CONFIG[sectionId];
+  if (!cfg) return EFFECT_QUALITY_DEFAULT;
+  const normalized = clampQualityValue(value);
+  setScalarOnState(cfg.stateKey, normalized, EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
+  return normalized;
+}
+
+function clampScaleValue(value, fallback = EFFECT_SCALE_DEFAULT) {
+  if (!Number.isFinite(value)) return fallback;
+  return clamp(value, EFFECT_SCALE_MIN, EFFECT_SCALE_MAX);
+}
+
+function getSectionScalePercent(sectionId, fallback = EFFECT_SCALE_DEFAULT) {
+  const cfg = SECTION_SCALE_CONFIG[sectionId];
+  const defaultValue = Number.isFinite(cfg?.defaultValue) ? cfg.defaultValue : fallback;
+  if (!cfg) return clampScaleValue(defaultValue, defaultValue);
+  return getScalarFromState(
+    cfg.stateKey,
+    clampScaleValue(defaultValue, defaultValue),
+    EFFECT_SCALE_MIN,
+    EFFECT_SCALE_MAX,
+  );
+}
+
+function setSectionScalePercent(sectionId, value) {
+  const cfg = SECTION_SCALE_CONFIG[sectionId];
+  if (!cfg) return EFFECT_SCALE_DEFAULT;
+  const normalized = clampScaleValue(value);
+  setScalarOnState(cfg.stateKey, normalized, EFFECT_SCALE_MIN, EFFECT_SCALE_MAX);
+  return normalized;
+}
+
 function normalizedPercent(value) {
   return clamp((Number(value) || 0) / 100, 0, 1);
 }
@@ -1227,15 +1326,76 @@ function formatSliderNumber(value, precision = 2) {
   return text;
 }
 
+function createLockToggle(labelText, onToggle) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ink-lock-toggle';
+  const setState = locked => {
+    btn.dataset.locked = locked ? '1' : '0';
+    btn.textContent = locked ? '🔒' : '🔓';
+    btn.setAttribute('aria-pressed', locked ? 'true' : 'false');
+    btn.setAttribute('aria-label', `${locked ? 'Unlock' : 'Lock'} ${labelText}`);
+    btn.title = `${locked ? 'Unlock' : 'Lock'} ${labelText}`;
+  };
+  btn.addEventListener('click', () => {
+    const next = btn.dataset.locked !== '1';
+    setState(next);
+    if (typeof onToggle === 'function') onToggle(next, btn);
+  });
+  setState(false);
+  return btn;
+}
+
+function tagRowWithGroup(row, groupPath) {
+  if (!row || !groupPath) return;
+  row.dataset.groupPath = groupPath;
+  row.querySelectorAll('input, select, textarea').forEach(el => {
+    if (!el.dataset.groupPath) el.dataset.groupPath = groupPath;
+  });
+}
+
+function ensureSubgroupLocks(meta) {
+  if (!meta?.body) return;
+  const groups = Array.from(meta.body.querySelectorAll('.ink-subgroup'));
+  groups.forEach(group => {
+    const path = group.dataset.groupPath || group.getAttribute('data-group-path') || null;
+    if (path && !meta.groupElements.has(path)) {
+      meta.groupElements.set(path, group);
+    }
+    const heading = group.querySelector('.ink-subheading');
+    if (!heading) return;
+    const hasLock = heading.querySelector('.ink-lock-toggle');
+    const labelText = heading.textContent?.trim() || 'Group';
+    if (!hasLock) {
+      const lock = createLockToggle(labelText, locked => setGroupLocked(meta, path || labelText, locked));
+      heading.prepend(lock);
+    }
+    const effectivePath = path || labelText;
+    if (effectivePath && !group.dataset.groupPath) {
+      group.dataset.groupPath = effectivePath;
+      meta.groupElements.set(effectivePath, group);
+    }
+    if (effectivePath) setGroupLocked(meta, effectivePath, isGroupLocked(meta, effectivePath));
+  });
+}
+
 function updateSliderDisplay(input) {
-  if (!input || !input._valueDisplay) return;
+  if (!input) return;
+  const setDisplay = value => {
+    if (!input._valueDisplay) return;
+    if (typeof input._valueDisplay.value === 'string') {
+      input._valueDisplay.value = value;
+    } else {
+      input._valueDisplay.textContent = value;
+    }
+  };
   if (input.dataset.enumOptions) {
     const options = input.dataset.enumOptions.split('|');
     const raw = Number.parseFloat(input.value);
     const idx = clamp(Number.isFinite(raw) ? Math.round(raw) : 0, 0, Math.max(0, options.length - 1));
     const label = options[idx] || '';
     input.dataset.enumValue = label;
-    input._valueDisplay.textContent = label;
+    setDisplay(label);
     input.setAttribute('aria-valuetext', label);
     return;
   }
@@ -1244,7 +1404,7 @@ function updateSliderDisplay(input) {
     : 2;
   const num = Number.parseFloat(input.value);
   const text = Number.isFinite(num) ? formatSliderNumber(num, precision) : (input.value || '');
-  input._valueDisplay.textContent = text;
+  setDisplay(text);
   input.setAttribute('aria-valuetext', text);
 }
 
@@ -1256,12 +1416,33 @@ function buildControlRow(labelText, input) {
   row.appendChild(label);
   row.appendChild(input);
   if (input.dataset.slider === '1') {
-    const display = document.createElement('span');
-    display.className = 'ink-control-value';
-    input._valueDisplay = display;
+    const number = document.createElement('input');
+    number.type = 'number';
+    number.className = 'ink-control-number';
+    number.min = input.min ?? '';
+    number.max = input.max ?? '';
+    number.step = input.step ?? '0.01';
+    number.setAttribute('aria-label', `${labelText} value`);
+    const precision = Number.isFinite(Number.parseInt(input.dataset.precision, 10))
+      ? Math.max(0, Number.parseInt(input.dataset.precision, 10))
+      : 2;
+    input._valueDisplay = number;
     updateSliderDisplay(input);
-    row.appendChild(display);
     input.addEventListener('input', () => updateSliderDisplay(input));
+    number.addEventListener('input', () => {
+      const raw = Number.parseFloat(number.value);
+      if (!Number.isFinite(raw)) return;
+      const min = Number.parseFloat(number.min);
+      const max = Number.parseFloat(number.max);
+      const clamped = clamp(
+        raw,
+        Number.isFinite(min) ? min : -Infinity,
+        Number.isFinite(max) ? max : Infinity,
+      );
+      input.value = formatSliderNumber(clamped, precision);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    row.appendChild(number);
   }
   return row;
 }
@@ -1361,33 +1542,9 @@ function parseInputValue(input, path) {
   return input.value;
 }
 
-function attachFillRealtimeHandler(meta, path, input) {
-  if (!meta || meta.id !== 'fill') return false;
-  if (!input || (path !== 'centerThickenPct' && path !== 'edgeThinPct')) return false;
-  const setter = path === 'centerThickenPct' ? setCenterThickenPercent : setEdgeThinPercent;
-  const handleRealtimeUpdate = () => {
-    const value = parseInputValue(input, path);
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return;
-    const pct = setter(numeric);
-    if (Number.isFinite(pct) && input.value !== String(pct)) {
-      input.value = String(pct);
-      if (input.dataset.slider === '1') {
-        updateSliderDisplay(input);
-      }
-    }
-  };
-  input.addEventListener('input', handleRealtimeUpdate);
-  input.addEventListener('change', handleRealtimeUpdate);
-  return true;
-}
-
 function registerMetaInput(meta, path, input) {
   if (!meta || !path || !input) return;
   meta.inputs.set(path, input);
-  if (attachFillRealtimeHandler(meta, path, input)) {
-    return;
-  }
   const applyCurrentSection = () => applySection(meta);
   if (input.type === 'range') {
     input.addEventListener('input', applyCurrentSection);
@@ -1453,10 +1610,14 @@ function buildArrayControls(meta, container, arr, path, label) {
   if (isPrimitive) {
     const group = document.createElement('div');
     group.className = 'ink-subgroup';
+    group.dataset.groupPath = path;
+    meta.groupElements?.set(path, group);
     if (label) {
       const heading = document.createElement('div');
       heading.className = 'ink-subheading';
-      heading.textContent = label;
+      const lock = createLockToggle(label, locked => setGroupLocked(meta, path, locked));
+      heading.prepend(lock);
+      heading.appendChild(document.createTextNode(label));
       group.appendChild(heading);
     }
     arr.forEach((value, idx) => {
@@ -1464,18 +1625,24 @@ function buildArrayControls(meta, container, arr, path, label) {
       const input = createInputForValue(value, itemPath, meta?.id);
       if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
       const row = buildControlRow(`${label ? label : 'Item'} ${idx + 1}`, input);
+      tagRowWithGroup(row, path);
       group.appendChild(row);
       registerMetaInput(meta, itemPath, input);
     });
+    setGroupLocked(meta, path, isGroupLocked(meta, path));
     container.appendChild(group);
     return;
   }
   const group = document.createElement('div');
   group.className = 'ink-subgroup';
+  group.dataset.groupPath = path;
+  meta.groupElements?.set(path, group);
   if (label) {
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
-    heading.textContent = label;
+    const lock = createLockToggle(label, locked => setGroupLocked(meta, path, locked));
+    heading.prepend(lock);
+    heading.appendChild(document.createTextNode(label));
     group.appendChild(heading);
   }
   arr.forEach((value, idx) => {
@@ -1500,11 +1667,13 @@ function buildArrayControls(meta, container, arr, path, label) {
       const input = createInputForValue(val, itemPath, meta?.id);
       const row = buildControlRow(key, input);
       if (!input.dataset.enumOptions && typeof val === 'string') input.dataset.string = '1';
+      tagRowWithGroup(row, path);
       item.appendChild(row);
       registerMetaInput(meta, itemPath, input);
     });
     group.appendChild(item);
   });
+  setGroupLocked(meta, path, isGroupLocked(meta, path));
   container.appendChild(group);
 }
 
@@ -1512,14 +1681,31 @@ function buildObjectControls(meta, container, obj, path, label) {
   if (!obj || typeof obj !== 'object') return;
   const group = document.createElement('div');
   group.className = 'ink-subgroup';
+  group.dataset.groupPath = path;
+  meta.groupElements?.set(path, group);
   if (label) {
+    const headingRow = document.createElement('div');
+    headingRow.className = 'ink-subheading-row';
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
-    heading.textContent = label;
-    group.appendChild(heading);
+    const headingLabel = meta.labels?.[path] || label;
+    const lock = createLockToggle(headingLabel, locked => setGroupLocked(meta, path, locked));
+    heading.appendChild(lock);
+    heading.appendChild(document.createTextNode(headingLabel));
+    headingRow.appendChild(heading);
+    if (path === 'fuzzExp') {
+      const toggle = createInputForValue(obj.enable ?? false, `${path}.enable`, meta?.id);
+      toggle.classList.add('ink-subheading-toggle');
+      toggle.setAttribute('aria-label', `Toggle ${heading.textContent}`);
+      toggle.title = `Toggle ${heading.textContent}`;
+      headingRow.appendChild(toggle);
+      registerMetaInput(meta, `${path}.enable`, toggle);
+    }
+    group.appendChild(headingRow);
   }
   const keys = getObjectKeys(path, obj);
   keys.forEach(key => {
+    if (path === 'fuzzExp' && key === 'enable') return;
     const keyPath = path ? `${path}.${key}` : key;
     const value = obj[key];
     if (Array.isArray(value)) {
@@ -1532,57 +1718,14 @@ function buildObjectControls(meta, container, obj, path, label) {
     }
     const input = createInputForValue(value, keyPath, meta?.id);
     if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
-    const row = buildControlRow(key, input);
+    const rowLabel = meta.labels?.[keyPath] || key;
+    const row = buildControlRow(rowLabel, input);
+    tagRowWithGroup(row, path);
     group.appendChild(row);
     registerMetaInput(meta, keyPath, input);
   });
+  setGroupLocked(meta, path, isGroupLocked(meta, path));
   container.appendChild(group);
-}
-
-function setMetaModeDisabled(meta, disabled) {
-  if (!meta) return;
-  const shouldDisable = !!disabled;
-  if (meta.slider) meta.slider.disabled = shouldDisable;
-  if (meta.numberInput) meta.numberInput.disabled = shouldDisable;
-  if (meta.inputs && typeof meta.inputs.forEach === 'function') {
-    meta.inputs.forEach(input => {
-      if (!input) return;
-      input.disabled = shouldDisable;
-    });
-  }
-  if (meta.root) {
-    meta.root.classList.toggle('is-mode-disabled', shouldDisable);
-  }
-}
-
-function syncInkEffectsModeRadios(mode) {
-  const normalized = normalizeInkEffectsMode(mode);
-  if (!Array.isArray(panelState.modeRadios)) return;
-  panelState.modeRadios.forEach(radio => {
-    if (!radio) return;
-    const radioMode = normalizeInkEffectsMode(radio.value);
-    const shouldCheck = radioMode === normalized;
-    if (radio.checked !== shouldCheck) {
-      radio.checked = shouldCheck;
-    }
-    radio.setAttribute('aria-checked', String(shouldCheck));
-  });
-}
-
-function syncInkEffectsModeUI(mode = getInkEffectsModeFromState()) {
-  const normalized = normalizeInkEffectsMode(mode);
-  panelState.currentMode = normalized;
-  syncInkEffectsModeRadios(normalized);
-  if (!Array.isArray(panelState.metas)) return;
-  panelState.metas.forEach(meta => {
-    if (!meta) return;
-    const metaMode = normalizeInkEffectsMode(meta.mode || 'classic');
-    const disable = metaMode !== normalized;
-    setMetaModeDisabled(meta, disable);
-    if (meta.root) {
-      meta.root.dataset.mode = metaMode;
-    }
-  });
 }
 
 function setSectionCollapsed(meta, collapsed) {
@@ -1600,12 +1743,93 @@ function setSectionCollapsed(meta, collapsed) {
   }
 }
 
+function createQualityControl(meta, container) {
+  if (!meta || !container) return null;
+  const cfg = SECTION_QUALITY_CONFIG[meta.id];
+  if (!cfg) return null;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'control-row control-row--quality control-row--with-lock';
+  wrapper.dataset.lockLabel = cfg.label || 'Quality';
+  const label = document.createElement('label');
+  label.textContent = cfg.label || 'Quality';
+  const lock = createLockToggle(cfg.label || 'Quality', locked => setQualityLocked(meta, locked));
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = String(EFFECT_QUALITY_MIN);
+  slider.max = String(EFFECT_QUALITY_MAX);
+  slider.step = '5';
+  slider.dataset.slider = '1';
+  slider.dataset.precision = '0';
+  const numberInput = document.createElement('input');
+  numberInput.type = 'number';
+  numberInput.min = slider.min;
+  numberInput.max = slider.max;
+  numberInput.step = slider.step;
+  numberInput.setAttribute('aria-label', `${cfg.label || 'Quality'} value`);
+  updateSliderDisplay(slider);
+  slider.addEventListener('input', () => updateSliderDisplay(slider));
+  wrapper.appendChild(lock);
+  wrapper.appendChild(label);
+  wrapper.appendChild(slider);
+  wrapper.appendChild(numberInput);
+  container.appendChild(wrapper);
+  const control = {
+    stateKey: cfg.stateKey,
+    slider,
+    numberInput,
+    wrapper,
+    lock,
+  };
+  setQualityLocked(meta, isQualityLocked(meta));
+  return control;
+}
+
+function createScaleControl(meta, container) {
+  if (!meta || !container) return null;
+  const cfg = SECTION_SCALE_CONFIG[meta.id];
+  if (!cfg) return null;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'control-row control-row--quality control-row--with-lock';
+  wrapper.dataset.lockLabel = cfg.label || 'Scale';
+  const label = document.createElement('label');
+  label.textContent = cfg.label || 'Scale';
+  const lock = createLockToggle(cfg.label || 'Scale', locked => setScaleLocked(meta, locked));
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = String(EFFECT_SCALE_MIN);
+  slider.max = String(EFFECT_SCALE_MAX);
+  slider.step = '5';
+  slider.dataset.slider = '1';
+  slider.dataset.precision = '0';
+  const numberInput = document.createElement('input');
+  numberInput.type = 'number';
+  numberInput.min = slider.min;
+  numberInput.max = slider.max;
+  numberInput.step = slider.step;
+  numberInput.setAttribute('aria-label', `${cfg.label || 'Scale'} value`);
+  updateSliderDisplay(slider);
+  slider.addEventListener('input', () => updateSliderDisplay(slider));
+  wrapper.appendChild(lock);
+  wrapper.appendChild(label);
+  wrapper.appendChild(slider);
+  wrapper.appendChild(numberInput);
+  container.appendChild(wrapper);
+  const control = {
+    stateKey: cfg.stateKey,
+    slider,
+    numberInput,
+    wrapper,
+    lock,
+  };
+  setScaleLocked(meta, isScaleLocked(meta));
+  return control;
+}
+
 function buildSection(def, root) {
+  if (def?.hidden) return null;
   const sectionEl = document.createElement('section');
   sectionEl.className = 'ink-section';
   sectionEl.dataset.sectionId = def.id;
-  const mode = normalizeInkEffectsMode(def.mode || 'classic');
-  sectionEl.dataset.mode = mode;
 
   const header = document.createElement('div');
   header.className = 'ink-section-header';
@@ -1635,29 +1859,20 @@ function buildSection(def, root) {
   header.appendChild(topLine);
 
   const hasStrengthControl = typeof def.stateKey === 'string' && def.stateKey.length > 0;
-  let slider = null;
-  let numberInput = null;
+  let checkbox = null;
   let startPercent = def.defaultStrength ?? 0;
   if (hasStrengthControl) {
-    const strengthWrap = document.createElement('div');
-    strengthWrap.className = 'ink-section-controls';
-    slider = document.createElement('input');
-    slider.type = 'range';
-    slider.min = '0';
-    slider.max = '100';
-    slider.step = '1';
     startPercent = getPercentFromState(def.stateKey, def.defaultStrength ?? 0);
-    slider.value = String(startPercent);
-    strengthWrap.appendChild(slider);
-    numberInput = document.createElement('input');
-    numberInput.type = 'number';
-    numberInput.min = '0';
-    numberInput.max = '100';
-    numberInput.step = '1';
-    numberInput.value = String(startPercent);
-    numberInput.setAttribute('aria-label', `${def.label} strength`);
-    strengthWrap.appendChild(numberInput);
-    header.appendChild(strengthWrap);
+    const checkboxWrap = document.createElement('div');
+    checkboxWrap.className = 'ink-section-enable';
+    checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'ink-section-enable-checkbox';
+    checkbox.checked = startPercent > 0;
+    checkbox.setAttribute('aria-label', `Toggle ${def.label}`);
+    checkbox.title = `Toggle ${def.label}`;
+    checkboxWrap.appendChild(checkbox);
+    topLine.appendChild(checkboxWrap);
   }
 
   sectionEl.appendChild(header);
@@ -1674,13 +1889,52 @@ function buildSection(def, root) {
     stateKey: def.stateKey,
     root: sectionEl,
     inputs: new Map(),
-    slider,
-    numberInput,
+    groupElements: new Map(),
+    checkbox,
     body,
     toggleButton: toggleBtn,
     defaultStrength: def.defaultStrength ?? 0,
     hasStrengthControl,
-    mode,
+    qualityControl: null,
+    scaleControl: null,
+  };
+
+  const subgroupDefs = SUBGROUP_CONFIG[def.id] || [];
+  const subgroupMap = new Map();
+
+  const getSubgroup = path => {
+    const found = subgroupDefs.find(entry => entry.paths.includes(path));
+    if (!found) return null;
+    if (subgroupMap.has(found.id)) return subgroupMap.get(found.id);
+    const togglePath = found.paths.find(p => p.startsWith('enable.')) || null;
+    const group = document.createElement('div');
+    group.className = 'ink-subgroup';
+    group.dataset.groupPath = found.id;
+    const headingRow = document.createElement('div');
+    headingRow.className = 'ink-subheading-row';
+    const heading = document.createElement('div');
+    heading.className = 'ink-subheading';
+    const lock = createLockToggle(found.label, locked => setGroupLocked(meta, found.id, locked));
+    heading.appendChild(lock);
+    heading.appendChild(document.createTextNode(found.label));
+    headingRow.appendChild(heading);
+    if (togglePath) {
+      const toggle = document.createElement('input');
+      toggle.type = 'checkbox';
+      toggle.classList.add('ink-subheading-toggle');
+      toggle.dataset.groupPath = found.id;
+      toggle.setAttribute('aria-label', `Toggle ${found.label}`);
+      toggle.title = `Toggle ${found.label}`;
+      headingRow.appendChild(toggle);
+      registerMetaInput(meta, togglePath, toggle);
+    }
+    group.appendChild(headingRow);
+    meta.groupElements.set(found.id, group);
+    meta.body.appendChild(group);
+    setGroupLocked(meta, found.id, isGroupLocked(meta, found.id));
+    const info = { group, togglePath, headingRow };
+    subgroupMap.set(found.id, info);
+    return info;
   };
 
   dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
@@ -1710,9 +1964,44 @@ function buildSection(def, root) {
     const input = createInputForValue(value, path, meta.id);
     if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
     const row = buildControlRow(labelText || path, input);
-    body.appendChild(row);
+    const subgroup = getSubgroup(path);
+    if (subgroup && subgroup.togglePath === path) {
+      // Toggle lives in the heading row; no separate control row.
+      const toggle = subgroup.headingRow.querySelector('.ink-subheading-toggle');
+      if (toggle) {
+        toggle.checked = !!value;
+        toggle.disabled = isGroupLocked(meta, subgroup.group.dataset.groupPath);
+      }
+      return;
+    }
+    if (subgroup) {
+      tagRowWithGroup(row, subgroup.group.dataset.groupPath);
+      subgroup.group.appendChild(row);
+    } else {
+      body.appendChild(row);
+    }
     registerMetaInput(meta, path, input);
   });
+
+  ensureSubgroupLocks(meta);
+
+  if (SECTION_QUALITY_CONFIG[def.id]) {
+    meta.qualityControl = createQualityControl(meta, body);
+    if (meta.qualityControl) {
+      const startQuality = getSectionQualityPercent(meta.id, EFFECT_QUALITY_DEFAULT);
+      meta.qualityControl.slider.value = String(startQuality);
+      meta.qualityControl.numberInput.value = String(startQuality);
+    }
+  }
+
+  if (SECTION_SCALE_CONFIG[def.id]) {
+    meta.scaleControl = createScaleControl(meta, body);
+    if (meta.scaleControl) {
+      const startScale = getSectionScalePercent(meta.id, EFFECT_SCALE_DEFAULT);
+      meta.scaleControl.slider.value = String(startScale);
+      meta.scaleControl.numberInput.value = String(startScale);
+    }
+  }
 
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
@@ -1721,96 +2010,145 @@ function buildSection(def, root) {
   toggleBtn.addEventListener('click', () => {
     setSectionCollapsed(meta, !meta.isCollapsed);
   });
-  if (slider) {
-    slider.addEventListener('input', () => {
-      applySectionStrength(meta, Number.parseFloat(slider.value) || 0);
+  if (checkbox) {
+    checkbox.addEventListener('change', () => {
+      const enabledStrength = meta.defaultStrength > 0 ? meta.defaultStrength : 100;
+      const targetValue = checkbox.checked ? enabledStrength : 0;
+      applySectionStrength(meta, targetValue);
     });
   }
-  if (numberInput) {
-    numberInput.addEventListener('input', () => {
-      const raw = Number.parseFloat(numberInput.value);
-      if (!Number.isFinite(raw)) return;
-      applySectionStrength(meta, raw);
-    });
-    numberInput.addEventListener('blur', () => {
-      if (numberInput.value !== '') return;
-      const fallback = meta.defaultStrength ?? 0;
-      const pct = getPercentFromState(meta.stateKey, fallback);
-      applySectionStrength(meta, pct, { silent: true });
-    });
+
+  if (meta.qualityControl) {
+    const qc = meta.qualityControl;
+    if (qc.slider) {
+      qc.slider.addEventListener('input', () => {
+        applySectionQuality(meta, Number.parseFloat(qc.slider.value));
+      });
+    }
+    if (qc.numberInput) {
+      qc.numberInput.addEventListener('input', () => {
+        const raw = Number.parseFloat(qc.numberInput.value);
+        if (!Number.isFinite(raw)) return;
+        applySectionQuality(meta, raw);
+      });
+      qc.numberInput.addEventListener('blur', () => {
+        if (qc.numberInput.value !== '') return;
+        const fallback = getSectionQualityPercent(meta.id, EFFECT_QUALITY_DEFAULT);
+        applySectionQuality(meta, fallback, { silent: true });
+      });
+    }
+  }
+
+  if (meta.scaleControl) {
+    const sc = meta.scaleControl;
+    if (sc.slider) {
+      sc.slider.addEventListener('input', () => {
+        applySectionScale(meta, Number.parseFloat(sc.slider.value));
+      });
+    }
+    if (sc.numberInput) {
+      sc.numberInput.addEventListener('input', () => {
+        const raw = Number.parseFloat(sc.numberInput.value);
+        if (!Number.isFinite(raw)) return;
+        applySectionScale(meta, raw);
+      });
+      sc.numberInput.addEventListener('blur', () => {
+        if (sc.numberInput.value !== '') return;
+        const fallback = getSectionScalePercent(meta.id, EFFECT_SCALE_DEFAULT);
+        applySectionScale(meta, fallback, { silent: true });
+      });
+    }
   }
 
   setSectionCollapsed(meta, true);
   if (hasStrengthControl) {
     applySectionStrength(meta, startPercent, { silent: true, syncSlider: false, syncNumber: false });
-  } else {
-    setMetaModeDisabled(meta, mode !== panelState.currentMode);
   }
   return meta;
 }
 
+function snapshotCurrentStyleToState() {
+  const appState = getAppState();
+  if (!appState) return null;
+  const existingId = typeof appState.currentInkStyle?.id === 'string'
+    ? appState.currentInkStyle.id
+    : CURRENT_STYLE_STATE_ID;
+  const snapshot = createStyleSnapshot('Current style', existingId);
+  if (snapshot) {
+    appState.currentInkStyle = snapshot;
+  }
+  return snapshot;
+}
+
+function runWithPersistSuppressed(fn) {
+  panelState.persistDepth = (panelState.persistDepth || 0) + 1;
+  try {
+    return typeof fn === 'function' ? fn() : undefined;
+  } finally {
+    panelState.persistDepth = Math.max(0, (panelState.persistDepth || 0) - 1);
+  }
+}
+
 function persistPanelState() {
+  if (panelState.persistDepth > 0) return;
+  snapshotCurrentStyleToState();
   if (typeof panelState.saveState === 'function') {
     panelState.saveState();
   }
 }
 
-function scheduleGlyphRefresh(rebuild = true) {
+function scheduleGlyphRefresh(rebuildOrOptions = true, maybeOptions = undefined) {
   if (typeof panelState.callbacks.refreshGlyphs !== 'function') return;
+  let rebuild = rebuildOrOptions;
+  let options = maybeOptions;
+  if (typeof rebuildOrOptions === 'object' && rebuildOrOptions !== null) {
+    options = rebuildOrOptions;
+    rebuild = options.rebuild;
+  }
+  const normalizedRebuild = rebuild !== false;
+  const preserveFrontBuffer = options?.preserveFrontBuffer === true;
   if (panelState.pendingGlyphRAF) {
-    if (rebuild && panelState.pendingGlyphOptions && panelState.pendingGlyphOptions.rebuild === false) {
+    if (normalizedRebuild && panelState.pendingGlyphOptions && panelState.pendingGlyphOptions.rebuild === false) {
       panelState.pendingGlyphOptions.rebuild = true;
+    }
+    if (panelState.pendingGlyphOptions && preserveFrontBuffer) {
+      panelState.pendingGlyphOptions.preserveFrontBuffer = true;
     }
     return;
   }
-  panelState.pendingGlyphOptions = { rebuild: rebuild !== false };
+  panelState.pendingGlyphOptions = {
+    rebuild: normalizedRebuild,
+    preserveFrontBuffer,
+  };
   panelState.pendingGlyphRAF = requestAnimationFrame(() => {
-    const opts = panelState.pendingGlyphOptions || { rebuild: rebuild !== false };
+    const opts = panelState.pendingGlyphOptions || { rebuild: normalizedRebuild, preserveFrontBuffer };
     panelState.pendingGlyphRAF = 0;
     panelState.pendingGlyphOptions = null;
-    panelState.callbacks.refreshGlyphs(opts);
-  });
-}
-
-function scheduleGrainRefresh() {
-  if (panelState.pendingGrainRAF || typeof panelState.callbacks.refreshGrain !== 'function') return;
-  panelState.pendingGrainRAF = requestAnimationFrame(() => {
-    panelState.pendingGrainRAF = 0;
-    panelState.callbacks.refreshGrain();
+    panelState.callbacks.refreshGlyphs({
+      rebuild: opts.rebuild !== false,
+      preserveFrontBuffer: opts.preserveFrontBuffer === true,
+    });
   });
 }
 
 function scheduleRefreshForMeta(meta, options = {}) {
   if (!meta) return;
   if (meta.trigger === 'glyph') {
-    const needsFullRebuild = options.forceRebuild === true
-      ? true
-      : options.forceRebuild === false
-        ? false
-        : meta.id !== 'fuzz';
-    scheduleGlyphRefresh(needsFullRebuild);
-  } else if (meta.trigger === 'grain') {
-    scheduleGrainRefresh();
-  }
-}
-
-function syncGrainInputField(pct) {
-  const app = panelState.app;
-  if (!app || !app.grainInput) return;
-  const normalized = clamp(Math.round(pct), 0, 100);
-  if (app.grainInput.value !== String(normalized)) {
-    app.grainInput.value = String(normalized);
+    const needsFullRebuild = options.forceRebuild === false ? false : true;
+    const preserveFront = options.preserveFrontBuffer === false ? false : true;
+    scheduleGlyphRefresh(needsFullRebuild, { preserveFrontBuffer: preserveFront });
   }
 }
 
 function applySectionStrength(meta, percent, options = {}) {
-  if (!meta) return;
+  if (!meta || !SECTION_STATE_KEY_MAP[meta.id]) return;
   const pct = clamp(Math.round(Number(percent) || 0), 0, 100);
-  if (options.syncSlider !== false && meta.slider && meta.slider.value !== String(pct)) {
-    meta.slider.value = String(pct);
-  }
-  if (options.syncNumber !== false && meta.numberInput && meta.numberInput.value !== String(pct)) {
-    meta.numberInput.value = String(pct);
+  const shouldSyncCheckbox = options.syncCheckbox !== false && options.syncSlider !== false;
+  if (shouldSyncCheckbox && meta.checkbox) {
+    const shouldCheck = pct > 0;
+    if (meta.checkbox.checked !== shouldCheck) {
+      meta.checkbox.checked = shouldCheck;
+    }
   }
   if (meta.root) {
     meta.root.classList.toggle('is-disabled', pct <= 0);
@@ -1822,11 +2160,72 @@ function applySectionStrength(meta, percent, options = {}) {
   if (meta.hasStrengthControl && meta.config && typeof meta.config === 'object') {
     meta.config.enabled = pct > 0;
   }
-  if (meta.id === 'grain') {
-    syncGrainInputField(pct);
-  }
   scheduleRefreshForMeta(meta);
   persistPanelState();
+}
+
+function applySectionQuality(meta, value, options = {}) {
+  if (!meta || !meta.qualityControl) return;
+  const qc = meta.qualityControl;
+  const normalized = clampQualityValue(value);
+  if (options.syncInputs !== false) {
+    if (qc.slider && qc.slider.value !== String(normalized)) {
+      qc.slider.value = String(normalized);
+      updateSliderDisplay(qc.slider);
+    }
+    if (qc.numberInput && qc.numberInput.value !== String(normalized)) {
+      qc.numberInput.value = String(normalized);
+    }
+  }
+  if (options.silent) return normalized;
+  setSectionQualityPercent(meta.id, normalized);
+  scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
+  persistPanelState();
+  return normalized;
+}
+
+function applySectionScale(meta, value, options = {}) {
+  if (!meta || !meta.scaleControl) return;
+  const sc = meta.scaleControl;
+  const normalized = clampScaleValue(value);
+  if (options.syncInputs !== false) {
+    if (sc.slider && sc.slider.value !== String(normalized)) {
+      sc.slider.value = String(normalized);
+      updateSliderDisplay(sc.slider);
+    }
+    if (sc.numberInput && sc.numberInput.value !== String(normalized)) {
+      sc.numberInput.value = String(normalized);
+    }
+  }
+  if (options.silent) return normalized;
+  setSectionScalePercent(meta.id, normalized);
+  scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
+  persistPanelState();
+  return normalized;
+}
+
+function syncQualityControl(meta) {
+  if (!meta || !meta.qualityControl) return;
+  const qc = meta.qualityControl;
+  const value = getSectionQualityPercent(meta.id, EFFECT_QUALITY_DEFAULT);
+  if (qc.slider && qc.slider.value !== String(value)) {
+    qc.slider.value = String(value);
+  }
+  if (qc.numberInput && qc.numberInput.value !== String(value)) {
+    qc.numberInput.value = String(value);
+  }
+}
+
+function syncScaleControl(meta) {
+  if (!meta || !meta.scaleControl) return;
+  const sc = meta.scaleControl;
+  const value = getSectionScalePercent(meta.id, EFFECT_SCALE_DEFAULT);
+  if (sc.slider && sc.slider.value !== String(value)) {
+    sc.slider.value = String(value);
+  }
+  if (sc.numberInput && sc.numberInput.value !== String(value)) {
+    sc.numberInput.value = String(value);
+  }
 }
 
 function syncInputs(meta) {
@@ -1891,10 +2290,6 @@ function applySection(meta) {
     }
     const value = parseInputValue(input, path);
     setValueByPath(meta.config, path, value);
-  }
-  if (meta.id === 'fill') {
-    applyFillConfigToState(meta.config, { silent: true });
-    syncFillConfigValues();
   }
   scheduleRefreshForMeta(meta, { forceRebuild: true });
   persistPanelState();
@@ -2130,55 +2525,159 @@ function removeSavedStyle(styleId) {
   renderSavedStylesList();
 }
 
+function resetInkSettingsToDefaults() {
+  const snapshot = cloneDefaultStyleSnapshot();
+  applyStyleSnapshot(snapshot, { persist: true, rememberLoaded: false, updateStyleName: true, refreshList: true });
+}
+
+function handleResetInkSettings() {
+  let confirmed = true;
+  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    confirmed = window.confirm('Reset all ink settings to their default values?');
+  }
+  if (!confirmed) return;
+  resetInkSettingsToDefaults();
+}
+
+function randomizeInkSection(meta) {
+  if (!meta) return;
+  const enabled = Math.random() >= SECTION_OFF_CHANCE;
+  const targetStrength = enabled ? Math.round(randomBetween(20, 100, 1)) : 0;
+  applySectionStrength(meta, targetStrength, { syncSlider: true, syncNumber: true });
+
+  meta.inputs.forEach(input => {
+    const groupPath = input.dataset.groupPath;
+    if (groupPath && isGroupLocked(meta, groupPath)) return;
+    randomizeSingleInput(input, { offChance: TOGGLE_OFF_CHANCE });
+  });
+  if (meta.qualityControl && !isQualityLocked(meta)) {
+    // Randomization should bias toward maximum fidelity for quality controls.
+    applySectionQuality(meta, EFFECT_QUALITY_DEFAULT, { syncInputs: true });
+  }
+
+  if (meta.scaleControl && !isScaleLocked(meta)) {
+    const randScale = randomBetween(EFFECT_SCALE_MIN, EFFECT_SCALE_MAX, 5);
+    applySectionScale(meta, randScale, { syncInputs: true });
+  }
+
+  applySection(meta);
+}
+
+function randomizeInkSettings() {
+  if (!panelState.initialized) return;
+  runWithPersistSuppressed(() => {
+    // Randomize should keep overall strength at the default maximum.
+    setOverallStrength(100);
+
+    // Randomize section order
+    if (Array.isArray(panelState.sectionOrder) && panelState.sectionOrder.length > 0) {
+      const newOrder = panelState.sectionOrder.slice();
+      for (let i = newOrder.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]];
+      }
+      // Apply order silently to avoid redundant refreshes; the subsequent section randomization will trigger the rebuild.
+      applySectionOrder(newOrder, { syncDom: true, silent: true });
+    }
+
+    panelState.metas.forEach(meta => randomizeInkSection(meta));
+  });
+  persistPanelState();
+  syncInkStrengthDisplays();
+}
+
+function handleRandomizeInkSettings() {
+  randomizeInkSettings();
+}
+
+function applyStyleSnapshot(style, options = {}) {
+  if (!style) return;
+  const workingStyle = deepCloneValue(style);
+  if (!workingStyle) return;
+  const {
+    persist = true,
+    rememberLoaded = false,
+    updateStyleName = true,
+    refreshList = persist,
+    focusLoadedStyle = rememberLoaded && workingStyle.id ? workingStyle.id : null,
+  } = options;
+
+  const applyCore = () => {
+    if (Array.isArray(workingStyle.sectionOrder) && workingStyle.sectionOrder.length) {
+      applySectionOrder(style.sectionOrder, {
+        syncDom: true,
+        silent: persist ? false : true,
+      });
+    }
+    if (Number.isFinite(workingStyle.overall)) {
+      setOverallStrength(workingStyle.overall);
+    }
+    SECTION_DEFS.forEach((def) => {
+      const meta = findMetaById(def.id);
+      if (!meta) return;
+      const section = workingStyle.sections && workingStyle.sections[def.id];
+      if (section && section.config) {
+        applyConfigToTarget(meta.config, section.config);
+        syncInputs(meta);
+        scheduleRefreshForMeta(meta, { forceRebuild: true });
+      } else {
+        syncInputs(meta);
+      }
+      const strength = Number(section?.strength);
+      if (meta.hasStrengthControl && Number.isFinite(strength)) {
+        applySectionStrength(meta, strength);
+      }
+      if (meta.qualityControl && Number.isFinite(section?.quality)) {
+        applySectionQuality(meta, section.quality);
+      }
+    });
+    if (rememberLoaded && workingStyle.id) {
+      panelState.lastLoadedStyleId = workingStyle.id;
+    } else if (!rememberLoaded) {
+      panelState.lastLoadedStyleId = null;
+    }
+    if (updateStyleName && panelState.styleNameInput) {
+      panelState.styleNameInput.value = workingStyle.name || 'Current style';
+      panelState.styleNameInput.classList.remove('input-error');
+    }
+  };
+
+  const runAndMaybeRefresh = () => {
+    applyCore();
+    if (refreshList) {
+      renderSavedStylesList({ focusId: focusLoadedStyle });
+    }
+  };
+
+  if (persist) {
+    runAndMaybeRefresh();
+  } else {
+    runWithPersistSuppressed(runAndMaybeRefresh);
+  }
+}
+
 function applySavedStyle(styleId) {
   const styles = getSavedStyles();
   const style = styles.find(s => s && s.id === styleId);
   if (!style) return;
-  const mode = normalizeInkEffectsMode(style.inkEffectsMode || style.effectsMode);
-  const appliedMode = setInkEffectsModeOnState(mode);
-  panelState.currentMode = appliedMode;
-  syncInkEffectsModeUI(appliedMode);
-  if (Array.isArray(style.sectionOrder) && style.sectionOrder.length) {
-    applySectionOrder(style.sectionOrder);
-  }
-  if (Number.isFinite(style.overall)) {
-    setOverallStrength(style.overall);
-  }
-  SECTION_DEFS.forEach(def => {
-    const meta = findMetaById(def.id);
-    if (!meta) return;
-    const section = style.sections && style.sections[def.id];
-    if (def.id === 'fill') {
-      const fillConfig = section && section.config
-        ? normalizeFillConfig(section.config, style)
-        : normalizeFillConfig(null, style);
-      applyConfigToTarget(meta.config, fillConfig);
-      applyFillConfigToState(meta.config, { silent: true });
-      syncFillConfigValues();
-      syncInputs(meta);
-      scheduleRefreshForMeta(meta, { forceRebuild: true });
-    } else if (section && section.config) {
-      applyConfigToTarget(meta.config, section.config);
-      syncInputs(meta);
-      scheduleRefreshForMeta(meta, { forceRebuild: true });
-    }
-    const rawStrength = section && section.strength;
-    const strengthSource = def.id === 'fill'
-      ? (rawStrength ?? style.fillStrength)
-      : rawStrength;
-    const strength = Number(strengthSource);
-    if (meta.hasStrengthControl && Number.isFinite(strength)) {
-      applySectionStrength(meta, strength);
-    }
+  applyStyleSnapshot(style, { persist: true, rememberLoaded: true, refreshList: true, focusLoadedStyle: style.id });
+}
+
+export function hydrateInkSettingsFromState(options = {}) {
+  if (!panelState.initialized) return;
+  const fromState = getCurrentStyleFromState();
+  const usedFallback = !fromState;
+  const snapshot = usedFallback ? cloneDefaultStyleSnapshot() : deepCloneValue(fromState);
+  if (!snapshot) return;
+  applyStyleSnapshot(snapshot, {
+    persist: false,
+    rememberLoaded: false,
+    updateStyleName: options.updateStyleName !== false,
+    refreshList: options.refreshList === true,
   });
-  panelState.lastLoadedStyleId = styleId;
-  if (panelState.styleNameInput) {
-    panelState.styleNameInput.value = style.name;
-    panelState.styleNameInput.classList.remove('input-error');
+  if (usedFallback) {
+    snapshotCurrentStyleToState();
   }
-  syncInkEffectsModeRadios(panelState.currentMode);
-  persistPanelState();
-  renderSavedStylesList();
 }
 
 export function getInkEffectFactor() {
@@ -2186,71 +2685,21 @@ export function getInkEffectFactor() {
   return normalizedPercent(pct);
 }
 
-function getFillStrengthPercent() {
-  return getPercentFromState('inkFillStrength', 100);
-}
-
-function getFillStrengthFactor() {
-  return normalizedPercent(getFillStrengthPercent());
-}
-
-function getCenterThickenPercent() {
-  return getScalarFromState(
-    'centerThickenPct',
-    CENTER_THICKEN_LIMITS.defaultPct,
-    CENTER_THICKEN_LIMITS.min,
-    CENTER_THICKEN_LIMITS.max,
-  );
-}
-
-function getEdgeThinPercent() {
-  return getScalarFromState(
-    'edgeThinPct',
-    EDGE_THIN_LIMITS.defaultPct,
-    EDGE_THIN_LIMITS.min,
-    EDGE_THIN_LIMITS.max,
-  );
-}
-
-export function getCenterThickenFactor() {
-  const pct = getCenterThickenPercent();
-  const base = clamp(pct / 100, CENTER_THICKEN_LIMITS.min / 100, CENTER_THICKEN_LIMITS.max / 100);
-  const strength = getFillStrengthFactor();
-  return 1 + (base - 1) * strength;
-}
-
-export function getEdgeThinFactor() {
-  const pct = getEdgeThinPercent();
-  const base = clamp(pct / 100, EDGE_THIN_LIMITS.min / 100, EDGE_THIN_LIMITS.max / 100);
-  const strength = getFillStrengthFactor();
-  return 1 + (base - 1) * strength;
-}
 
 export function getInkSectionStrength(sectionId) {
-  switch (sectionId) {
-    case 'fill':
-      return getFillStrengthFactor();
-    case 'texture':
-      return normalizedPercent(getPercentFromState('inkTextureStrength', INK_TEXTURE.enabled === false ? 0 : 100));
-    case 'fuzz':
-      return normalizedPercent(getPercentFromState('edgeFuzzStrength', 100));
-    case 'bleed':
-      return normalizedPercent(getPercentFromState('edgeBleedStrength', EDGE_BLEED.enabled === false ? 0 : 100));
-    case 'grain':
-      return normalizedPercent(getPercentFromState('grainPct', GRAIN_CFG.enabled === false ? 0 : 100));
-    default:
-      return 1;
-  }
+  const stateKey = SECTION_STATE_KEY_MAP[sectionId];
+  if (!stateKey) return 1;
+  const fallback = Number.isFinite(SECTION_DEF_MAP[sectionId]?.defaultStrength)
+    ? SECTION_DEF_MAP[sectionId].defaultStrength
+    : 100;
+  return normalizedPercent(getPercentFromState(stateKey, fallback));
 }
 
 export function isInkSectionEnabled(sectionId) {
-  const strength = getInkSectionStrength(sectionId);
-  if (sectionId === 'fill') return strength > 0 && FILL_CFG.enabled !== false;
-  if (sectionId === 'grain') return strength > 0 && GRAIN_CFG.enabled !== false;
-  if (sectionId === 'texture') return strength > 0 && INK_TEXTURE.enabled !== false;
-  if (sectionId === 'fuzz') return strength > 0 && EDGE_FUZZ.enabled !== false;
-  if (sectionId === 'bleed') return strength > 0 && EDGE_BLEED.enabled !== false;
-  return strength > 0;
+  if (!SECTION_STATE_KEY_MAP[sectionId]) {
+    return true;
+  }
+  return getInkSectionStrength(sectionId) > 0;
 }
 
 export function getInkSectionOrder() {
@@ -2260,12 +2709,24 @@ export function getInkSectionOrder() {
   return normalizeSectionOrder(getSectionOrderFromState());
 }
 
-export function getInkEffectsMode() {
-  return getInkEffectsModeFromState();
-}
-
 export function getExperimentalEffectsConfig() {
   return EXPERIMENTAL_EFFECTS_CONFIG;
+}
+
+export function getExperimentalQualitySettings() {
+  const settings = {};
+  Object.keys(SECTION_QUALITY_CONFIG).forEach(sectionId => {
+    settings[sectionId] = getSectionQualityPercent(sectionId, EFFECT_QUALITY_DEFAULT);
+  });
+  return settings;
+}
+
+export function getExperimentalScaleSettings() {
+  const settings = {};
+  Object.keys(SECTION_SCALE_CONFIG).forEach(sectionId => {
+    settings[sectionId] = getSectionScalePercent(sectionId, EFFECT_SCALE_DEFAULT);
+  });
+  return settings;
 }
 
 function syncOverallStrengthUI() {
@@ -2282,51 +2743,8 @@ function setOverallStrength(percent) {
   const pct = clamp(Math.round(Number(percent) || 0), 0, 100);
   setPercentOnState('effectsOverallStrength', pct);
   syncOverallStrengthUI();
-  scheduleGlyphRefresh();
-  scheduleGrainRefresh();
+  scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
   persistPanelState();
-  return pct;
-}
-
-function setCenterThickenPercent(percent, options = {}) {
-  const { silent = false, updateConfig = true } = options || {};
-  const raw = Number(percent);
-  const pct = clamp(
-    Number.isFinite(raw) ? Math.round(raw) : CENTER_THICKEN_LIMITS.defaultPct,
-    CENTER_THICKEN_LIMITS.min,
-    CENTER_THICKEN_LIMITS.max,
-  );
-  setScalarOnState('centerThickenPct', pct, CENTER_THICKEN_LIMITS.min, CENTER_THICKEN_LIMITS.max);
-  if (updateConfig === false) {
-    syncFillConfigValues();
-  } else {
-    FILL_CFG.centerThickenPct = pct;
-  }
-  if (!silent) {
-    scheduleGlyphRefresh();
-    persistPanelState();
-  }
-  return pct;
-}
-
-function setEdgeThinPercent(percent, options = {}) {
-  const { silent = false, updateConfig = true } = options || {};
-  const raw = Number(percent);
-  const pct = clamp(
-    Number.isFinite(raw) ? Math.round(raw) : EDGE_THIN_LIMITS.defaultPct,
-    EDGE_THIN_LIMITS.min,
-    EDGE_THIN_LIMITS.max,
-  );
-  setScalarOnState('edgeThinPct', pct, EDGE_THIN_LIMITS.min, EDGE_THIN_LIMITS.max);
-  if (updateConfig === false) {
-    syncFillConfigValues();
-  } else {
-    FILL_CFG.edgeThinPct = pct;
-  }
-  if (!silent) {
-    scheduleGlyphRefresh();
-    persistPanelState();
-  }
   return pct;
 }
 
@@ -2339,15 +2757,13 @@ export function syncInkStrengthDisplays(sectionId) {
   if (!panelState.initialized) return;
   if (!sectionId) {
     syncOverallStrengthUI();
-    syncFillConfigValues();
     panelState.metas.forEach(meta => {
       if (!meta) return;
-      if (meta.id === 'fill') {
-        syncInputs(meta);
-      }
       const fallback = meta.defaultStrength ?? 0;
       const pct = getPercentFromState(meta.stateKey, fallback);
       applySectionStrength(meta, pct, { silent: true });
+      syncQualityControl(meta);
+      syncScaleControl(meta);
     });
     return;
   }
@@ -2355,21 +2771,13 @@ export function syncInkStrengthDisplays(sectionId) {
     syncOverallStrengthUI();
     return;
   }
-  if (sectionId === 'fill') {
-    const meta = findMetaById('fill');
-    if (!meta) return;
-    syncFillConfigValues();
-    syncInputs(meta);
-    const fallback = meta.defaultStrength ?? 0;
-    const pct = getPercentFromState(meta.stateKey, fallback);
-    applySectionStrength(meta, pct, { silent: true });
-    return;
-  }
   const meta = findMetaById(sectionId);
   if (!meta) return;
   const fallback = meta.defaultStrength ?? 0;
   const pct = getPercentFromState(meta.stateKey, fallback);
   applySectionStrength(meta, pct, { silent: true });
+  syncQualityControl(meta);
+  syncScaleControl(meta);
 }
 
 export function setupInkSettingsPanel(options = {}) {
@@ -2378,7 +2786,6 @@ export function setupInkSettingsPanel(options = {}) {
     state,
     app,
     refreshGlyphs,
-    refreshGrain,
     saveState,
   } = options || {};
 
@@ -2389,7 +2796,6 @@ export function setupInkSettingsPanel(options = {}) {
     panelState.app = app;
   }
   panelState.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
-  panelState.callbacks.refreshGrain = typeof refreshGrain === 'function' ? refreshGrain : null;
   panelState.saveState = typeof saveState === 'function' ? saveState : null;
 
   const sectionsRoot = document.getElementById('inkSettingsSections');
@@ -2401,39 +2807,12 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.exportButton = document.getElementById('inkStyleExportBtn');
   panelState.importButton = document.getElementById('inkStyleImportBtn');
   panelState.importInput = document.getElementById('inkStyleImportInput');
+  panelState.resetButton = document.getElementById('inkStyleResetBtn');
+  panelState.randomizeButton = document.getElementById('inkStyleRandomizeBtn');
   panelState.sectionsRoot = sectionsRoot;
 
   panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
   setSectionOrderOnState(panelState.sectionOrder);
-
-  panelState.currentMode = getInkEffectsModeFromState();
-  const modeRadios = Array.from(document.querySelectorAll('input[name="inkEffectsMode"]'));
-  panelState.modeRadios = modeRadios;
-  modeRadios.forEach(radio => {
-    if (!radio) return;
-    const radioMode = normalizeInkEffectsMode(radio.value);
-    if (INK_EFFECT_MODE_LABELS[radioMode]) {
-      radio.setAttribute('aria-label', INK_EFFECT_MODE_LABELS[radioMode]);
-    }
-    radio.addEventListener('change', () => {
-      if (!radio.checked) return;
-      const requested = normalizeInkEffectsMode(radio.value);
-      const current = getInkEffectsModeFromState();
-      if (requested === current) {
-        syncInkEffectsModeRadios(current);
-        return;
-      }
-      const applied = setInkEffectsModeOnState(requested);
-      panelState.currentMode = applied;
-      syncInkEffectsModeUI(applied);
-      persistPanelState();
-      scheduleGlyphRefresh(true);
-      scheduleGrainRefresh();
-    });
-  });
-  syncInkEffectsModeRadios(panelState.currentMode);
-
-  syncFillConfigValues();
 
   if (panelState.styleNameInput) {
     panelState.styleNameInput.addEventListener('input', () => panelState.styleNameInput.classList.remove('input-error'));
@@ -2453,6 +2832,12 @@ export function setupInkSettingsPanel(options = {}) {
   if (panelState.importButton && panelState.importInput) {
     panelState.importButton.addEventListener('click', () => panelState.importInput.click());
     panelState.importInput.addEventListener('change', handleImportInputChange);
+  }
+  if (panelState.resetButton) {
+    panelState.resetButton.addEventListener('click', handleResetInkSettings);
+  }
+  if (panelState.randomizeButton) {
+    panelState.randomizeButton.addEventListener('click', handleRandomizeInkSettings);
   }
 
   if (panelState.appState) {
@@ -2502,8 +2887,6 @@ export function setupInkSettingsPanel(options = {}) {
     });
     applySectionOrder(panelState.sectionOrder, { skipStateUpdate: true, syncDom: true, silent: true });
   }
-
-  syncInkEffectsModeUI(panelState.currentMode);
 
   panelState.initialized = true;
   syncInkStrengthDisplays();

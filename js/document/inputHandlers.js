@@ -1,3 +1,5 @@
+import { markDocumentDirty } from '../state/saveRevision.js';
+
 const NUM_INPUT_KEYS = new Set([
   'ArrowUp',
   'ArrowDown',
@@ -31,7 +33,6 @@ function isToolbarInput(el) {
     id === 'mmRight' ||
     id === 'mmTop' ||
     id === 'mmBottom' ||
-    id === 'grainPct' ||
     id === 'stageWidthPct' ||
     id === 'stageHeightPct' ||
     id.includes('Slider')
@@ -62,9 +63,11 @@ export function createInputController({
   advanceCaret,
   handleNewline,
   handleBackspace,
+  moveCaretByLines,
   insertTextFast,
   overtypeCharacter,
   eraseCharacters,
+  shiftRow,
   addPage,
   updateCaretPosition,
   beginBatch,
@@ -116,6 +119,9 @@ export function createInputController({
     if (now - burstTs < BS_WINDOW && burstCount > 0) {
       const page = state.pages[state.caret.page] || addPage();
       eraseCharacters(page, state.caret.rowMu, state.caret.col, burstCount);
+      if (state.realTypewriterBackspaceEnabled) {
+        shiftRow(page, state.caret.rowMu, state.caret.col + burstCount, -burstCount);
+      }
       counters.setBsBurstCount(0);
       counters.setBsBurstTs(0);
       resetTypedRun();
@@ -126,6 +132,12 @@ export function createInputController({
 
   function handleKeyDown(e) {
     if (isEditableTarget(e.target)) return;
+
+    if (state.lagInputBlocked) {
+      e.preventDefault();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      return;
+    }
 
     if (e.target && isToolbarInput(e.target)) {
       const key = e.key;
@@ -166,6 +178,7 @@ export function createInputController({
       e.preventDefault();
       resetTypedRun();
       handleNewline();
+      markDocumentDirty(state);
       saveStateDebounced();
       return;
     }
@@ -181,6 +194,7 @@ export function createInputController({
       beginTypingFrameBatch();
       handleBackspace();
       resetTypedRun();
+      markDocumentDirty(state);
       saveStateDebounced();
       return;
     }
@@ -204,16 +218,22 @@ export function createInputController({
     if (key === 'ArrowUp') {
       e.preventDefault();
       resetTypedRun();
-      state.caret.rowMu = clamp(state.caret.rowMu - state.lineStepMu, bounds.Tmu, bounds.Bmu);
-      updateCaretPosition();
+      if (typeof moveCaretByLines === 'function') moveCaretByLines(-1);
+      else {
+        state.caret.rowMu = clamp(state.caret.rowMu - state.lineStepMu, bounds.Tmu, bounds.Bmu);
+        updateCaretPosition();
+      }
       return;
     }
 
     if (key === 'ArrowDown') {
       e.preventDefault();
       resetTypedRun();
-      state.caret.rowMu = clamp(state.caret.rowMu + state.lineStepMu, bounds.Tmu, bounds.Bmu);
-      updateCaretPosition();
+      if (typeof moveCaretByLines === 'function') moveCaretByLines(1);
+      else {
+        state.caret.rowMu = clamp(state.caret.rowMu + state.lineStepMu, bounds.Tmu, bounds.Bmu);
+        updateCaretPosition();
+      }
       return;
     }
 
@@ -221,6 +241,7 @@ export function createInputController({
       e.preventDefault();
       resetTypedRun();
       for (let i = 0; i < 5; i += 1) advanceCaret();
+      markDocumentDirty(state);
       saveStateDebounced();
       return;
     }
@@ -242,14 +263,24 @@ export function createInputController({
       consumeBackspaceBurstIfAny();
       noteTypedCharPreInsert();
       const page = state.pages[state.caret.page] || addPage();
+      if (state.realTypewriterBackspaceEnabled) {
+        shiftRow(page, state.caret.rowMu, state.caret.col, 1);
+      }
       overtypeCharacter(page, state.caret.rowMu, state.caret.col, key, state.ink);
       advanceCaret();
+      markDocumentDirty(state);
       saveStateDebounced();
     }
   }
 
   function handlePaste(e) {
     if (isEditableTarget(e.target)) return;
+
+    if (state.lagInputBlocked) {
+      e.preventDefault();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      return;
+    }
 
     const text = (e.clipboardData && e.clipboardData.getData('text/plain')) || '';
     if (!text) return;

@@ -7,7 +7,43 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-version">v.10.4b</div>
+  <div id="storageNotice" class="storage-notice" role="status" aria-live="polite"></div>
+  <div class="ink-file-launcher" id="inkFileLauncher">
+    <button id="inkMenuBtn" class="file-toolbar-toggle" type="button" aria-label="File tools" aria-expanded="false" title="File tools">
+      <svg class="file-toolbar-toggle__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M7 4.75C7 4.34 7.34 4 7.75 4h5.69c.2 0 .4.08.54.22l3.8 3.8c.14.14.22.34.22.54V19.5c0 .83-.67 1.5-1.5 1.5h-8.75A2.25 2.25 0 0 1 5.5 18.75v-12c0-.42.34-.75.75-.75Zm6.5.87V8.5h2.88L13.5 5.62Z" fill="currentColor" />
+      </svg>
+    </button>
+    <div class="ink-file-toolbar" id="inkFileToolbar" aria-hidden="true">
+      <div class="doc-controls doc-controls--mini" id="inkFileDocControls">
+        <button class="btn icon-only" id="inkFileDocMenuBtn" aria-haspopup="true" aria-expanded="false" title="Documents" aria-label="Documents">
+          <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+            <path d="M4 5.25a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 5.25Zm0 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 9.25Zm0 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 13.25Z" fill="currentColor" />
+          </svg>
+        </button>
+        <input class="doc-title-input doc-title-input--mini" id="inkFileDocTitleInput" type="text" maxlength="200" placeholder="Untitled Document" aria-label="Document title" />
+        <div class="doc-menu-popup doc-menu-popup--mini" id="inkFileDocMenuPopup" role="menu" aria-labelledby="inkFileDocMenuBtn">
+          <div class="doc-menu-header">Documents</div>
+          <div class="doc-menu-list" id="inkFileDocMenuList"></div>
+        </div>
+      </div>
+      <button class="btn icon-only" id="inkFileDeleteDocBtn" aria-label="Delete document">
+        <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+          <path d="M7.25 3a1 1 0 0 1 .97-.75h3.56a1 1 0 0 1 .97.75l.3 1.25h3.75a.75.75 0 0 1 0 1.5h-.7l-.73 10.01A2.25 2.25 0 0 1 12.13 18H7.87a2.25 2.25 0 0 1-2.24-2.24L4.9 5.75h-.65a.75.75 0 0 1 0-1.5h3.75ZM6.4 5.75l.7 9.72c.05.4.38.7.77.7h4.26c.4 0 .73-.3.77-.7l.7-9.72H6.4Zm3.1 2a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5a.75.75 0 0 1 .75-.75Z" fill="currentColor" />
+        </svg>
+      </button>
+      <button class="btn icon-only" id="inkFileNewDocBtn" aria-label="New document">
+        <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+          <path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z" fill="currentColor" />
+        </svg>
+      </button>
+      <button class="btn icon-only" id="inkFileExportBtn" aria-label="Export">
+        <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+          <path d="M10 2.75a.75.75 0 0 1 .75.75v7.19l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V3.5A.75.75 0 0 1 10 2.75Zm-5.25 12a.75.75 0 0 1 .75-.75h9c.41 0 .75.34.75.75v1.5a.75.75 0 0 1-.75.75h-9a.75.75 0 0 1-.75-.75v-1.5Z" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+  </div>
   <div class="ruler" id="rulerH_host">
     <div class="ruler-ticks"></div>
     <div id="rulerH_stops_container"></div>
@@ -41,40 +77,39 @@
     </div>
   </div>
 
+  <div id="scrollLane" class="stage-scroll-lane stage-scroll-lane--hidden" aria-label="Document scroll" aria-hidden="true">
+    <div id="scrollLaneInner" class="stage-scroll-lane__inner"></div>
+  </div>
+
+  <div id="lagNotice" class="lag-notice" aria-live="polite" aria-hidden="true"></div>
+  <div id="lagOverlay" class="lag-overlay" aria-hidden="true" role="status">
+    <div class="lag-overlay-symbol">
+      <span class="lag-overlay-spinner" aria-hidden="true"></span>
+    </div>
+  </div>
+
+  <button id="marginReleaseCornerBtn" class="corner-mr-toggle typewriter-mr-btn" type="button" aria-label="Margin release" title="Margin release">MR</button>
+
   <div id="guideV" class="guide"></div>
   <div id="guideH" class="guide"></div>
 
-  <div class="toolbar">
-    <div class="toolbar-left">
-      <div class="doc-controls" id="docControls">
-        <button class="btn icon-only" id="docMenuBtn" aria-haspopup="true" aria-expanded="false" title="Documents" aria-label="Documents">
-          <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
-            <path d="M4 5.25a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 5.25Zm0 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 9.25Zm0 4a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 0 1.5H4.75A.75.75 0 0 1 4 13.25Z" fill="currentColor" />
-          </svg>
-        </button>
-        <input class="doc-title-input" id="docTitleInput" type="text" maxlength="200" placeholder="Untitled Document" aria-label="Document title" />
-        <div class="doc-menu-popup" id="docMenuPopup" role="menu" aria-labelledby="docMenuBtn">
-          <div class="doc-menu-header">Documents</div>
-          <div class="doc-menu-list" id="docMenuList"></div>
-        </div>
-      </div>
-      <button class="btn icon-only" id="deleteDocBtn" title="Delete document" aria-label="Delete document">
-        <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
-          <path d="M7.25 3a1 1 0 0 1 .97-.75h3.56a1 1 0 0 1 .97.75l.3 1.25h3.75a.75.75 0 0 1 0 1.5h-.7l-.73 10.01A2.25 2.25 0 0 1 12.13 18H7.87a2.25 2.25 0 0 1-2.24-2.24L4.9 5.75h-.65a.75.75 0 0 1 0-1.5h3.75ZM6.4 5.75l.7 9.72c.05.4.38.7.77.7h4.26c.4 0 .73-.3.77-.7l.7-9.72H6.4Zm3.1 2a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5a.75.75 0 0 1 .75-.75Z" fill="currentColor" />
-        </svg>
-      </button>
-      <button class="btn icon-only" id="newDocBtn" title="New document" aria-label="New document">
-        <svg class="icon" viewBox="0 0 20 20" focusable="false" aria-hidden="true">
-          <path d="M10 3a.75.75 0 0 1 .75.75v5.5h5.5a.75.75 0 0 1 0 1.5h-5.5v5.5a.75.75 0 0 1-1.5 0v-5.5h-5.5a.75.75 0 0 1 0-1.5h5.5v-5.5A.75.75 0 0 1 10 3Z" fill="currentColor" />
-        </svg>
-      </button>
-      <button class="btn" id="exportTxtBtn">Export</button>
+  <button id="toggleMarginsBtn" class="corner-ruler-toggle" type="button" aria-label="Show rulers" title="Show rulers">
+    <span class="corner-ruler-toggle__icon" aria-hidden="true">
+      <span class="corner-ruler-toggle__leg corner-ruler-toggle__leg--h"></span>
+      <span class="corner-ruler-toggle__leg corner-ruler-toggle__leg--v"></span>
+    </span>
+  </button>
+
+  <div class="ink-gear-toolbar" id="inkGearToolbar" aria-label="Ink settings">
+    <div class="ink-control-group">
+      <button class="ink-icon-btn ink-gear" id="inkGearToolbarBtn" title="Ink settings"></button>
     </div>
-    <div class="toolbar-right">
-      <button class="btn" id="inkSettingsBtn">Settings</button>
-      <button class="btn" id="toggleMarginsBtn" title="Toggle rulers">Margins</button>
+  </div>
+
+  <div class="ink-dock" id="inkDock" aria-label="Ink colors">
+    <div class="ink-dock__core">
       <div class="ink-control-group">
-        <button class="btn" id="inkBlackBtn" title="Black Ink. Long-press for transparency."><span class="sw black"></span></button>
+        <button class="ink-swatch sw black" id="inkBlackBtn" title="Black Ink. Long-press for transparency."></button>
         <div class="ink-slider-popup" id="inkBlackSliderPopup">
           <div class="slider-container">
             <input type="range" id="inkOpacityBSlider" min="0" max="100" step="1" value="100" class="ink-slider">
@@ -83,7 +118,7 @@
         </div>
       </div>
       <div class="ink-control-group">
-        <button class="btn" id="inkRedBtn" title="Red Ink. Long-press for transparency."><span class="sw red"></span></button>
+        <button class="ink-swatch sw red" id="inkRedBtn" title="Red Ink. Long-press for transparency."></button>
         <div class="ink-slider-popup" id="inkRedSliderPopup">
           <div class="slider-container">
             <input type="range" id="inkOpacityRSlider" min="0" max="100" step="1" value="100" class="ink-slider">
@@ -92,7 +127,7 @@
         </div>
       </div>
       <div class="ink-control-group">
-        <button class="btn" id="inkWhiteBtn" title="White Ink (Eraser). Long-press for transparency."><span class="sw white"></span></button>
+        <button class="ink-swatch sw white" id="inkWhiteBtn" title="White Ink (Eraser). Long-press for transparency."></button>
         <div class="ink-slider-popup" id="inkWhiteSliderPopup">
           <div class="slider-container">
             <input type="range" id="inkOpacityWSlider" min="0" max="100" step="1" value="100" class="ink-slider">
@@ -101,6 +136,56 @@
         </div>
       </div>
     </div>
+    <div class="ink-dock__extra" id="inkDockExtras" aria-hidden="true">
+      <div class="ink-control-group">
+        <button class="ink-swatch sw pistachio" id="inkPistachioBtn" title="Pistachio Ink. Long-press for transparency."></button>
+        <div class="ink-slider-popup" id="inkPistachioSliderPopup">
+          <div class="slider-container">
+            <input type="range" id="inkOpacityPSlider" min="0" max="100" step="1" value="100" class="ink-slider">
+          </div>
+          <span class="slider-value" id="inkOpacityPValue">100%</span>
+        </div>
+      </div>
+      <div class="ink-control-group">
+        <button class="ink-swatch sw pink" id="inkPinkBtn" title="Pink Ink. Long-press for transparency."></button>
+        <div class="ink-slider-popup" id="inkPinkSliderPopup">
+          <div class="slider-container">
+            <input type="range" id="inkOpacityKSlider" min="0" max="100" step="1" value="100" class="ink-slider">
+          </div>
+          <span class="slider-value" id="inkOpacityKValue">100%</span>
+        </div>
+      </div>
+      <div class="ink-control-group">
+        <button class="ink-swatch sw navy" id="inkNavyBtn" title="Navy Blue Ink. Long-press for transparency."></button>
+        <div class="ink-slider-popup" id="inkNavySliderPopup">
+          <div class="slider-container">
+            <input type="range" id="inkOpacityNSlider" min="0" max="100" step="1" value="100" class="ink-slider">
+          </div>
+          <span class="slider-value" id="inkOpacityNValue">100%</span>
+        </div>
+      </div>
+      <div class="ink-control-group">
+        <button class="ink-swatch sw tangerine" id="inkTangerineBtn" title="Tangerine Ink. Long-press for transparency."></button>
+        <div class="ink-slider-popup" id="inkTangerineSliderPopup">
+          <div class="slider-container">
+            <input type="range" id="inkOpacityTSlider" min="0" max="100" step="1" value="100" class="ink-slider">
+          </div>
+          <span class="slider-value" id="inkOpacityTValue">100%</span>
+        </div>
+      </div>
+      <div class="ink-control-group">
+        <button class="ink-swatch sw purple" id="inkPurpleBtn" title="Purple Ink. Long-press for transparency."></button>
+        <div class="ink-slider-popup" id="inkPurpleSliderPopup">
+          <div class="slider-container">
+            <input type="range" id="inkOpacityUSlider" min="0" max="100" step="1" value="100" class="ink-slider">
+          </div>
+          <span class="slider-value" id="inkOpacityUValue">100%</span>
+        </div>
+      </div>
+    </div>
+    <button class="ink-dock__handle" id="inkDockHandle" type="button" aria-expanded="false" aria-controls="inkDockExtras" title="More ink colors" aria-label="More ink colors">
+      <span class="ink-dock__handle-icon" aria-hidden="true">…</span>
+    </button>
   </div>
 
   <aside id="inkSettingsPanel" class="side-panel from-right">
@@ -133,6 +218,13 @@
             <div class="control-row">
               <label for="lhInput">Line Height</label>
               <input id="lhInput" type="number" step="0.5" min="1" max="3" value="1.5" />
+            </div>
+            <div class="control-row">
+              <label for="paperSizeSelect">Paper Size</label>
+              <select id="paperSizeSelect">
+                <option value="a4" selected>A4 (210 × 297 mm)</option>
+                <option value="letter">Letter (8.5 × 11 in)</option>
+              </select>
             </div>
             <div class="control-row">
               <label for="glyphJitterToggle">Glyph jitter</label>
@@ -170,6 +262,31 @@
               <div></div>
               <button class="btn apply-btn" id="shuffleGlyphJitterSeedBtn" type="button" title="Reshuffle glyph jitter pattern">Reshuffle</button>
             </div>
+            <div class="tight-spacer" aria-hidden="true"></div>
+
+            <div class="control-row">
+              <label for="lineSlantToggle">Line slant</label>
+              <input id="lineSlantToggle" type="checkbox" checked />
+            </div>
+            <div class="control-row">
+              <label for="lineSlantMin">Slant range</label>
+              <div class="range-input-pair">
+                <div class="input-with-suffix">
+                  <input id="lineSlantMin" type="number" min="0" max="20" step="0.1" aria-label="Minimum line slant degrees" />
+                  <span aria-hidden="true">°</span>
+                </div>
+                <span class="range-separator">–</span>
+                <div class="input-with-suffix">
+                  <input id="lineSlantMax" type="number" min="0" max="20" step="0.1" aria-label="Maximum line slant degrees" />
+                  <span aria-hidden="true">°</span>
+                </div>
+                <span class="slider-value" id="lineSlantValue"></span>
+              </div>
+            </div>
+            <div class="control-row">
+              <div></div>
+              <button class="btn apply-btn" id="shuffleLineSlantBtn" type="button" title="Reshuffle page slants">Reshuffle</button>
+            </div>
           </div>
         </div>
       </details>
@@ -189,10 +306,24 @@
             </label>
             <label class="font-option">
               <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="TT2020Base Italic" />
+                <span class="font-name">TT2020 Base Italic</span>
+              </div>
+              <span class="font-sample" style='font-family:"TT2020Base Italic", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
                 <input type="radio" name="fontChoice" value="TT2020StyleB" />
                 <span class="font-name">TT2020 Style B</span>
               </div>
               <span class="font-sample" style='font-family:"TT2020StyleB", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="TT2020StyleB Italic" />
+                <span class="font-name">TT2020 Style B Italic</span>
+              </div>
+              <span class="font-sample" style='font-family:"TT2020StyleB Italic", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
             </label>
             <label class="font-option">
               <div class="font-option-header">
@@ -203,10 +334,24 @@
             </label>
             <label class="font-option">
               <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="TT2020StyleD Italic" />
+                <span class="font-name">TT2020 Style D Italic</span>
+              </div>
+              <span class="font-sample" style='font-family:"TT2020StyleD Italic", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
                 <input type="radio" name="fontChoice" value="TT2020StyleE" checked />
                 <span class="font-name">TT2020 Style E</span>
               </div>
               <span class="font-sample" style='font-family:"TT2020StyleE", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="TT2020StyleE Italic" />
+                <span class="font-name">TT2020 Style E Italic</span>
+              </div>
+              <span class="font-sample" style='font-family:"TT2020StyleE Italic", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
             </label>
             <label class="font-option">
               <div class="font-option-header">
@@ -224,10 +369,10 @@
             </label>
             <label class="font-option">
               <div class="font-option-header">
-                <input type="radio" name="fontChoice" value="Courier New" />
-                <span class="font-name">Courier New</span>
+                <input type="radio" name="fontChoice" value="Canon TypeStar 210" />
+                <span class="font-name">Canon TypeStar 210</span>
               </div>
-              <span class="font-sample" style='font-family:"Courier New", monospace;'>The quick brown fox 123456</span>
+              <span class="font-sample" style='font-family:"Canon TypeStar 210", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
             </label>
             <label class="font-option">
               <div class="font-option-header">
@@ -235,6 +380,104 @@
                 <span class="font-name">Courier</span>
               </div>
               <span class="font-sample" style='font-family:Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Courier New" />
+                <span class="font-name">Courier New</span>
+              </div>
+              <span class="font-sample" style='font-family:"Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Courier Prime" />
+                <span class="font-name">Courier Prime</span>
+              </div>
+              <span class="font-sample" style='font-family:"Courier Prime", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Cutive Mono" />
+                <span class="font-name">Cutive Mono</span>
+              </div>
+              <span class="font-sample" style='font-family:"Cutive Mono", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Elite Math" />
+                <span class="font-name">Elite Math</span>
+              </div>
+              <span class="font-sample" style='font-family:"Elite Math", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="IBM Selectric Light Regular" />
+                <span class="font-name">IBM Selectric Light Regular</span>
+              </div>
+              <span class="font-sample" style='font-family:"IBM Selectric Light Regular", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="IBM Selectric Light Italic" />
+                <span class="font-name">IBM Selectric Light Italic</span>
+              </div>
+              <span class="font-sample" style='font-family:"IBM Selectric Light Italic", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Letter Gothic" />
+                <span class="font-name">Letter Gothic</span>
+              </div>
+              <span class="font-sample" style='font-family:"Letter Gothic", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Pica" />
+                <span class="font-name">Pica</span>
+              </div>
+              <span class="font-sample" style='font-family:"Pica", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Prestige Elite Std" />
+                <span class="font-name">Prestige Elite Std</span>
+              </div>
+              <span class="font-sample" style='font-family:"Prestige Elite Std", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Prestige Elite Std Bold" />
+                <span class="font-name">Prestige Elite Std Bold</span>
+              </div>
+              <span class="font-sample" style='font-family:"Prestige Elite Std Bold", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="SCM Galaxie XII" />
+                <span class="font-name">SCM Galaxie XII</span>
+              </div>
+              <span class="font-sample" style='font-family:"SCM Galaxie XII", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Selectric Pica Regular" />
+                <span class="font-name">Selectric Pica Regular</span>
+              </div>
+              <span class="font-sample" style='font-family:"Selectric Pica Regular", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Selectric Script Regular" />
+                <span class="font-name">Selectric Script Regular</span>
+              </div>
+              <span class="font-sample" style='font-family:"Selectric Script Regular", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
+            </label>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="Special Elite" />
+                <span class="font-name">Special Elite</span>
+              </div>
+              <span class="font-sample" style='font-family:"Special Elite", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
             </label>
           </div>
         </div>
@@ -266,9 +509,12 @@
               <label for="showMarginBoxCb">Margin Box</label>
               <input id="showMarginBoxCb" type="checkbox" />
             </div>
-            <div class="control-row">
+            <div class="control-row" id="wordWrapRow">
               <label for="wordWrapCb">Word Wrap</label>
               <input id="wordWrapCb" type="checkbox" checked />
+            </div>
+            <div class="control-row subtle-note" id="wordWrapNote" aria-live="polite" hidden>
+              Word wrap is disabled while real typewriter mode is on.
             </div>
           </div>
         </div>
@@ -294,20 +540,11 @@
               </div>
             </div>
           </div>
-          <div class="ink-mode-row" role="radiogroup" aria-label="Ink pipeline mode">
-            <span class="ink-mode-label">Ink pipeline</span>
-            <div class="ink-mode-options">
-              <label class="ink-mode-option">
-                <input type="radio" name="inkEffectsMode" value="classic" checked />
-                Legacy effects
-              </label>
-              <label class="ink-mode-option">
-                <input type="radio" name="inkEffectsMode" value="experimental" />
-                Experimental effects
-              </label>
-            </div>
-          </div>
           <div id="inkSettingsSections"></div>
+          <div class="ink-style-reset-row">
+            <button class="btn" id="inkStyleRandomizeBtn" type="button">Randomize</button>
+            <button class="btn-text danger" id="inkStyleResetBtn" type="button">Reset to defaults</button>
+          </div>
           <section class="ink-styles-section" aria-labelledby="inkStylesHeader">
             <h4 id="inkStylesHeader">Saved ink styles</h4>
             <div class="ink-style-save-row">
@@ -321,6 +558,97 @@
             </div>
             <div id="inkStylesList" class="ink-styles-list" aria-live="polite" aria-atomic="false"></div>
           </section>
+        </div>
+      </details>
+      <details class="settings-section" id="pageNumbersSettings">
+        <summary>
+          <span class="settings-toggle-icon" aria-hidden="true"></span>
+          <span class="settings-summary-label">Page numbers</span>
+        </summary>
+        <div class="settings-section-content">
+          <div class="settings-group-new page-numbering-group">
+            <label class="appearance-toggle">
+              <input type="checkbox" id="pageNumberToggle" />
+              <span>Enable page numbers</span>
+            </label>
+            <div class="control-row">
+              <label for="pageNumberOffset">Lines from bottom</label>
+              <input id="pageNumberOffset" type="number" min="0" step="1" value="1" />
+            </div>
+            <div class="page-number-align">
+              <span class="page-number-align-label">Alignment</span>
+              <div class="page-number-align-options" role="group" aria-label="Page number alignment">
+                <label>
+                  <input type="radio" name="pageNumberAlign" id="pageNumberAlignLeft" value="left" />
+                  <span>Left</span>
+                </label>
+                <label>
+                  <input type="radio" name="pageNumberAlign" id="pageNumberAlignCenter" value="center" checked />
+                  <span>Center</span>
+                </label>
+                <label>
+                  <input type="radio" name="pageNumberAlign" id="pageNumberAlignRight" value="right" />
+                  <span>Right</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </details>
+      <details class="settings-section" id="typewriterSettings">
+        <summary>
+          <span class="settings-toggle-icon" aria-hidden="true"></span>
+          <span class="settings-summary-label">Real typewriter</span>
+        </summary>
+        <div class="settings-section-content">
+          <div class="settings-group-new">
+            <label class="appearance-toggle">
+              <input type="checkbox" id="realTypewriterToggle" />
+              <span>Enable real typewriter mode</span>
+            </label>
+            <label class="appearance-toggle">
+              <input type="checkbox" id="typewriterBackspaceToggle" />
+              <span>Allow conventional text editing</span>
+            </label>
+            <label class="appearance-toggle">
+              <input type="checkbox" id="typewriterCaretLockToggle" checked />
+              <span>Enable caret lock</span>
+            </label>
+            <div class="control-row">
+              <label for="typewriterBellSelect">Bell sound</label>
+              <select id="typewriterBellSelect">
+                <option value="bell-1">Bell 1</option>
+                <option value="bell-2">Bell 2</option>
+                <option value="bell-3">Bell 3</option>
+              </select>
+              <button type="button" class="btn icon-only" id="typewriterBellPreview" title="Play bell sound">
+                ▶
+              </button>
+            </div>
+            <div class="control-row">
+              <label for="typewriterBellVolume">Bell volume</label>
+              <input id="typewriterBellVolume" type="range" min="0" max="100" step="1" value="70" />
+              <span class="range-value" id="typewriterBellVolumeValue">70%</span>
+            </div>
+            <div class="control-row">
+              <label for="typewriterBellLead">Bell warning (chars)</label>
+              <input id="typewriterBellLead" type="number" min="0" max="40" step="1" value="5" />
+            </div>
+            <div class="control-row">
+              <label for="typewriterStopToggle">Play stop sound</label>
+              <input type="checkbox" id="typewriterStopToggle" checked />
+            </div>
+            <div class="control-row">
+              <label for="typewriterStopSelect">Stop sound</label>
+              <select id="typewriterStopSelect">
+                <option value="stop-1">Stop 1</option>
+                <option value="stop-2">Stop 2</option>
+              </select>
+              <button type="button" class="btn icon-only" id="typewriterStopPreview" title="Play stop sound">
+                ▶
+              </button>
+            </div>
+          </div>
         </div>
       </details>
       <details class="settings-section" id="appearanceSettings">
@@ -344,15 +672,68 @@
                 <span>Dark</span>
               </label>
             </div>
-            <label class="appearance-dark-toggle">
+            <label class="appearance-toggle">
               <input type="checkbox" id="darkPageToggle" />
               <span>Dark page while in dark mode</span>
+            </label>
+            <div class="low-res-zoom-controls">
+              <label class="low-res-zoom-toggle">
+                <input type="checkbox" id="lowResZoomToggle" checked />
+                <div class="low-res-zoom-copy">
+                  <span>Low res zoom</span>
+                  <small>Soft-cap rendering above the limit</small>
+                </div>
+              </label>
+              <div class="low-res-zoom-fields">
+                <label>
+                  <span>Soft cap (%)</span>
+                  <input type="number" id="lowResZoomSoftCap" min="50" max="400" step="10" value="180" />
+                </label>
+                <label>
+                  <span>Zoom margin (%)</span>
+                  <input type="number" id="lowResZoomMargin" min="0" max="200" step="5" value="20" />
+                </label>
+              </div>
+            </div>
+            <label class="appearance-toggle">
+              <input type="checkbox" id="lagAssistToggle" checked />
+              <span>Block typing and show spinner while busy</span>
             </label>
           </div>
         </div>
       </details>
     </div>
+    <div class="app-version">v.39.6b</div>
   </aside>
+
+  <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>
+  <div class="export-dialog" id="exportDialog" role="dialog" aria-modal="true" aria-labelledby="exportDialogTitle" aria-hidden="true">
+    <div class="export-dialog__panel">
+      <div class="export-dialog__header">
+        <div class="export-dialog__titles">
+          <h2 class="export-dialog__title" id="exportDialogTitle">Export</h2>
+          <p class="export-dialog__subtitle">Pick the format for this document:</p>
+        </div>
+      </div>
+      <div class="export-dialog__options" role="group" aria-label="Export format options">
+        <div class="export-option-row">
+          <button class="btn export-option-btn" type="button" id="exportRawBtn">Raw data</button>
+          <span class="export-option__desc">Preserves the styles, margins, and overtyped text</span>
+        </div>
+        <div class="export-option-row">
+          <button class="btn export-option-btn" type="button" id="exportPlainBtn">Plain text</button>
+          <span class="export-option__desc">Saves only the plain, most recent text</span>
+        </div>
+        <div class="export-option-row">
+          <button class="btn export-option-btn" type="button" id="exportPdfBtn">Save as PDF</button>
+          <span class="export-option__desc">Export all pages to high quality PDF</span>
+        </div>
+      </div>
+      <div class="export-dialog__footer">
+        <button class="btn export-dialog__cancel" type="button" id="exportDialogCloseBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
 
   <script type="module" src="js/main.js"></script>
 </body>

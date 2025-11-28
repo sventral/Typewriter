@@ -12,7 +12,12 @@ function hash2(ix, iy, seed) {
   return h / 4294967296;
 }
 
-export function computeGlyphJitterOffset(state, pageIndex, rowMu, col, gridHeight) {
+function normalizeGlyphSalt(value) {
+  if (!Number.isFinite(value)) return 0;
+  return (value >>> 0);
+}
+
+export function computeGlyphJitterOffset(state, pageIndex, rowMu, col, gridHeight, glyphSalt = 0) {
   if (!state?.glyphJitterEnabled) return 0;
   const lineHeight = Number(gridHeight);
   if (!Number.isFinite(lineHeight) || lineHeight <= 0) return 0;
@@ -23,18 +28,35 @@ export function computeGlyphJitterOffset(state, pageIndex, rowMu, col, gridHeigh
   const freqMin = Math.max(0, Math.min(frequencyRange.min, frequencyRange.max)) / 100;
   const freqSpread = Math.max(0, freqMax - freqMin);
   const seed = normalizeGlyphJitterSeed(state.glyphJitterSeed);
+  const saltNorm = normalizeGlyphSalt(glyphSalt);
+  const saltMixX = saltNorm | 1;
+  const saltMixY = ((saltNorm >>> 1) | 1);
 
-  const cellX = ((pageIndex + 1) * 4099 + rowMu) | 0;
-  const cellY = ((col + 1) * 6151) | 0;
+  const cellXBase = ((pageIndex + 1) * 4099 + rowMu) | 0;
+  const cellYBase = ((col + 1) * 6151) | 0;
+  const cellX = saltNorm ? (cellXBase ^ Math.imul(saltMixX, 0x27D4EB2F)) | 0 : cellXBase;
+  const cellY = saltNorm ? (cellYBase ^ Math.imul(saltMixY, 0x165667B1)) | 0 : cellYBase;
 
-  const freqSample = hash2(cellX, cellY, seed ^ 0x9E3779B1);
+  const freqSample = hash2(cellX, cellY, (seed ^ 0x9E3779B1) ^ saltNorm);
   const freqThreshold = freqMin + freqSpread * freqSample;
-  const occurrenceRand = hash2(cellX ^ 0x51F15EED, cellY ^ 0xC0FFEE, seed ^ 0x85EBCA77);
+  const occurrenceRand = hash2(
+    cellX ^ 0x51F15EED,
+    cellY ^ 0xC0FFEE,
+    (seed ^ 0x85EBCA77) ^ (saltNorm >>> 1),
+  );
   if (occurrenceRand >= freqThreshold) return 0;
 
   const amountSpread = Math.max(0, amountRange.max - amountRange.min);
-  const amplitudeSample = hash2(cellX ^ 0xA511E9, cellY ^ 0x1B873593, seed ^ 0xC2B2AE3D);
-  const directionSample = hash2(cellX ^ 0x27D4EB2F, cellY ^ 0x165667B1, seed ^ 0x68E31DA4);
+  const amplitudeSample = hash2(
+    cellX ^ 0xA511E9,
+    cellY ^ 0x1B873593,
+    (seed ^ 0xC2B2AE3D) ^ (saltNorm << 1),
+  );
+  const directionSample = hash2(
+    cellX ^ 0x27D4EB2F,
+    cellY ^ 0x165667B1,
+    (seed ^ 0x68E31DA4) ^ (saltNorm >>> 2),
+  );
 
   const amplitudePct = Math.max(0, amountRange.min + amountSpread * amplitudeSample);
   if (amplitudePct <= 0) return 0;

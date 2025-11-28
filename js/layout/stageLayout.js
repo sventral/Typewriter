@@ -1,28 +1,18 @@
 import { clamp } from '../utils/math.js';
 import { sanitizeIntegerField } from '../utils/forms.js';
 
-const SAFARI_SUPERSAMPLE_THRESHOLD = 1.75;
-
-export function detectSafariEnvironment() {
-  if (typeof navigator === 'undefined') {
-    return { isSafari: false, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD };
-  }
-  const ua = navigator.userAgent || '';
-  const vendor = navigator.vendor || '';
-  const platform = navigator.platform || '';
-  const maxTouch = Number.isFinite(navigator.maxTouchPoints) ? navigator.maxTouchPoints : 0;
-  const isIos = /iP(ad|hone|od)/i.test(ua) || (platform === 'MacIntel' && maxTouch > 1);
-  const isSafariDesktop = /Safari/i.test(ua) && /Apple/i.test(vendor) && !/Chrome|CriOS|FxiOS|Edg|Android/i.test(ua);
-  const isSafari = isIos ? (/Safari/i.test(ua) || /Version\//i.test(ua)) : isSafariDesktop;
-  return { isSafari, supersampleThreshold: SAFARI_SUPERSAMPLE_THRESHOLD };
-}
+export const STAGE_WIDTH_MIN = 1.0;
+export const STAGE_WIDTH_MAX = 1.5;
+export const STAGE_HEIGHT_MIN = 1.0;
+export const STAGE_HEIGHT_MAX = 1.5;
+export const BASE_PADDING_X_PX = 24;
+export const BASE_PADDING_Y_PX = 40;
 
 export function createStageLayoutController(options) {
   const {
     context,
     app: explicitApp,
     state: explicitState,
-    isSafari,
     renderMargins,
     updateStageEnvironment,
     updateCaretPosition,
@@ -30,35 +20,20 @@ export function createStageLayoutController(options) {
 
   const app = explicitApp || context?.app;
   const state = explicitState || context?.state || {};
-  const STAGE_WIDTH_MIN = 1.0;
-  const STAGE_WIDTH_MAX = 5.0;
-  const STAGE_HEIGHT_MIN = 1.0;
-  const STAGE_HEIGHT_MAX = 5.0;
 
-  let safariZoomMode = isSafari ? 'steady' : 'transient';
-  let lastSafariLayoutZoom = isSafari ? state.zoom : 1;
   let cachedToolbarHeight = null;
 
-  if (isSafari) {
-    try {
-      document.documentElement.classList.add('safari-no-blur');
-    } catch {
-    }
-  }
-
   function layoutZoomFactor() {
-    if (!isSafari) return 1;
-    return safariZoomMode === 'steady' ? state.zoom : 1;
+    return 1;
   }
 
   function cssScaleFactor() {
-    if (!isSafari) return state.zoom;
-    return safariZoomMode === 'steady' ? 1 : state.zoom;
+    return state.zoom;
   }
 
   function sanitizedStageWidthFactor() {
     const raw = Number(state.stageWidthFactor);
-    const fallback = 2.0;
+    const fallback = 1.0;
     const sanitized = clamp(Number.isFinite(raw) ? raw : fallback, STAGE_WIDTH_MIN, STAGE_WIDTH_MAX);
     if (sanitized !== state.stageWidthFactor) state.stageWidthFactor = sanitized;
     return sanitized;
@@ -66,7 +41,7 @@ export function createStageLayoutController(options) {
 
   function sanitizedStageHeightFactor() {
     const raw = Number(state.stageHeightFactor);
-    const fallback = 1.2;
+    const fallback = 1.0;
     const sanitized = clamp(Number.isFinite(raw) ? raw : fallback, STAGE_HEIGHT_MIN, STAGE_HEIGHT_MAX);
     if (sanitized !== state.stageHeightFactor) state.stageHeightFactor = sanitized;
     return sanitized;
@@ -78,11 +53,32 @@ export function createStageLayoutController(options) {
     const layoutZoom = layoutZoomFactor();
     const pageW = app.PAGE_W * layoutZoom;
     const pageH = app.PAGE_H * layoutZoom;
-    const width = pageW * widthFactor;
-    const height = pageH * heightFactor;
-    const extraX = Math.max(0, (width - pageW) / 2);
-    const extraY = Math.max(0, (height - pageH) / 2);
-    return { widthFactor, heightFactor, width, height, extraX, extraY, pageW, pageH };
+    const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+
+    const extraFromWidthFactor = Math.max(0, widthFactor - 1) * pageW / 2;
+    const extraFromHeightFactor = Math.max(0, heightFactor - 1) * pageH / 2;
+    const paddingX = BASE_PADDING_X_PX + extraFromWidthFactor;
+    const paddingY = BASE_PADDING_Y_PX + extraFromHeightFactor;
+    const scaledExtraX = paddingX * zoom;
+    const scaledExtraY = paddingY * zoom;
+
+    const width = pageW + paddingX * 2;
+    const height = pageH + paddingY * 2;
+    const widthMultiplier = width / pageW;
+    const heightMultiplier = height / pageH;
+
+    return {
+      widthFactor: widthMultiplier,
+      heightFactor: heightMultiplier,
+      width,
+      height,
+      extraX: scaledExtraX,
+      extraY: scaledExtraY,
+      paddingX,
+      paddingY,
+      pageW,
+      pageH,
+    };
   }
 
   function toolbarHeightPx() {
@@ -130,48 +126,6 @@ export function createStageLayoutController(options) {
     }
   }
 
-  function syncSafariZoomLayout(force = false) {
-    if (!isSafari) return;
-    const layoutZoom = layoutZoomFactor();
-    if (!force && lastSafariLayoutZoom === layoutZoom) {
-      updateZoomWrapTransform();
-      return;
-    }
-    lastSafariLayoutZoom = layoutZoom;
-    updateStageEnvironment();
-    const cssW = app.PAGE_W * layoutZoom;
-    const cssH = app.PAGE_H * layoutZoom;
-    for (const page of state.pages) {
-      if (!page) continue;
-      if (page.pageEl) page.pageEl.style.height = `${cssH}px`;
-      if (page.canvas) {
-        page.canvas.style.width = `${cssW}px`;
-        page.canvas.style.height = `${cssH}px`;
-      }
-      if (page.backCanvas) {
-        page.backCanvas.style.width = `${cssW}px`;
-        page.backCanvas.style.height = `${cssH}px`;
-      }
-    }
-    renderMargins();
-    updateCaretPosition();
-    updateZoomWrapTransform();
-  }
-
-  function setSafariZoomMode(mode, { force = false } = {}) {
-    if (!isSafari) return;
-    const target = mode === 'transient' ? 'transient' : 'steady';
-    const prevMode = safariZoomMode;
-    safariZoomMode = target;
-    const layoutZoom = layoutZoomFactor();
-    const requireUpdate = force || prevMode !== target || lastSafariLayoutZoom !== layoutZoom;
-    syncSafariZoomLayout(requireUpdate);
-  }
-
-  function isSafariSteadyZoom() {
-    return isSafari && safariZoomMode === 'steady';
-  }
-
   return {
     layoutZoomFactor,
     cssScaleFactor,
@@ -181,8 +135,5 @@ export function createStageLayoutController(options) {
     toolbarHeightPx,
     sanitizeStageInput,
     updateZoomWrapTransform,
-    syncSafariZoomLayout,
-    setSafariZoomMode,
-    isSafariSteadyZoom,
   };
 }

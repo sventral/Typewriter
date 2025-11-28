@@ -1,4 +1,5 @@
 import { clamp } from '../utils/math.js';
+import { DEFAULT_PAPER_SIZE, normalizePaperSizeId } from '../config/paperSizes.js';
 import {
   GLYPH_JITTER_DEFAULTS,
   normalizeGlyphJitterAmount,
@@ -6,31 +7,54 @@ import {
   normalizeGlyphJitterSeed,
   cloneGlyphJitterRange,
 } from '../config/glyphJitterConfig.js';
-import { EDGE_BLEED, GRAIN_CFG, INK_INTENSITY } from '../config/inkConfig.js';
+import {
+  LOW_RES_ZOOM_DEFAULTS,
+  normalizeLowResZoomSettings,
+  ZOOM_SLIDER_MAX_PCT,
+  ZOOM_SLIDER_MIN_PCT,
+} from '../config/lowResZoom.js';
+import {
+  LINE_SLANT_DEFAULTS,
+  normalizeLineSlantRange,
+  clampLineSlantDeg,
+  sampleLineSlantDeg,
+} from '../config/lineSlantConfig.js';
+import {
+  DEFAULT_INK_SECTION_ORDER as PRESET_INK_SECTION_ORDER,
+  getDefaultInkSectionQuality,
+  getDefaultInkSectionStrength,
+} from '../config/inkEffectDefaultStyle.js';
+import { TYPEWRITER_DEFAULTS, normalizeTypewriterSettings } from '../config/typewriterMode.js';
+import { hydrateGlyphEntry, serializeGlyphEntry } from './glyphStack.js';
+import { STAGE_HEIGHT_MAX, STAGE_HEIGHT_MIN, STAGE_WIDTH_MAX, STAGE_WIDTH_MIN } from '../layout/stageLayout.js';
+import { encodeDocumentDataForStorage, decodeDocumentDataFromStorage } from '../storage/jsonCompression.js';
+import { createDefaultPageNumberingSettings, sanitizePageNumberingSettings } from '../config/pageNumbering.js';
+import { DEFAULT_INK, SUPPORTED_INKS, createDefaultInkOpacity, normalizeInkId } from '../config/inkPalette.js';
+import {
+  saveDocumentPayload,
+  readDocumentPayload,
+  pruneDocumentPayloads,
+  estimatePayloadBytes,
+} from '../storage/documentBlobStore.js';
+const KNOWN_INK_SECTIONS = PRESET_INK_SECTION_ORDER.slice();
+const EFFECT_QUALITY_DEFAULT = 100;
+const EFFECT_QUALITY_MIN = 0;
+const EFFECT_QUALITY_MAX = 200;
+const METADATA_VERSION = 2;
 
-const resolveIntensityBounds = (key) => {
-  const source = INK_INTENSITY && typeof INK_INTENSITY === 'object' ? INK_INTENSITY[key] : null;
-  const min = Number.isFinite(source?.minPct) ? source.minPct : 0;
-  const max = Number.isFinite(source?.maxPct) ? Math.max(source.maxPct, min) : Math.max(200, min);
-  const value = Number.isFinite(source?.defaultPct) ? source.defaultPct : 100;
-  return {
-    min,
-    max,
-    defaultPct: clamp(value, min, max),
-  };
-};
+const SECTION_STRENGTH_DEFAULTS = Object.freeze({
+  expTone: getDefaultInkSectionStrength('expTone'),
+  expEdge: getDefaultInkSectionStrength('expEdge'),
+  expGrain: getDefaultInkSectionStrength('expGrain'),
+  expDefects: getDefaultInkSectionStrength('expDefects'),
+});
 
-const CENTER_THICKEN_BOUNDS = resolveIntensityBounds('centerThicken');
-const EDGE_THIN_BOUNDS = resolveIntensityBounds('edgeThin');
-
-const KNOWN_INK_SECTIONS = ['fill', 'texture', 'fuzz', 'bleed', 'grain', 'expTone', 'expEdge', 'expGrain', 'expDefects'];
-const DEFAULT_INK_EFFECT_MODE = 'classic';
-
-function sanitizeInkEffectsMode(mode, fallback = DEFAULT_INK_EFFECT_MODE) {
-  if (typeof mode !== 'string') return fallback;
-  const trimmed = mode.trim();
-  return trimmed || fallback;
-}
+const SECTION_QUALITY_DEFAULTS = Object.freeze({
+  expTone: getDefaultInkSectionQuality('expTone'),
+  expEdge: getDefaultInkSectionQuality('expEdge'),
+  expGrain: getDefaultInkSectionQuality('expGrain'),
+  expDefects: getDefaultInkSectionQuality('expDefects'),
+});
 
 function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
   const base = Array.isArray(order) ? order : [];
@@ -89,7 +113,6 @@ function sanitizeSavedInkStyle(style, index = 0) {
       overall: 100,
       sections: {},
       sectionOrder: KNOWN_INK_SECTIONS.slice(),
-      inkEffectsMode: DEFAULT_INK_EFFECT_MODE,
     };
   }
   const id = typeof style.id === 'string' && style.id.trim()
@@ -102,24 +125,22 @@ function sanitizeSavedInkStyle(style, index = 0) {
   const sections = {};
   if (style.sections && typeof style.sections === 'object') {
     for (const [sectionId, sectionValue] of Object.entries(style.sections)) {
+      if (!KNOWN_INK_SECTIONS.includes(sectionId)) continue;
       sections[sectionId] = sanitizeStyleSection(sectionValue);
     }
-  } else {
-    KNOWN_INK_SECTIONS.forEach(sectionId => {
-      if (sections[sectionId]) return;
-      if (!style[sectionId] || typeof style[sectionId] !== 'object') return;
-      sections[sectionId] = sanitizeStyleSection(style[sectionId]);
-    });
   }
+  KNOWN_INK_SECTIONS.forEach(sectionId => {
+    if (sections[sectionId]) return;
+    if (!style[sectionId] || typeof style[sectionId] !== 'object') return;
+    sections[sectionId] = sanitizeStyleSection(style[sectionId]);
+  });
   const sectionOrder = normalizeInkSectionOrder(style.sectionOrder);
-  const inkEffectsMode = sanitizeInkEffectsMode(style.inkEffectsMode ?? style.effectsMode, DEFAULT_INK_EFFECT_MODE);
   return {
     id,
     name,
     overall,
     sections,
     sectionOrder,
-    inkEffectsMode,
   };
 }
 
@@ -169,23 +190,48 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
             if (!Array.isArray(stack) || !Number.isFinite(c)) continue;
             cols.push([
               c,
-              stack.map((s) => ({
-                ch: typeof s?.char === 'string' ? s.char : '',
-                ink: s?.ink || 'b',
-              })),
+              stack.map((s) => serializeGlyphEntry(s)),
             ]);
           }
           rows.push([rmu, cols]);
         }
-        return { rows };
+        const slant = Number.isFinite(p.lineSlantDeg) ? p.lineSlantDeg : undefined;
+        return { rows, slant };
       })
     : [];
   const glyphJitterAmount = normalizeGlyphJitterAmount(state.glyphJitterAmountPct, GLYPH_JITTER_DEFAULTS.amountPct);
   const glyphJitterFrequency = normalizeGlyphJitterFrequency(state.glyphJitterFrequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
   const glyphJitterSeed = normalizeGlyphJitterSeed(state.glyphJitterSeed, GLYPH_JITTER_DEFAULTS.seed);
+  const lowResZoom = normalizeLowResZoomSettings(
+    {
+      softCapPct: state.lowResZoomSoftCapPct,
+      marginPct: state.lowResZoomMarginPct,
+    },
+    { maxZoomPct: ZOOM_SLIDER_MAX_PCT, minSoftCapPct: ZOOM_SLIDER_MIN_PCT },
+  );
+  const lowResZoomEnabled = state.lowResZoomEnabled !== false;
+  const pageNumbering = sanitizePageNumberingSettings(
+    state.pageNumbering,
+    createDefaultPageNumberingSettings(),
+  );
+  const lineSlantRange = normalizeLineSlantRange(state.lineSlantRangeDeg, LINE_SLANT_DEFAULTS.range);
+
+  const realTypewriter = normalizeTypewriterSettings(
+    {
+      enabled: state.realTypewriterEnabled,
+      bellSound: state.realTypewriterBellSound,
+      bellVolume: state.realTypewriterBellVolume,
+      bellLead: state.realTypewriterBellLead,
+      stopSound: state.realTypewriterStopSound,
+      stopEnabled: state.realTypewriterStopEnabled,
+      backspaceEnabled: state.realTypewriterBackspaceEnabled,
+      caretLockEnabled: state.realTypewriterCaretLockEnabled,
+    },
+    TYPEWRITER_DEFAULTS,
+  );
 
   return {
-    v: 25,
+    v: 30,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -198,6 +244,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       B: state.marginBottom,
     },
     caret: state.caret,
+    paperSize: normalizePaperSizeId(state.paperSize || DEFAULT_PAPER_SIZE),
     ink: state.ink,
     showRulers: state.showRulers,
     showMarginBox: state.showMarginBox,
@@ -207,46 +254,41 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     inkOpacity: state.inkOpacity,
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
-    inkEffectsMode: sanitizeInkEffectsMode(state.inkEffectsMode, DEFAULT_INK_EFFECT_MODE),
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
-    inkFillStrength: clamp(Number(state.inkFillStrength ?? 100), 0, 100),
-    centerThickenPct: clamp(
-      Number(state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
-      CENTER_THICKEN_BOUNDS.min,
-      CENTER_THICKEN_BOUNDS.max,
-    ),
-    edgeThinPct: clamp(
-      Number(state.edgeThinPct ?? EDGE_THIN_BOUNDS.defaultPct),
-      EDGE_THIN_BOUNDS.min,
-      EDGE_THIN_BOUNDS.max,
-    ),
-    inkTextureStrength: clamp(Number(state.inkTextureStrength ?? 100), 0, 100),
-    edgeBleedStrength: clamp(
-      Number(state.edgeBleedStrength ?? (EDGE_BLEED.enabled === false ? 0 : 100)),
-      0,
-      100,
-    ),
-    edgeFuzzStrength: clamp(Number(state.edgeFuzzStrength ?? 100), 0, 100),
-    grainPct: clamp(
-      Number(state.grainPct ?? (GRAIN_CFG.enabled === false ? 0 : 100)),
-      0,
-      100,
-    ),
-    grainSeed: state.grainSeed >>> 0,
-    altSeed: state.altSeed >>> 0,
+    expToneStrength: clamp(Number(state.expToneStrength ?? SECTION_STRENGTH_DEFAULTS.expTone), 0, 100),
+    expEdgeStrength: clamp(Number(state.expEdgeStrength ?? SECTION_STRENGTH_DEFAULTS.expEdge), 0, 100),
+    expGrainStrength: clamp(Number(state.expGrainStrength ?? SECTION_STRENGTH_DEFAULTS.expGrain), 0, 100),
+    expDefectsStrength: clamp(Number(state.expDefectsStrength ?? SECTION_STRENGTH_DEFAULTS.expDefects), 0, 100),
+    expToneQuality: clamp(Number(state.expToneQuality ?? SECTION_QUALITY_DEFAULTS.expTone), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expEdgeQuality: clamp(Number(state.expEdgeQuality ?? SECTION_QUALITY_DEFAULTS.expEdge), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expGrainQuality: clamp(Number(state.expGrainQuality ?? SECTION_QUALITY_DEFAULTS.expGrain), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expDefectsQuality: clamp(Number(state.expDefectsQuality ?? SECTION_QUALITY_DEFAULTS.expDefects), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
     inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
     wordWrap: state.wordWrap,
     stageWidthFactor: state.stageWidthFactor,
     stageHeightFactor: state.stageHeightFactor,
     themeMode: state.themeMode || 'auto',
     darkPageInDarkMode: !!state.darkPageInDarkMode,
+    lagAssistEnabled: state.lagAssistEnabled !== false,
     pageFillColor: state.pageFillColor,
     savedInkStyles: sanitizeSavedInkStyles(state.savedInkStyles),
+    currentInkStyle: state.currentInkStyle ? sanitizeSavedInkStyle(state.currentInkStyle) : null,
+    pageNumbering,
+    realTypewriter,
+    lineSlant: {
+      enabled: state.lineSlantEnabled !== false,
+      range: lineSlantRange,
+    },
     glyphJitter: {
       enabled: !!state.glyphJitterEnabled,
       amountPct: cloneGlyphJitterRange(glyphJitterAmount),
       frequencyPct: cloneGlyphJitterRange(glyphJitterFrequency),
       seed: glyphJitterSeed,
+    },
+    lowResZoom: {
+      enabled: lowResZoomEnabled,
+      softCapPct: lowResZoom.softCapPct ?? LOW_RES_ZOOM_DEFAULTS.softCapPct,
+      marginPct: lowResZoom.marginPct ?? LOW_RES_ZOOM_DEFAULTS.marginPct,
     },
     pages,
   };
@@ -261,15 +303,36 @@ export function deserializeDocumentState(data, context) {
     makePageRecord,
     computeColsFromCpi,
     setActiveFontName,
+    applyPaperSizeSelection,
+    scheduleMetricsUpdate,
   } = context || {};
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 25) return false;
+  if (!data || data.v < 2 || data.v > 30) return false;
+  const targetPaperSize = typeof data.paperSize === 'string'
+    ? data.paperSize
+    : state.paperSize || DEFAULT_PAPER_SIZE;
+  if (typeof applyPaperSizeSelection === 'function') {
+    applyPaperSizeSelection(targetPaperSize, {
+      silent: true,
+      preserveMargins: false,
+      updateColumns: false,
+      triggerLayout: false,
+      scheduleMetrics: false,
+      triggerRewrap: false,
+      markDirty: false,
+      save: false,
+      focus: false,
+    });
+  }
+  state.paperSize = normalizePaperSizeId(targetPaperSize);
   state.pages = [];
   if (app.stageInner) {
     app.stageInner.innerHTML = '';
   }
+  const hasStoredMarginBox = data && Object.prototype.hasOwnProperty.call(data, 'showMarginBox');
+  const resolvedShowMarginBox = hasStoredMarginBox ? !!data.showMarginBox : !!state.showMarginBox;
   const pgArr = Array.isArray(data.pages) ? data.pages : [];
   pgArr.forEach((pg, idx) => {
     const wrap = document.createElement('div');
@@ -284,7 +347,7 @@ export function deserializeDocumentState(data, context) {
     }
     const mb = document.createElement('div');
     mb.className = 'margin-box';
-    mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
+    mb.style.visibility = resolvedShowMarginBox ? 'visible' : 'hidden';
     pageEl.appendChild(cv);
     pageEl.appendChild(mb);
     wrap.appendChild(pageEl);
@@ -298,6 +361,12 @@ export function deserializeDocumentState(data, context) {
       ? makePageRecord(idx, wrap, pageEl, cv, mb)
       : null;
     if (!page) return;
+    page.lineSlantDeg = state.lineSlantEnabled
+      ? clampLineSlantDeg(pg?.slant ?? sampleLineSlantDeg(state.lineSlantRangeDeg), state.lineSlantRangeDeg)
+      : 0;
+    if (page.marginBoxEl) {
+      page.marginBoxEl.style.setProperty('--line-slant-deg', `${page.lineSlantDeg}deg`);
+    }
     state.pages.push(page);
     if (Array.isArray(pg?.rows)) {
       for (const [rmu, cols] of pg.rows) {
@@ -305,7 +374,7 @@ export function deserializeDocumentState(data, context) {
         if (Array.isArray(cols)) {
           for (const [c, stackArr] of cols) {
             rowMap.set(c, Array.isArray(stackArr)
-              ? stackArr.map((s) => ({ char: s?.ch, ink: s?.ink || 'b' }))
+              ? stackArr.map((s) => hydrateGlyphEntry(s?.ch, s?.ink, s?.salt))
               : []);
           }
         }
@@ -327,7 +396,7 @@ export function deserializeDocumentState(data, context) {
     }
     const mb = document.createElement('div');
     mb.className = 'margin-box';
-    mb.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
+    mb.style.visibility = resolvedShowMarginBox ? 'visible' : 'hidden';
     pageEl.appendChild(cv);
     pageEl.appendChild(mb);
     wrap.appendChild(pageEl);
@@ -340,6 +409,12 @@ export function deserializeDocumentState(data, context) {
       : null;
     if (page) {
       page.canvas.style.visibility = 'hidden';
+      page.lineSlantDeg = state.lineSlantEnabled
+        ? clampLineSlantDeg(sampleLineSlantDeg(state.lineSlantRangeDeg), state.lineSlantRangeDeg)
+        : 0;
+      if (page.marginBoxEl) {
+        page.marginBoxEl.style.setProperty('--line-slant-deg', `${page.lineSlantDeg}deg`);
+      }
       state.pages.push(page);
     }
   }
@@ -349,13 +424,13 @@ export function deserializeDocumentState(data, context) {
   if (cpiVal && typeof computeColsFromCpi === 'function') {
     inferredCols = computeColsFromCpi(cpiVal).cols2;
   }
+  const defaultInkOpacity = createDefaultInkOpacity(100);
   const inkOpacity = (data.inkOpacity && typeof data.inkOpacity === 'object')
-    ? {
-        b: clamp(Number(data.inkOpacity.b ?? 100), 0, 100),
-        r: clamp(Number(data.inkOpacity.r ?? 100), 0, 100),
-        w: clamp(Number(data.inkOpacity.w ?? 100), 0, 100),
-      }
-    : { b: 100, r: 100, w: 100 };
+    ? SUPPORTED_INKS.reduce((map, key) => {
+        map[key] = clamp(Number(data.inkOpacity[key] ?? defaultInkOpacity[key]), 0, 100);
+        return map;
+      }, {})
+    : defaultInkOpacity;
   const storedInkWidth = Number(data.inkWidthPct);
   const sanitizedInkWidth = Number.isFinite(storedInkWidth)
     ? clamp(Math.round(storedInkWidth), 1, 150)
@@ -363,10 +438,10 @@ export function deserializeDocumentState(data, context) {
   const storedStageWidth = Number(data.stageWidthFactor);
   const storedStageHeight = Number(data.stageHeightFactor);
   const sanitizedStageWidth = Number.isFinite(storedStageWidth)
-    ? clamp(storedStageWidth, 1, 5)
+    ? clamp(storedStageWidth, STAGE_WIDTH_MIN, STAGE_WIDTH_MAX)
     : state.stageWidthFactor;
   const sanitizedStageHeight = Number.isFinite(storedStageHeight)
-    ? clamp(storedStageHeight, 1, 5)
+    ? clamp(storedStageHeight, STAGE_HEIGHT_MIN, STAGE_HEIGHT_MAX)
     : state.stageHeightFactor;
   const jitterBlock = data.glyphJitter && typeof data.glyphJitter === 'object'
     ? data.glyphJitter
@@ -376,6 +451,24 @@ export function deserializeDocumentState(data, context) {
   const sanitizedJitterAmount = normalizeGlyphJitterAmount(jitterBlock?.amountPct, fallbackAmount);
   const sanitizedJitterFrequency = normalizeGlyphJitterFrequency(jitterBlock?.frequencyPct, fallbackFrequency);
   const sanitizedJitterSeed = normalizeGlyphJitterSeed(jitterBlock?.seed, state.glyphJitterSeed ?? GLYPH_JITTER_DEFAULTS.seed);
+  const lowResZoomBlock = (data.lowResZoom && typeof data.lowResZoom === 'object') ? data.lowResZoom : {};
+  const normalizedLowResZoom = normalizeLowResZoomSettings(
+    {
+      softCapPct: lowResZoomBlock.softCapPct,
+      marginPct: lowResZoomBlock.marginPct,
+    },
+    { maxZoomPct: ZOOM_SLIDER_MAX_PCT, minSoftCapPct: ZOOM_SLIDER_MIN_PCT },
+  );
+  const lowResZoomEnabled = lowResZoomBlock.enabled !== false;
+  const normalizedTypewriter = normalizeTypewriterSettings(
+    data.realTypewriter,
+    TYPEWRITER_DEFAULTS,
+  );
+  const storedLineSlant = data.lineSlant && typeof data.lineSlant === 'object' ? data.lineSlant : null;
+  const normalizedLineSlantRange = normalizeLineSlantRange(
+    storedLineSlant?.range,
+    state.lineSlantRangeDeg ?? LINE_SLANT_DEFAULTS.range,
+  );
 
   Object.assign(state, {
     marginL: data.margins?.L ?? state.marginL,
@@ -385,56 +478,62 @@ export function deserializeDocumentState(data, context) {
     caret: data.caret
       ? { page: data.caret.page || 0, rowMu: data.caret.rowMu || 0, col: data.caret.col || 0 }
       : state.caret,
-    ink: ['b', 'r', 'w'].includes(data.ink) ? data.ink : 'b',
+    ink: normalizeInkId(data.ink ?? state.ink ?? DEFAULT_INK),
     showRulers: data.showRulers !== false,
-    showMarginBox: !!data.showMarginBox,
+    showMarginBox: resolvedShowMarginBox,
     cpi: cpiVal || 10,
     colsAcross: inferredCols ?? state.colsAcross,
+    paperSize: normalizePaperSizeId(data.paperSize || state.paperSize || DEFAULT_PAPER_SIZE),
     inkWidthPct: sanitizedInkWidth,
     inkOpacity,
     lineHeightFactor: [1, 1.5, 2, 2.5, 3].includes(data.lineHeightFactor)
       ? data.lineHeightFactor
       : 1.5,
     zoom: typeof data.zoom === 'number' && data.zoom >= 0.5 && data.zoom <= 4 ? data.zoom : 1.0,
+    lowResZoomEnabled,
+    lowResZoomSoftCapPct: normalizedLowResZoom.softCapPct ?? LOW_RES_ZOOM_DEFAULTS.softCapPct,
+    lowResZoomMarginPct: normalizedLowResZoom.marginPct ?? LOW_RES_ZOOM_DEFAULTS.marginPct,
     effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
-    inkFillStrength: clamp(
-      Number(data.inkFillStrength ?? state.inkFillStrength ?? 100),
+    expToneStrength: clamp(
+      Number(data.expToneStrength ?? state.expToneStrength ?? SECTION_STRENGTH_DEFAULTS.expTone),
       0,
       100,
     ),
-    centerThickenPct: clamp(
-      Number(data.centerThickenPct ?? state.centerThickenPct ?? CENTER_THICKEN_BOUNDS.defaultPct),
-      CENTER_THICKEN_BOUNDS.min,
-      CENTER_THICKEN_BOUNDS.max,
-    ),
-    edgeThinPct: clamp(
-      Number(data.edgeThinPct ?? state.edgeThinPct ?? EDGE_THIN_BOUNDS.defaultPct),
-      EDGE_THIN_BOUNDS.min,
-      EDGE_THIN_BOUNDS.max,
-    ),
-    inkTextureStrength: clamp(Number(data.inkTextureStrength ?? state.inkTextureStrength ?? 100), 0, 100),
-    edgeBleedStrength: clamp(
-      Number(
-        data.edgeBleedStrength
-          ?? state.edgeBleedStrength
-          ?? (EDGE_BLEED.enabled === false ? 0 : 100)
-      ),
+    expEdgeStrength: clamp(
+      Number(data.expEdgeStrength ?? state.expEdgeStrength ?? SECTION_STRENGTH_DEFAULTS.expEdge),
       0,
       100,
     ),
-    edgeFuzzStrength: clamp(Number(data.edgeFuzzStrength ?? state.edgeFuzzStrength ?? 100), 0, 100),
-    grainPct: clamp(
-      Number(
-        data.grainPct
-          ?? state.grainPct
-          ?? (GRAIN_CFG.enabled === false ? 0 : 100)
-      ),
+    expGrainStrength: clamp(
+      Number(data.expGrainStrength ?? state.expGrainStrength ?? SECTION_STRENGTH_DEFAULTS.expGrain),
       0,
       100,
     ),
-    grainSeed: (data.grainSeed >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
-    altSeed:
-      (data.altSeed >>> 0) || (((data.grainSeed >>> 0) ^ 0xA5A5A5A5) >>> 0) || ((Math.random() * 0xFFFFFFFF) >>> 0),
+    expDefectsStrength: clamp(
+      Number(data.expDefectsStrength ?? state.expDefectsStrength ?? SECTION_STRENGTH_DEFAULTS.expDefects),
+      0,
+      100,
+    ),
+    expToneQuality: clamp(
+      Number(data.expToneQuality ?? state.expToneQuality ?? SECTION_QUALITY_DEFAULTS.expTone),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expEdgeQuality: clamp(
+      Number(data.expEdgeQuality ?? state.expEdgeQuality ?? SECTION_QUALITY_DEFAULTS.expEdge),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expGrainQuality: clamp(
+      Number(data.expGrainQuality ?? state.expGrainQuality ?? SECTION_QUALITY_DEFAULTS.expGrain),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expDefectsQuality: clamp(
+      Number(data.expDefectsQuality ?? state.expDefectsQuality ?? SECTION_QUALITY_DEFAULTS.expDefects),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
     wordWrap: data.wordWrap !== false,
     stageWidthFactor: sanitizedStageWidth,
     stageHeightFactor: sanitizedStageHeight,
@@ -442,6 +541,19 @@ export function deserializeDocumentState(data, context) {
       ? data.themeMode
       : (state.themeMode || 'auto'),
     darkPageInDarkMode: data.darkPageInDarkMode === true,
+    lagAssistEnabled: data.lagAssistEnabled !== false,
+    realTypewriterEnabled: normalizedTypewriter.enabled,
+    realTypewriterBellSound: normalizedTypewriter.bellSound,
+    realTypewriterBellVolume: normalizedTypewriter.bellVolume,
+    realTypewriterBellLead: normalizedTypewriter.bellLead,
+    realTypewriterStopSound: normalizedTypewriter.stopSound,
+    realTypewriterStopEnabled: normalizedTypewriter.stopEnabled,
+    realTypewriterBackspaceEnabled: normalizedTypewriter.backspaceEnabled,
+    realTypewriterCaretLockEnabled: normalizedTypewriter.caretLockEnabled,
+    hammerLock: normalizedTypewriter.caretLockEnabled,
+    typewriterMarginRelease: false,
+    lineSlantEnabled: storedLineSlant?.enabled !== false,
+    lineSlantRangeDeg: normalizedLineSlantRange,
     pageFillColor: typeof data.pageFillColor === 'string' && data.pageFillColor.trim()
       ? data.pageFillColor
       : state.pageFillColor,
@@ -453,13 +565,16 @@ export function deserializeDocumentState(data, context) {
     glyphJitterAmountPct: sanitizedJitterAmount,
     glyphJitterFrequencyPct: sanitizedJitterFrequency,
     glyphJitterSeed: sanitizedJitterSeed,
+    pageNumbering: sanitizePageNumberingSettings(
+      data.pageNumbering,
+      state.pageNumbering || createDefaultPageNumberingSettings(),
+    ),
   });
   state.savedInkStyles = sanitizeSavedInkStyles(data.savedInkStyles);
+  state.currentInkStyle = data.currentInkStyle
+    ? sanitizeSavedInkStyle(data.currentInkStyle)
+    : null;
   state.inkSectionOrder = normalizeInkSectionOrder(data.inkSectionOrder, state.inkSectionOrder);
-  state.inkEffectsMode = sanitizeInkEffectsMode(
-    data.inkEffectsMode ?? state.inkEffectsMode,
-    state.inkEffectsMode ?? DEFAULT_INK_EFFECT_MODE,
-  );
   if (typeof data.documentId === 'string' && data.documentId.trim()) {
     state.documentId = data.documentId.trim();
   }
@@ -475,6 +590,9 @@ export function deserializeDocumentState(data, context) {
     p.dirtyAll = true;
   }
   document.body.classList.toggle('rulers-off', !state.showRulers);
+  if (typeof scheduleMetricsUpdate === 'function') {
+    scheduleMetricsUpdate(true);
+  }
   return true;
 }
 
@@ -486,6 +604,46 @@ function resolveStorage(options) {
   if (options && options.localStorage) return options.localStorage;
   if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
   return null;
+}
+
+function estimateStoredBytes(value) {
+  return estimatePayloadBytes(value);
+}
+
+async function hydrateDocumentsFromBlobStore(documents, idsToHydrate) {
+  if (!Array.isArray(documents) || !documents.length) return;
+  const targetIds = Array.isArray(idsToHydrate) ? idsToHydrate.filter(Boolean) : [];
+  if (!targetIds.length) return;
+  const docMap = new Map(documents.map((doc) => [doc.id, doc]));
+  await Promise.all(targetIds.map(async (id) => {
+    const doc = docMap.get(id);
+    if (!doc || doc.data) return;
+    try {
+      const payload = await readDocumentPayload(id);
+      if (!payload) return;
+      doc.data = decodeDocumentDataFromStorage(payload);
+    } catch (err) {
+      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+        console.warn('Typewriter: Failed to read stored document payload', err);
+      }
+    }
+  }));
+}
+
+function normalizeDocumentEntry(base, seen) {
+  const decodedData = decodeDocumentDataFromStorage(base.data);
+  const record = createDocumentRecord({
+    id: base.id,
+    title: base.title,
+    data: decodedData,
+    createdAt: Number(base.createdAt),
+    updatedAt: Number(base.updatedAt),
+  }, seen);
+  const dataSize = Number.isFinite(base.dataSize) ? base.dataSize : estimateStoredBytes(base.data);
+  if (dataSize) {
+    record.dataSize = dataSize;
+  }
+  return record;
 }
 
 export function createDocumentRecord({ id, title, data, createdAt, updatedAt } = {}, existingIds) {
@@ -512,39 +670,39 @@ export function createDocumentRecord({ id, title, data, createdAt, updatedAt } =
   };
 }
 
-export function loadDocumentIndexFromStorage(storageKey, options = {}) {
+export async function loadDocumentIndexFromStorage(storageKey, options = {}) {
   const storage = resolveStorage(options);
   const documents = [];
   const seen = new Set();
   let activeId = null;
-  if (!storage) {
-    return { documents, activeId };
+  let parsed = null;
+  if (storage) {
+    try {
+      parsed = JSON.parse(storage.getItem(getDocumentsKey(storageKey)));
+    } catch {
+      parsed = null;
+    }
   }
-  try {
-    const parsed = JSON.parse(storage.getItem(getDocumentsKey(storageKey)));
-    if (parsed && Array.isArray(parsed.documents)) {
-      parsed.documents.forEach((entry) => {
-        const base = entry && typeof entry === 'object' ? entry : {};
-        const record = createDocumentRecord({
-          id: base.id,
-          title: base.title,
-          data: base.data && typeof base.data === 'object' ? base.data : null,
-          createdAt: Number(base.createdAt),
-          updatedAt: Number(base.updatedAt),
-        }, seen);
-        documents.push(record);
-      });
-    }
-    if (parsed && typeof parsed.activeId === 'string' && parsed.activeId.trim()) {
-      activeId = parsed.activeId.trim();
-    }
-  } catch {}
+  const docEntries = parsed && Array.isArray(parsed.documents) ? parsed.documents : [];
+  docEntries.forEach((entry) => {
+    const base = entry && typeof entry === 'object' ? entry : {};
+    const record = normalizeDocumentEntry(base, seen);
+    documents.push(record);
+  });
+  if (parsed && typeof parsed.activeId === 'string' && parsed.activeId.trim()) {
+    activeId = parsed.activeId.trim();
+  }
   if (activeId && !documents.some((doc) => doc.id === activeId)) {
     activeId = null;
   }
   if (!activeId && documents.length) {
     activeId = documents[0].id;
   }
+  const hydrateMode = options && options.hydrateAll ? 'all' : 'active';
+  const idsToHydrate = hydrateMode === 'all'
+    ? documents.map((d) => d.id)
+    : (activeId ? [activeId] : []);
+  await hydrateDocumentsFromBlobStore(documents, idsToHydrate);
   return { documents, activeId };
 }
 
@@ -569,23 +727,81 @@ export function migrateLegacyDocument(storageKey, options = {}) {
   return migrated;
 }
 
-export function persistDocuments(storageKey, docState, options = {}) {
+export async function loadDocumentDataById(docId) {
+  if (!docId) return null;
+  try {
+    const payload = await readDocumentPayload(docId);
+    return decodeDocumentDataFromStorage(payload);
+  } catch {
+    return null;
+  }
+}
+
+export async function persistDocuments(storageKey, docState, options = {}) {
   const storage = resolveStorage(options);
-  if (!storage) return;
   const documents = Array.isArray(docState?.documents) ? docState.documents : [];
-  const payload = {
-    version: 1,
-    activeId: docState?.activeId || null,
-    documents: documents.map((doc) => ({
+  const keepIds = new Set();
+  const payloadDocs = [];
+  const blobWrites = [];
+  documents.forEach((doc) => {
+    if (!doc || typeof doc !== 'object') return;
+    const encoded = encodeDocumentDataForStorage(doc.data);
+    const size = encoded ? estimateStoredBytes(encoded) : (Number(doc.dataSize) || 0);
+    if (doc.id) {
+      keepIds.add(doc.id);
+    }
+    payloadDocs.push({
       id: doc.id,
       title: doc.title,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
-      data: doc.data,
-    })),
+      dataSize: size || 0,
+      hasData: !!encoded || !!doc.dataSize,
+    });
+    if (doc.id && encoded) {
+      blobWrites.push(saveDocumentPayload(doc.id, encoded));
+    }
+  });
+  const payload = {
+    version: METADATA_VERSION,
+    activeId: docState?.activeId || null,
+    documents: payloadDocs,
   };
+  if (storage && !options.skipMetadataWrite) {
+    try {
+      storage.setItem(getDocumentsKey(storageKey), JSON.stringify(payload));
+      storage.removeItem(storageKey);
+    } catch (err) {
+      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+        console.warn('Typewriter: Failed to persist document metadata – storage quota may be exhausted.', err);
+      }
+      if (options.onSaveError) {
+        options.onSaveError(err);
+      }
+    }
+  }
   try {
-    storage.setItem(getDocumentsKey(storageKey), JSON.stringify(payload));
-    storage.removeItem(storageKey);
-  } catch {}
+    await Promise.all(blobWrites);
+  } catch (err) {
+    if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+      console.warn('Typewriter: Failed to persist document payloads', err);
+    }
+    if (options.onSaveError) {
+      options.onSaveError(err);
+    }
+  }
+  if (keepIds.size || documents.length === 0) {
+    try {
+      await pruneDocumentPayloads(keepIds);
+    } catch (err) {
+      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+        console.warn('Typewriter: Failed to prune stale document payloads', err);
+      }
+    }
+  }
+}
+
+export function estimateDocumentDataBytes(data, options = {}) {
+  const encoded = encodeDocumentDataForStorage(data, options);
+  return estimateStoredBytes(encoded);
 }

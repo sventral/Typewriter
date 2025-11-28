@@ -1,14 +1,12 @@
+import { markDocumentDirty } from '../state/saveRevision.js';
+
 const DARK_PAGE_HEX = '#1f2024';
-const LIGHT_EFFECT_INKS = ['b', 'r'];
-const DARK_EFFECT_INKS = ['w', 'r'];
-const LIGHT_EFFECT_INKS_SORTED = [...LIGHT_EFFECT_INKS].sort();
-const DARK_EFFECT_INKS_SORTED = [...DARK_EFFECT_INKS].sort();
+const LIGHT_PAGE_HEX = '#f7f5ee';
 
 export function createThemeController({
   app,
   state,
   colors,
-  edgeBleed,
   prefersDarkMedia = null,
   rebuildAllAtlases = () => {},
   touchPage = () => {},
@@ -32,14 +30,6 @@ export function createThemeController({
     return systemPrefersDark() ? 'dark' : 'light';
   }
 
-  function arraysEqualShallow(a = [], b = []) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
-  }
-
   function updateRootThemeAttribute() {
     const root = document.documentElement;
     if (!root) return;
@@ -61,7 +51,7 @@ export function createThemeController({
   }
 
   function readPageFillColor() {
-    let fill = '#ffffff';
+    let fill = LIGHT_PAGE_HEX;
     try {
       let target = app.firstPage;
       if (!target || !target.isConnected) {
@@ -95,19 +85,6 @@ export function createThemeController({
     }
   }
 
-  function syncBleedInksForPageTone(darkPageActive) {
-    if (!edgeBleed || !Array.isArray(edgeBleed.inks)) return false;
-    const currentSorted = [...edgeBleed.inks].sort();
-    const matchesLight = arraysEqualShallow(currentSorted, LIGHT_EFFECT_INKS_SORTED);
-    const matchesDark = arraysEqualShallow(currentSorted, DARK_EFFECT_INKS_SORTED);
-    if (!matchesLight && !matchesDark) return false;
-    const target = darkPageActive ? DARK_EFFECT_INKS : LIGHT_EFFECT_INKS;
-    const targetSorted = darkPageActive ? DARK_EFFECT_INKS_SORTED : LIGHT_EFFECT_INKS_SORTED;
-    if (arraysEqualShallow(currentSorted, targetSorted)) return false;
-    edgeBleed.inks = [...target];
-    return true;
-  }
-
   function applyInkPaletteForTheme(darkPageActive) {
     if (!colors) return false;
     const nextRed = darkPageActive ? '#ff7a7a' : '#b00000';
@@ -116,8 +93,8 @@ export function createThemeController({
       colors.b = DARK_PAGE_HEX;
       changed = true;
     }
-    if (colors.w !== '#ffffff') {
-      colors.w = '#ffffff';
+    if (colors.w !== LIGHT_PAGE_HEX) {
+      colors.w = LIGHT_PAGE_HEX;
       changed = true;
     }
     if (colors.r !== nextRed) {
@@ -172,11 +149,10 @@ export function createThemeController({
     const preferWhite = !!darkPageActive;
     const preferChanged = state.inkEffectsPreferWhite !== preferWhite;
     state.inkEffectsPreferWhite = preferWhite;
-    const bleedAdjusted = syncBleedInksForPageTone(darkPageActive);
     const shouldSwapInks = lastDarkPageActive !== null && lastDarkPageActive !== darkPageActive;
     if (shouldSwapInks) swapDocumentInkColors();
     applyInkPaletteForTheme(darkPageActive);
-    if (preferChanged || bleedAdjusted) {
+    if (preferChanged) {
       refreshGlyphEffects();
     }
     let inkChanged = false;
@@ -201,6 +177,7 @@ export function createThemeController({
     if (app.appearanceDark) app.appearanceDark.checked = normalized === 'dark';
     if (app.darkPageToggle) app.darkPageToggle.disabled = normalized === 'light';
     applyAppearance();
+    markDocumentDirty(state);
     saveStateDebounced();
     focusStage();
   }
@@ -212,6 +189,7 @@ export function createThemeController({
     }
     if (app.darkPageToggle) app.darkPageToggle.checked = normalized;
     applyAppearance();
+    markDocumentDirty(state);
     saveStateDebounced();
     focusStage();
   }
@@ -233,7 +211,6 @@ export function createThemeController({
   return {
     computeEffectiveTheme,
     applyInkPaletteForTheme,
-    syncBleedInksForPageTone,
     applyAppearance,
     setThemeModePreference,
     setDarkPagePreference,

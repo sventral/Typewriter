@@ -1,4 +1,12 @@
 import { clamp } from '../utils/math.js';
+import { computeLineStepPx, normalizeTopMarginPx } from '../utils/marginSnap.js';
+import { markDocumentDirty } from '../state/saveRevision.js';
+import { createZoomRenderManager } from './zoomRenderManager.js';
+import { createZoomUiController } from './zoomUiController.js';
+import { createZoomLagMonitor } from '../diagnostics/zoomLagMonitor.js';
+import { createWheelAxisStabilizer } from './wheelAxisStabilizer.js';
+import { BASE_PADDING_X_PX, BASE_PADDING_Y_PX } from './stageLayout.js';
+import { createZoomSliderContrastManager } from './zoomSliderContrast.js';
 
 export function createLayoutAndZoomController(context, pageLifecycle, editingController) {
   const {
@@ -14,6 +22,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     requestVirtualization,
     saveStateDebounced,
     setRenderScaleForZoom,
+    getEffectiveRenderZoom,
     prepareCanvas,
     configureCanvasContext,
     schedulePaint,
@@ -25,9 +34,8 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     setZoomDebounceTimer,
     getDrag,
     setDrag,
-    isSafari,
-    setSafariZoomMode,
-    syncSafariZoomLayout,
+    getPaperWidthMm = () => 210,
+    getPaperHeightMm = () => 297,
   } = context;
 
   const {
@@ -37,89 +45,132 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     toolbarHeightPx,
     updateZoomWrapTransform,
     sanitizeStageInput,
-    setSafariZoomMode: stageLayoutSetSafariZoomMode,
   } = layoutController;
 
   const { clampCaretToBounds } = editingController;
+  const { visibleWindowIndices } = pageLifecycle || {};
+  const getVisibleWindowIndices = typeof visibleWindowIndices === 'function' ? visibleWindowIndices : null;
+
+  let lastLagPhase = 'idle';
+
+  const syncLagAssistState = (phaseInput) => {
+    if (state.pdfExportActive) {
+      const overlay = app.lagOverlay;
+      if (overlay) {
+        overlay.classList.add('lag-overlay--visible');
+        overlay.setAttribute('aria-hidden', 'false');
+        if (!overlay.dataset.phase || overlay.dataset.phase === 'idle') {
+          overlay.dataset.phase = 'export';
+        }
+      }
+      const notice = app.lagNotice;
+      if (notice) {
+        notice.classList.add('lag-notice--visible');
+        notice.setAttribute('aria-hidden', 'false');
+      }
+      return;
+    }
+    const hasExplicitPhase = typeof phaseInput === 'string' && phaseInput.length > 0;
+    const phase = hasExplicitPhase ? phaseInput : (lastLagPhase || 'idle');
+    if (hasExplicitPhase) {
+      lastLagPhase = phaseInput;
+    }
+    const lagAssistEnabled = state.lagAssistEnabled !== false;
+    const overlayActive = phase === 'pending' || phase === 'lag';
+    const shouldBlockInput = phase === 'lag';
+    state.lagInputBlocked = lagAssistEnabled && shouldBlockInput;
+
+    const overlay = app.lagOverlay;
+    if (overlay) {
+      overlay.classList.toggle('lag-overlay--visible', lagAssistEnabled && overlayActive);
+      overlay.setAttribute('aria-hidden', lagAssistEnabled && overlayActive ? 'false' : 'true');
+      overlay.dataset.phase = lagAssistEnabled && overlayActive ? (phase || 'lag') : 'idle';
+    }
+
+    const notice = app.lagNotice;
+    if (notice) {
+      notice.classList.toggle('lag-notice--visible', lagAssistEnabled && overlayActive);
+      notice.setAttribute('aria-hidden', lagAssistEnabled && overlayActive ? 'false' : 'true');
+    }
+  };
+
+  const zoomLagMonitor = createZoomLagMonitor({
+    app,
+    isLagAssistEnabled: () => state.lagAssistEnabled !== false,
+    onLagStateChange: (phase) => {
+      syncLagAssistState(phase);
+    },
+  });
+
+  const refreshLagAssistState = () => {
+    syncLagAssistState();
+    if (zoomLagMonitor?.syncEnabledState) {
+      zoomLagMonitor.syncEnabledState();
+    }
+  };
+  const trackZoomLag = (payload) => {
+    if (!zoomLagMonitor || typeof zoomLagMonitor.trackZoomEvent !== 'function') return;
+    zoomLagMonitor.trackZoomEvent(payload);
+  };
+  let pendingZoomLagEvent = null;
+
+  const flushPendingZoomLagEvent = (reason) => {
+    if (pendingZoomLagEvent) {
+      const payload = reason ? { ...pendingZoomLagEvent, reason } : pendingZoomLagEvent;
+      trackZoomLag(payload);
+      pendingZoomLagEvent = null;
+      return;
+    }
+    if (reason) {
+      trackZoomLag({ zoom: state.zoom, delta: 0, reason });
+    }
+  };
 
   let hammerNudgeRAF = 0;
-  let zoomDrag = null;
-  let zoomIndicatorTimer = null;
-  let pendingZoomRedrawRAF = 0;
-  let pendingZoomRedrawIsTimeout = false;
   let pendingRulerRAF1 = 0;
   let pendingRulerRAF2 = 0;
   let lastRulerSnapshot = null;
   let cachedRulerHostSize = { width: 0, height: 0 };
-
-  const DEFAULT_ZOOM_THUMB_HEIGHT = 13;
-  let zoomMeasurements = null;
-  let zoomMeasurementsObserver = null;
-
-  function refreshZoomMeasurements() {
-    if (!app.zoomTrack) {
-      zoomMeasurements = null;
-      return null;
+  const MIN_PAPER_OFFSET_DELTA_PX = 1 / 8;
+  const initialPaperOffset = state.paperOffset || { x: 0, y: 0 };
+  let lastSnappedPaperOffset = {
+    x: Number.isFinite(initialPaperOffset.x) ? initialPaperOffset.x : 0,
+    y: Number.isFinite(initialPaperOffset.y) ? initialPaperOffset.y : 0,
+  };
+  let pendingPaperOffsetWorkRAF = 0;
+  const lastMarginInsets = { top: null, right: null, bottom: null, left: null };
+  let lastPageHeightPx = '';
+  const wheelAxisStabilizer = createWheelAxisStabilizer({
+    dominanceRatio: 1.15,
+    minorFloor: 0.35,
+    crossAxisSuppression: 0.95,
+    snapResponsiveness: 0.65,
+    releaseDecay: 0.1,
+    idleDecay: 0.05,
+  });
+  const zoomSliderContrast = createZoomSliderContrastManager({ app });
+  const scheduleZoomSliderContrastUpdate = () => {
+    if (zoomSliderContrast && typeof zoomSliderContrast.scheduleUpdate === 'function') {
+      zoomSliderContrast.scheduleUpdate();
     }
-    const trackRect = app.zoomTrack.getBoundingClientRect();
-    const thumbRect = app.zoomThumb?.getBoundingClientRect();
-    zoomMeasurements = {
-      top: trackRect.top,
-      height: trackRect.height,
-      thumbHeight: thumbRect?.height || DEFAULT_ZOOM_THUMB_HEIGHT,
+  };
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('zoom-contrast-update', scheduleZoomSliderContrastUpdate, { passive: true });
+    window.addEventListener('transitionend', scheduleZoomSliderContrastUpdate, { passive: true });
+  }
+  const hasElementApi = typeof Element !== 'undefined';
+  const SCROLLBAR_VISIBILITY_EPSILON = 4;
+  let suppressScrollLaneEvent = false;
+  let lastScrollLaneContent = 0;
+  let lastScrollLaneViewport = 0;
+  let lastScrollLaneRange = 0;
+  let lastScrollLaneVisible = false;
+
+  function scrollLaneElements() {
+    return {
+      lane: hasElementApi && app.scrollLane instanceof Element ? app.scrollLane : null,
+      inner: hasElementApi && app.scrollLaneInner instanceof Element ? app.scrollLaneInner : null,
     };
-    return zoomMeasurements;
-  }
-
-  function ensureZoomMeasurements() {
-    if (!zoomMeasurements || !Number.isFinite(zoomMeasurements.height) || zoomMeasurements.height <= 0) {
-      return refreshZoomMeasurements();
-    }
-    return zoomMeasurements;
-  }
-
-  function setupZoomMeasurementTracking() {
-    if (!app.zoomTrack) {
-      zoomMeasurements = null;
-      return;
-    }
-    refreshZoomMeasurements();
-    if (typeof ResizeObserver !== 'function' || zoomMeasurementsObserver) return;
-    zoomMeasurementsObserver = new ResizeObserver(() => {
-      refreshZoomMeasurements();
-      updateZoomUIFromState();
-    });
-    zoomMeasurementsObserver.observe(app.zoomTrack);
-    if (app.zoomThumb) zoomMeasurementsObserver.observe(app.zoomThumb);
-  }
-
-  function clearPendingZoomRedrawFrame() {
-    if (!pendingZoomRedrawRAF) return;
-    if (pendingZoomRedrawIsTimeout) {
-      clearTimeout(pendingZoomRedrawRAF);
-    } else if (typeof cancelAnimationFrame === 'function') {
-      cancelAnimationFrame(pendingZoomRedrawRAF);
-    }
-    pendingZoomRedrawRAF = 0;
-    pendingZoomRedrawIsTimeout = false;
-  }
-
-  function scheduleZoomRedrawFrame(callback) {
-    if (typeof requestAnimationFrame === 'function') {
-      pendingZoomRedrawIsTimeout = false;
-      pendingZoomRedrawRAF = requestAnimationFrame((timestamp) => {
-        pendingZoomRedrawRAF = 0;
-        pendingZoomRedrawIsTimeout = false;
-        callback(timestamp);
-      });
-    } else {
-      pendingZoomRedrawIsTimeout = true;
-      pendingZoomRedrawRAF = setTimeout(() => {
-        pendingZoomRedrawRAF = 0;
-        pendingZoomRedrawIsTimeout = false;
-        callback(Date.now());
-      }, 16);
-    }
   }
 
   function updateRulerHostDimensions(stageW, stageH) {
@@ -156,66 +207,192 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   function hammerAllowanceX() {
     const span = documentHorizontalSpanPx();
-    return Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_W / 2;
+    const allowance = Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_W / 2;
+    return allowance;
   }
 
-  function hammerAllowanceY() {
-    const span = documentVerticalSpanPx();
-    return Number.isFinite(span) && span > 0 ? span / 2 : app.PAGE_H / 2;
+  function computeStagePadding(dims) {
+    const zoomDivisor = state.zoom || 1;
+    const scale = cssScaleFactor() || 1;
+    const padX = dims && Number.isFinite(dims.extraX) ? dims.extraX / zoomDivisor : BASE_PADDING_X_PX;
+    const padY = dims && Number.isFinite(dims.extraY) ? dims.extraY / zoomDivisor : BASE_PADDING_Y_PX;
+    const bottomPad = padY + toolbarHeightPx() / scale;
+    return {
+      left: padX,
+      right: padX,
+      top: padY,
+      bottom: bottomPad,
+    };
   }
 
-  function clampPaperOffset(x, y) {
-    const { extraX, extraY } = stageDimensions();
+  function computePaperOffsetLimits() {
+    const dims = stageDimensions();
+    const pads = computeStagePadding(dims);
     const hammerX = hammerAllowanceX();
-    const hammerY = hammerAllowanceY();
-    const minX = -(extraX + hammerX);
-    const maxX = extraX + hammerX;
-    const minY = -(extraY + hammerY);
-    const maxY = extraY + hammerY;
-    return { x: clamp(x, minX, maxX), y: clamp(y, minY, maxY) };
+    const minX = -hammerX;
+    const maxX = hammerX;
+
+    const cssScale = cssScaleFactor() || 1;
+    const safeScale = Math.abs(cssScale) < 1e-6 ? 1 : cssScale;
+    const viewportH = (typeof window !== 'undefined' ? window.innerHeight : dims.height) / safeScale;
+    const center = viewportH / 2;
+    const docHeight = documentVerticalSpanPx();
+    const totalContentH = docHeight + pads.top + pads.bottom;
+    const limitTop = center - pads.top;
+    const limitBottom = center - totalContentH;
+
+    return {
+      minX,
+      maxX,
+      minY: Math.min(limitBottom, limitTop),
+      maxY: Math.max(limitBottom, limitTop),
+      pads,
+      docHeight,
+      totalContentH,
+      viewportH,
+    };
+  }
+
+  function clampPaperOffset(x, y, limits = null) {
+    const bounds = limits || computePaperOffsetLimits();
+    return {
+      x: clamp(x, bounds.minX, bounds.maxX),
+      y: clamp(y, bounds.minY, bounds.maxY),
+    };
+  }
+
+  function scrollLaneHasOverflow(metrics) {
+    if (!metrics) return false;
+    return metrics.totalContentH - metrics.viewportH > SCROLLBAR_VISIBILITY_EPSILON;
+  }
+
+  function updateScrollLaneMetrics(limits, { force = false } = {}) {
+    const { lane, inner } = scrollLaneElements();
+    if (!lane || !inner) return limits;
+    const metrics = limits || computePaperOffsetLimits();
+    const content = metrics.totalContentH;
+    const viewport = metrics.viewportH;
+    const range = Math.max(0, metrics.maxY - metrics.minY);
+    const hasOverflow = scrollLaneHasOverflow(metrics);
+    const needsUpdate = force
+      || Math.abs(content - lastScrollLaneContent) > 0.5
+      || Math.abs(viewport - lastScrollLaneViewport) > 0.5
+      || Math.abs(range - lastScrollLaneRange) > 0.5
+      || hasOverflow !== lastScrollLaneVisible;
+
+    if (!needsUpdate) return metrics;
+
+    lastScrollLaneContent = content;
+    lastScrollLaneViewport = viewport;
+    lastScrollLaneRange = range;
+    lastScrollLaneVisible = hasOverflow;
+
+    const extent = lane.clientHeight || lane.offsetHeight || viewport || 0;
+    const effectiveRange = hasOverflow ? range : 0;
+    const innerHeight = Math.max(1, extent + effectiveRange);
+    inner.style.height = `${innerHeight}px`;
+    lane.classList.toggle('stage-scroll-lane--hidden', !hasOverflow);
+    lane.setAttribute('aria-hidden', hasOverflow ? 'false' : 'true');
+    if (!hasOverflow) {
+      suppressScrollLaneEvent = true;
+      lane.scrollTop = 0;
+      suppressScrollLaneEvent = false;
+    }
+    return metrics;
+  }
+
+  function syncScrollLaneFromPaper(limits) {
+    const { lane } = scrollLaneElements();
+    if (!lane) return;
+    const metrics = limits || computePaperOffsetLimits();
+    if (!scrollLaneHasOverflow(metrics)) return;
+    const trackRange = lane.scrollHeight - lane.clientHeight;
+    if (trackRange <= 0.5) return;
+    const motionRange = Math.max(1e-3, metrics.maxY - metrics.minY);
+    const ratio = clamp((metrics.maxY - state.paperOffset.y) / motionRange, 0, 1);
+    const target = ratio * trackRange;
+    if (Math.abs(target - lane.scrollTop) < 0.25) return;
+    suppressScrollLaneEvent = true;
+    lane.scrollTop = target;
+    suppressScrollLaneEvent = false;
   }
 
   function updateStageEnvironment() {
     const dims = stageDimensions();
     const rootStyle = document.documentElement.style;
     const layoutZoom = layoutZoomFactor();
+    const pads = computeStagePadding(dims);
+
     rootStyle.setProperty('--page-w', (app.PAGE_W * layoutZoom).toString());
     rootStyle.setProperty('--stage-width-mult', dims.widthFactor.toString());
     rootStyle.setProperty('--stage-height-mult', dims.heightFactor.toString());
+
+    const adjustedWidth = dims.pageW + pads.left * 2;
+    const adjustedHeight = dims.pageH + pads.top * 2;
+
     if (app.zoomWrap) {
-      app.zoomWrap.style.width = `${dims.width}px`;
-      app.zoomWrap.style.minHeight = `${dims.height}px`;
+      app.zoomWrap.style.width = `${adjustedWidth}px`;
+      app.zoomWrap.style.minHeight = `${adjustedHeight}px`;
       app.zoomWrap.style.height = '';
     }
+    
     if (app.stageInner) {
-      app.stageInner.style.minWidth = `${dims.width}px`;
-      app.stageInner.style.minHeight = `${dims.height}px`;
-      app.stageInner.style.paddingLeft = `${dims.extraX}px`;
-      app.stageInner.style.paddingRight = `${dims.extraX}px`;
-      const padTop = dims.extraY;
-      const padBottom = dims.extraY + toolbarHeightPx();
-      app.stageInner.style.paddingTop = `${padTop}px`;
-      app.stageInner.style.paddingBottom = `${padBottom}px`;
+      app.stageInner.style.minWidth = `${adjustedWidth}px`;
+      app.stageInner.style.minHeight = `${adjustedHeight}px`;
+      
+      app.stageInner.style.paddingLeft = `${pads.left}px`;
+      app.stageInner.style.paddingRight = `${pads.right}px`;
+      app.stageInner.style.paddingTop = `${pads.top}px`;
+      app.stageInner.style.paddingBottom = `${pads.bottom}px`;
     }
-    updateRulerHostDimensions(dims.width, dims.height);
+
+    updateRulerHostDimensions(adjustedWidth, adjustedHeight);
     setPaperOffset(state.paperOffset.x, state.paperOffset.y);
+    scheduleZoomSliderContrastUpdate();
   }
 
-  function setPaperOffset(x, y) {
-    const clamped = clampPaperOffset(x, y);
+  function setPaperOffset(x, y, options = {}) {
+    const limits = computePaperOffsetLimits();
+    const clamped = clampPaperOffset(x, y, limits);
     const scale = cssScaleFactor();
     const snap = (v) => Math.round(v * DPR) / DPR;
     const snappedX = scale ? snap(clamped.x * scale) / scale : clamped.x;
     const snappedY = scale ? snap(clamped.y * scale) / scale : clamped.y;
     state.paperOffset.x = snappedX;
     state.paperOffset.y = snappedY;
+    const prevX = Number.isFinite(lastSnappedPaperOffset.x) ? lastSnappedPaperOffset.x : snappedX;
+    const prevY = Number.isFinite(lastSnappedPaperOffset.y) ? lastSnappedPaperOffset.y : snappedY;
+    const movedX = Math.abs(snappedX - prevX);
+    const movedY = Math.abs(snappedY - prevY);
+    if (movedX < MIN_PAPER_OFFSET_DELTA_PX && movedY < MIN_PAPER_OFFSET_DELTA_PX) {
+      return;
+    }
+    lastSnappedPaperOffset = { x: snappedX, y: snappedY };
     if (app.stageInner) {
       const tx = Math.round(snappedX * 1000) / 1000;
       const ty = Math.round(snappedY * 1000) / 1000;
       app.stageInner.style.transform = `translate3d(${tx}px,${ty}px,0)`;
     }
-    queueRulerRepositionAfterVisualMove();
-    requestVirtualization();
+    schedulePostPaperOffsetWork();
+    const metrics = updateScrollLaneMetrics(limits);
+    if (!options.skipScrollLaneSync) {
+      syncScrollLaneFromPaper(metrics || limits);
+    }
+    scheduleZoomSliderContrastUpdate();
+  }
+
+  function schedulePostPaperOffsetWork() {
+    if (typeof requestAnimationFrame !== 'function') {
+      queueRulerRepositionAfterVisualMove();
+      requestVirtualization();
+      return;
+    }
+    if (pendingPaperOffsetWorkRAF) return;
+    pendingPaperOffsetWorkRAF = requestAnimationFrame(() => {
+      pendingPaperOffsetWorkRAF = 0;
+      queueRulerRepositionAfterVisualMove();
+      requestVirtualization();
+    });
   }
 
   function caretViewportPos() {
@@ -231,33 +408,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     };
   }
 
-  function maybeApplyNativeScroll(dx, dy, threshold) {
-    if (!layoutController.isSafariSteadyZoom()) return false;
-    const stage = app.stage;
-    if (!stage) return false;
-    let used = false;
-    const maxX = stage.scrollWidth - stage.clientWidth;
-    const maxY = stage.scrollHeight - stage.clientHeight;
-    if (Math.abs(dx) > threshold && maxX > 1) {
-      const target = clamp(stage.scrollLeft - dx, 0, Math.max(0, maxX));
-      if (Math.abs(target - stage.scrollLeft) > threshold) {
-        stage.scrollLeft = target;
-        used = true;
-      }
-    }
-    if (Math.abs(dy) > threshold && maxY > 1) {
-      const target = clamp(stage.scrollTop - dy, 0, Math.max(0, maxY));
-      if (Math.abs(target - stage.scrollTop) > threshold) {
-        stage.scrollTop = target;
-        used = true;
-      }
-    }
-    if (used) {
-      queueRulerRepositionAfterVisualMove();
-    }
-    return used;
-  }
-
   const DEAD_X = 1.25;
   const DEAD_Y = 3.0;
 
@@ -270,15 +420,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     let dy = ay - cv.y;
     const pxThreshold = 1 / DPR;
     if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-    const usedNative = maybeApplyNativeScroll(dx, dy, pxThreshold);
-    if (usedNative) {
-      const updated = caretViewportPos();
-      if (updated) {
-        dx = ax - updated.x;
-        dy = ay - updated.y;
-        if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-      }
-    }
     if (Math.abs(dx) < DEAD_X && Math.abs(dy) < DEAD_Y) return;
     const scale = cssScaleFactor() || 1;
     const prevX = state.paperOffset.x;
@@ -305,15 +446,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     let dy = ay - cv.y;
     const pxThreshold = 1 / DPR;
     if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-    const usedNative = maybeApplyNativeScroll(dx, dy, pxThreshold);
-    if (usedNative) {
-      const updated = caretViewportPos();
-      if (updated) {
-        dx = ax - updated.x;
-        dy = ay - updated.y;
-        if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
-      }
-    }
     const scale = cssScaleFactor() || 1;
     if (!Number.isFinite(scale) || scale <= 0) return;
     setPaperOffset(state.paperOffset.x + dx / scale, state.paperOffset.y + dy / scale);
@@ -328,24 +460,56 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
         nudgePaperToAnchor();
       });
     };
-    if (isSafari) {
-      hammerNudgeRAF = requestAnimationFrame(() => {
-        hammerNudgeRAF = 0;
-        schedule();
-      });
-    } else {
-      schedule();
-    }
+    schedule();
   }
+
+  const zoomRenderManager = createZoomRenderManager({
+    state,
+    app,
+    prepareCanvas,
+    configureCanvasContext,
+    getEffectiveRenderZoom,
+    schedulePaint,
+    rebuildAllAtlases,
+    setFreezeVirtual,
+    requestVirtualization,
+    requestHammerNudge,
+    getZooming,
+    setZooming,
+    getZoomDebounceTimer,
+    setZoomDebounceTimer,
+    setRenderScaleForZoom,
+    documentVerticalSpanPx,
+    trackZoomLag,
+    getVisibleWindowIndices,
+  });
+
+  const { scheduleZoomCrispRedraw } = zoomRenderManager;
+
+  let updateZoomUIFromState = () => {};
+  let onZoomPointerDown = () => {};
+  let onZoomPointerMove = () => {};
+  let onZoomPointerUp = () => {};
+  let setupZoomMeasurementTracking = () => {};
 
   function computeSnappedVisualMargins() {
     const charWidth = getCharWidth();
     const gridHeight = getGridHeight();
+    const normalizedTop = normalizeTopMarginPx(state.marginTop, {
+      pageHeight: app.PAGE_H,
+      marginBottom: state.marginBottom,
+      gridHeight,
+      lineStepMu: getLineStepMu(),
+      fallbackLineStepMu: state.lineStepMu,
+    });
+    if (Math.abs(normalizedTop - state.marginTop) > 1e-4) {
+      state.marginTop = normalizedTop;
+    }
     const Lcol = Math.ceil(state.marginL / charWidth);
     const Rcol = Math.floor((state.marginR - 1) / charWidth);
     const leftPx = Lcol * charWidth;
     const rightPx = (Rcol + 1) * charWidth;
-    const topPx = state.marginTop;
+    const topPx = normalizedTop;
     const bottomPx = state.marginBottom;
     const Tmu = Math.ceil((state.marginTop + getAsc()) / gridHeight);
     const Bmu = Math.floor((app.PAGE_H - state.marginBottom - getDesc()) / gridHeight);
@@ -355,18 +519,39 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   function renderMargins() {
     const snap = computeSnappedVisualMargins();
     const layoutScale = layoutZoomFactor();
-    for (const p of state.pages) {
-      if (!p?.marginBoxEl) continue;
-      if (p.pageEl) p.pageEl.style.height = `${app.PAGE_H * layoutScale}px`;
-      const leftPx = Math.round(snap.leftPx * layoutScale);
-      const rightPx = Math.round((app.PAGE_W - snap.rightPx) * layoutScale);
-      const topPx = Math.round(snap.topPx * layoutScale);
-      const bottomPx = Math.round(snap.bottomPx * layoutScale);
-      p.marginBoxEl.style.left = `${leftPx}px`;
-      p.marginBoxEl.style.right = `${rightPx}px`;
-      p.marginBoxEl.style.top = `${topPx}px`;
-      p.marginBoxEl.style.bottom = `${bottomPx}px`;
-      p.marginBoxEl.style.visibility = state.showMarginBox ? 'visible' : 'hidden';
+    const scaledInsets = {
+      left: Math.round(snap.leftPx * layoutScale),
+      right: Math.round((app.PAGE_W - snap.rightPx) * layoutScale),
+      top: Math.round(snap.topPx * layoutScale),
+      bottom: Math.round(snap.bottomPx * layoutScale),
+    };
+    const rootStyle = document?.documentElement?.style;
+    if (rootStyle) {
+      if (lastMarginInsets.top !== scaledInsets.top) {
+        rootStyle.setProperty('--margin-top-px', `${scaledInsets.top}px`);
+        lastMarginInsets.top = scaledInsets.top;
+      }
+      if (lastMarginInsets.right !== scaledInsets.right) {
+        rootStyle.setProperty('--margin-right-px', `${scaledInsets.right}px`);
+        lastMarginInsets.right = scaledInsets.right;
+      }
+      if (lastMarginInsets.bottom !== scaledInsets.bottom) {
+        rootStyle.setProperty('--margin-bottom-px', `${scaledInsets.bottom}px`);
+        lastMarginInsets.bottom = scaledInsets.bottom;
+      }
+      if (lastMarginInsets.left !== scaledInsets.left) {
+        rootStyle.setProperty('--margin-left-px', `${scaledInsets.left}px`);
+        lastMarginInsets.left = scaledInsets.left;
+      }
+    }
+    const pageHeightPx = `${app.PAGE_H * layoutScale}px`;
+    if (pageHeightPx !== lastPageHeightPx) {
+      for (const p of state.pages) {
+        if (p?.pageEl && p.pageEl.style.height !== pageHeightPx) {
+          p.pageEl.style.height = pageHeightPx;
+        }
+      }
+      lastPageHeightPx = pageHeightPx;
     }
   }
 
@@ -424,7 +609,11 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     if (!ticksH || !ticksV) return;
     ticksH.innerHTML = '';
     ticksV.innerHTML = '';
-    const ppiH = (activePageRect.width / 210) * 25.4;
+    const widthMm = Math.max(
+      1,
+      typeof getPaperWidthMm === 'function' ? getPaperWidthMm() : 210,
+    );
+    const ppiH = (activePageRect.width / widthMm) * 25.4;
     const originX = activePageRect.left;
     let hostWidth = cachedRulerHostSize.width;
     if (preferLiveLayout && app.rulerH_host) {
@@ -456,7 +645,11 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
         }
       }
     }
-    const ppiV = (activePageRect.height / 297) * 25.4;
+    const heightMm = Math.max(
+      1,
+      typeof getPaperHeightMm === 'function' ? getPaperHeightMm() : 297,
+    );
+    const ppiV = (activePageRect.height / heightMm) * 25.4;
     const originY = activePageRect.top;
     let hostHeight = cachedRulerHostSize.height;
     if (preferLiveLayout && app.rulerV_host) {
@@ -541,10 +734,14 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     });
   }
 
+  let lastMarginBoxesVisible = null;
   function setMarginBoxesVisible(show) {
+    const shouldShow = !!(show && state.showMarginBox);
+    if (shouldShow === lastMarginBoxesVisible) return;
+    lastMarginBoxesVisible = shouldShow;
     for (const p of state.pages) {
       if (p?.marginBoxEl) {
-        p.marginBoxEl.style.visibility = show && state.showMarginBox ? 'visible' : 'hidden';
+        p.marginBoxEl.style.visibility = shouldShow ? 'visible' : 'hidden';
       }
     }
   }
@@ -577,15 +774,21 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const drag = getDrag();
     if (!drag || drag.kind !== 'v') return;
     const pr = getActivePageRect();
-    let y = snapYToGrid(clamp((ev.clientY - pr.top) / state.zoom, 0, app.PAGE_H));
+    const pointerY = clamp((ev.clientY - pr.top) / state.zoom, 0, app.PAGE_H);
+    const snappedPointerY = snapYToGrid(pointerY);
+    const lineStepPx = computeLineStepPx(getGridHeight(), getLineStepMu(), state.lineStepMu);
     if (drag.side === 'top') {
-      const maxTop = (app.PAGE_H - state.marginBottom) - (getLineStepMu() * getGridHeight());
-      state.marginTop = Math.min(y, snapYToGrid(maxTop));
-      app.guideH.style.top = `${pr.top + state.marginTop * state.zoom}px`;
+      const normalizedTop = normalizeTopMarginPx(snappedPointerY, {
+        pageHeight: app.PAGE_H,
+        marginBottom: state.marginBottom,
+        lineStepPx,
+      });
+      state.marginTop = normalizedTop;
+      app.guideH.style.top = `${pr.top + normalizedTop * state.zoom}px`;
     } else {
-      const bottomEdge = Math.max(state.marginTop + (getLineStepMu() * getGridHeight()), y);
+      const bottomEdge = Math.max(state.marginTop + lineStepPx, snappedPointerY);
       const snappedBottomEdge = snapYToGrid(Math.min(bottomEdge, app.PAGE_H));
-      state.marginBottom = app.PAGE_H - snappedBottomEdge;
+      state.marginBottom = Math.max(0, app.PAGE_H - snappedBottomEdge);
       app.guideH.style.top = `${pr.top + snappedBottomEdge * state.zoom}px`;
     }
     app.guideH.style.display = 'block';
@@ -601,6 +804,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     renderMargins();
     positionRulers();
     clampCaretToBounds();
+    markDocumentDirty(state);
     saveStateDebounced();
     app.guideV.style.display = 'none';
     app.guideH.style.display = 'none';
@@ -609,206 +813,88 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   }
 
   const Z_MIN = 50;
-  const Z_KNEE = 100;
   const Z_MAX = 400;
-  const N_KNEE = 1 / 3;
-  const LOG2 = Math.log(2);
-  const LOG4 = Math.log(4);
-
-const zFromNorm = (n) => {
-  const clamped = Math.max(0, Math.min(1, n));
-  if (clamped <= N_KNEE) return 50 * Math.pow(2, clamped / N_KNEE);
-  return 100 * Math.pow(4, (clamped - N_KNEE) / (1 - N_KNEE));
-};
-
-const normFromZ = (pct) => {
-  let p = Math.max(Z_MIN, Math.min(Z_MAX, pct));
-  if (p <= Z_KNEE) return (Math.log(p / 50) / LOG2) * N_KNEE;
-  return N_KNEE + (Math.log(p / 100) / LOG4) * (1 - N_KNEE);
-};
 
   const detent = (p) => (Math.abs(p - 100) <= 6 ? 100 : p);
 
   function applyZoomCSS() {
+    updateStageEnvironment();
     updateZoomWrapTransform();
-    const dims = stageDimensions();
-    updateRulerHostDimensions(dims.width, dims.height);
     positionRulers();
     requestVirtualization();
   }
 
-  function showZoomIndicator() {
-    if (!app.zoomIndicator) return;
-    app.zoomIndicator.textContent = `${Math.round(state.zoom * 100)}%`;
-    app.zoomIndicator.classList.add('show');
-    if (zoomIndicatorTimer) clearTimeout(zoomIndicatorTimer);
-    zoomIndicatorTimer = setTimeout(() => app.zoomIndicator.classList.remove('show'), 700);
-  }
-
-  function updateZoomUIFromState() {
-    if (!app.zoomTrack || !app.zoomFill || !app.zoomThumb) return;
-    const measurements = ensureZoomMeasurements();
-    if (!measurements || !measurements.height) return;
-    const { height: H, thumbHeight: th } = measurements;
-    const n = normFromZ(state.zoom * 100);
-    const fillH = n * H;
-    app.zoomFill.style.height = `${fillH}px`;
-    const y = (H - fillH) - th / 2;
-    app.zoomThumb.style.top = `${Math.max(-th / 2, Math.min(H - th / 2, y))}px`;
-    showZoomIndicator();
-  }
-
-  function runBatchedZoomRedraw() {
-    const seen = new Set();
-    const priority = [];
-    const rest = [];
-
-    const enqueue = (page, target) => {
-      if (!page || seen.has(page)) return;
-      seen.add(page);
-      target.push(page);
-    };
-
-    const activeIndex = Number.isInteger(app.activePageIndex) ? app.activePageIndex : null;
-    if (activeIndex != null) enqueue(state.pages[activeIndex], priority);
-
-    const caretIndex = Number.isInteger(state.caret?.page) ? state.caret.page : null;
-    if (caretIndex != null) enqueue(state.pages[caretIndex], priority);
-
-    for (const page of state.pages) {
-      if (page?.active) enqueue(page, priority);
-    }
-
-    for (const page of state.pages) enqueue(page, rest);
-
-    if (!priority.length && rest.length) {
-      priority.push(rest.shift());
-    }
-
-    const now =
-      typeof performance !== 'undefined' && typeof performance.now === 'function'
-        ? () => performance.now()
-        : () => Date.now();
-
-    const prepPage = (page) => {
-      if (!page) return;
-      if (page.canvas) prepareCanvas(page.canvas);
-      if (page.backCanvas) prepareCanvas(page.backCanvas);
-      if (page.ctx) configureCanvasContext(page.ctx);
-      if (page.backCtx) configureCanvasContext(page.backCtx);
-      page.dirtyAll = true;
-      if (page.active) schedulePaint(page);
-    };
-
-    for (const page of priority) prepPage(page);
-
-    rebuildAllAtlases();
-
-    const finalize = () => {
-      setFreezeVirtual(false);
-      requestHammerNudge();
-      if (isSafari) syncSafariZoomLayout(true);
-    };
-
-    finalize();
-
-    if (!rest.length) return;
-
-    let index = 0;
-
-    const processBatch = () => {
-      const start = now();
-      const budgetMs = 7;
-      while (index < rest.length) {
-        const page = rest[index++];
-        prepPage(page);
-        if (now() - start >= budgetMs) break;
-      }
-
-      if (index < rest.length) {
-        scheduleZoomRedrawFrame(processBatch);
-      }
-    };
-
-    scheduleZoomRedrawFrame(processBatch);
-  }
-
-  function scheduleZoomCrispRedraw() {
-    const existing = getZoomDebounceTimer();
-    if (existing) clearTimeout(existing);
-    clearPendingZoomRedrawFrame();
-    const timer = setTimeout(() => {
-      setZoomDebounceTimer(null);
-      if (getZooming()) {
-        scheduleZoomCrispRedraw();
-        return;
-      }
-      setZooming(false);
-      requestHammerNudge();
-      setRenderScaleForZoom();
-      if (isSafari) stageLayoutSetSafariZoomMode('steady', { force: true });
-      runBatchedZoomRedraw();
-    }, 160);
-    setZoomDebounceTimer(timer);
-  }
-
   function setZoomPercent(pct) {
     const z = detent(Math.round(Math.max(Z_MIN, Math.min(Z_MAX, pct))));
-    state.zoom = z / 100;
-    if (isSafari && !getZooming()) stageLayoutSetSafariZoomMode('steady', { force: true });
+    const prevZoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+    const nextZoom = z / 100;
+    const zoomDelta = Math.abs(nextZoom - prevZoom);
+    const prevOffsetX = state.paperOffset.x;
+    const prevOffsetY = state.paperOffset.y;
+    state.zoom = nextZoom;
+    const eventPayload = { zoom: nextZoom, delta: zoomDelta, reason: 'zoom-change' };
+    if (getZooming()) {
+      pendingZoomLagEvent = eventPayload;
+    } else {
+      trackZoomLag(eventPayload);
+    }
+    if (prevZoom > 0 && Number.isFinite(prevOffsetX) && Number.isFinite(prevOffsetY)) {
+      const ratio = prevZoom / nextZoom;
+      if (Number.isFinite(ratio) && Math.abs(ratio - 1) > 1e-6) {
+        setPaperOffset(prevOffsetX * ratio, prevOffsetY * ratio);
+      }
+    }
     applyZoomCSS();
     reanchorCaretAfterZoomChange();
     scheduleZoomCrispRedraw();
     updateZoomUIFromState();
+    markDocumentDirty(state);
     saveStateDebounced();
   }
 
-  const percentFromPointer = (clientY) => {
-    if (!app.zoomTrack) return state.zoom * 100;
-    const measurements = ensureZoomMeasurements();
-    if (!measurements || !measurements.height) return state.zoom * 100;
-    const y = clamp(clientY - measurements.top, 0, measurements.height);
-    return zFromNorm(1 - y / measurements.height);
-  };
+  const zoomUiController = createZoomUiController({
+    app,
+    state,
+    setZoomPercent,
+    setZooming,
+    setFreezeVirtual,
+    scheduleZoomCrispRedraw,
+    onZoomCommit: () => flushPendingZoomLagEvent('zoom-pointer-commit'),
+  });
 
-  function onZoomPointerDown(e) {
-    if (!app.zoomThumb || !app.zoomTrack) return;
-    e.preventDefault();
-    refreshZoomMeasurements();
-    setZooming(true);
-    setFreezeVirtual(true);
-    if (isSafari) setSafariZoomMode('transient', { force: true });
-    if (e.target === app.zoomThumb) {
-      zoomDrag = { from: 'thumb', id: e.pointerId };
-      app.zoomThumb.setPointerCapture && app.zoomThumb.setPointerCapture(e.pointerId);
-    } else {
-      zoomDrag = { from: 'track', id: e.pointerId };
-    }
-    setZoomPercent(percentFromPointer(e.clientY));
-  }
-
-  function onZoomPointerMove(e) {
-    if (!zoomDrag) return;
-    setZoomPercent(percentFromPointer(e.clientY));
-  }
-
-  function onZoomPointerUp() {
-    if (!zoomDrag) return;
-    zoomDrag = null;
-    setZooming(false);
-    scheduleZoomCrispRedraw();
-  }
+  ({
+    setupZoomMeasurementTracking,
+    updateZoomUIFromState,
+    onZoomPointerDown,
+    onZoomPointerMove,
+    onZoomPointerUp,
+  } = zoomUiController);
 
   function handleWheelPan(e) {
     e.preventDefault();
-    const dx = e.deltaX;
-    const dy = e.deltaY;
+    const { dx, dy } = wheelAxisStabilizer.filter(e.deltaX, e.deltaY);
     if (dx || dy) {
-      setPaperOffset(state.paperOffset.x - dx / state.zoom, state.paperOffset.y - dy / state.zoom);
+      const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+      setPaperOffset(state.paperOffset.x - dx / zoom, state.paperOffset.y - dy / zoom);
     }
   }
 
+  function handleScrollLaneScroll() {
+    if (suppressScrollLaneEvent) return;
+    const { lane } = scrollLaneElements();
+    if (!lane || !lastScrollLaneVisible) return;
+    const trackRange = lane.scrollHeight - lane.clientHeight;
+    if (trackRange <= 0.5) return;
+    const limits = computePaperOffsetLimits();
+    if (!scrollLaneHasOverflow(limits)) return;
+    const ratio = clamp(lane.scrollTop / trackRange, 0, 1);
+    const motionRange = Math.max(1e-3, limits.maxY - limits.minY);
+    const targetY = limits.maxY - ratio * motionRange;
+    setPaperOffset(state.paperOffset.x, targetY, { skipScrollLaneSync: true });
+  }
+
   setupZoomMeasurementTracking();
+  scheduleZoomSliderContrastUpdate();
 
   return {
     updateStageEnvironment,
@@ -829,5 +915,7 @@ const normFromZ = (pct) => {
     sanitizeStageInput,
     scheduleZoomCrispRedraw,
     clampPaperOffset,
+    handleScrollLaneScroll,
+    refreshLagAssistState,
   };
 }

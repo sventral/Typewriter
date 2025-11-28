@@ -2,7 +2,7 @@ import { clamp } from '../utils/math.js';
 
 export const GLYPH_JITTER_DEFAULTS = Object.freeze({
   enabled: true,
-  amountPct: Object.freeze({ min: 0.4, max: 2.2 }),
+  amountPct: Object.freeze({ min: 0.4, max: 25 }),
   frequencyPct: Object.freeze({ min: 30, max: 65 }),
   seed: 0xD1FF1E,
 });
