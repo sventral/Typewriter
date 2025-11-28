@@ -39,6 +39,7 @@ const BASE_SECTION_CONFIG = deepFreeze({
     grainSpeck: true,
     dropouts: true,
     edgeFuzz: true,
+    counterFill: false,
     smudge: false,
     punch: true,
   },
@@ -87,6 +88,11 @@ const BASE_SECTION_CONFIG = deepFreeze({
     rough: 1,
     scale: 18,
     mix: 1,
+  },
+  counterFill: {
+    transparency: 0.9,
+    fill: 0.0,
+    coverage: 1.0,
   },
   fuzzExp: {
     enable: false,

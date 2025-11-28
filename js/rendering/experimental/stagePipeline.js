@@ -560,6 +560,7 @@ export const GLYPH_PIPELINE_ORDER = Object.freeze([
   'tone',
   'dropouts',
   'texture',
+  'counterFill',
   'fuzzExp',
   'centerEdge',
   'punch',
@@ -1029,6 +1030,103 @@ function applyCenterEdgeShape(coverage, ctx) {
   }
 
 
+function applyCounterFill(coverage, ctx) {
+    const { w, h, params, alpha0, seed, smul } = ctx;
+    const cfg = params.counterFill || {};
+    const enabled = params.enable?.counterFill;
+    const fillRadius = cfg.fill || 0;
+    const opacity = clamp01Fn(cfg.transparency ?? 0.9);
+    const coverageThreshold = clamp01Fn(cfg.coverage ?? 1.0);
+
+    if (!enabled || fillRadius <= 0.01 || opacity <= 0.01) return;
+
+    const smulSafe = Math.max(1e-6, smul || 1);
+    const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
+    const invDp = 1 / dpPerCss;
+    
+    // Scale fill radius. 
+    // 1.0 fill = ~15px gap bridging (7.5px radius) at standard scale
+    const radiusPx = fillRadius * 15.0 * smulSafe * dpPerCss; 
+    const radiusInt = Math.ceil(radiusPx);
+    
+    const noiseSeed = seed ^ 0xCF11CF11;
+    const detailCss = getDetailDensityCss(ctx, 0.5);
+
+    // Direct array access is faster than function call in hot loop
+    const pixels = alpha0;
+
+    for (let y = 0; y < h; y++) {
+      const rowOffset = y * w;
+      const yCss = y * invDp;
+      
+      for (let x = 0; x < w; x++) {
+        const i = rowOffset + x;
+        
+        // 1. Skip if already inked
+        if (pixels[i] > 20) continue;
+
+        // 2. Distance check optimization
+        // If we are farther from ink than the scan radius, we can't possibly bridge it.
+        if (ctx.dm && ctx.dm.raw && ctx.dm.raw.outside) {
+           const dist = ctx.dm.raw.outside[i];
+           if (dist > radiusPx) continue;
+        }
+
+        // 3. Scan for Bridge
+        // We look for ink in opposing directions within the radius.
+        let hitL = false;
+        let hitR = false;
+        let hitU = false;
+        let hitD = false;
+
+        // Horizontal Scan
+        for (let r = 1; r <= radiusInt; r++) {
+          if (!hitL) {
+            const tx = x - r;
+            if (tx >= 0 && pixels[rowOffset + tx] > 20) hitL = true;
+          }
+          if (!hitR) {
+            const tx = x + r;
+            if (tx < w && pixels[rowOffset + tx] > 20) hitR = true;
+          }
+          if (hitL && hitR) break;
+        }
+
+        let bridged = hitL && hitR;
+
+        // Vertical Scan (if not bridged horizontally)
+        if (!bridged) {
+          for (let r = 1; r <= radiusInt; r++) {
+            if (!hitU) {
+              const ty = y - r;
+              if (ty >= 0 && pixels[ty * w + x] > 20) hitU = true;
+            }
+            if (!hitD) {
+              const ty = y + r;
+              if (ty < h && pixels[ty * w + x] > 20) hitD = true;
+            }
+            if (hitU && hitD) break;
+          }
+          bridged = hitU && hitD;
+        }
+
+        if (bridged) {
+          // 4. Apply Coverage (Noise)
+          let mask = 1;
+          if (coverageThreshold < 0.99) {
+             const xCss = x * invDp;
+             const n = sampleSpeckValueNoiseFast(xCss * detailCss, yCss * detailCss, noiseSeed);
+             if (n > coverageThreshold) mask = 0;
+          }
+
+          if (mask > 0) {
+            coverage[i] = Math.max(coverage[i], opacity);
+          }
+        }
+      }
+    }
+  }
+
   function applyExperimentalFuzz(coverage, ctx) {
     const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
     const fuzzExp = params.fuzzExp || {};
@@ -1372,6 +1470,7 @@ function applyCenterEdgeShape(coverage, ctx) {
     tone: applyToneAdjustments,
     dropouts: applyDropoutsMask,
     texture: applyGrainSpeckTexture,
+    counterFill: applyCounterFill,
     fuzzExp: applyExperimentalFuzz,
     centerEdge: applyCenterEdgeShape,
     punch: (coverage, ctx) => {
