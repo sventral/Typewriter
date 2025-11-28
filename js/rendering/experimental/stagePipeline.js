@@ -1043,89 +1043,125 @@ function applyCounterFill(coverage, ctx) {
     const smulSafe = Math.max(1e-6, smul || 1);
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
-    
-    // Scale fill radius. 
-    // 1.0 fill = ~15px gap bridging (7.5px radius) at standard scale
-    const radiusPx = fillRadius * 15.0 * smulSafe * dpPerCss; 
+
+    // Scale fill radius.
+    // Reduced multiplier to prevent excessive spilling (was 15.0)
+    const radiusPx = fillRadius * 12.0 * smulSafe * dpPerCss;
     const radiusInt = Math.ceil(radiusPx);
-    
+
     const noiseSeed = seed ^ 0xCF11CF11;
-    const detailCss = getDetailDensityCss(ctx, 0.5);
+    const detailCss = getDetailDensityCss(ctx, 0.65);
 
     // Direct array access is faster than function call in hot loop
     const pixels = alpha0;
+    const outsideDist = ctx.dm?.raw?.outside;
 
     for (let y = 0; y < h; y++) {
       const rowOffset = y * w;
       const yCss = y * invDp;
-      
+
       for (let x = 0; x < w; x++) {
         const i = rowOffset + x;
-        
+
         // 1. Skip if already inked
         if (pixels[i] > 20) continue;
 
         // 2. Distance check optimization
-        // If we are farther from ink than the scan radius, we can't possibly bridge it.
-        if (ctx.dm && ctx.dm.raw && ctx.dm.raw.outside) {
-           const dist = ctx.dm.raw.outside[i];
-           if (dist > radiusPx) continue;
+        // Use the distance map to skip pixels clearly outside the fill range
+        let dist = 0;
+        if (outsideDist) {
+          dist = outsideDist[i];
+          if (dist > radiusPx) continue;
         }
 
         // 3. Scan for Bridge
-        // We look for ink in opposing directions within the radius.
-        let hitL = false;
-        let hitR = false;
-        let hitU = false;
-        let hitD = false;
+        // We measure the distance to ink in all 4 directions.
+        let dL = radiusInt + 1;
+        let dR = radiusInt + 1;
+        let dU = radiusInt + 1;
+        let dD = radiusInt + 1;
 
         // Horizontal Scan
         for (let r = 1; r <= radiusInt; r++) {
-          if (!hitL) {
+          if (dL > radiusInt) {
             const tx = x - r;
-            if (tx >= 0 && pixels[rowOffset + tx] > 20) hitL = true;
+            if (tx >= 0 && pixels[rowOffset + tx] > 20) dL = r;
           }
-          if (!hitR) {
+          if (dR > radiusInt) {
             const tx = x + r;
-            if (tx < w && pixels[rowOffset + tx] > 20) hitR = true;
+            if (tx < w && pixels[rowOffset + tx] > 20) dR = r;
           }
-          if (hitL && hitR) break;
+          if (dL <= radiusInt && dR <= radiusInt) break;
         }
 
-        let bridged = hitL && hitR;
-
-        // Vertical Scan (if not bridged horizontally)
-        if (!bridged) {
-          for (let r = 1; r <= radiusInt; r++) {
-            if (!hitU) {
-              const ty = y - r;
-              if (ty >= 0 && pixels[ty * w + x] > 20) hitU = true;
-            }
-            if (!hitD) {
-              const ty = y + r;
-              if (ty < h && pixels[ty * w + x] > 20) hitD = true;
-            }
-            if (hitU && hitD) break;
+        // Vertical Scan
+        for (let r = 1; r <= radiusInt; r++) {
+          if (dU > radiusInt) {
+            const ty = y - r;
+            if (ty >= 0 && pixels[ty * w + x] > 20) dU = r;
           }
-          bridged = hitU && hitD;
+          if (dD > radiusInt) {
+            const ty = y + r;
+            if (ty < h && pixels[ty * w + x] > 20) dD = r;
+          }
+          if (dU <= radiusInt && dD <= radiusInt) break;
         }
 
-        if (bridged) {
-          // 4. Apply Coverage (Noise)
-          let mask = 1;
-          if (coverageThreshold < 0.99) {
-             const xCss = x * invDp;
-             const n = sampleSpeckValueNoiseFast(xCss * detailCss, yCss * detailCss, noiseSeed);
-             if (n > coverageThreshold) mask = 0;
-          }
+        // 4. Calculate Fill Intensity
+        // We want to fill areas that are "enclosed".
+        // A gap bridged in BOTH axes (e.g. inside 'o') is strongly enclosed.
+        // A gap bridged in ONE axis (e.g. between 'l' 'l') is weakly enclosed and needs to be tighter.
 
-          if (mask > 0) {
-            coverage[i] = Math.max(coverage[i], opacity);
-          }
+        const hGap = dL + dR;
+        const vGap = dU + dD;
+        const maxGap = radiusPx * 2;
+
+        let enclosureScore = 0;
+
+        // Horizontal contribution
+        if (dL <= radiusInt && dR <= radiusInt) {
+          const t = clamp01Fn(1 - hGap / maxGap);
+          enclosureScore += t * t; // Quadratic falloff for tightness
+        }
+
+        // Vertical contribution
+        if (dU <= radiusInt && dD <= radiusInt) {
+          const t = clamp01Fn(1 - vGap / maxGap);
+          enclosureScore += t * t;
+        }
+
+        // Multiplier for being enclosed on multiple sides (prevents spilling)
+        if ((dL <= radiusInt || dR <= radiusInt) && (dU <= radiusInt || dD <= radiusInt)) {
+           // Being near ink on both axes boosts the score significantly
+           enclosureScore *= 1.5;
+        }
+
+        // Threshold: If score is too low (wide gap, single axis), reject it.
+        // This prevents filling the space between parallel characters unless they are very close.
+        if (enclosureScore < 0.35) continue;
+
+        // 5. Apply Coverage (Noise & Edge Softening)
+        const xCss = x * invDp;
+        const n = sampleSpeckValueNoiseFast(xCss * detailCss, yCss * detailCss, noiseSeed);
+
+        // Modulate noise threshold by enclosure score to create ragged edges
+        // Stronger enclosure = more solid fill. Weaker enclosure = noisier/broken fill.
+        const effectiveThreshold = coverageThreshold * clamp01Fn(enclosureScore * 1.2);
+
+        if (n <= effectiveThreshold) {
+          // Soften the fill based on distance to ink (meniscus effect)
+          // Pixels closer to ink (dist small) are darker. Center of gap is lighter.
+          const meniscus = 1.0 - clamp01Fn((dist / radiusPx) * 0.8);
+          const fillAlpha = opacity * meniscus;
+
+          // Blend, don't just max()
+          const existing = coverage[i];
+          coverage[i] = existing + fillAlpha * (1 - existing);
         }
       }
     }
   }
+
 
   function applyExperimentalFuzz(coverage, ctx) {
     const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
