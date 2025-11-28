@@ -1050,7 +1050,9 @@ function applyCounterFill(coverage, ctx) {
   const searchLimit = radiusInt + 1;
 
   const noiseSeed = seed ^ 0xCF11CF11;
+  const grainSeed = seed ^ 0x62A1D5ED;
   const detailCss = getDetailDensityCss(ctx, 0.6);
+  const grainCss = getDetailDensityCss(ctx, 2.4);
 
   const pixels = alpha0;
   const outsideDist = ctx.dm?.raw?.outside;
@@ -1169,6 +1171,7 @@ function applyCounterFill(coverage, ctx) {
 
       const xCss = x * invDp;
       const n = sampleSpeckValueNoiseFast(xCss * detailCss, yCss * detailCss, noiseSeed);
+      const nGrain = sampleSpeckValueNoiseFast(xCss * grainCss, yCss * grainCss, grainSeed);
 
       const solidity = clamp01Fn((enclosure + coverageThreshold * 0.5) * 1.2);
 
@@ -1180,7 +1183,7 @@ function applyCounterFill(coverage, ctx) {
       const meniscus = (1.0 - dNorm);
       const surfaceTension = meniscus * meniscus;
 
-      const texturedAlpha = 1.0 - (1.0 - n) * noiseStrength;
+      const texturedAlpha = 1.0 - (1.0 - nGrain) * noiseStrength;
 
       const fillAlpha = opacity * intensity * surfaceTension * texturedAlpha;
 
@@ -1189,7 +1192,6 @@ function applyCounterFill(coverage, ctx) {
     }
   }
 }
-
 
   function applyExperimentalFuzz(coverage, ctx) {
     const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
