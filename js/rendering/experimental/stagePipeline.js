@@ -1168,20 +1168,30 @@ function applyCounterFill(coverage, ctx) {
         const tightThreshold = radiusPx * 0.9;
         if (minGap < tightThreshold) {
            const boost = 1.0 - (minGap / tightThreshold);
-           // Add boost, clamped to 1.0. 
+           // Add boost, clamped to 1.0.
            // Factor 0.4 ensures we don't overfill wide-open wedges too easily.
            enclosure = Math.min(1.0, enclosure + boost * 0.4);
         }
 
-        // Reject weak enclosures
-        if (enclosure < 0.1) continue;
+        // REJECTION THRESHOLD (Sensitivity):
+        // Use 'coverage' to determine how picky we are about filling.
+        // Low coverage = High Threshold = Only fill perfect, tight enclosures (e.g. small 'e', 'a').
+        // High coverage = Low Threshold = Allow filling semi-open shapes (e.g. 'c', 'G').
+        // Range: 0.4 (Strict) down to 0.05 (Loose).
+        const strictness = 1.0 - coverageThreshold;
+        const acceptanceThreshold = 0.05 + strictness * 0.35;
+
+        if (enclosure < acceptanceThreshold) continue;
 
         // --- COMPOSITION ---
         const xCss = x * invDp;
         const n = sampleSpeckValueNoiseFast(xCss * detailCss, yCss * detailCss, noiseSeed);
 
-        // Threshold logic
-        const effectiveThreshold = coverageThreshold * clamp01Fn(enclosure * 1.5);
+        // Modulate solidity based on enclosure score.
+        // Tighter shapes get solid fill. Looser shapes get patchy fill.
+        // We boost the enclosure score based on coverage so high coverage = more solid.
+        const solidityBoost = coverageThreshold * 0.5;
+        const effectiveThreshold = clamp01Fn((enclosure + solidityBoost) * 1.1);
 
         // Soft noise mask
         const noiseEdge = 0.2; // Wider edge for softer look
