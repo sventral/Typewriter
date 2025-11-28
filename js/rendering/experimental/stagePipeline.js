@@ -1031,195 +1031,164 @@ function applyCenterEdgeShape(coverage, ctx) {
 
 
 function applyCounterFill(coverage, ctx) {
-    const { w, h, params, alpha0, seed, smul } = ctx;
-    const cfg = params.counterFill || {};
-    const enabled = params.enable?.counterFill;
-    const fillRadius = cfg.fill || 0;
-    const opacity = clamp01Fn(cfg.transparency ?? 0.9);
-    const coverageThreshold = clamp01Fn(cfg.coverage ?? 1.0);
+  const { w, h, params, alpha0, seed, smul } = ctx;
+  const cfg = params.counterFill || {};
+  const enabled = params.enable?.counterFill;
+  const fillRadius = cfg.fill || 0;
+  const opacity = clamp01Fn(cfg.transparency ?? 0.9);
+  const coverageThreshold = clamp01Fn(cfg.coverage ?? 1.0);
 
-    if (!enabled || fillRadius <= 0.01 || opacity <= 0.01) return;
+  if (!enabled || fillRadius <= 0.01 || opacity <= 0.01) return;
 
-    const smulSafe = Math.max(1e-6, smul || 1);
-    const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
-    const invDp = 1 / dpPerCss;
+  const smulSafe = Math.max(1e-6, smul || 1);
+  const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
+  const invDp = 1 / dpPerCss;
 
-    const radiusPx = fillRadius * 12.0 * smulSafe * dpPerCss;
-    const radiusInt = Math.ceil(radiusPx);
-    const searchLimit = radiusInt + 1;
+  const radiusPx = fillRadius * 12.0 * smulSafe * dpPerCss;
+  const radiusInt = Math.ceil(radiusPx);
+  const searchLimit = radiusInt + 1;
 
-    const noiseSeed = seed ^ 0xCF11CF11;
-    // Lower noise frequency slightly for organic look
-    const detailCss = getDetailDensityCss(ctx, 0.6);
+  const noiseSeed = seed ^ 0xCF11CF11;
+  const detailCss = getDetailDensityCss(ctx, 0.6);
 
-    const pixels = alpha0;
-    const outsideDist = ctx.dm?.raw?.outside;
+  const pixels = alpha0;
+  const outsideDist = ctx.dm?.raw?.outside;
 
-    for (let y = 0; y < h; y++) {
-      const rowOffset = y * w;
-      const yCss = y * invDp;
+  for (let y = 0; y < h; y++) {
+    const rowOffset = y * w;
+    const yCss = y * invDp;
 
-      for (let x = 0; x < w; x++) {
-        const i = rowOffset + x;
+    for (let x = 0; x < w; x++) {
+      const i = rowOffset + x;
 
-        if (pixels[i] > 20) continue;
+      if (pixels[i] > 20) continue;
 
-        let dist = 0;
-        if (outsideDist) {
-          dist = outsideDist[i];
-          if (dist > radiusPx) continue;
-        }
-
-        // --- SCANNING (8 directions) ---
-        // We scan 4 axes to create a rounder, non-geometric enclosure shape.
-        let dL = searchLimit, dR = searchLimit;
-        let dU = searchLimit, dD = searchLimit;
-        let dTL = searchLimit, dBR = searchLimit;
-        let dTR = searchLimit, dBL = searchLimit;
-
-        // Horizontal
-        for (let r = 1; r < searchLimit; r++) {
-          if (dL === searchLimit) {
-            const tx = x - r;
-            if (tx >= 0 && pixels[rowOffset + tx] > 20) dL = r;
-          }
-          if (dR === searchLimit) {
-            const tx = x + r;
-            if (tx < w && pixels[rowOffset + tx] > 20) dR = r;
-          }
-          if (dL < searchLimit && dR < searchLimit) break;
-        }
-
-        // Vertical
-        for (let r = 1; r < searchLimit; r++) {
-          if (dU === searchLimit) {
-            const ty = y - r;
-            if (ty >= 0 && pixels[ty * w + x] > 20) dU = r;
-          }
-          if (dD === searchLimit) {
-            const ty = y + r;
-            if (ty < h && pixels[ty * w + x] > 20) dD = r;
-          }
-          if (dU < searchLimit && dD < searchLimit) break;
-        }
-
-        // Diagonal 1 (TopLeft - BottomRight)
-        for (let r = 1; r < searchLimit; r++) {
-          if (dTL === searchLimit) {
-            const tx = x - r, ty = y - r;
-            if (tx >= 0 && ty >= 0 && pixels[ty * w + tx] > 20) dTL = r;
-          }
-          if (dBR === searchLimit) {
-            const tx = x + r, ty = y + r;
-            if (tx < w && ty < h && pixels[ty * w + tx] > 20) dBR = r;
-          }
-          if (dTL < searchLimit && dBR < searchLimit) break;
-        }
-
-        // Diagonal 2 (TopRight - BottomLeft)
-        for (let r = 1; r < searchLimit; r++) {
-          if (dTR === searchLimit) {
-            const tx = x + r, ty = y - r;
-            if (tx < w && ty >= 0 && pixels[ty * w + tx] > 20) dTR = r;
-          }
-          if (dBL === searchLimit) {
-            const tx = x - r, ty = y + r;
-            if (tx >= 0 && ty < h && pixels[ty * w + tx] > 20) dBL = r;
-          }
-          if (dTR < searchLimit && dBL < searchLimit) break;
-        }
-
-        // --- SCORING ---
-        const gapH = dL + dR;
-        const gapV = dU + dD;
-        const gapD1 = (dTL + dBR) * 1.414; // Normalize diagonal distance
-        const gapD2 = (dTR + dBL) * 1.414;
-        
-        // Slightly larger max gap relative to radius to soften the falloff
-        const maxGap = radiusPx * 2.5;
-
-        const calcScore = (gap) => {
-          if (gap >= maxGap) return 0;
-          const t = 1.0 - (gap / maxGap);
-          // Cubic falloff: punishes large gaps more, prioritizes small/tight counters
-          return t * t * t;
-        };
-
-        const sH = calcScore(gapH);
-        const sV = calcScore(gapV);
-        const sD1 = calcScore(gapD1);
-        const sD2 = calcScore(gapD2);
-
-        // Average score from all axes.
-        let enclosure = (sH + sV + sD1 + sD2) * 0.25;
-
-        // PENALIZE OPEN SHAPES:
-        // Use a power curve to suppress semi-open shapes.
-        // A fully closed shape (avg ~0.9) stays high (~0.77).
-        // A shape open on one side (avg ~0.7) drops significantly (~0.4).
-        // Parallel lines (avg ~0.25) drop to near zero (~0.03).
-        enclosure = Math.pow(enclosure, 2.5);
-
-        // CAPILLARY BOOST:
-        // If the *minimum* gap is very small (tight wedge or small counter),
-        // boost the score even if other sides are open.
-        // This simulates ink getting stuck in small corners.
-        const minGap = Math.min(gapH, gapV, gapD1, gapD2);
-        const tightThreshold = radiusPx * 0.9;
-        if (minGap < tightThreshold) {
-           const boost = 1.0 - (minGap / tightThreshold);
-           // Add boost, clamped to 1.0.
-           // Factor 0.4 ensures we don't overfill wide-open wedges too easily.
-           enclosure = Math.min(1.0, enclosure + boost * 0.4);
-        }
-
-        // REJECTION THRESHOLD (Sensitivity):
-        // Use 'coverage' to determine how picky we are about filling.
-        // Low coverage = High Threshold = Only fill perfect, tight enclosures (e.g. small 'e', 'a').
-        // High coverage = Low Threshold = Allow filling semi-open shapes (e.g. 'c', 'G').
-        // Range: 0.4 (Strict) down to 0.05 (Loose).
-        const strictness = 1.0 - coverageThreshold;
-        const acceptanceThreshold = 0.05 + strictness * 0.35;
-
-        if (enclosure < acceptanceThreshold) continue;
-
-        // --- COMPOSITION ---
-        const xCss = x * invDp;
-        const n = sampleSpeckValueNoiseFast(xCss * detailCss, yCss * detailCss, noiseSeed);
-
-        // Modulate solidity based on enclosure score.
-        // Tighter shapes get solid fill. Looser shapes get patchy fill.
-        // We boost the enclosure score based on coverage so high coverage = more solid.
-        const solidityBoost = coverageThreshold * 0.5;
-        const effectiveThreshold = clamp01Fn((enclosure + solidityBoost) * 1.1);
-
-        // Soft noise mask
-        const noiseEdge = 0.2; // Wider edge for softer look
-        let noiseMask = 0;
-        if (n <= effectiveThreshold - noiseEdge) {
-          noiseMask = 1;
-        } else if (n >= effectiveThreshold + noiseEdge) {
-          noiseMask = 0;
-        } else {
-          const t = (n - (effectiveThreshold - noiseEdge)) / (noiseEdge * 2);
-          noiseMask = 1.0 - t * t * (3 - 2 * t);
-        }
-
-        if (noiseMask <= 0.01) continue;
-
-        // Meniscus / Surface Tension
-        // Cubic falloff from Euclidean distance for organic shape
-        const dNorm = clamp01Fn(dist / radiusPx);
-        const meniscus = (1.0 - dNorm);
-        const surfaceTension = meniscus * meniscus * meniscus;
-
-        const fillAlpha = opacity * surfaceTension * noiseMask;
-
-        const existing = coverage[i];
-        coverage[i] = existing + fillAlpha * (1 - existing);
+      let dist = 0;
+      if (outsideDist) {
+        dist = outsideDist[i];
+        if (dist > radiusPx * 1.25) continue;
       }
+
+      let dL = searchLimit, dR = searchLimit;
+      let dU = searchLimit, dD = searchLimit;
+      let dTL = searchLimit, dBR = searchLimit;
+      let dTR = searchLimit, dBL = searchLimit;
+
+      for (let r = 1; r < searchLimit; r++) {
+        if (dL === searchLimit) {
+          const tx = x - r;
+          if (tx >= 0 && pixels[rowOffset + tx] > 20) dL = r;
+        }
+        if (dR === searchLimit) {
+          const tx = x + r;
+          if (tx < w && pixels[rowOffset + tx] > 20) dR = r;
+        }
+        if (dL < searchLimit && dR < searchLimit) break;
+      }
+
+      for (let r = 1; r < searchLimit; r++) {
+        if (dU === searchLimit) {
+          const ty = y - r;
+          if (ty >= 0 && pixels[ty * w + x] > 20) dU = r;
+        }
+        if (dD === searchLimit) {
+          const ty = y + r;
+          if (ty < h && pixels[ty * w + x] > 20) dD = r;
+        }
+        if (dU < searchLimit && dD < searchLimit) break;
+      }
+
+      for (let r = 1; r < searchLimit; r++) {
+        if (dTL === searchLimit) {
+          const tx = x - r, ty = y - r;
+          if (tx >= 0 && ty >= 0 && pixels[ty * w + tx] > 20) dTL = r;
+        }
+        if (dBR === searchLimit) {
+          const tx = x + r, ty = y + r;
+          if (tx < w && ty < h && pixels[ty * w + tx] > 20) dBR = r;
+        }
+        if (dTL < searchLimit && dBR < searchLimit) break;
+      }
+
+      for (let r = 1; r < searchLimit; r++) {
+        if (dTR === searchLimit) {
+          const tx = x + r, ty = y - r;
+          if (tx < w && ty >= 0 && pixels[ty * w + tx] > 20) dTR = r;
+        }
+        if (dBL === searchLimit) {
+          const tx = x - r, ty = y + r;
+          if (tx >= 0 && ty < h && pixels[ty * w + tx] > 20) dBL = r;
+        }
+        if (dTR < searchLimit && dBL < searchLimit) break;
+      }
+
+      const gapH = dL + dR;
+      const gapV = dU + dD;
+      const gapD1 = (dTL + dBR) * 1.414;
+      const gapD2 = (dTR + dBL) * 1.414;
+      const maxGap = radiusPx * 2.5;
+
+      const calcScore = (gap) => {
+        if (gap >= maxGap) return 0;
+        const t = 1.0 - (gap / maxGap);
+        return t * t * t;
+      };
+
+      const sH = calcScore(gapH);
+      const sV = calcScore(gapV);
+      const sD1 = calcScore(gapD1);
+      const sD2 = calcScore(gapD2);
+
+      let enclosure = (sH + sV + sD1 + sD2) * 0.25;
+
+      enclosure = Math.pow(enclosure, 2.5);
+
+      const minGap = Math.min(gapH, gapV, gapD1, gapD2);
+      const tightThreshold = radiusPx * 0.9;
+      if (minGap < tightThreshold) {
+        const boost = 1.0 - (minGap / tightThreshold);
+        enclosure = Math.min(1.0, enclosure + boost * 0.4);
+      }
+
+      const strictness = 1.0 - coverageThreshold;
+      const acceptanceThreshold = 0.05 + strictness * 0.35;
+
+      const acceptanceFade = 0.1;
+      let intensity = 0;
+      if (enclosure > acceptanceThreshold + acceptanceFade) {
+        intensity = 1;
+      } else if (enclosure < acceptanceThreshold - acceptanceFade) {
+        intensity = 0;
+      } else {
+        const t = (enclosure - (acceptanceThreshold - acceptanceFade)) / (acceptanceFade * 2);
+        intensity = t * t * (3 - 2 * t);
+      }
+
+      if (intensity <= 0.001) continue;
+
+      const xCss = x * invDp;
+      const n = sampleSpeckValueNoiseFast(xCss * detailCss, yCss * detailCss, noiseSeed);
+
+      const solidity = clamp01Fn((enclosure + coverageThreshold * 0.5) * 1.2);
+
+      const fuzzRange = radiusPx * 0.35;
+      const distJitter = (n - 0.5) * fuzzRange;
+      const effectiveDist = Math.max(0, dist + distJitter);
+
+      const dNorm = clamp01Fn(effectiveDist / (radiusPx * 1.1));
+      const meniscus = (1.0 - dNorm);
+      const surfaceTension = meniscus * meniscus;
+
+      const noiseFactor = 0.4 + (1 - solidity) * 0.6;
+      const texturedAlpha = 1.0 - (1.0 - n) * noiseFactor;
+
+      const fillAlpha = opacity * intensity * surfaceTension * texturedAlpha;
+
+      const existing = coverage[i];
+      coverage[i] = existing + fillAlpha * (1 - existing);
     }
   }
+}
 
 
   function applyExperimentalFuzz(coverage, ctx) {
