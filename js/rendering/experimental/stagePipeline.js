@@ -1134,12 +1134,15 @@ function applyCounterFill(coverage, ctx) {
         const gapV = dU + dD;
         const gapD1 = (dTL + dBR) * 1.414; // Normalize diagonal distance
         const gapD2 = (dTR + dBL) * 1.414;
-        const maxGap = radiusPx * 2.2;
+        
+        // Slightly larger max gap relative to radius to soften the falloff
+        const maxGap = radiusPx * 2.5;
 
         const calcScore = (gap) => {
           if (gap >= maxGap) return 0;
           const t = 1.0 - (gap / maxGap);
-          return t * t * (3 - 2 * t); // Smoothstep falloff
+          // Cubic falloff: punishes large gaps more, prioritizes small/tight counters
+          return t * t * t;
         };
 
         const sH = calcScore(gapH);
@@ -1148,23 +1151,37 @@ function applyCounterFill(coverage, ctx) {
         const sD2 = calcScore(gapD2);
 
         // Average score from all axes.
-        // This prevents the "geometric" look where a single failed axis cuts off the fill.
-        // It also naturally handles semi-open shapes like 'c' better than a hard AND/OR.
         let enclosure = (sH + sV + sD1 + sD2) * 0.25;
 
-        // Boost if multiple axes are very tight (deep corners)
-        if (enclosure > 0.5) {
-          enclosure = Math.min(1, enclosure * 1.2);
+        // PENALIZE OPEN SHAPES:
+        // Use a power curve to suppress semi-open shapes.
+        // A fully closed shape (avg ~0.9) stays high (~0.77).
+        // A shape open on one side (avg ~0.7) drops significantly (~0.4).
+        // Parallel lines (avg ~0.25) drop to near zero (~0.03).
+        enclosure = Math.pow(enclosure, 2.5);
+
+        // CAPILLARY BOOST:
+        // If the *minimum* gap is very small (tight wedge or small counter),
+        // boost the score even if other sides are open.
+        // This simulates ink getting stuck in small corners.
+        const minGap = Math.min(gapH, gapV, gapD1, gapD2);
+        const tightThreshold = radiusPx * 0.9;
+        if (minGap < tightThreshold) {
+           const boost = 1.0 - (minGap / tightThreshold);
+           // Add boost, clamped to 1.0. 
+           // Factor 0.4 ensures we don't overfill wide-open wedges too easily.
+           enclosure = Math.min(1.0, enclosure + boost * 0.4);
         }
 
-        // Reject weak enclosures (e.g. parallel lines 'll' which might have 1 strong axis but 3 weak ones)
-        if (enclosure < 0.25) continue;
+        // Reject weak enclosures
+        if (enclosure < 0.1) continue;
 
         // --- COMPOSITION ---
         const xCss = x * invDp;
         const n = sampleSpeckValueNoiseFast(xCss * detailCss, yCss * detailCss, noiseSeed);
 
-        const effectiveThreshold = coverageThreshold * clamp01Fn(enclosure * 1.4);
+        // Threshold logic
+        const effectiveThreshold = coverageThreshold * clamp01Fn(enclosure * 1.5);
 
         // Soft noise mask
         const noiseEdge = 0.2; // Wider edge for softer look
