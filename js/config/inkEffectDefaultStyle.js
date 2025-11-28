@@ -89,10 +89,10 @@ const BASE_SECTION_CONFIG = deepFreeze({
     mix: 1,
   },
 counterFill: {
-    transparency: 0.9,
-    fill: 0.0,
-    coverage: 1.0,
-    noise: 0.0,
+    transparency: 0.3,
+    fill: 0.65,
+    coverage: 0.45,
+    noise: 0.8,
   },
   fuzzExp: {
     enable: false,
