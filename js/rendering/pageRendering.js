@@ -118,6 +118,7 @@ export function createPageRenderer(options) {
     page.fullPaintCurrentRowCols = null;
     page.fullPaintColIndex = 0;
     page.fullPaintInProgress = false;
+    page.isAtomicPaint = false;
     if (markDirtyAll) {
       page.dirtyAll = true;
     }
@@ -259,6 +260,10 @@ export function createPageRenderer(options) {
     if (page.preserveFrontBufferForFullPaint) {
       delete page.preserveFrontBufferForFullPaint;
     }
+    
+    // When preserving the front buffer (style changes), we enter "Atomic Paint" mode.
+    // This prevents incremental flushing to the screen until the back buffer is fully ready.
+    page.isAtomicPaint = preserveFrontBuffer;
 
     backCtx.save();
     backCtx.globalCompositeOperation = 'source-over';
@@ -267,6 +272,8 @@ export function createPageRenderer(options) {
     backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
     backCtx.restore();
 
+    // If NOT atomic (e.g. first load), clear the front buffer immediately so the user sees progress.
+    // If atomic (e.g. style change), leave the front buffer alone so the user sees the old text.
     if (!preserveFrontBuffer) {
       page.ctx.save();
       page.ctx.globalCompositeOperation = 'source-over';
@@ -281,6 +288,10 @@ export function createPageRenderer(options) {
     if (page._dirtyRows) page._dirtyRows.clear();
 
     if (queue.length === 0) {
+      // If queue is empty but we are in atomic mode, we still need to flush the (blank) back buffer to front.
+      if (page.isAtomicPaint) {
+        flushFullPaintRange(page, 0, app.PAGE_H);
+      }
       resetFullPagePaintState(page);
       return true;
     }
@@ -382,11 +393,17 @@ export function createPageRenderer(options) {
       }
     }
 
-    if (rawBands.length) {
+    // Only flush intermediate results to screen if we are NOT in atomic mode.
+    // In atomic mode (style updates), we want to hide the work until finished.
+    if (rawBands.length && !page.isAtomicPaint) {
       mergeAndFlushBands(page, rawBands);
     }
 
     if (page.fullPaintCursor >= queue.length && !page.fullPaintCurrentRowCols) {
+      // Work is complete. If we were holding back updates (atomic mode), flush everything now.
+      if (page.isAtomicPaint) {
+        flushFullPaintRange(page, 0, app.PAGE_H);
+      }
       resetFullPagePaintState(page);
       return;
     }
