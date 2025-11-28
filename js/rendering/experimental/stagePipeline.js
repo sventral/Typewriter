@@ -1037,6 +1037,7 @@ function applyCounterFill(coverage, ctx) {
   const fillRadius = cfg.fill || 0;
   const opacity = clamp01Fn(cfg.transparency ?? 0.9);
   const coverageThreshold = clamp01Fn(cfg.coverage ?? 1.0);
+  const noiseStrength = clamp01Fn(cfg.noise ?? 0);
 
   if (!enabled || fillRadius <= 0.01 || opacity <= 0.01) return;
 
@@ -1179,8 +1180,7 @@ function applyCounterFill(coverage, ctx) {
       const meniscus = (1.0 - dNorm);
       const surfaceTension = meniscus * meniscus;
 
-      const noiseFactor = 0.4 + (1 - solidity) * 0.6;
-      const texturedAlpha = 1.0 - (1.0 - n) * noiseFactor;
+      const texturedAlpha = 1.0 - (1.0 - n) * noiseStrength;
 
       const fillAlpha = opacity * intensity * surfaceTension * texturedAlpha;
 
