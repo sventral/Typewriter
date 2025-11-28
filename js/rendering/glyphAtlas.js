@@ -297,6 +297,7 @@ export function createGlyphAtlas(options) {
       enable.rim = false;
       enable.centerEdge = false;
       enable.fuzzExp = false;
+      enable.counterFill = false;
     }
     if (!sectionEnabled.expGrain) {
       enable.grainSpeck = false;
@@ -332,6 +333,7 @@ export function createGlyphAtlas(options) {
     mul(params.centerEdge, 'center', edgeS);
     mul(params.centerEdge, 'edge', edgeS);
     mul(params.centerEdge, 'thicken', edgeS);
+    mul(params.counterFill, 'fill', edgeS);
     if (params.fuzzExp) {
       mul(params.fuzzExp, 'thicken', edgeS);
     }
@@ -353,7 +355,7 @@ export function createGlyphAtlas(options) {
 
   const EXPERIMENTAL_SECTION_STAGE_MAP = {
     expTone: ['tone'],
-    expEdge: ['fuzz', 'fuzzExp', 'centerEdge'],
+    expEdge: ['fuzz', 'counterFill', 'fuzzExp', 'centerEdge'],
     expGrain: ['texture', 'dropouts'],
     expDefects: ['punch', 'smudge'],
   };
@@ -454,6 +456,7 @@ export function createGlyphAtlas(options) {
     const ribbonCfg = cfg.ribbon || {};
     const noiseCfg = cfg.noise || {};
     const centerEdgeCfg = cfg.centerEdge || {};
+    const counterFillCfg = cfg.counterFill || {};
     const fuzzExpCfg = cfg.fuzzExp || {};
     const edgeFuzzCfg = cfg.edgeFuzz || {};
     const dropoutsCfg = cfg.dropouts || {};
@@ -492,6 +495,9 @@ export function createGlyphAtlas(options) {
     const fuzzExpActive = sectionActive.expEdge
       && (fuzzExpCfg.enable !== false)
       && hasPositive(fuzzExpCfg.thicken);
+    const counterFillActive = sectionActive.expEdge
+      && !!enable.counterFill
+      && hasPositive(counterFillCfg.fill);
     const textureActive = sectionActive.expGrain
       && !!enable.grainSpeck
       && (hasPositive(inkCfg.speckDark) || hasPositive(inkCfg.speckLight));
@@ -514,6 +520,7 @@ export function createGlyphAtlas(options) {
     const needsFill = toneCoreActive
       || centerEdgeActive
       || fuzzExpActive
+      || counterFillActive
       || textureActive
       || dropoutsActive
       || punchActive
@@ -526,6 +533,7 @@ export function createGlyphAtlas(options) {
       texture: textureActive,
       centerEdge: centerEdgeActive,
       fuzzExp: fuzzExpActive,
+      counterFill: counterFillActive,
       punch: punchActive,
       fuzz: fuzzActive,
       smudge: smudgeActive,
@@ -744,6 +752,7 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
       ribbon: { ...(baseConfig.ribbon || {}) },
       noise: { ...(baseConfig.noise || {}) },
       centerEdge: { ...(baseConfig.centerEdge || {}) },
+      counterFill: { ...(baseConfig.counterFill || {}) },
       fuzzExp: { ...(baseConfig.fuzzExp || {}) },
       dropouts: { ...(baseConfig.dropouts || {}) },
       edgeFuzz: { ...(baseConfig.edgeFuzz || {}) },
