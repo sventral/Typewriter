@@ -1045,12 +1045,12 @@ function applyCounterFill(coverage, ctx) {
     const invDp = 1 / dpPerCss;
 
     const radiusPx = fillRadius * 12.0 * smulSafe * dpPerCss;
-    const searchLimit = Math.ceil(radiusPx * 1.5);
-    const maxGap = radiusPx * 2.2;
+    const radiusInt = Math.ceil(radiusPx);
+    const searchLimit = radiusInt + 1;
 
     const noiseSeed = seed ^ 0xCF11CF11;
-    // Lower noise frequency for more liquid look
-    const detailCss = getDetailDensityCss(ctx, 0.5);
+    // Lower noise frequency slightly for organic look
+    const detailCss = getDetailDensityCss(ctx, 0.6);
 
     const pixels = alpha0;
     const outsideDist = ctx.dm?.raw?.outside;
@@ -1070,12 +1070,14 @@ function applyCounterFill(coverage, ctx) {
           if (dist > radiusPx) continue;
         }
 
-        // --- SCANNING ---
-        let dL = searchLimit;
-        let dR = searchLimit;
-        let dU = searchLimit;
-        let dD = searchLimit;
+        // --- SCANNING (8 directions) ---
+        // We scan 4 axes to create a rounder, non-geometric enclosure shape.
+        let dL = searchLimit, dR = searchLimit;
+        let dU = searchLimit, dD = searchLimit;
+        let dTL = searchLimit, dBR = searchLimit;
+        let dTR = searchLimit, dBL = searchLimit;
 
+        // Horizontal
         for (let r = 1; r < searchLimit; r++) {
           if (dL === searchLimit) {
             const tx = x - r;
@@ -1088,6 +1090,7 @@ function applyCounterFill(coverage, ctx) {
           if (dL < searchLimit && dR < searchLimit) break;
         }
 
+        // Vertical
         for (let r = 1; r < searchLimit; r++) {
           if (dU === searchLimit) {
             const ty = y - r;
@@ -1100,34 +1103,71 @@ function applyCounterFill(coverage, ctx) {
           if (dU < searchLimit && dD < searchLimit) break;
         }
 
+        // Diagonal 1 (TopLeft - BottomRight)
+        for (let r = 1; r < searchLimit; r++) {
+          if (dTL === searchLimit) {
+            const tx = x - r, ty = y - r;
+            if (tx >= 0 && ty >= 0 && pixels[ty * w + tx] > 20) dTL = r;
+          }
+          if (dBR === searchLimit) {
+            const tx = x + r, ty = y + r;
+            if (tx < w && ty < h && pixels[ty * w + tx] > 20) dBR = r;
+          }
+          if (dTL < searchLimit && dBR < searchLimit) break;
+        }
+
+        // Diagonal 2 (TopRight - BottomLeft)
+        for (let r = 1; r < searchLimit; r++) {
+          if (dTR === searchLimit) {
+            const tx = x + r, ty = y - r;
+            if (tx < w && ty >= 0 && pixels[ty * w + tx] > 20) dTR = r;
+          }
+          if (dBL === searchLimit) {
+            const tx = x - r, ty = y + r;
+            if (tx >= 0 && ty < h && pixels[ty * w + tx] > 20) dBL = r;
+          }
+          if (dTR < searchLimit && dBL < searchLimit) break;
+        }
+
         // --- SCORING ---
         const gapH = dL + dR;
         const gapV = dU + dD;
+        const gapD1 = (dTL + dBR) * 1.414; // Normalize diagonal distance
+        const gapD2 = (dTR + dBL) * 1.414;
+        const maxGap = radiusPx * 2.2;
 
-        // Cubic falloff for scoring to ensure smooth transitions
-        let scoreH = clamp01Fn(1.0 - gapH / maxGap);
-        scoreH = scoreH * scoreH * (3 - 2 * scoreH);
+        const calcScore = (gap) => {
+          if (gap >= maxGap) return 0;
+          const t = 1.0 - (gap / maxGap);
+          return t * t * (3 - 2 * t); // Smoothstep falloff
+        };
 
-        let scoreV = clamp01Fn(1.0 - gapV / maxGap);
-        scoreV = scoreV * scoreV * (3 - 2 * scoreV);
+        const sH = calcScore(gapH);
+        const sV = calcScore(gapV);
+        const sD1 = calcScore(gapD1);
+        const sD2 = calcScore(gapD2);
 
-        // Combined enclosure score.
-        // Multiplication favors true holes bounded on both axes.
-        let enclosure = scoreH * scoreV;
+        // Average score from all axes.
+        // This prevents the "geometric" look where a single failed axis cuts off the fill.
+        // It also naturally handles semi-open shapes like 'c' better than a hard AND/OR.
+        let enclosure = (sH + sV + sD1 + sD2) * 0.25;
 
-        // Boost enclosure if both scores are high (very tight corner/hole)
-        if (scoreH > 0.5 && scoreV > 0.5) enclosure *= 1.2;
+        // Boost if multiple axes are very tight (deep corners)
+        if (enclosure > 0.5) {
+          enclosure = Math.min(1, enclosure * 1.2);
+        }
 
-        if (enclosure < 0.05) continue;
+        // Reject weak enclosures (e.g. parallel lines 'll' which might have 1 strong axis but 3 weak ones)
+        if (enclosure < 0.25) continue;
 
         // --- COMPOSITION ---
         const xCss = x * invDp;
         const n = sampleSpeckValueNoiseFast(xCss * detailCss, yCss * detailCss, noiseSeed);
 
-        const effectiveThreshold = coverageThreshold * clamp01Fn(enclosure * 1.5);
+        const effectiveThreshold = coverageThreshold * clamp01Fn(enclosure * 1.4);
 
         // Soft noise mask
-        const noiseEdge = 0.15;
+        const noiseEdge = 0.2; // Wider edge for softer look
         let noiseMask = 0;
         if (n <= effectiveThreshold - noiseEdge) {
           noiseMask = 1;
@@ -1141,7 +1181,7 @@ function applyCounterFill(coverage, ctx) {
         if (noiseMask <= 0.01) continue;
 
         // Meniscus / Surface Tension
-        // Quadratic/Cubic falloff from Euclidean distance for organic shape
+        // Cubic falloff from Euclidean distance for organic shape
         const dNorm = clamp01Fn(dist / radiusPx);
         const meniscus = (1.0 - dNorm);
         const surfaceTension = meniscus * meniscus * meniscus;
