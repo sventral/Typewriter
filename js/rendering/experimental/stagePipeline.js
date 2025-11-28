@@ -910,7 +910,7 @@ function applyCenterEdgeShape(coverage, ctx) {
     
     const resolutionBias = dpPerCss < 1.5 ? -0.25 : 0;
     const effectiveTK = Math.max(0, tK + resolutionBias / dpPerCss);
-    const thickenRadiusPx = (effectiveTK * 1.0 + 0.15) * dpPerCss;
+    const thickenRadiusPx = tK > 1e-6 ? (effectiveTK * 1.0 + 0.15) * dpPerCss : 0;
 
     // OPTIMIZATION: Increased base softness to smooth out the discrete distance map steps
     const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
@@ -965,7 +965,7 @@ function applyCenterEdgeShape(coverage, ctx) {
         
         if (hasAlpha && hasCenterEdgeShaping) {
           if (centerEdgeEnabled && cK !== 0) cov *= clampFn(1 + cK * norm, 0, 3);
-          if (centerEdgeEnabled && eK !== 0) cov *= clampFn(1 - eK * (1 - norm), 0, 3);
+          if (centerEdgeEnabled && eK !== 0) cov *= clampFn(1 - (eK * 2.0) * (1 - norm), 0, 3);
         }
 
         if (thickenRadiusPx > 0) {
