@@ -310,7 +310,7 @@ export function createGlyphAtlas(options) {
     return params;
   }
 
-  function applySectionScaleBias(params, scaleBias) {
+  function applySubsectionScaleBias(params, scaleBias) {
     if (!params || !scaleBias) return params;
     const clampScale = v => clamp(v || 0, 0, 5);
     const mul = (obj, key, factor) => {
@@ -320,36 +320,55 @@ export function createGlyphAtlas(options) {
       obj[key] = val * factor;
     };
 
-    const toneS = clampScale(scaleBias.expTone);
-    mul(params.noise, 'lfScale', toneS);
-    mul(params.noise, 'hfScale', toneS);
-    mul(params.ribbon, 'height', toneS);
-    mul(params.ribbon, 'delta', toneS);
+    const toneVarS = clampScale(scaleBias['expTone.variations']);
+    mul(params.noise, 'lfScale', toneVarS);
+    mul(params.noise, 'hfScale', toneVarS);
 
-    const edgeS = clampScale(scaleBias.expEdge);
-    mul(params.edgeFuzz, 'inBand', edgeS);
-    mul(params.edgeFuzz, 'outBand', edgeS);
-    mul(params.edgeFuzz, 'scale', edgeS);
-    mul(params.centerEdge, 'center', edgeS);
-    mul(params.centerEdge, 'edge', edgeS);
-    mul(params.centerEdge, 'thicken', edgeS);
-    mul(params.counterFill, 'fill', edgeS);
+    const toneRibbonS = clampScale(scaleBias['expTone.ribbon']);
+    mul(params.ribbon, 'height', toneRibbonS);
+    mul(params.ribbon, 'delta', toneRibbonS);
+
+    const rimS = clampScale(scaleBias['expEdge.rim']);
+    mul(params.ink, 'rim', rimS);
+
+    const edgeFuzzS = clampScale(scaleBias['expEdge.fuzz']);
+    mul(params.edgeFuzz, 'inBand', edgeFuzzS);
+    mul(params.edgeFuzz, 'outBand', edgeFuzzS);
+    mul(params.edgeFuzz, 'scale', edgeFuzzS);
+    mul(params.edgeFuzz, 'mix', edgeFuzzS);
+
+    const counterFillS = clampScale(scaleBias['expEdge.counterFill']);
+    mul(params.counterFill, 'fill', counterFillS);
+    mul(params.counterFill, 'coverage', counterFillS);
+
+    const edgeGrainS = clampScale(scaleBias['expEdge.grain']);
     if (params.fuzzExp) {
-      mul(params.fuzzExp, 'thicken', edgeS);
+      mul(params.fuzzExp, 'thicken', edgeGrainS);
     }
 
-    const grainS = clampScale(scaleBias.expGrain);
-    mul(params.noise, 'lfScale', grainS);
-    mul(params.noise, 'hfScale', grainS);
-    mul(params.dropouts, 'width', grainS);
-    mul(params.dropouts, 'scale', grainS);
+    const edgeWeightS = clampScale(scaleBias['expEdge.weight']);
+    mul(params.centerEdge, 'center', edgeWeightS);
+    mul(params.centerEdge, 'edge', edgeWeightS);
+    mul(params.centerEdge, 'thicken', edgeWeightS);
+    mul(params.centerEdge, 'patchFill', edgeWeightS);
+    mul(params.centerEdge, 'patchSize', edgeWeightS);
 
-    const defectS = clampScale(scaleBias.expDefects);
-    mul(params.punch, 'rMin', defectS);
-    mul(params.punch, 'rMax', defectS);
-    mul(params.punch, 'soft', defectS);
-    mul(params.smudge, 'radius', defectS);
-    mul(params.smudge, 'scale', defectS);
+    const speckleS = clampScale(scaleBias['expGrain.speckle']);
+    mul(params.noise, 'lfScale', speckleS);
+    mul(params.noise, 'hfScale', speckleS);
+
+    const dropoutsS = clampScale(scaleBias['expGrain.dropouts']);
+    mul(params.dropouts, 'width', dropoutsS);
+    mul(params.dropouts, 'scale', dropoutsS);
+
+    const smudgeS = clampScale(scaleBias['expDefects.smudge']);
+    mul(params.smudge, 'radius', smudgeS);
+    mul(params.smudge, 'scale', smudgeS);
+
+    const punchS = clampScale(scaleBias['expDefects.punch']);
+    mul(params.punch, 'rMin', punchS);
+    mul(params.punch, 'rMax', punchS);
+    mul(params.punch, 'soft', punchS);
     return params;
   }
 
@@ -358,6 +377,19 @@ export function createGlyphAtlas(options) {
     expEdge: ['fuzz', 'counterFill', 'fuzzExp', 'centerEdge'],
     expGrain: ['texture', 'dropouts'],
     expDefects: ['punch', 'smudge'],
+  };
+  const EXPERIMENTAL_SUBSECTION_STAGE_MAP = {
+    'expTone.variations': ['tone'],
+    'expTone.ribbon': ['tone'],
+    'expEdge.rim': ['tone'],
+    'expEdge.fuzz': ['fuzz'],
+    'expEdge.counterFill': ['counterFill'],
+    'expEdge.grain': ['fuzzExp'],
+    'expEdge.weight': ['centerEdge'],
+    'expGrain.speckle': ['texture'],
+    'expGrain.dropouts': ['dropouts'],
+    'expDefects.smudge': ['smudge'],
+    'expDefects.punch': ['punch'],
   };
   const EXPERIMENTAL_SECTION_IDS = Object.keys(EXPERIMENTAL_SECTION_STAGE_MAP);
   const EXPERIMENTAL_STAGE_PARAM_KEYS = {
@@ -401,6 +433,7 @@ export function createGlyphAtlas(options) {
   const QUALITY_DEFAULT = 100;
   const QUALITY_MIN = 0;
   const QUALITY_MAX = 200;
+  const SCALE_DEFAULT = 100;
   const DETAIL_BASE_SCALE = 0.5;
   const DETAIL_MIN_SCALE = 0.05;
   const DETAIL_MAX_SCALE = 1;
@@ -410,17 +443,26 @@ export function createGlyphAtlas(options) {
   function buildDetailResolutionConfig(qualitySettings) {
     const stageScaleMap = new Map();
     const stageQualityMap = new Map();
+    const subStageQuality = new Map();
     const quality = qualitySettings && typeof qualitySettings === 'object' ? qualitySettings : {};
-    Object.entries(EXPERIMENTAL_SECTION_STAGE_MAP).forEach(([sectionId, stageIds]) => {
+    Object.entries(EXPERIMENTAL_SUBSECTION_STAGE_MAP).forEach(([subId, stageIds]) => {
       if (!Array.isArray(stageIds)) return;
-      const raw = Number(quality[sectionId]);
+      const raw = Number(quality[subId]);
       const percent = clamp(Number.isFinite(raw) ? raw : QUALITY_DEFAULT, QUALITY_MIN, QUALITY_MAX);
       const factor = percent / QUALITY_DEFAULT;
       const stageScale = clamp(DETAIL_BASE_SCALE * factor, DETAIL_MIN_SCALE, DETAIL_MAX_SCALE);
       const qualityFactor = clamp(factor, STAGE_QUALITY_MIN, STAGE_QUALITY_MAX);
       stageIds.forEach(stageId => {
-        stageScaleMap.set(stageId, stageScale);
-        stageQualityMap.set(stageId, qualityFactor);
+        const currentScale = stageScaleMap.get(stageId);
+        if (currentScale == null || stageScale > currentScale) {
+          stageScaleMap.set(stageId, stageScale);
+        }
+        const currentQuality = stageQualityMap.get(stageId);
+        if (currentQuality == null || qualityFactor > currentQuality) {
+          stageQualityMap.set(stageId, qualityFactor);
+        }
+        if (!subStageQuality.has(stageId)) subStageQuality.set(stageId, {});
+        subStageQuality.get(stageId)[subId] = qualityFactor;
       });
     });
     if (!stageScaleMap.size) {
@@ -435,6 +477,11 @@ export function createGlyphAtlas(options) {
       const qualityFactor = stageQualityMap.get(stage) ?? 1;
       signatureParts.push(`${stage}:s${scale.toFixed(3)}:q${qualityFactor.toFixed(3)}`);
     });
+    subStageQuality.forEach((subMap, stage) => {
+      Object.entries(subMap).forEach(([subId, q]) => {
+        signatureParts.push(`${stage}:${subId}:q${(q ?? 1).toFixed(3)}`);
+      });
+    });
     signatureParts.sort();
     return {
       threshold: 2.5,
@@ -442,6 +489,7 @@ export function createGlyphAtlas(options) {
       stages: new Set(stageScaleMap.keys()),
       stageScaleMap,
       stageQualityMap,
+      subStageQuality,
       signature: signatureParts.join('|') || 'base',
     };
   }
@@ -634,12 +682,11 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const stageSignature = buildExperimentalStageConfigSignature(pipelineStages, baseExperimentalConfig, sectionEnabled);
     const qualitySettings = getExperimentalQualitySettingsFn() || {};
     const scaleSettings = getExperimentalScaleSettingsFn() || {};
-    const sectionScaleBias = {
-      expTone: clamp(((scaleSettings.expTone ?? state.expToneScale ?? 100) / 100), 0, 5),
-      expEdge: clamp(((scaleSettings.expEdge ?? state.expEdgeScale ?? 100) / 100), 0, 5),
-      expGrain: clamp(((scaleSettings.expGrain ?? state.expGrainScale ?? 100) / 100), 0, 5),
-      expDefects: clamp(((scaleSettings.expDefects ?? state.expDefectsScale ?? 100) / 100), 0, 5),
-    };
+    const subsectionScaleBias = {};
+    Object.keys(EXPERIMENTAL_SUBSECTION_STAGE_MAP).forEach(subId => {
+      const raw = Number(scaleSettings[subId] ?? SCALE_DEFAULT);
+      subsectionScaleBias[subId] = clamp(raw / 100, 0, 5);
+    });
     const detailResolutionConfig = buildDetailResolutionConfig(qualitySettings);
     const qualitySignature = detailResolutionConfig?.signature || 'base';
     const overallKey = Math.round(overallStrength * 1000);
@@ -857,7 +904,7 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
             const canRun = hasProcessor && inkPixelCount > 0;
             if (canRun) {
               const params = applySectionEnableMask(cloneParams(), sectionEnabled);
-              applySectionScaleBias(params, sectionScaleBias);
+              applySubsectionScaleBias(params, subsectionScaleBias);
               const fontPxRaw = getFontSizeFn() || FONT_SIZE || 48;
               const fontPx = Number.isFinite(fontPxRaw) && fontPxRaw > 0 ? fontPxRaw : 48;
               const supersample = clamp(

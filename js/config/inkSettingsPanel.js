@@ -1,7 +1,9 @@
 import {
   cloneDefaultExperimentalConfig,
-  getDefaultInkSectionQuality,
   getDefaultInkSectionStrength,
+  getDefaultInkSectionQuality,
+  getDefaultInkSubsectionQuality,
+  getDefaultInkSubsectionScale,
 } from './inkEffectDefaultStyle.js';
 
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
@@ -213,52 +215,6 @@ const EFFECT_SCALE_DEFAULT = 100;
 const EFFECT_SCALE_MIN = 0;
 const EFFECT_SCALE_MAX = 200;
 
-const SECTION_QUALITY_CONFIG = Object.freeze({
-  expTone: {
-    stateKey: 'expToneQuality',
-    label: 'Quality',
-    defaultValue: getDefaultInkSectionQuality('expTone'),
-  },
-  expEdge: {
-    stateKey: 'expEdgeQuality',
-    label: 'Quality',
-    defaultValue: getDefaultInkSectionQuality('expEdge'),
-  },
-  expGrain: {
-    stateKey: 'expGrainQuality',
-    label: 'Quality',
-    defaultValue: getDefaultInkSectionQuality('expGrain'),
-  },
-  expDefects: {
-    stateKey: 'expDefectsQuality',
-    label: 'Quality',
-    defaultValue: getDefaultInkSectionQuality('expDefects'),
-  },
-});
-
-const SECTION_SCALE_CONFIG = Object.freeze({
-  expTone: {
-    stateKey: 'expToneScale',
-    label: 'Scale',
-    defaultValue: EFFECT_SCALE_DEFAULT,
-  },
-  expEdge: {
-    stateKey: 'expEdgeScale',
-    label: 'Scale',
-    defaultValue: EFFECT_SCALE_DEFAULT,
-  },
-  expGrain: {
-    stateKey: 'expGrainScale',
-    label: 'Scale',
-    defaultValue: EFFECT_SCALE_DEFAULT,
-  },
-  expDefects: {
-    stateKey: 'expDefectsScale',
-    label: 'Scale',
-    defaultValue: EFFECT_SCALE_DEFAULT,
-  },
-});
-
 const SUBGROUP_CONFIG = {
   expTone: [
     { id: 'variations', label: 'Variations', paths: ['enable.toneDynamics', 'ink.pressureMid', 'ink.pressureVar', 'ink.inkGamma', 'ink.toneJitter', 'noise.lfScale'] },
@@ -280,6 +236,79 @@ const SUBGROUP_CONFIG = {
     { id: 'punch', label: 'Punch defects', paths: ['enable.punch', 'punch.chance', 'punch.count', 'punch.rMin', 'punch.rMax', 'punch.edgeBias', 'punch.soft', 'punch.intensity'] },
   ],
 };
+
+const SUBSECTION_STAGE_MAP = Object.freeze({
+  'expTone.variations': ['tone'],
+  'expTone.ribbon': ['tone'],
+  'expEdge.rim': ['tone'],
+  'expEdge.fuzz': ['fuzz'],
+  'expEdge.counterFill': ['counterFill'],
+  'expEdge.grain': ['fuzzExp'],
+  'expEdge.weight': ['centerEdge'],
+  'expGrain.speckle': ['texture'],
+  'expGrain.dropouts': ['dropouts'],
+  'expDefects.smudge': ['smudge'],
+  'expDefects.punch': ['punch'],
+});
+
+function makeSubsectionStateKey(sectionId, subgroupId, suffix) {
+  if (!sectionId || !subgroupId || !suffix) return null;
+  const cap = subgroupId.charAt(0).toUpperCase() + subgroupId.slice(1);
+  return `${sectionId}${cap}${suffix}`;
+}
+
+const SUBSECTION_DEFS = [];
+Object.entries(SUBGROUP_CONFIG).forEach(([sectionId, subgroups]) => {
+  subgroups.forEach(sub => {
+    const id = `${sectionId}.${sub.id}`;
+    SUBSECTION_DEFS.push({
+      id,
+      sectionId,
+      subgroupId: sub.id,
+      label: sub.label,
+      qualityStateKey: makeSubsectionStateKey(sectionId, sub.id, 'Quality'),
+      scaleStateKey: makeSubsectionStateKey(sectionId, sub.id, 'Scale'),
+      defaultQuality: getDefaultInkSubsectionQuality(id),
+      defaultScale: getDefaultInkSubsectionScale(id),
+      stageIds: SUBSECTION_STAGE_MAP[id] || [],
+    });
+  });
+});
+
+const SUBSECTION_LOOKUP = SUBSECTION_DEFS.reduce((acc, def) => {
+  acc[def.id] = def;
+  return acc;
+}, {});
+
+const SUBSECTION_IDS_BY_SECTION = SUBSECTION_DEFS.reduce((acc, def) => {
+  if (!acc[def.sectionId]) acc[def.sectionId] = [];
+  acc[def.sectionId].push(def.id);
+  return acc;
+}, {});
+
+const SUBSECTION_QUALITY_CONFIG = Object.freeze(
+  SUBSECTION_DEFS.reduce((acc, def) => {
+    acc[def.id] = {
+      stateKey: def.qualityStateKey,
+      label: 'Quality',
+      defaultValue: def.defaultQuality,
+      sectionId: def.sectionId,
+    };
+    return acc;
+  }, {})
+);
+
+const SUBSECTION_SCALE_CONFIG = Object.freeze(
+  SUBSECTION_DEFS.reduce((acc, def) => {
+    acc[def.id] = {
+      stateKey: def.scaleStateKey,
+      label: 'Scale',
+      defaultValue: def.defaultScale,
+      sectionId: def.sectionId,
+    };
+    return acc;
+  }, {})
+);
 
 const VISIBLE_SECTION_DEFS = SECTION_DEFS.filter(def => !def.hidden);
 const DEFAULT_SECTION_ORDER = VISIBLE_SECTION_DEFS.map(def => def.id);
@@ -386,9 +415,9 @@ function isGroupLocked(meta, path) {
   return !!panelState.lockState.groups[key];
 }
 
-function setQualityLocked(meta, locked) {
+function setQualityLocked(meta, locked, scope = 'quality') {
   if (!meta) return;
-  const key = lockKey(meta.id, 'quality');
+  const key = lockKey(meta.id, scope);
   panelState.lockState.quality[key] = !!locked;
   const qc = meta.qualityControl;
   if (qc) {
@@ -410,15 +439,15 @@ function setQualityLocked(meta, locked) {
   }
 }
 
-function isQualityLocked(meta) {
+function isQualityLocked(meta, scope = 'quality') {
   if (!meta) return false;
-  const key = lockKey(meta.id, 'quality');
+  const key = lockKey(meta.id, scope);
   return !!panelState.lockState.quality[key];
 }
 
-function setScaleLocked(meta, locked) {
+function setScaleLocked(meta, locked, scope = 'scale') {
   if (!meta) return;
-  const key = lockKey(meta.id, 'scale');
+  const key = lockKey(meta.id, scope);
   panelState.lockState.scale[key] = !!locked;
   const sc = meta.scaleControl;
   if (sc) {
@@ -440,9 +469,9 @@ function setScaleLocked(meta, locked) {
   }
 }
 
-function isScaleLocked(meta) {
+function isScaleLocked(meta, scope = 'scale') {
   if (!meta) return false;
-  const key = lockKey(meta.id, 'scale');
+  const key = lockKey(meta.id, scope);
   return !!panelState.lockState.scale[key];
 }
 
@@ -551,14 +580,31 @@ function normalizeStyleRecord(style, index = 0) {
       record.sections[def.id] = {
         strength,
         config: deepCloneValue(configSource == null ? def.config : configSource),
+        qualities: {},
+        scales: {},
       };
-      if (SECTION_QUALITY_CONFIG[def.id]) {
-        const defaultQuality = getDefaultInkSectionQuality(def.id);
-        record.sections[def.id].quality = clampQualityValue(
-          section?.quality ?? defaultQuality,
+      const subsectionIds = SUBSECTION_IDS_BY_SECTION[def.id] || [];
+      subsectionIds.forEach(subId => {
+        const subKey = subId.split('.')[1];
+        const defaultQuality = getDefaultInkSubsectionQuality(subId);
+        const qualitySource = section?.qualities?.[subKey]
+          ?? section?.qualities?.[subId]
+          ?? section?.quality
+          ?? getDefaultInkSectionQuality(def.id);
+        record.sections[def.id].qualities[subKey] = clampQualityValue(
+          qualitySource,
           defaultQuality,
         );
-      }
+        const defaultScale = getDefaultInkSubsectionScale(subId);
+        const scaleSource = section?.scales?.[subKey]
+          ?? section?.scales?.[subId]
+          ?? section?.scale
+          ?? EFFECT_SCALE_DEFAULT;
+        record.sections[def.id].scales[subKey] = clampScaleValue(
+          scaleSource,
+          defaultScale,
+        );
+      });
     });
     const legacyDropouts = extractDropoutsConfig(style?.sections?.expDefects || style?.expDefects);
     if (legacyDropouts) {
@@ -594,7 +640,15 @@ function createDefaultStyleRecord(index = 0) {
     record.sections[def.id] = {
       strength: def.defaultStrength ?? 0,
       config: deepCloneValue(def.config),
+      qualities: {},
+      scales: {},
     };
+    const subsectionIds = SUBSECTION_IDS_BY_SECTION[def.id] || [];
+    subsectionIds.forEach(subId => {
+      const subKey = subId.split('.')[1];
+      record.sections[def.id].qualities[subKey] = getDefaultInkSubsectionQuality(subId);
+      record.sections[def.id].scales[subKey] = getDefaultInkSubsectionScale(subId);
+    });
   });
   return record;
 }
@@ -647,11 +701,17 @@ function createStyleSnapshot(name, existingId = null) {
     const sectionRecord = {
       strength: strengthValue,
       config: deepCloneValue(configSource),
+      qualities: {},
+      scales: {},
     };
-    if (SECTION_QUALITY_CONFIG[def.id]) {
-      const defaultQuality = getDefaultInkSectionQuality(def.id);
-      sectionRecord.quality = getSectionQualityPercent(def.id, defaultQuality);
-    }
+    const subsectionIds = SUBSECTION_IDS_BY_SECTION[def.id] || [];
+    subsectionIds.forEach(subId => {
+      const subKey = subId.split('.')[1];
+      const defaultQuality = getDefaultInkSubsectionQuality(subId);
+      sectionRecord.qualities[subKey] = getSubsectionQualityPercent(subId, defaultQuality);
+      const defaultScale = getDefaultInkSubsectionScale(subId);
+      sectionRecord.scales[subKey] = getSubsectionScalePercent(subId, defaultScale);
+    });
     base.sections[def.id] = sectionRecord;
   });
   return normalizeStyleRecord(base);
@@ -1215,8 +1275,8 @@ function randomizeSingleInput(input, options = {}) {
   input.value = String(randomBetween(0, 1));
 }
 
-function getSectionQualityPercent(sectionId, fallback = EFFECT_QUALITY_DEFAULT) {
-  const cfg = SECTION_QUALITY_CONFIG[sectionId];
+function getSubsectionQualityPercent(subsectionId, fallback = EFFECT_QUALITY_DEFAULT) {
+  const cfg = SUBSECTION_QUALITY_CONFIG[subsectionId];
   const defaultValue = Number.isFinite(cfg?.defaultValue) ? cfg.defaultValue : fallback;
   if (!cfg) return clampQualityValue(defaultValue, defaultValue);
   return getScalarFromState(
@@ -1227,8 +1287,8 @@ function getSectionQualityPercent(sectionId, fallback = EFFECT_QUALITY_DEFAULT) 
   );
 }
 
-function setSectionQualityPercent(sectionId, value) {
-  const cfg = SECTION_QUALITY_CONFIG[sectionId];
+function setSubsectionQualityPercent(subsectionId, value) {
+  const cfg = SUBSECTION_QUALITY_CONFIG[subsectionId];
   if (!cfg) return EFFECT_QUALITY_DEFAULT;
   const normalized = clampQualityValue(value);
   setScalarOnState(cfg.stateKey, normalized, EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
@@ -1240,8 +1300,8 @@ function clampScaleValue(value, fallback = EFFECT_SCALE_DEFAULT) {
   return clamp(value, EFFECT_SCALE_MIN, EFFECT_SCALE_MAX);
 }
 
-function getSectionScalePercent(sectionId, fallback = EFFECT_SCALE_DEFAULT) {
-  const cfg = SECTION_SCALE_CONFIG[sectionId];
+function getSubsectionScalePercent(subsectionId, fallback = EFFECT_SCALE_DEFAULT) {
+  const cfg = SUBSECTION_SCALE_CONFIG[subsectionId];
   const defaultValue = Number.isFinite(cfg?.defaultValue) ? cfg.defaultValue : fallback;
   if (!cfg) return clampScaleValue(defaultValue, defaultValue);
   return getScalarFromState(
@@ -1252,8 +1312,8 @@ function getSectionScalePercent(sectionId, fallback = EFFECT_SCALE_DEFAULT) {
   );
 }
 
-function setSectionScalePercent(sectionId, value) {
-  const cfg = SECTION_SCALE_CONFIG[sectionId];
+function setSubsectionScalePercent(subsectionId, value) {
+  const cfg = SUBSECTION_SCALE_CONFIG[subsectionId];
   if (!cfg) return EFFECT_SCALE_DEFAULT;
   const normalized = clampScaleValue(value);
   setScalarOnState(cfg.stateKey, normalized, EFFECT_SCALE_MIN, EFFECT_SCALE_MAX);
@@ -1743,16 +1803,14 @@ function setSectionCollapsed(meta, collapsed) {
   }
 }
 
-function createQualityControl(meta, container) {
-  if (!meta || !container) return null;
-  const cfg = SECTION_QUALITY_CONFIG[meta.id];
-  if (!cfg) return null;
+function createQualityControl(meta, container, cfg, lockScope = 'quality') {
+  if (!meta || !container || !cfg) return null;
   const wrapper = document.createElement('div');
   wrapper.className = 'control-row control-row--quality control-row--with-lock';
   wrapper.dataset.lockLabel = cfg.label || 'Quality';
   const label = document.createElement('label');
   label.textContent = cfg.label || 'Quality';
-  const lock = createLockToggle(cfg.label || 'Quality', locked => setQualityLocked(meta, locked));
+  const lock = createLockToggle(cfg.label || 'Quality', locked => setQualityLocked(meta, locked, lockScope));
   const slider = document.createElement('input');
   slider.type = 'range';
   slider.min = String(EFFECT_QUALITY_MIN);
@@ -1779,21 +1837,20 @@ function createQualityControl(meta, container) {
     numberInput,
     wrapper,
     lock,
+    lockScope,
   };
-  setQualityLocked(meta, isQualityLocked(meta));
+  setQualityLocked(meta, isQualityLocked(meta, lockScope), lockScope);
   return control;
 }
 
-function createScaleControl(meta, container) {
-  if (!meta || !container) return null;
-  const cfg = SECTION_SCALE_CONFIG[meta.id];
-  if (!cfg) return null;
+function createScaleControl(meta, container, cfg, lockScope = 'scale') {
+  if (!meta || !container || !cfg) return null;
   const wrapper = document.createElement('div');
   wrapper.className = 'control-row control-row--quality control-row--with-lock';
   wrapper.dataset.lockLabel = cfg.label || 'Scale';
   const label = document.createElement('label');
   label.textContent = cfg.label || 'Scale';
-  const lock = createLockToggle(cfg.label || 'Scale', locked => setScaleLocked(meta, locked));
+  const lock = createLockToggle(cfg.label || 'Scale', locked => setScaleLocked(meta, locked, lockScope));
   const slider = document.createElement('input');
   slider.type = 'range';
   slider.min = String(EFFECT_SCALE_MIN);
@@ -1820,8 +1877,9 @@ function createScaleControl(meta, container) {
     numberInput,
     wrapper,
     lock,
+    lockScope,
   };
-  setScaleLocked(meta, isScaleLocked(meta));
+  setScaleLocked(meta, isScaleLocked(meta, lockScope), lockScope);
   return control;
 }
 
@@ -1897,6 +1955,7 @@ function buildSection(def, root) {
     hasStrengthControl,
     qualityControl: null,
     scaleControl: null,
+    subsectionControls: new Map(),
   };
 
   const subgroupDefs = SUBGROUP_CONFIG[def.id] || [];
@@ -1932,7 +1991,39 @@ function buildSection(def, root) {
     meta.groupElements.set(found.id, group);
     meta.body.appendChild(group);
     setGroupLocked(meta, found.id, isGroupLocked(meta, found.id));
-    const info = { group, togglePath, headingRow };
+    const subsectionId = `${meta.id}.${found.id}`;
+    const info = {
+      group,
+      togglePath,
+      headingRow,
+      subsectionId,
+      qualityControl: null,
+      scaleControl: null,
+    };
+
+    const qualityCfg = SUBSECTION_QUALITY_CONFIG[subsectionId];
+    if (qualityCfg) {
+      const qc = createQualityControl(meta, group, qualityCfg, `${subsectionId}:quality`);
+      if (qc) {
+        const startQuality = getSubsectionQualityPercent(subsectionId, qualityCfg.defaultValue ?? EFFECT_QUALITY_DEFAULT);
+        qc.slider.value = String(startQuality);
+        qc.numberInput.value = String(startQuality);
+        info.qualityControl = qc;
+      }
+    }
+
+    const scaleCfg = SUBSECTION_SCALE_CONFIG[subsectionId];
+    if (scaleCfg) {
+      const sc = createScaleControl(meta, group, scaleCfg, `${subsectionId}:scale`);
+      if (sc) {
+        const startScale = getSubsectionScalePercent(subsectionId, scaleCfg.defaultValue ?? EFFECT_SCALE_DEFAULT);
+        sc.slider.value = String(startScale);
+        sc.numberInput.value = String(startScale);
+        info.scaleControl = sc;
+      }
+    }
+
+    meta.subsectionControls.set(found.id, info);
     subgroupMap.set(found.id, info);
     return info;
   };
@@ -1985,24 +2076,6 @@ function buildSection(def, root) {
 
   ensureSubgroupLocks(meta);
 
-  if (SECTION_QUALITY_CONFIG[def.id]) {
-    meta.qualityControl = createQualityControl(meta, body);
-    if (meta.qualityControl) {
-      const startQuality = getSectionQualityPercent(meta.id, EFFECT_QUALITY_DEFAULT);
-      meta.qualityControl.slider.value = String(startQuality);
-      meta.qualityControl.numberInput.value = String(startQuality);
-    }
-  }
-
-  if (SECTION_SCALE_CONFIG[def.id]) {
-    meta.scaleControl = createScaleControl(meta, body);
-    if (meta.scaleControl) {
-      const startScale = getSectionScalePercent(meta.id, EFFECT_SCALE_DEFAULT);
-      meta.scaleControl.slider.value = String(startScale);
-      meta.scaleControl.numberInput.value = String(startScale);
-    }
-  }
-
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
   panelState.metas.push(meta);
@@ -2018,47 +2091,48 @@ function buildSection(def, root) {
     });
   }
 
-  if (meta.qualityControl) {
-    const qc = meta.qualityControl;
-    if (qc.slider) {
-      qc.slider.addEventListener('input', () => {
-        applySectionQuality(meta, Number.parseFloat(qc.slider.value));
-      });
+  meta.subsectionControls.forEach(info => {
+    const { qualityControl: qc, scaleControl: sc, subsectionId } = info || {};
+    if (qc) {
+      if (qc.slider) {
+        qc.slider.addEventListener('input', () => {
+          applySubsectionQuality(meta, subsectionId, Number.parseFloat(qc.slider.value));
+        });
+      }
+      if (qc.numberInput) {
+        qc.numberInput.addEventListener('input', () => {
+          const raw = Number.parseFloat(qc.numberInput.value);
+          if (!Number.isFinite(raw)) return;
+          applySubsectionQuality(meta, subsectionId, raw);
+        });
+        qc.numberInput.addEventListener('blur', () => {
+          if (qc.numberInput.value !== '') return;
+          const fallback = getSubsectionQualityPercent(subsectionId, EFFECT_QUALITY_DEFAULT);
+          applySubsectionQuality(meta, subsectionId, fallback, { silent: true });
+        });
+      }
     }
-    if (qc.numberInput) {
-      qc.numberInput.addEventListener('input', () => {
-        const raw = Number.parseFloat(qc.numberInput.value);
-        if (!Number.isFinite(raw)) return;
-        applySectionQuality(meta, raw);
-      });
-      qc.numberInput.addEventListener('blur', () => {
-        if (qc.numberInput.value !== '') return;
-        const fallback = getSectionQualityPercent(meta.id, EFFECT_QUALITY_DEFAULT);
-        applySectionQuality(meta, fallback, { silent: true });
-      });
-    }
-  }
 
-  if (meta.scaleControl) {
-    const sc = meta.scaleControl;
-    if (sc.slider) {
-      sc.slider.addEventListener('input', () => {
-        applySectionScale(meta, Number.parseFloat(sc.slider.value));
-      });
+    if (sc) {
+      if (sc.slider) {
+        sc.slider.addEventListener('input', () => {
+          applySubsectionScale(meta, subsectionId, Number.parseFloat(sc.slider.value));
+        });
+      }
+      if (sc.numberInput) {
+        sc.numberInput.addEventListener('input', () => {
+          const raw = Number.parseFloat(sc.numberInput.value);
+          if (!Number.isFinite(raw)) return;
+          applySubsectionScale(meta, subsectionId, raw);
+        });
+        sc.numberInput.addEventListener('blur', () => {
+          if (sc.numberInput.value !== '') return;
+          const fallback = getSubsectionScalePercent(subsectionId, EFFECT_SCALE_DEFAULT);
+          applySubsectionScale(meta, subsectionId, fallback, { silent: true });
+        });
+      }
     }
-    if (sc.numberInput) {
-      sc.numberInput.addEventListener('input', () => {
-        const raw = Number.parseFloat(sc.numberInput.value);
-        if (!Number.isFinite(raw)) return;
-        applySectionScale(meta, raw);
-      });
-      sc.numberInput.addEventListener('blur', () => {
-        if (sc.numberInput.value !== '') return;
-        const fallback = getSectionScalePercent(meta.id, EFFECT_SCALE_DEFAULT);
-        applySectionScale(meta, fallback, { silent: true });
-      });
-    }
-  }
+  });
 
   setSectionCollapsed(meta, true);
   if (hasStrengthControl) {
@@ -2164,9 +2238,12 @@ function applySectionStrength(meta, percent, options = {}) {
   persistPanelState();
 }
 
-function applySectionQuality(meta, value, options = {}) {
-  if (!meta || !meta.qualityControl) return;
-  const qc = meta.qualityControl;
+function applySubsectionQuality(meta, subsectionId, value, options = {}) {
+  if (!meta || !subsectionId) return;
+  const info = meta.subsectionControls?.get(subsectionId.split('.').pop()) || [...(meta.subsectionControls?.values() || [])].find(entry => entry?.subsectionId === subsectionId);
+  const qc = info?.qualityControl;
+  const targetId = info?.subsectionId || subsectionId;
+  if (!qc) return;
   const normalized = clampQualityValue(value);
   if (options.syncInputs !== false) {
     if (qc.slider && qc.slider.value !== String(normalized)) {
@@ -2178,15 +2255,18 @@ function applySectionQuality(meta, value, options = {}) {
     }
   }
   if (options.silent) return normalized;
-  setSectionQualityPercent(meta.id, normalized);
+  setSubsectionQualityPercent(targetId, normalized);
   scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
   persistPanelState();
   return normalized;
 }
 
-function applySectionScale(meta, value, options = {}) {
-  if (!meta || !meta.scaleControl) return;
-  const sc = meta.scaleControl;
+function applySubsectionScale(meta, subsectionId, value, options = {}) {
+  if (!meta || !subsectionId) return;
+  const info = meta.subsectionControls?.get(subsectionId.split('.').pop()) || [...(meta.subsectionControls?.values() || [])].find(entry => entry?.subsectionId === subsectionId);
+  const sc = info?.scaleControl;
+  const targetId = info?.subsectionId || subsectionId;
+  if (!sc) return;
   const normalized = clampScaleValue(value);
   if (options.syncInputs !== false) {
     if (sc.slider && sc.slider.value !== String(normalized)) {
@@ -2198,34 +2278,40 @@ function applySectionScale(meta, value, options = {}) {
     }
   }
   if (options.silent) return normalized;
-  setSectionScalePercent(meta.id, normalized);
+  setSubsectionScalePercent(targetId, normalized);
   scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
   persistPanelState();
   return normalized;
 }
 
 function syncQualityControl(meta) {
-  if (!meta || !meta.qualityControl) return;
-  const qc = meta.qualityControl;
-  const value = getSectionQualityPercent(meta.id, EFFECT_QUALITY_DEFAULT);
-  if (qc.slider && qc.slider.value !== String(value)) {
-    qc.slider.value = String(value);
-  }
-  if (qc.numberInput && qc.numberInput.value !== String(value)) {
-    qc.numberInput.value = String(value);
-  }
+  if (!meta || !meta.subsectionControls) return;
+  meta.subsectionControls.forEach(info => {
+    const { qualityControl: qc, subsectionId } = info || {};
+    if (!qc || !subsectionId) return;
+    const value = getSubsectionQualityPercent(subsectionId, EFFECT_QUALITY_DEFAULT);
+    if (qc.slider && qc.slider.value !== String(value)) {
+      qc.slider.value = String(value);
+    }
+    if (qc.numberInput && qc.numberInput.value !== String(value)) {
+      qc.numberInput.value = String(value);
+    }
+  });
 }
 
 function syncScaleControl(meta) {
-  if (!meta || !meta.scaleControl) return;
-  const sc = meta.scaleControl;
-  const value = getSectionScalePercent(meta.id, EFFECT_SCALE_DEFAULT);
-  if (sc.slider && sc.slider.value !== String(value)) {
-    sc.slider.value = String(value);
-  }
-  if (sc.numberInput && sc.numberInput.value !== String(value)) {
-    sc.numberInput.value = String(value);
-  }
+  if (!meta || !meta.subsectionControls) return;
+  meta.subsectionControls.forEach(info => {
+    const { scaleControl: sc, subsectionId } = info || {};
+    if (!sc || !subsectionId) return;
+    const value = getSubsectionScalePercent(subsectionId, EFFECT_SCALE_DEFAULT);
+    if (sc.slider && sc.slider.value !== String(value)) {
+      sc.slider.value = String(value);
+    }
+    if (sc.numberInput && sc.numberInput.value !== String(value)) {
+      sc.numberInput.value = String(value);
+    }
+  });
 }
 
 function syncInputs(meta) {
@@ -2550,15 +2636,15 @@ function randomizeInkSection(meta) {
     if (groupPath && isGroupLocked(meta, groupPath)) return;
     randomizeSingleInput(input, { offChance: TOGGLE_OFF_CHANCE });
   });
-  if (meta.qualityControl && !isQualityLocked(meta)) {
-    // Randomization should bias toward maximum fidelity for quality controls.
-    applySectionQuality(meta, EFFECT_QUALITY_DEFAULT, { syncInputs: true });
-  }
-
-  if (meta.scaleControl && !isScaleLocked(meta)) {
-    const randScale = randomBetween(EFFECT_SCALE_MIN, EFFECT_SCALE_MAX, 5);
-    applySectionScale(meta, randScale, { syncInputs: true });
-  }
+  meta.subsectionControls?.forEach(info => {
+    if (info?.qualityControl && !isQualityLocked(meta, `${info.subsectionId}:quality`)) {
+      applySubsectionQuality(meta, info.subsectionId, EFFECT_QUALITY_DEFAULT, { syncInputs: true });
+    }
+    if (info?.scaleControl && !isScaleLocked(meta, `${info.subsectionId}:scale`)) {
+      const randScale = randomBetween(EFFECT_SCALE_MIN, EFFECT_SCALE_MAX, 5);
+      applySubsectionScale(meta, info.subsectionId, randScale, { syncInputs: true });
+    }
+  });
 
   applySection(meta);
 }
@@ -2627,8 +2713,23 @@ function applyStyleSnapshot(style, options = {}) {
       if (meta.hasStrengthControl && Number.isFinite(strength)) {
         applySectionStrength(meta, strength);
       }
-      if (meta.qualityControl && Number.isFinite(section?.quality)) {
-        applySectionQuality(meta, section.quality);
+      if (meta.subsectionControls?.size) {
+        meta.subsectionControls.forEach(info => {
+          if (!info?.subsectionId) return;
+          const subKey = info.subsectionId.split('.')[1];
+          const qualityValue = section?.qualities && Object.prototype.hasOwnProperty.call(section.qualities, subKey)
+            ? section.qualities[subKey]
+            : Number(section?.quality);
+          const scaleValue = section?.scales && Object.prototype.hasOwnProperty.call(section.scales, subKey)
+            ? section.scales[subKey]
+            : Number(section?.scale);
+          if (info.qualityControl && Number.isFinite(qualityValue)) {
+            applySubsectionQuality(meta, info.subsectionId, qualityValue);
+          }
+          if (info.scaleControl && Number.isFinite(scaleValue)) {
+            applySubsectionScale(meta, info.subsectionId, scaleValue);
+          }
+        });
       }
     });
     if (rememberLoaded && workingStyle.id) {
@@ -2715,16 +2816,16 @@ export function getExperimentalEffectsConfig() {
 
 export function getExperimentalQualitySettings() {
   const settings = {};
-  Object.keys(SECTION_QUALITY_CONFIG).forEach(sectionId => {
-    settings[sectionId] = getSectionQualityPercent(sectionId, EFFECT_QUALITY_DEFAULT);
+  Object.keys(SUBSECTION_QUALITY_CONFIG).forEach(subId => {
+    settings[subId] = getSubsectionQualityPercent(subId, EFFECT_QUALITY_DEFAULT);
   });
   return settings;
 }
 
 export function getExperimentalScaleSettings() {
   const settings = {};
-  Object.keys(SECTION_SCALE_CONFIG).forEach(sectionId => {
-    settings[sectionId] = getSectionScalePercent(sectionId, EFFECT_SCALE_DEFAULT);
+  Object.keys(SUBSECTION_SCALE_CONFIG).forEach(subId => {
+    settings[subId] = getSubsectionScalePercent(subId, EFFECT_SCALE_DEFAULT);
   });
   return settings;
 }

@@ -21,8 +21,11 @@ import {
 } from '../config/lineSlantConfig.js';
 import {
   DEFAULT_INK_SECTION_ORDER as PRESET_INK_SECTION_ORDER,
+  DEFAULT_INK_SUBSECTION_ORDER as PRESET_INK_SUBSECTION_ORDER,
   getDefaultInkSectionQuality,
   getDefaultInkSectionStrength,
+  getDefaultInkSubsectionQuality,
+  getDefaultInkSubsectionScale,
 } from '../config/inkEffectDefaultStyle.js';
 import { TYPEWRITER_DEFAULTS, normalizeTypewriterSettings } from '../config/typewriterMode.js';
 import { hydrateGlyphEntry, serializeGlyphEntry } from './glyphStack.js';
@@ -37,9 +40,13 @@ import {
   estimatePayloadBytes,
 } from '../storage/documentBlobStore.js';
 const KNOWN_INK_SECTIONS = PRESET_INK_SECTION_ORDER.slice();
+const KNOWN_INK_SUBSECTIONS = PRESET_INK_SUBSECTION_ORDER.slice();
 const EFFECT_QUALITY_DEFAULT = 100;
 const EFFECT_QUALITY_MIN = 0;
 const EFFECT_QUALITY_MAX = 200;
+const EFFECT_SCALE_DEFAULT = 100;
+const EFFECT_SCALE_MIN = 0;
+const EFFECT_SCALE_MAX = 200;
 const METADATA_VERSION = 2;
 
 const SECTION_STRENGTH_DEFAULTS = Object.freeze({
@@ -50,10 +57,38 @@ const SECTION_STRENGTH_DEFAULTS = Object.freeze({
 });
 
 const SECTION_QUALITY_DEFAULTS = Object.freeze({
-  expTone: getDefaultInkSectionQuality('expTone'),
-  expEdge: getDefaultInkSectionQuality('expEdge'),
-  expGrain: getDefaultInkSectionQuality('expGrain'),
-  expDefects: getDefaultInkSectionQuality('expDefects'),
+  'expTone.variations': getDefaultInkSubsectionQuality('expTone.variations'),
+  'expTone.ribbon': getDefaultInkSubsectionQuality('expTone.ribbon'),
+  'expEdge.rim': getDefaultInkSubsectionQuality('expEdge.rim'),
+  'expEdge.fuzz': getDefaultInkSubsectionQuality('expEdge.fuzz'),
+  'expEdge.counterFill': getDefaultInkSubsectionQuality('expEdge.counterFill'),
+  'expEdge.grain': getDefaultInkSubsectionQuality('expEdge.grain'),
+  'expEdge.weight': getDefaultInkSubsectionQuality('expEdge.weight'),
+  'expGrain.speckle': getDefaultInkSubsectionQuality('expGrain.speckle'),
+  'expGrain.dropouts': getDefaultInkSubsectionQuality('expGrain.dropouts'),
+  'expDefects.smudge': getDefaultInkSubsectionQuality('expDefects.smudge'),
+  'expDefects.punch': getDefaultInkSubsectionQuality('expDefects.punch'),
+});
+
+const SECTION_SCALE_DEFAULTS = Object.freeze({
+  'expTone.variations': getDefaultInkSubsectionScale('expTone.variations'),
+  'expTone.ribbon': getDefaultInkSubsectionScale('expTone.ribbon'),
+  'expEdge.rim': getDefaultInkSubsectionScale('expEdge.rim'),
+  'expEdge.fuzz': getDefaultInkSubsectionScale('expEdge.fuzz'),
+  'expEdge.counterFill': getDefaultInkSubsectionScale('expEdge.counterFill'),
+  'expEdge.grain': getDefaultInkSubsectionScale('expEdge.grain'),
+  'expEdge.weight': getDefaultInkSubsectionScale('expEdge.weight'),
+  'expGrain.speckle': getDefaultInkSubsectionScale('expGrain.speckle'),
+  'expGrain.dropouts': getDefaultInkSubsectionScale('expGrain.dropouts'),
+  'expDefects.smudge': getDefaultInkSubsectionScale('expDefects.smudge'),
+  'expDefects.punch': getDefaultInkSubsectionScale('expDefects.punch'),
+});
+
+const SECTION_TO_SUBSECTIONS = Object.freeze({
+  expTone: ['expTone.variations', 'expTone.ribbon'],
+  expEdge: ['expEdge.rim', 'expEdge.fuzz', 'expEdge.counterFill', 'expEdge.grain', 'expEdge.weight'],
+  expGrain: ['expGrain.speckle', 'expGrain.dropouts'],
+  expDefects: ['expDefects.smudge', 'expDefects.punch'],
 });
 
 function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
@@ -91,9 +126,37 @@ function cloneInkStyleValue(value) {
   return value;
 }
 
-function sanitizeStyleSection(sectionValue) {
+function normalizeSubsectionNumber(value, fallback, min, max) {
+  const normalizedFallback = Number.isFinite(fallback) ? fallback : fallback === 0 ? 0 : undefined;
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) {
+    return clamp(Number.isFinite(normalizedFallback) ? normalizedFallback : 0, min, max);
+  }
+  return clamp(raw, min, max);
+}
+
+function normalizeSubsectionSettings(sectionId, source, legacyValue, defaults, range = { min: 0, max: 100 }) {
+  const result = {};
+  const list = SECTION_TO_SUBSECTIONS[sectionId] || [];
+  list.forEach(fullId => {
+    const [, subId] = fullId.split('.');
+    const rawSource = source && typeof source === 'object'
+      ? (Object.prototype.hasOwnProperty.call(source, subId) ? source[subId] : source[fullId])
+      : undefined;
+    const fallback = Number.isFinite(legacyValue) ? legacyValue : defaults[fullId];
+    result[subId] = normalizeSubsectionNumber(
+      rawSource,
+      fallback,
+      range.min,
+      range.max,
+    );
+  });
+  return result;
+}
+
+function sanitizeStyleSection(sectionValue, sectionId) {
   if (!sectionValue || typeof sectionValue !== 'object') {
-    return { strength: 0, config: null };
+    return { strength: 0, config: null, qualities: {}, scales: {} };
   }
   const strength = clamp(Number(sectionValue.strength ?? sectionValue.value ?? sectionValue.percent ?? 0), 0, 100);
   const configSource = sectionValue.config != null
@@ -102,7 +165,23 @@ function sanitizeStyleSection(sectionValue) {
       ? sectionValue.settings
       : ('strength' in sectionValue ? null : sectionValue);
   const config = configSource == null ? null : cloneInkStyleValue(configSource);
-  return { strength, config };
+  const legacyQuality = sectionValue.quality;
+  const legacyScale = sectionValue.scale;
+  const qualities = normalizeSubsectionSettings(
+    sectionId,
+    sectionValue.qualities,
+    legacyQuality,
+    SECTION_QUALITY_DEFAULTS,
+    { min: EFFECT_QUALITY_MIN, max: EFFECT_QUALITY_MAX },
+  );
+  const scales = normalizeSubsectionSettings(
+    sectionId,
+    sectionValue.scales,
+    legacyScale,
+    SECTION_SCALE_DEFAULTS,
+    { min: EFFECT_SCALE_MIN, max: EFFECT_SCALE_MAX },
+  );
+  return { strength, config, qualities, scales };
 }
 
 function sanitizeSavedInkStyle(style, index = 0) {
@@ -126,13 +205,13 @@ function sanitizeSavedInkStyle(style, index = 0) {
   if (style.sections && typeof style.sections === 'object') {
     for (const [sectionId, sectionValue] of Object.entries(style.sections)) {
       if (!KNOWN_INK_SECTIONS.includes(sectionId)) continue;
-      sections[sectionId] = sanitizeStyleSection(sectionValue);
+      sections[sectionId] = sanitizeStyleSection(sectionValue, sectionId);
     }
   }
   KNOWN_INK_SECTIONS.forEach(sectionId => {
     if (sections[sectionId]) return;
     if (!style[sectionId] || typeof style[sectionId] !== 'object') return;
-    sections[sectionId] = sanitizeStyleSection(style[sectionId]);
+    sections[sectionId] = sanitizeStyleSection(style[sectionId], sectionId);
   });
   const sectionOrder = normalizeInkSectionOrder(style.sectionOrder);
   return {
@@ -259,10 +338,28 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     expEdgeStrength: clamp(Number(state.expEdgeStrength ?? SECTION_STRENGTH_DEFAULTS.expEdge), 0, 100),
     expGrainStrength: clamp(Number(state.expGrainStrength ?? SECTION_STRENGTH_DEFAULTS.expGrain), 0, 100),
     expDefectsStrength: clamp(Number(state.expDefectsStrength ?? SECTION_STRENGTH_DEFAULTS.expDefects), 0, 100),
-    expToneQuality: clamp(Number(state.expToneQuality ?? SECTION_QUALITY_DEFAULTS.expTone), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expEdgeQuality: clamp(Number(state.expEdgeQuality ?? SECTION_QUALITY_DEFAULTS.expEdge), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expGrainQuality: clamp(Number(state.expGrainQuality ?? SECTION_QUALITY_DEFAULTS.expGrain), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expDefectsQuality: clamp(Number(state.expDefectsQuality ?? SECTION_QUALITY_DEFAULTS.expDefects), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expToneVariationsQuality: clamp(Number(state.expToneVariationsQuality ?? SECTION_QUALITY_DEFAULTS['expTone.variations']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expToneRibbonQuality: clamp(Number(state.expToneRibbonQuality ?? SECTION_QUALITY_DEFAULTS['expTone.ribbon']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expEdgeRimQuality: clamp(Number(state.expEdgeRimQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.rim']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expEdgeFuzzQuality: clamp(Number(state.expEdgeFuzzQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.fuzz']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expEdgeCounterFillQuality: clamp(Number(state.expEdgeCounterFillQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.counterFill']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expEdgeGrainQuality: clamp(Number(state.expEdgeGrainQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.grain']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expEdgeWeightQuality: clamp(Number(state.expEdgeWeightQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.weight']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expGrainSpeckleQuality: clamp(Number(state.expGrainSpeckleQuality ?? SECTION_QUALITY_DEFAULTS['expGrain.speckle']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expGrainDropoutsQuality: clamp(Number(state.expGrainDropoutsQuality ?? SECTION_QUALITY_DEFAULTS['expGrain.dropouts']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expDefectsSmudgeQuality: clamp(Number(state.expDefectsSmudgeQuality ?? SECTION_QUALITY_DEFAULTS['expDefects.smudge']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expDefectsPunchQuality: clamp(Number(state.expDefectsPunchQuality ?? SECTION_QUALITY_DEFAULTS['expDefects.punch']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    expToneVariationsScale: clamp(Number(state.expToneVariationsScale ?? SECTION_SCALE_DEFAULTS['expTone.variations']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    expToneRibbonScale: clamp(Number(state.expToneRibbonScale ?? SECTION_SCALE_DEFAULTS['expTone.ribbon']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    expEdgeRimScale: clamp(Number(state.expEdgeRimScale ?? SECTION_SCALE_DEFAULTS['expEdge.rim']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    expEdgeFuzzScale: clamp(Number(state.expEdgeFuzzScale ?? SECTION_SCALE_DEFAULTS['expEdge.fuzz']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    expEdgeCounterFillScale: clamp(Number(state.expEdgeCounterFillScale ?? SECTION_SCALE_DEFAULTS['expEdge.counterFill']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    expEdgeGrainScale: clamp(Number(state.expEdgeGrainScale ?? SECTION_SCALE_DEFAULTS['expEdge.grain']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    expEdgeWeightScale: clamp(Number(state.expEdgeWeightScale ?? SECTION_SCALE_DEFAULTS['expEdge.weight']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    expGrainSpeckleScale: clamp(Number(state.expGrainSpeckleScale ?? SECTION_SCALE_DEFAULTS['expGrain.speckle']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    expGrainDropoutsScale: clamp(Number(state.expGrainDropoutsScale ?? SECTION_SCALE_DEFAULTS['expGrain.dropouts']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    expDefectsSmudgeScale: clamp(Number(state.expDefectsSmudgeScale ?? SECTION_SCALE_DEFAULTS['expDefects.smudge']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    expDefectsPunchScale: clamp(Number(state.expDefectsPunchScale ?? SECTION_SCALE_DEFAULTS['expDefects.punch']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
     inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
     wordWrap: state.wordWrap,
     stageWidthFactor: state.stageWidthFactor,
@@ -514,25 +611,115 @@ export function deserializeDocumentState(data, context) {
       0,
       100,
     ),
-    expToneQuality: clamp(
-      Number(data.expToneQuality ?? state.expToneQuality ?? SECTION_QUALITY_DEFAULTS.expTone),
+    expToneVariationsQuality: clamp(
+      Number(data.expToneVariationsQuality ?? state.expToneVariationsQuality ?? SECTION_QUALITY_DEFAULTS['expTone.variations']),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expEdgeQuality: clamp(
-      Number(data.expEdgeQuality ?? state.expEdgeQuality ?? SECTION_QUALITY_DEFAULTS.expEdge),
+    expToneRibbonQuality: clamp(
+      Number(data.expToneRibbonQuality ?? state.expToneRibbonQuality ?? SECTION_QUALITY_DEFAULTS['expTone.ribbon']),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expGrainQuality: clamp(
-      Number(data.expGrainQuality ?? state.expGrainQuality ?? SECTION_QUALITY_DEFAULTS.expGrain),
+    expEdgeRimQuality: clamp(
+      Number(data.expEdgeRimQuality ?? state.expEdgeRimQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.rim']),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expDefectsQuality: clamp(
-      Number(data.expDefectsQuality ?? state.expDefectsQuality ?? SECTION_QUALITY_DEFAULTS.expDefects),
+    expEdgeFuzzQuality: clamp(
+      Number(data.expEdgeFuzzQuality ?? state.expEdgeFuzzQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.fuzz']),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
+    ),
+    expEdgeCounterFillQuality: clamp(
+      Number(data.expEdgeCounterFillQuality ?? state.expEdgeCounterFillQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.counterFill']),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expEdgeGrainQuality: clamp(
+      Number(data.expEdgeGrainQuality ?? state.expEdgeGrainQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.grain']),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expEdgeWeightQuality: clamp(
+      Number(data.expEdgeWeightQuality ?? state.expEdgeWeightQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.weight']),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expGrainSpeckleQuality: clamp(
+      Number(data.expGrainSpeckleQuality ?? state.expGrainSpeckleQuality ?? SECTION_QUALITY_DEFAULTS['expGrain.speckle']),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expGrainDropoutsQuality: clamp(
+      Number(data.expGrainDropoutsQuality ?? state.expGrainDropoutsQuality ?? SECTION_QUALITY_DEFAULTS['expGrain.dropouts']),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expDefectsSmudgeQuality: clamp(
+      Number(data.expDefectsSmudgeQuality ?? state.expDefectsSmudgeQuality ?? SECTION_QUALITY_DEFAULTS['expDefects.smudge']),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expDefectsPunchQuality: clamp(
+      Number(data.expDefectsPunchQuality ?? state.expDefectsPunchQuality ?? SECTION_QUALITY_DEFAULTS['expDefects.punch']),
+      EFFECT_QUALITY_MIN,
+      EFFECT_QUALITY_MAX,
+    ),
+    expToneVariationsScale: clamp(
+      Number(data.expToneVariationsScale ?? state.expToneVariationsScale ?? SECTION_SCALE_DEFAULTS['expTone.variations']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
+    ),
+    expToneRibbonScale: clamp(
+      Number(data.expToneRibbonScale ?? state.expToneRibbonScale ?? SECTION_SCALE_DEFAULTS['expTone.ribbon']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
+    ),
+    expEdgeRimScale: clamp(
+      Number(data.expEdgeRimScale ?? state.expEdgeRimScale ?? SECTION_SCALE_DEFAULTS['expEdge.rim']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
+    ),
+    expEdgeFuzzScale: clamp(
+      Number(data.expEdgeFuzzScale ?? state.expEdgeFuzzScale ?? SECTION_SCALE_DEFAULTS['expEdge.fuzz']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
+    ),
+    expEdgeCounterFillScale: clamp(
+      Number(data.expEdgeCounterFillScale ?? state.expEdgeCounterFillScale ?? SECTION_SCALE_DEFAULTS['expEdge.counterFill']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
+    ),
+    expEdgeGrainScale: clamp(
+      Number(data.expEdgeGrainScale ?? state.expEdgeGrainScale ?? SECTION_SCALE_DEFAULTS['expEdge.grain']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
+    ),
+    expEdgeWeightScale: clamp(
+      Number(data.expEdgeWeightScale ?? state.expEdgeWeightScale ?? SECTION_SCALE_DEFAULTS['expEdge.weight']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
+    ),
+    expGrainSpeckleScale: clamp(
+      Number(data.expGrainSpeckleScale ?? state.expGrainSpeckleScale ?? SECTION_SCALE_DEFAULTS['expGrain.speckle']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
+    ),
+    expGrainDropoutsScale: clamp(
+      Number(data.expGrainDropoutsScale ?? state.expGrainDropoutsScale ?? SECTION_SCALE_DEFAULTS['expGrain.dropouts']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
+    ),
+    expDefectsSmudgeScale: clamp(
+      Number(data.expDefectsSmudgeScale ?? state.expDefectsSmudgeScale ?? SECTION_SCALE_DEFAULTS['expDefects.smudge']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
+    ),
+    expDefectsPunchScale: clamp(
+      Number(data.expDefectsPunchScale ?? state.expDefectsPunchScale ?? SECTION_SCALE_DEFAULTS['expDefects.punch']),
+      EFFECT_SCALE_MIN,
+      EFFECT_SCALE_MAX,
     ),
     wordWrap: data.wordWrap !== false,
     stageWidthFactor: sanitizedStageWidth,

@@ -230,6 +230,21 @@ const normalizeDetailResolutionConfig = raw => {
       stageQualityMap.set(stageId, clampStageQuality(value));
     });
   }
+  const subStageQuality = new Map();
+  const rawSubQuality = source.subStageQuality;
+  if (rawSubQuality instanceof Map) {
+    rawSubQuality.forEach((value, stageId) => {
+      if (typeof stageId !== 'string' || !stageId) return;
+      if (!value || typeof value !== 'object') return;
+      subStageQuality.set(stageId, { ...value });
+    });
+  } else if (rawSubQuality && typeof rawSubQuality === 'object') {
+    Object.entries(rawSubQuality).forEach(([stageId, value]) => {
+      if (typeof stageId !== 'string' || !stageId) return;
+      if (!value || typeof value !== 'object') return;
+      subStageQuality.set(stageId, { ...value });
+    });
+  }
   if (!stageQualityMap.size) {
     stageSet.forEach(stageId => {
       stageQualityMap.set(stageId, 1);
@@ -241,6 +256,7 @@ const normalizeDetailResolutionConfig = raw => {
     stages: stageSet,
     stageScaleMap,
     stageQualityMap,
+    subStageQuality,
   };
 };
 
@@ -608,9 +624,13 @@ export function createExperimentalStagePipeline(deps = {}) {
     const { w, h, alpha0, params, seed, gix, smul } = ctx;
     const dpPerCss = Math.max(1e-6, ctx?.dpPerCss || 1);
     const invDp = 1 / dpPerCss;
-    const stageQuality = getStageQualityFromContext(ctx);
+    const stageQualityBase = getStageQualityFromContext(ctx);
+    const subQualities = ctx?.subStageQuality || {};
+    const toneQuality = clampStageQuality(subQualities['expTone.variations'] ?? stageQualityBase);
+    const ribbonQuality = clampStageQuality(subQualities['expTone.ribbon'] ?? stageQualityBase);
+    const rimQuality = clampStageQuality(subQualities['expEdge.rim'] ?? stageQualityBase);
     const detailCssRaw = getDetailDensityCss(ctx);
-    const detailCss = Math.max(MIN_DETAIL_DENSITY_CSS, detailCssRaw * stageQuality);
+    const detailCss = Math.max(MIN_DETAIL_DENSITY_CSS, detailCssRaw * toneQuality);
     
     // Destructuring params
     const pNoise = params.noise || {};
@@ -666,7 +686,7 @@ export function createExperimentalStagePipeline(deps = {}) {
     const wobbleRangeCss = applyRibbon && wobbleAmount > 0 ? bandHalfCss * 0.8 * wobbleAmount : 0;
     
     const ribbonTile = wobbleRangeCss > 0 ? detailNoiseCache.getTile({
-      detailCss,
+      detailCss: Math.max(MIN_DETAIL_DENSITY_CSS, detailCssRaw * ribbonQuality),
       width: w,
       height: h,
       dpPerCss,
@@ -726,7 +746,7 @@ export function createExperimentalStagePipeline(deps = {}) {
         cov *= rhythm; // pre-calculated rhythm
         const e = edgeMaskFn(alpha0, w, h, x, y);
         const rimBoost = rimLUT[(e * 255) | 0];
-        if (rimEn) cov += inkRim * rimBoost * (1 - cov);
+        if (rimEn) cov += inkRim * rimQuality * rimBoost * (1 - cov);
         
         if (toneDynamicsEn) {
           const idx = (clamp01Fn(cov) * 255) | 0;
@@ -1558,12 +1578,14 @@ function applyCounterFill(coverage, ctx) {
       const fn = stageRegistry[id];
       if (typeof fn !== 'function') continue;
       ctx.stageQuality = resolveStageQuality(detailResolutionConfig, id);
+      ctx.subStageQuality = detailResolutionConfig?.subStageQuality?.get(id) || null;
       if (detailResolutionConfig && shouldRunDetailStageLowRes(id, ctx, detailResolutionConfig)) {
         runDetailStageAtResolution(id, fn, coverage, ctx, detailResolutionConfig, clamp01Fn);
       } else {
         fn(coverage, ctx);
       }
       ctx.stageQuality = undefined;
+      ctx.subStageQuality = undefined;
     }
   };
 

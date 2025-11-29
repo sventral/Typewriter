@@ -1,4 +1,17 @@
 const SECTION_ORDER = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
+const SUBSECTION_ORDER = Object.freeze([
+  'expTone.variations',
+  'expTone.ribbon',
+  'expEdge.rim',
+  'expEdge.fuzz',
+  'expEdge.counterFill',
+  'expEdge.grain',
+  'expEdge.weight',
+  'expGrain.speckle',
+  'expGrain.dropouts',
+  'expDefects.smudge',
+  'expDefects.punch',
+]);
 
 function deepClone(value) {
   if (Array.isArray(value)) {
@@ -120,19 +133,67 @@ counterFill: {
   enabled: false,
 });
 
-function createSection(strength, quality) {
+const DEFAULT_SUBSECTION_QUALITIES = Object.freeze({
+  'expTone.variations': 55,
+  'expTone.ribbon': 55,
+  'expEdge.rim': 55,
+  'expEdge.fuzz': 100,
+  'expEdge.counterFill': 100,
+  'expEdge.grain': 100,
+  'expEdge.weight': 100,
+  'expGrain.speckle': 100,
+  'expGrain.dropouts': 100,
+  'expDefects.smudge': 100,
+  'expDefects.punch': 100,
+});
+
+const DEFAULT_SUBSECTION_SCALES = Object.freeze(
+  SUBSECTION_ORDER.reduce((acc, id) => {
+    acc[id] = 100;
+    return acc;
+  }, {})
+);
+
+function pickSubsectionDefaults(sectionId, source) {
+  const entries = Object.entries(source || {});
+  const filtered = entries.filter(([key]) => key.startsWith(`${sectionId}.`));
+  return filtered.reduce((acc, [key, value]) => {
+    const subId = key.split('.')[1];
+    acc[subId] = value;
+    return acc;
+  }, {});
+}
+
+function createSection(strength, qualities, scales) {
   return {
     strength,
     config: deepClone(BASE_SECTION_CONFIG),
-    quality,
+    qualities,
+    scales,
   };
 }
 
 const DEFAULT_SECTIONS = {
-  expTone: createSection(100, 55),
-  expEdge: createSection(0, 100),
-  expGrain: createSection(0, 100),
-  expDefects: createSection(0, 100),
+  expTone: createSection(
+    100,
+    pickSubsectionDefaults('expTone', DEFAULT_SUBSECTION_QUALITIES),
+    pickSubsectionDefaults('expTone', DEFAULT_SUBSECTION_SCALES),
+  ),
+  expEdge: createSection(
+    0,
+    pickSubsectionDefaults('expEdge', DEFAULT_SUBSECTION_QUALITIES),
+    pickSubsectionDefaults('expEdge', DEFAULT_SUBSECTION_SCALES),
+  ),
+  expGrain: createSection(
+    0,
+    pickSubsectionDefaults('expGrain', DEFAULT_SUBSECTION_QUALITIES),
+    pickSubsectionDefaults('expGrain', DEFAULT_SUBSECTION_SCALES),
+  ),
+  expDefects: createSection(
+    0,
+    pickSubsectionDefaults('expDefects', DEFAULT_SUBSECTION_QUALITIES),
+    pickSubsectionDefaults('expDefects', DEFAULT_SUBSECTION_SCALES),
+  ),
 };
 
 const DEFAULT_STYLE = {
@@ -157,12 +218,8 @@ const SECTION_STRENGTH_DEFAULTS = Object.freeze({
   expDefects: DEFAULT_SECTIONS.expDefects.strength,
 });
 
-const SECTION_QUALITY_DEFAULTS = Object.freeze({
-  expTone: DEFAULT_SECTIONS.expTone.quality,
-  expEdge: DEFAULT_SECTIONS.expEdge.quality,
-  expGrain: DEFAULT_SECTIONS.expGrain.quality,
-  expDefects: DEFAULT_SECTIONS.expDefects.quality,
-});
+const SUBSECTION_QUALITY_DEFAULTS = Object.freeze({ ...DEFAULT_SUBSECTION_QUALITIES });
+const SUBSECTION_SCALE_DEFAULTS = Object.freeze({ ...DEFAULT_SUBSECTION_SCALES });
 
 export function cloneDefaultInkEffectStyle() {
   return deepClone(DEFAULT_INK_EFFECT_STYLE);
@@ -179,7 +236,24 @@ export function getDefaultInkSectionStrength(sectionId) {
 }
 
 export function getDefaultInkSectionQuality(sectionId) {
-  return Number.isFinite(SECTION_QUALITY_DEFAULTS[sectionId])
-    ? SECTION_QUALITY_DEFAULTS[sectionId]
+  // Backwards-compatibility: return the first subsection quality if available.
+  const match = SUBSECTION_ORDER.find(id => id.startsWith(`${sectionId}.`));
+  if (match && Number.isFinite(SUBSECTION_QUALITY_DEFAULTS[match])) {
+    return SUBSECTION_QUALITY_DEFAULTS[match];
+  }
+  return 100;
+}
+
+export function getDefaultInkSubsectionQuality(subsectionId) {
+  return Number.isFinite(SUBSECTION_QUALITY_DEFAULTS[subsectionId])
+    ? SUBSECTION_QUALITY_DEFAULTS[subsectionId]
     : 100;
 }
+
+export function getDefaultInkSubsectionScale(subsectionId) {
+  return Number.isFinite(SUBSECTION_SCALE_DEFAULTS[subsectionId])
+    ? SUBSECTION_SCALE_DEFAULTS[subsectionId]
+    : 100;
+}
+
+export const DEFAULT_INK_SUBSECTION_ORDER = SUBSECTION_ORDER.slice();
