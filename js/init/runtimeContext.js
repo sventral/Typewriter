@@ -82,7 +82,7 @@ export function createRuntimeContext({ app, metrics, canvasDimensionLimit }) {
   function getEffectiveRenderZoomPct() {
     const normalized = ensureLowResZoomState();
     const requestedPct = getRequestedZoomPct();
-    const rawPct = resolveEffectiveZoomPct(
+    return resolveEffectiveZoomPct(
       requestedPct,
       {
         enabled: state.lowResZoomEnabled !== false,
@@ -94,14 +94,6 @@ export function createRuntimeContext({ app, metrics, canvasDimensionLimit }) {
         minZoomPct: ZOOM_SLIDER_MIN_PCT,
       },
     );
-    // Optimization: Quantize render resolution to reduce atlas thrashing.
-    // We snap the internal render resolution to the next highest 25% increment.
-    // This allows the expensive glyph atlas and canvas buffers to be reused
-    // while the user is scrubbing the zoom slider, eliminating the freeze.
-    // Since we round up (ceil), the visual quality remains crisp (supersampled)
-    // unless Low Res Zoom is actively capping it.
-    const step = 25;
-    return Math.ceil(rawPct / step) * step;
   }
 
   function getEffectiveRenderZoom() {
@@ -124,14 +116,6 @@ export function createRuntimeContext({ app, metrics, canvasDimensionLimit }) {
     const renderScale = headroom >= 1
       ? Math.min(maxScale, baseScale * appliedSupersample)
       : maxScale;
-
-    // Optimization: If the new scale is lower than what we already have,
-    // keep the higher resolution buffers to avoid reallocation lag and
-    // to maintain supersampled quality when zoomed out.
-    if (metricsStore.RENDER_SCALE && renderScale < metricsStore.RENDER_SCALE) {
-      return;
-    }
-
     metricsStore.RENDER_SCALE = renderScale;
     metricsStore.RENDER_SUPERSAMPLE = appliedSupersample;
   }
