@@ -96,7 +96,8 @@ const MAX_STAGE_QUALITY = 2;
 const DEFAULT_DETAIL_RESOLUTION = Object.freeze({
   threshold: 2.5,
   scale: 0.5,
-  stages: Object.freeze(['dropouts', 'texture', 'fuzz', 'smudge']),
+  // ADDED: 'counterFill' to the list of stages that can run at low resolution
+  stages: Object.freeze(['dropouts', 'texture', 'fuzz', 'smudge', 'counterFill']),
 });
 const SPECK_SUBPIXEL_OFFSETS = Object.freeze([
   [0.1666667, 0.1666667],
@@ -275,6 +276,7 @@ const sampleBilinear = (data, width, height, x, y) => {
   const v10 = data[i10] ?? v00;
   const v01 = data[i01] ?? v00;
   const v11 = data[i11] ?? v01;
+
   // Inline lerp
   const nx0 = v00 + (v10 - v00) * tx;
   const nx1 = v01 + (v11 - v01) * tx;
@@ -593,6 +595,7 @@ export function createExperimentalStagePipeline(deps = {}) {
     hasDetailConfig ? deps.detailResolution : undefined,
   );
 
+
   function applyInit(coverage, ctx) {
     const { w, h, alpha0 } = ctx;
     const len = w * h;
@@ -882,7 +885,6 @@ export function createExperimentalStagePipeline(deps = {}) {
   }
 
 
-
 function applyCenterEdgeShape(coverage, ctx) {
     const { w, h, params, alpha0, dm, seed, anchorX, anchorY } = ctx;
     const centerEdgeCfg = params.centerEdge || {};
@@ -908,9 +910,7 @@ function applyCenterEdgeShape(coverage, ctx) {
     const invDp = 1 / dpPerCss;
     const stageQuality = getStageQualityFromContext(ctx);
     
-    const resolutionBias = dpPerCss < 1.5 ? -0.25 : 0;
-    const effectiveTK = Math.max(0, tK + resolutionBias / dpPerCss);
-    const thickenRadiusPx = tK > 1e-6 ? (effectiveTK * 1.0 + 0.15) * dpPerCss : 0;
+    const thickenRadiusPx = tK > 1e-6 ? (Math.max(0, tK) * 1.0 + 0.15) * dpPerCss : 0;
 
     // OPTIMIZATION: Increased base softness to smooth out the discrete distance map steps
     const softnessBase = 0.35 + 0.35 / Math.max(0.4, stageQuality + 0.4);
@@ -1046,7 +1046,11 @@ function applyCounterFill(coverage, ctx) {
   const invDp = 1 / dpPerCss;
 
   const radiusPx = fillRadius * 12.0 * smulSafe * dpPerCss;
-  const radiusInt = Math.ceil(radiusPx);
+  
+  // OPTIMIZATION: Cap the search radius to prevent cubic scaling explosion at high zoom.
+  // 32px is sufficient to find most counters even at high resolution.
+  const effectiveRadiusPx = Math.min(radiusPx, 32);
+  const radiusInt = Math.ceil(effectiveRadiusPx);
   const searchLimit = radiusInt + 1;
 
   const noiseSeed = seed ^ 0xCF11CF11;
@@ -1069,7 +1073,7 @@ function applyCounterFill(coverage, ctx) {
       let dist = 0;
       if (outsideDist) {
         dist = outsideDist[i];
-        if (dist > radiusPx * 1.25) continue;
+        if (dist > effectiveRadiusPx * 1.25) continue;
       }
 
       let dL = searchLimit, dR = searchLimit;
@@ -1129,7 +1133,7 @@ function applyCounterFill(coverage, ctx) {
       const gapV = dU + dD;
       const gapD1 = (dTL + dBR) * 1.414;
       const gapD2 = (dTR + dBL) * 1.414;
-      const maxGap = radiusPx * 2.5;
+      const maxGap = effectiveRadiusPx * 2.5;
 
       const calcScore = (gap) => {
         if (gap >= maxGap) return 0;
@@ -1147,7 +1151,7 @@ function applyCounterFill(coverage, ctx) {
       enclosure = Math.pow(enclosure, 2.5);
 
       const minGap = Math.min(gapH, gapV, gapD1, gapD2);
-      const tightThreshold = radiusPx * 0.9;
+      const tightThreshold = effectiveRadiusPx * 0.9;
       if (minGap < tightThreshold) {
         const boost = 1.0 - (minGap / tightThreshold);
         enclosure = Math.min(1.0, enclosure + boost * 0.4);
@@ -1175,11 +1179,11 @@ function applyCounterFill(coverage, ctx) {
 
       const solidity = clamp01Fn((enclosure + coverageThreshold * 0.5) * 1.2);
 
-      const fuzzRange = radiusPx * 0.35;
+      const fuzzRange = effectiveRadiusPx * 0.35;
       const distJitter = (n - 0.5) * fuzzRange;
       const effectiveDist = Math.max(0, dist + distJitter);
 
-      const dNorm = clamp01Fn(effectiveDist / (radiusPx * 1.1));
+      const dNorm = clamp01Fn(effectiveDist / (effectiveRadiusPx * 1.1));
       const meniscus = (1.0 - dNorm);
       const surfaceTension = meniscus * meniscus;
 
@@ -1458,6 +1462,7 @@ function applyCounterFill(coverage, ctx) {
       }
     }
   }
+
 
   function applySmudgeHalo(coverage, ctx) {
     const { w, h, alpha0, params, smul, seed, dm } = ctx;
