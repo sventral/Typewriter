@@ -333,6 +333,7 @@ export function createPageRenderer(options) {
     const rawBands = [];
 
     // Process until queue is empty or we yield
+    let processedCount = 0;
     while (page.fullPaintCursor < queue.length || page.fullPaintCurrentRowCols) {
       
       // 1. Ensure we have a row loaded into state
@@ -368,11 +369,16 @@ export function createPageRenderer(options) {
         drawGlyphStack(backCtx, stack, x, baseline, page, rowMu, col);
         
         page.fullPaintColIndex++;
+        processedCount++;
 
-        // Granular budget check: yield per character stack
-        if ((now() - sliceStart) >= FULL_PAINT_TIME_BUDGET_MS) {
-          yielded = true;
-          break;
+        // Granular budget check: yield per character stack, but batched
+        // Checking every 24 items drastically reduces overhead of performance.now()
+        if (processedCount >= 24) {
+          processedCount = 0;
+          if ((now() - sliceStart) >= FULL_PAINT_TIME_BUDGET_MS) {
+            yielded = true;
+            break;
+          }
         }
       }
 
@@ -411,9 +417,8 @@ export function createPageRenderer(options) {
     scheduleNextFullPaintChunk(page);
   }
 
-function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
+  function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
     if (!Array.isArray(stack) || stack.length === 0) return;
-
     const renderScale = getRenderScaleFn();
     const snapToRenderScale = (value) => {
       const scale = Number.isFinite(renderScale) && renderScale > 0 ? renderScale : 1;
@@ -472,7 +477,6 @@ function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
       }
     }
   }
-
 
   function refreshGlyphEffects(options = {}) {
     const shouldRebuild = options.rebuild !== false;

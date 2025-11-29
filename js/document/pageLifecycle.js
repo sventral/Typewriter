@@ -468,10 +468,12 @@ export function createPageLifecycleController(context, editingController) {
       if (page.canvas?.style) {
         page.canvas.style.visibility = 'visible';
       }
+
       // Force re-preparation if the canvas was previously discarded
       if (page.canvas && page.canvas.width <= 1) {
         page.zoomPreparedFor = -1;
       }
+
       ensurePagePreparedForCurrentZoom(page);
       const hasPendingRows = page._dirtyRowMinMu !== undefined || page._dirtyRowMaxMu !== undefined;
       if (page.dirtyAll || hasPendingRows) {
@@ -487,18 +489,6 @@ export function createPageLifecycleController(context, editingController) {
         } catch {}
         page.raf = 0;
       }
-      // Aggressively free memory for off-screen pages to prevent canvas corruption
-      // on large documents, especially when high zoom (high RenderScale) is active.
-      if (page.canvas) {
-        page.canvas.width = 1;
-        page.canvas.height = 1;
-      }
-      if (page.backCanvas) {
-        page.backCanvas.width = 1;
-        page.backCanvas.height = 1;
-      }
-      page.zoomPreparedFor = -1;
-      page.dirtyAll = true;
     }
   }
 
