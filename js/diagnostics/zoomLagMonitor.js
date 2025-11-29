@@ -1,9 +1,18 @@
-const DEFAULT_THRESHOLD_MS = 180;
-const DEFAULT_RECOVERY_THRESHOLD_MS = 60;
-const DEFAULT_RECOVERY_FRAMES = 3;
+// LOWERED: Detect lag sooner. 100ms is enough to feel "sticky".
+const DEFAULT_THRESHOLD_MS = 100; 
+
+// LOWERED: Drastically reduced from 60ms to 24ms. 
+// This means a frame must be faster than ~40fps to count as "smooth". 
+// If the browser is struggling to paint text (even if JS is idle), frames often hit 30-40ms.
+// This setting forces the monitor to stay active during those heavy paint operations.
+const DEFAULT_RECOVERY_THRESHOLD_MS = 24; 
+
+// INCREASED: Wait 60 frames (approx 1 second) of continuous smooth performance.
+const DEFAULT_RECOVERY_FRAMES = 60; 
+
 const MIN_ZOOM_FOR_NOTICE = 1.08;
 const MIN_ZOOM_DELTA = 0.05;
-const CHECK_WINDOW_MS = 3000;
+const CHECK_WINDOW_MS = 6000;
 
 function isBrowserEnvironment() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -268,7 +277,6 @@ export function createZoomLagMonitor({
     // For interactive scrubbing ('zoom-change'), ignore small deltas at low zoom to reduce noise.
     const forceMonitor = reason === 'zoom-redraw';
     if (!forceMonitor && numericZoom < minZoom && deltaAbs < minDelta) return;
-
     if (numericZoom > 0) {
       state.cachedZoom = numericZoom;
     }
