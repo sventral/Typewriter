@@ -227,6 +227,36 @@
               </select>
             </div>
           </div>
+          <div class="settings-group-new">
+            <h4>Margins</h4>
+            <div class="control-row">
+              <label for="mmLeft">Left (mm)</label>
+              <input id="mmLeft" type="number" step="1" min="0" value="25" />
+            </div>
+            <div class="control-row">
+              <label for="mmRight">Right (mm)</label>
+              <input id="mmRight" type="number" step="1" min="0" value="25" />
+            </div>
+            <div class="control-row">
+              <label for="mmTop">Top (mm)</label>
+              <input id="mmTop" type="number" step="1" min="0" value="25" />
+            </div>
+            <div class="control-row">
+              <label for="mmBottom">Bottom (mm)</label>
+              <input id="mmBottom" type="number" step="1" min="0" value="25" />
+            </div>
+            <div class="control-row">
+              <label for="showMarginBoxCb">Margin Box</label>
+              <input id="showMarginBoxCb" type="checkbox" />
+            </div>
+            <div class="control-row" id="wordWrapRow">
+              <label for="wordWrapCb">Word Wrap</label>
+              <input id="wordWrapCb" type="checkbox" checked />
+            </div>
+            <div class="control-row subtle-note" id="wordWrapNote" aria-live="polite" hidden>
+              Word wrap is disabled while real typewriter mode is on.
+            </div>
+          </div>
         </div>
       </details>
       <details class="settings-section" id="fontsSettings">
@@ -418,43 +448,6 @@
               </div>
               <span class="font-sample" style='font-family:"Special Elite", Courier, "Courier New", monospace;'>The quick brown fox 123456</span>
             </label>
-          </div>
-        </div>
-      </details>
-      <details class="settings-section" id="marginSettings">
-        <summary>
-          <span class="settings-toggle-icon" aria-hidden="true"></span>
-          <span class="settings-summary-label">Margins</span>
-        </summary>
-        <div class="settings-section-content">
-          <div class="settings-group-new">
-            <div class="control-row">
-              <label for="mmLeft">Left (mm)</label>
-              <input id="mmLeft" type="number" step="1" min="0" value="25" />
-            </div>
-            <div class="control-row">
-              <label for="mmRight">Right (mm)</label>
-              <input id="mmRight" type="number" step="1" min="0" value="25" />
-            </div>
-            <div class="control-row">
-              <label for="mmTop">Top (mm)</label>
-              <input id="mmTop" type="number" step="1" min="0" value="25" />
-            </div>
-            <div class="control-row">
-              <label for="mmBottom">Bottom (mm)</label>
-              <input id="mmBottom" type="number" step="1" min="0" value="25" />
-            </div>
-            <div class="control-row">
-              <label for="showMarginBoxCb">Margin Box</label>
-              <input id="showMarginBoxCb" type="checkbox" />
-            </div>
-            <div class="control-row" id="wordWrapRow">
-              <label for="wordWrapCb">Word Wrap</label>
-              <input id="wordWrapCb" type="checkbox" checked />
-            </div>
-            <div class="control-row subtle-note" id="wordWrapNote" aria-live="polite" hidden>
-              Word wrap is disabled while real typewriter mode is on.
-            </div>
           </div>
         </div>
       </details>
@@ -704,7 +697,7 @@
         </div>
       </details>
     </div>
-    <div class="app-version">v.41.5b</div>
+    <div class="app-version">v.41.6b</div>
   </aside>
 
   <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>
