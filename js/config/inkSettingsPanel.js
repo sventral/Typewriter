@@ -224,7 +224,7 @@ const SUBGROUP_CONFIG = {
     { id: 'rim', label: 'Rim', paths: ['enable.rim', 'ink.rim', 'ink.rimCurve'] },
     { id: 'fuzz', label: 'Fuzz', paths: ['enable.edgeFuzz', 'edgeFuzz.opacity', 'edgeFuzz.inBand', 'edgeFuzz.outBand', 'edgeFuzz.rough', 'edgeFuzz.scale', 'edgeFuzz.mix'] },
     { id: 'counterFill', label: 'Counter fill', paths: ['enable.counterFill', 'counterFill.transparency', 'counterFill.fill', 'counterFill.coverage', 'counterFill.noise'] },
-    { id: 'grain', label: 'Grain', paths: ['fuzzExp.enable', 'fuzzExp.thicken', 'fuzzExp.patchFill'] },
+    { id: 'grain', label: 'Grain', paths: ['fuzzExp', 'fuzzExp.enable', 'fuzzExp.thicken', 'fuzzExp.patchFill'] },
     { id: 'weight', label: 'Weight', paths: ['enable.centerEdge', 'centerEdge.center', 'centerEdge.edge', 'centerEdge.thicken', 'centerEdge.patchFill', 'centerEdge.patchSize'] },
   ],
   expGrain: [
@@ -1739,17 +1739,22 @@ function buildArrayControls(meta, container, arr, path, label) {
 
 function buildObjectControls(meta, container, obj, path, label) {
   if (!obj || typeof obj !== 'object') return;
+  const subgroupDefs = SUBGROUP_CONFIG[meta.id] || [];
+  const foundDef = subgroupDefs.find(entry => entry.id === path || entry.paths.includes(path));
+  const subgroupKey = foundDef?.id || path;
+  const subgroupLabel = meta.labels?.[path] || foundDef?.label || label;
   const group = document.createElement('div');
   group.className = 'ink-subgroup';
-  group.dataset.groupPath = path;
-  meta.groupElements?.set(path, group);
-  if (label) {
+  group.dataset.groupPath = subgroupKey;
+  meta.groupElements?.set(subgroupKey, group);
+  const subsectionId = `${meta.id}.${subgroupKey}`;
+  if (subgroupLabel) {
     const headingRow = document.createElement('div');
     headingRow.className = 'ink-subheading-row';
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
-    const headingLabel = meta.labels?.[path] || label;
-    const lock = createLockToggle(headingLabel, locked => setGroupLocked(meta, path, locked));
+    const headingLabel = subgroupLabel;
+    const lock = createLockToggle(headingLabel, locked => setGroupLocked(meta, subgroupKey, locked));
     heading.appendChild(lock);
     heading.appendChild(document.createTextNode(headingLabel));
     headingRow.appendChild(heading);
@@ -1763,6 +1768,38 @@ function buildObjectControls(meta, container, obj, path, label) {
     }
     group.appendChild(headingRow);
   }
+
+  // Attach per-subsection quality/scale controls for object-style subgroups (e.g., fuzzExp)
+  const subsectionInfo = {
+    subgroupId: path,
+    subsectionId,
+    qualityControl: null,
+    scaleControl: null,
+  };
+  const qualityCfg = SUBSECTION_QUALITY_CONFIG[subsectionId];
+  if (qualityCfg) {
+    const qc = createQualityControl(meta, group, qualityCfg, `${subsectionId}:quality`);
+    if (qc) {
+      const startQuality = getSubsectionQualityPercent(subsectionId, qualityCfg.defaultValue ?? EFFECT_QUALITY_DEFAULT);
+      qc.slider.value = String(startQuality);
+      qc.numberInput.value = String(startQuality);
+      subsectionInfo.qualityControl = qc;
+    }
+  }
+  const scaleCfg = SUBSECTION_SCALE_CONFIG[subsectionId];
+  if (scaleCfg) {
+    const sc = createScaleControl(meta, group, scaleCfg, `${subsectionId}:scale`);
+    if (sc) {
+      const startScale = getSubsectionScalePercent(subsectionId, scaleCfg.defaultValue ?? EFFECT_SCALE_DEFAULT);
+      sc.slider.value = String(startScale);
+      sc.numberInput.value = String(startScale);
+      subsectionInfo.scaleControl = sc;
+    }
+  }
+  if (!meta.subsectionControls?.has(subgroupKey)) {
+    meta.subsectionControls?.set(subgroupKey, subsectionInfo);
+  }
+
   const keys = getObjectKeys(path, obj);
   keys.forEach(key => {
     if (path === 'fuzzExp' && key === 'enable') return;
@@ -1780,11 +1817,11 @@ function buildObjectControls(meta, container, obj, path, label) {
     if (!input.dataset.enumOptions && typeof value === 'string') input.dataset.string = '1';
     const rowLabel = meta.labels?.[keyPath] || key;
     const row = buildControlRow(rowLabel, input);
-    tagRowWithGroup(row, path);
+    tagRowWithGroup(row, subgroupKey);
     group.appendChild(row);
     registerMetaInput(meta, keyPath, input);
   });
-  setGroupLocked(meta, path, isGroupLocked(meta, path));
+  setGroupLocked(meta, subgroupKey, isGroupLocked(meta, subgroupKey));
   container.appendChild(group);
 }
 
