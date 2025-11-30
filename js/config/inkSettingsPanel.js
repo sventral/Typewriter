@@ -3213,6 +3213,13 @@ export function getInkSectionOrder() {
   return normalizeSectionOrder(getSectionOrderFromState());
 }
 
+export function getInkSubsectionOrder() {
+  if (Array.isArray(panelState.subsectionOrder) && panelState.subsectionOrder.length) {
+    return panelState.subsectionOrder.slice();
+  }
+  return normalizeSubsectionOrder(getSubsectionOrderFromState());
+}
+
 export function getExperimentalEffectsConfig() {
   return EXPERIMENTAL_EFFECTS_CONFIG;
 }

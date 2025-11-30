@@ -80,6 +80,7 @@ export function createGlyphAtlas(options) {
     getInkEffectFactor,
     getInkSectionStrength,
     getInkSectionOrder,
+    getInkSubsectionOrder,
     isInkSectionEnabled,
     getExperimentalEffectsConfig,
     getExperimentalQualitySettings,
@@ -109,6 +110,9 @@ export function createGlyphAtlas(options) {
   const getInkSectionOrderFn = typeof getInkSectionOrder === 'function'
     ? getInkSectionOrder
     : (() => ['filters']);
+  const getInkSubsectionOrderFn = typeof getInkSubsectionOrder === 'function'
+    ? getInkSubsectionOrder
+    : (() => Object.keys(EXPERIMENTAL_SUBSECTION_STAGE_MAP));
   const isInkSectionEnabledFn = typeof isInkSectionEnabled === 'function'
     ? isInkSectionEnabled
     : (() => true);
@@ -378,6 +382,7 @@ export function createGlyphAtlas(options) {
     'filters.punch': ['punch'],
   };
   const EXPERIMENTAL_SECTION_IDS = Object.keys(EXPERIMENTAL_SECTION_STAGE_MAP);
+  const EXPERIMENTAL_SUBSECTION_IDS = Object.keys(EXPERIMENTAL_SUBSECTION_STAGE_MAP);
   const EXPERIMENTAL_STAGE_PARAM_KEYS = {
     fill: [{ path: 'enable.toneCore' }], // simplified for brevity
     fuzzExp: [{ path: 'fuzzExp.enable' }, { path: 'fuzzExp.thicken' }, { path: 'fuzzExp.patchFill' }],
@@ -594,9 +599,30 @@ export function createGlyphAtlas(options) {
     return normalized;
   }
 
-  function resolveExperimentalStages(order) {
+  function normalizeExperimentalSubsectionOrder(order) {
+    const base = Array.isArray(order) ? order : [];
+    const seen = new Set();
+    const normalized = [];
+    base.forEach(id => {
+      if (typeof id !== 'string') return;
+      const trimmed = id.trim();
+      if (!trimmed || seen.has(trimmed)) return;
+      if (!Object.prototype.hasOwnProperty.call(EXPERIMENTAL_SUBSECTION_STAGE_MAP, trimmed)) return;
+      seen.add(trimmed);
+      normalized.push(trimmed);
+    });
+    EXPERIMENTAL_SUBSECTION_IDS.forEach(id => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      normalized.push(id);
+    });
+    return normalized;
+  }
+
+  function resolveExperimentalStages(sectionOrder, subsectionOrder) {
     const stageActivity = getExperimentalStageActivity();
-    const normalizedSections = normalizeExperimentalSectionOrder(order);
+    const normalizedSections = normalizeExperimentalSectionOrder(sectionOrder);
+    const normalizedSubsections = normalizeExperimentalSubsectionOrder(subsectionOrder);
     const seenStages = new Set();
     const stages = [];
 
@@ -612,6 +638,12 @@ export function createGlyphAtlas(options) {
       stages.push(stageId);
     };
 
+    normalizedSubsections.forEach(subId => {
+      const stageIds = EXPERIMENTAL_SUBSECTION_STAGE_MAP[subId];
+      if (!stageIds || !stageIds.length) return;
+      stageIds.forEach(addStageIfActive);
+    });
+
     normalizedSections.forEach(sectionId => {
       const stageIds = EXPERIMENTAL_SECTION_STAGE_MAP[sectionId];
       if (!stageIds || !stageIds.length) return;
@@ -623,8 +655,11 @@ export function createGlyphAtlas(options) {
 
   function getExperimentalProcessorForOrder(order, options = {}) {
     const orderKey = Array.isArray(order) && order.length ? order.join('-') : 'default';
+    const subOrderKey = Array.isArray(options?.subsectionOrder) && options.subsectionOrder.length
+      ? options.subsectionOrder.join('-')
+      : 'sub-default';
     const resolutionSig = options?.detailResolution?.signature || 'base';
-    const key = `${orderKey}::${resolutionSig}`;
+    const key = `${orderKey}::${subOrderKey}::${resolutionSig}`;
     if (experimentalProcessorCache.has(key)) {
       return experimentalProcessorCache.get(key);
     }
@@ -656,7 +691,8 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
 
     const overallStrength = clamp(getInkEffectFactor(), 0, 1);
     const rawOrder = getInkSectionOrderFn();
-    const pipelineStages = resolveExperimentalStages(rawOrder);
+    const rawSubOrder = typeof getInkSubsectionOrderFn === 'function' ? getInkSubsectionOrderFn() : null;
+    const pipelineStages = resolveExperimentalStages(rawOrder, rawSubOrder);
     const hasExperimentalStages = Array.isArray(pipelineStages) && pipelineStages.length > 0;
 
     const needsEffectsPipeline = effectsAllowed && overallStrength > 0 && hasExperimentalStages;
@@ -793,7 +829,10 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
       punch: { ...(baseConfig.punch || {}) },
     });
     const processor = hasExperimentalStages
-      ? getExperimentalProcessorForOrder(pipelineStages, { detailResolution: detailResolutionConfig })
+      ? getExperimentalProcessorForOrder(pipelineStages, {
+        detailResolution: detailResolutionConfig,
+        subsectionOrder: rawSubOrder,
+      })
       : null;
     const stagePipeline = processor?.stagePipeline;
     const effectiveOrder = hasExperimentalStages ? pipelineStages : null;
