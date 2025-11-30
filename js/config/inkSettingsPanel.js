@@ -186,6 +186,7 @@ const SECTION_DEFS = [
     trigger: 'glyph',
     stateKey: 'filtersStrength',
     defaultStrength: getDefaultInkSectionStrength('filters'),
+    dragHandle: false,
   },
 ];
 
@@ -2332,12 +2333,15 @@ function buildSection(def, root) {
 
   const topLine = document.createElement('div');
   topLine.className = 'ink-section-topline';
-  const dragHandle = document.createElement('button');
-  dragHandle.type = 'button';
-  dragHandle.className = 'ink-section-drag-handle';
-  dragHandle.setAttribute('aria-label', `Reorder ${def.label}`);
-  dragHandle.innerHTML = '<span aria-hidden="true">⋮⋮</span>';
-  topLine.appendChild(dragHandle);
+  let dragHandle = null;
+  if (def.dragHandle !== false) {
+    dragHandle = document.createElement('button');
+    dragHandle.type = 'button';
+    dragHandle.className = 'ink-section-drag-handle';
+    dragHandle.setAttribute('aria-label', `Reorder ${def.label}`);
+    dragHandle.innerHTML = '<span aria-hidden="true">⋮⋮</span>';
+    topLine.appendChild(dragHandle);
+  }
   topLine.appendChild(toggleBtn);
   header.appendChild(topLine);
 
@@ -2495,7 +2499,9 @@ function buildSection(def, root) {
     return info;
   };
 
-  dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
+  if (dragHandle) {
+    dragHandle.addEventListener('pointerdown', event => startPointerSectionDrag(event, meta));
+  }
 
   def.keyOrder.forEach(entry => {
     let path = null;
