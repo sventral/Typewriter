@@ -1083,6 +1083,9 @@ function applySubsectionOrderForSection(sectionId, order, options = {}) {
     if (!options.silent) persistPanelState();
   }
   updateSubsectionDomOrder(sectionId, normalized);
+  if (options.silent !== true) {
+    scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
+  }
 }
 
 function applySubsectionOrder(order, options = {}) {
@@ -1094,6 +1097,9 @@ function applySubsectionOrder(order, options = {}) {
   }
   if (options.syncDom !== false) {
     SECTION_DEFS.forEach(def => updateSubsectionDomOrder(def.id, getSectionSubsectionOrder(def.id)));
+  }
+  if (options.silent !== true) {
+    scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
   }
 }
 
