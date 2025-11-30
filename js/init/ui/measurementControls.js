@@ -334,7 +334,6 @@ export function createMeasurementControls({
   }
 
   function markPageNumbersDirty() {
-    if (!state?.pageNumbering?.enabled) return;
     const pages = Array.isArray(state.pages) ? state.pages : [];
     pages.forEach((page) => {
       if (!page) return;
