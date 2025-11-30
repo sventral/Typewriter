@@ -342,13 +342,16 @@
   .ink-style-reset-row .btn { width: 100%; }
   .ink-keep-order-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; justify-content: flex-start; }
   .ink-keep-order-toggle input { margin: 0; }
-  .input-with-suffix { position: relative; display: flex; }
-  .input-with-suffix input { width: 100%; }
-  .input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }
+.input-with-suffix { position: relative; display: flex; }
+.input-with-suffix input { width: 100%; padding-right: 26px; }
+.input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }
   .tight-spacer { height: 10px; }
   #typographySettings .range-input-pair { display: flex; align-items: center; gap: 8px; }
   #typographySettings .range-input-pair .input-with-suffix { width: 88px; }
   #typographySettings .range-input-pair .range-separator { font-weight: 600; opacity: 0.6; }
+  .ink-settings-content .range-input-pair { display: flex; align-items: center; gap: 8px; }
+  .ink-settings-content .range-input-pair .input-with-suffix { width: 88px; }
+  .ink-settings-content .range-input-pair .range-separator { font-weight: 600; opacity: 0.6; }
   #typewriterSettings .control-row { display: flex; align-items: center; gap: 10px; }
   #typewriterSettings .control-row label { flex: 1; }
   #typewriterSettings .control-row input[type="range"] { flex: 2; }
