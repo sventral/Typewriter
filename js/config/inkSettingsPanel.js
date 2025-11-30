@@ -275,11 +275,6 @@ Object.entries(SUBGROUP_CONFIG).forEach(([sectionId, subgroups]) => {
   });
 });
 
-const SUBSECTION_LOOKUP = SUBSECTION_DEFS.reduce((acc, def) => {
-  acc[def.id] = def;
-  return acc;
-}, {});
-
 const SUBSECTION_IDS_BY_SECTION = SUBSECTION_DEFS.reduce((acc, def) => {
   if (!acc[def.sectionId]) acc[def.sectionId] = [];
   acc[def.sectionId].push(def.id);
