@@ -342,9 +342,9 @@
   .ink-style-reset-row .btn { width: 100%; }
   .ink-keep-order-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; justify-content: flex-start; }
   .ink-keep-order-toggle input { margin: 0; }
-.input-with-suffix { position: relative; display: flex; }
-.input-with-suffix input { width: 100%; padding-right: 26px; }
-.input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }
+.input-with-suffix { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.input-with-suffix input { width: 100%; padding-right: 0; flex: 1; }
+.input-with-suffix span { position: static; transform: none; pointer-events: none; opacity: 0.65; line-height: 1; }
   .tight-spacer { height: 10px; }
   #typographySettings .range-input-pair { display: flex; align-items: center; gap: 8px; }
   #typographySettings .range-input-pair .input-with-suffix { width: 88px; }
