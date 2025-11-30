@@ -257,6 +257,34 @@
               Word wrap is disabled while real typewriter mode is on.
             </div>
           </div>
+          <div class="settings-group-new">
+            <h4>Page numbers</h4>
+            <label class="appearance-toggle">
+              <input type="checkbox" id="pageNumberToggle" />
+              <span>Enable page numbers</span>
+            </label>
+            <div class="control-row">
+              <label for="pageNumberOffset">Lines from bottom</label>
+              <input id="pageNumberOffset" type="number" min="0" step="1" value="1" />
+            </div>
+            <div class="page-number-align">
+              <span class="page-number-align-label">Alignment</span>
+              <div class="page-number-align-options" role="group" aria-label="Page number alignment">
+                <label>
+                  <input type="radio" name="pageNumberAlign" id="pageNumberAlignLeft" value="left" />
+                  <span>Left</span>
+                </label>
+                <label>
+                  <input type="radio" name="pageNumberAlign" id="pageNumberAlignCenter" value="center" checked />
+                  <span>Center</span>
+                </label>
+                <label>
+                  <input type="radio" name="pageNumberAlign" id="pageNumberAlignRight" value="right" />
+                  <span>Right</span>
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
       </details>
       <details class="settings-section" id="fontsSettings">
@@ -554,41 +582,6 @@
           </section>
         </div>
       </details>
-      <details class="settings-section" id="pageNumbersSettings">
-        <summary>
-          <span class="settings-toggle-icon" aria-hidden="true"></span>
-          <span class="settings-summary-label">Page numbers</span>
-        </summary>
-        <div class="settings-section-content">
-          <div class="settings-group-new page-numbering-group">
-            <label class="appearance-toggle">
-              <input type="checkbox" id="pageNumberToggle" />
-              <span>Enable page numbers</span>
-            </label>
-            <div class="control-row">
-              <label for="pageNumberOffset">Lines from bottom</label>
-              <input id="pageNumberOffset" type="number" min="0" step="1" value="1" />
-            </div>
-            <div class="page-number-align">
-              <span class="page-number-align-label">Alignment</span>
-              <div class="page-number-align-options" role="group" aria-label="Page number alignment">
-                <label>
-                  <input type="radio" name="pageNumberAlign" id="pageNumberAlignLeft" value="left" />
-                  <span>Left</span>
-                </label>
-                <label>
-                  <input type="radio" name="pageNumberAlign" id="pageNumberAlignCenter" value="center" checked />
-                  <span>Center</span>
-                </label>
-                <label>
-                  <input type="radio" name="pageNumberAlign" id="pageNumberAlignRight" value="right" />
-                  <span>Right</span>
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-      </details>
       <details class="settings-section" id="typewriterSettings">
         <summary>
           <span class="settings-toggle-icon" aria-hidden="true"></span>
@@ -697,7 +690,7 @@
         </div>
       </details>
     </div>
-    <div class="app-version">v.41.6b</div>
+    <div class="app-version">v.41.7b</div>
   </aside>
 
   <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>
