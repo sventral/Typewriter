@@ -1,16 +1,16 @@
-const SECTION_ORDER = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
+const SECTION_ORDER = ['filters'];
 const SUBSECTION_ORDER = Object.freeze([
-  'expTone.variations',
-  'expTone.ribbon',
-  'expEdge.rim',
-  'expEdge.fuzz',
-  'expEdge.counterFill',
-  'expEdge.grain',
-  'expEdge.weight',
-  'expGrain.speckle',
-  'expGrain.dropouts',
-  'expDefects.smudge',
-  'expDefects.punch',
+  'filters.variations',
+  'filters.ribbon',
+  'filters.rim',
+  'filters.fuzz',
+  'filters.counterFill',
+  'filters.grain',
+  'filters.weight',
+  'filters.speckle',
+  'filters.dropouts',
+  'filters.smudge',
+  'filters.punch',
 ]);
 
 function deepClone(value) {
@@ -134,17 +134,17 @@ counterFill: {
 });
 
 const DEFAULT_SUBSECTION_QUALITIES = Object.freeze({
-  'expTone.variations': 55,
-  'expTone.ribbon': 55,
-  'expEdge.rim': 55,
-  'expEdge.fuzz': 100,
-  'expEdge.counterFill': 100,
-  'expEdge.grain': 100,
-  'expEdge.weight': 100,
-  'expGrain.speckle': 100,
-  'expGrain.dropouts': 100,
-  'expDefects.smudge': 100,
-  'expDefects.punch': 100,
+  'filters.variations': 55,
+  'filters.ribbon': 55,
+  'filters.rim': 55,
+  'filters.fuzz': 100,
+  'filters.counterFill': 100,
+  'filters.grain': 100,
+  'filters.weight': 100,
+  'filters.speckle': 100,
+  'filters.dropouts': 100,
+  'filters.smudge': 100,
+  'filters.punch': 100,
 });
 
 const DEFAULT_SUBSECTION_SCALES = Object.freeze(
@@ -174,25 +174,10 @@ function createSection(strength, qualities, scales) {
 }
 
 const DEFAULT_SECTIONS = {
-  expTone: createSection(
+  filters: createSection(
     100,
-    pickSubsectionDefaults('expTone', DEFAULT_SUBSECTION_QUALITIES),
-    pickSubsectionDefaults('expTone', DEFAULT_SUBSECTION_SCALES),
-  ),
-  expEdge: createSection(
-    0,
-    pickSubsectionDefaults('expEdge', DEFAULT_SUBSECTION_QUALITIES),
-    pickSubsectionDefaults('expEdge', DEFAULT_SUBSECTION_SCALES),
-  ),
-  expGrain: createSection(
-    0,
-    pickSubsectionDefaults('expGrain', DEFAULT_SUBSECTION_QUALITIES),
-    pickSubsectionDefaults('expGrain', DEFAULT_SUBSECTION_SCALES),
-  ),
-  expDefects: createSection(
-    0,
-    pickSubsectionDefaults('expDefects', DEFAULT_SUBSECTION_QUALITIES),
-    pickSubsectionDefaults('expDefects', DEFAULT_SUBSECTION_SCALES),
+    pickSubsectionDefaults('filters', DEFAULT_SUBSECTION_QUALITIES),
+    pickSubsectionDefaults('filters', DEFAULT_SUBSECTION_SCALES),
   ),
 };
 
@@ -212,10 +197,7 @@ export const DEFAULT_INK_EFFECT_STYLE = deepFreeze(DEFAULT_STYLE);
 export const DEFAULT_INK_SECTION_ORDER = Object.freeze(SECTION_ORDER.slice());
 
 const SECTION_STRENGTH_DEFAULTS = Object.freeze({
-  expTone: DEFAULT_SECTIONS.expTone.strength,
-  expEdge: DEFAULT_SECTIONS.expEdge.strength,
-  expGrain: DEFAULT_SECTIONS.expGrain.strength,
-  expDefects: DEFAULT_SECTIONS.expDefects.strength,
+  filters: DEFAULT_SECTIONS.filters.strength,
 });
 
 const SUBSECTION_QUALITY_DEFAULTS = Object.freeze({ ...DEFAULT_SUBSECTION_QUALITIES });

@@ -626,9 +626,9 @@ export function createExperimentalStagePipeline(deps = {}) {
     const invDp = 1 / dpPerCss;
     const stageQualityBase = getStageQualityFromContext(ctx);
     const subQualities = ctx?.subStageQuality || {};
-    const toneQuality = clampStageQuality(subQualities['expTone.variations'] ?? stageQualityBase);
-    const ribbonQuality = clampStageQuality(subQualities['expTone.ribbon'] ?? stageQualityBase);
-    const rimQuality = clampStageQuality(subQualities['expEdge.rim'] ?? stageQualityBase);
+    const toneQuality = clampStageQuality(subQualities['filters.variations'] ?? stageQualityBase);
+    const ribbonQuality = clampStageQuality(subQualities['filters.ribbon'] ?? stageQualityBase);
+    const rimQuality = clampStageQuality(subQualities['filters.rim'] ?? stageQualityBase);
     const detailCssRaw = getDetailDensityCss(ctx);
     const detailCss = Math.max(MIN_DETAIL_DENSITY_CSS, detailCssRaw * toneQuality);
     

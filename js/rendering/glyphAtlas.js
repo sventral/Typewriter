@@ -108,7 +108,7 @@ export function createGlyphAtlas(options) {
   const getInkSectionStrengthFn = typeof getInkSectionStrength === 'function' ? getInkSectionStrength : (() => 1);
   const getInkSectionOrderFn = typeof getInkSectionOrder === 'function'
     ? getInkSectionOrder
-    : (() => ['expTone', 'expEdge', 'expGrain', 'expDefects']);
+    : (() => ['filters']);
   const isInkSectionEnabledFn = typeof isInkSectionEnabled === 'function'
     ? isInkSectionEnabled
     : (() => true);
@@ -272,40 +272,29 @@ export function createGlyphAtlas(options) {
   }
 
   function getExperimentalSectionEnabledState() {
-    return {
-      expTone: !!isInkSectionEnabledFn('expTone'),
-      expEdge: !!isInkSectionEnabledFn('expEdge'),
-      expGrain: !!isInkSectionEnabledFn('expGrain'),
-      expDefects: !!isInkSectionEnabledFn('expDefects'),
-    };
+    return { filters: !!isInkSectionEnabledFn('filters') };
   }
 
   function applySectionEnableMask(params, sectionEnabled) {
     if (!params || !sectionEnabled) return params;
     const enable = params.enable = { ...(params.enable || {}) };
-    if (!sectionEnabled.expTone) {
+    if (!sectionEnabled.filters) {
       enable.toneCore = false;
       enable.toneDynamics = false;
       enable.ribbonBands = false;
-    }
-    if (!enable.toneCore) {
-      enable.toneDynamics = false;
-      enable.ribbonBands = false;
-    }
-    if (!sectionEnabled.expEdge) {
       enable.edgeFuzz = false;
       enable.rim = false;
       enable.centerEdge = false;
       enable.fuzzExp = false;
       enable.counterFill = false;
-    }
-    if (!sectionEnabled.expGrain) {
       enable.grainSpeck = false;
       enable.dropouts = false;
-    }
-    if (!sectionEnabled.expDefects) {
       enable.punch = false;
       enable.smudge = false;
+    }
+    if (!enable.toneCore) {
+      enable.toneDynamics = false;
+      enable.ribbonBands = false;
     }
     return params;
   }
@@ -320,52 +309,52 @@ export function createGlyphAtlas(options) {
       obj[key] = val * factor;
     };
 
-    const toneVarS = clampScale(scaleBias['expTone.variations']);
+    const toneVarS = clampScale(scaleBias['filters.variations']);
     mul(params.noise, 'lfScale', toneVarS);
     mul(params.noise, 'hfScale', toneVarS);
 
-    const toneRibbonS = clampScale(scaleBias['expTone.ribbon']);
+    const toneRibbonS = clampScale(scaleBias['filters.ribbon']);
     mul(params.ribbon, 'height', toneRibbonS);
     mul(params.ribbon, 'delta', toneRibbonS);
 
-    const rimS = clampScale(scaleBias['expEdge.rim']);
+    const rimS = clampScale(scaleBias['filters.rim']);
     mul(params.ink, 'rim', rimS);
 
-    const edgeFuzzS = clampScale(scaleBias['expEdge.fuzz']);
+    const edgeFuzzS = clampScale(scaleBias['filters.fuzz']);
     mul(params.edgeFuzz, 'inBand', edgeFuzzS);
     mul(params.edgeFuzz, 'outBand', edgeFuzzS);
     mul(params.edgeFuzz, 'scale', edgeFuzzS);
     mul(params.edgeFuzz, 'mix', edgeFuzzS);
 
-    const counterFillS = clampScale(scaleBias['expEdge.counterFill']);
+    const counterFillS = clampScale(scaleBias['filters.counterFill']);
     mul(params.counterFill, 'fill', counterFillS);
     mul(params.counterFill, 'coverage', counterFillS);
 
-    const edgeGrainS = clampScale(scaleBias['expEdge.grain']);
+    const edgeGrainS = clampScale(scaleBias['filters.grain']);
     if (params.fuzzExp) {
       mul(params.fuzzExp, 'thicken', edgeGrainS);
     }
 
-    const edgeWeightS = clampScale(scaleBias['expEdge.weight']);
+    const edgeWeightS = clampScale(scaleBias['filters.weight']);
     mul(params.centerEdge, 'center', edgeWeightS);
     mul(params.centerEdge, 'edge', edgeWeightS);
     mul(params.centerEdge, 'thicken', edgeWeightS);
     mul(params.centerEdge, 'patchFill', edgeWeightS);
     mul(params.centerEdge, 'patchSize', edgeWeightS);
 
-    const speckleS = clampScale(scaleBias['expGrain.speckle']);
+    const speckleS = clampScale(scaleBias['filters.speckle']);
     mul(params.noise, 'lfScale', speckleS);
     mul(params.noise, 'hfScale', speckleS);
 
-    const dropoutsS = clampScale(scaleBias['expGrain.dropouts']);
+    const dropoutsS = clampScale(scaleBias['filters.dropouts']);
     mul(params.dropouts, 'width', dropoutsS);
     mul(params.dropouts, 'scale', dropoutsS);
 
-    const smudgeS = clampScale(scaleBias['expDefects.smudge']);
+    const smudgeS = clampScale(scaleBias['filters.smudge']);
     mul(params.smudge, 'radius', smudgeS);
     mul(params.smudge, 'scale', smudgeS);
 
-    const punchS = clampScale(scaleBias['expDefects.punch']);
+    const punchS = clampScale(scaleBias['filters.punch']);
     mul(params.punch, 'rMin', punchS);
     mul(params.punch, 'rMax', punchS);
     mul(params.punch, 'soft', punchS);
@@ -373,23 +362,20 @@ export function createGlyphAtlas(options) {
   }
 
   const EXPERIMENTAL_SECTION_STAGE_MAP = {
-    expTone: ['tone'],
-    expEdge: ['fuzz', 'counterFill', 'fuzzExp', 'centerEdge'],
-    expGrain: ['texture', 'dropouts'],
-    expDefects: ['punch', 'smudge'],
+    filters: ['tone', 'fuzz', 'counterFill', 'fuzzExp', 'centerEdge', 'texture', 'dropouts', 'punch', 'smudge'],
   };
   const EXPERIMENTAL_SUBSECTION_STAGE_MAP = {
-    'expTone.variations': ['tone'],
-    'expTone.ribbon': ['tone'],
-    'expEdge.rim': ['tone'],
-    'expEdge.fuzz': ['fuzz'],
-    'expEdge.counterFill': ['counterFill'],
-    'expEdge.grain': ['fuzzExp'],
-    'expEdge.weight': ['centerEdge'],
-    'expGrain.speckle': ['texture'],
-    'expGrain.dropouts': ['dropouts'],
-    'expDefects.smudge': ['smudge'],
-    'expDefects.punch': ['punch'],
+    'filters.variations': ['tone'],
+    'filters.ribbon': ['tone'],
+    'filters.rim': ['tone'],
+    'filters.fuzz': ['fuzz'],
+    'filters.counterFill': ['counterFill'],
+    'filters.grain': ['fuzzExp'],
+    'filters.weight': ['centerEdge'],
+    'filters.speckle': ['texture'],
+    'filters.dropouts': ['dropouts'],
+    'filters.smudge': ['smudge'],
+    'filters.punch': ['punch'],
   };
   const EXPERIMENTAL_SECTION_IDS = Object.keys(EXPERIMENTAL_SECTION_STAGE_MAP);
   const EXPERIMENTAL_STAGE_PARAM_KEYS = {
@@ -514,7 +500,7 @@ export function createGlyphAtlas(options) {
     const toneDynamicsActive = (
       !!enable.toneCore
       && !!enable.toneDynamics
-      && sectionActive.expTone
+      && sectionActive.filters
       && (
         hasPositive(inkCfg.pressureVar)
         || hasPositive(inkCfg.toneJitter)
@@ -526,13 +512,13 @@ export function createGlyphAtlas(options) {
     const ribbonBandsActive = (
       !!enable.toneCore
       && !!enable.ribbonBands
-      && sectionActive.expTone
+      && sectionActive.filters
       && Math.abs(ribbonBandStrength) > 1e-3
     );
-    const rimActive = !!enable.rim && sectionActive.expEdge && hasPositive(inkCfg.rim);
+    const rimActive = !!enable.rim && sectionActive.filters && hasPositive(inkCfg.rim);
     const toneCoreModulesActive = toneDynamicsActive || ribbonBandsActive || rimActive;
     const toneCoreActive = toneCoreModulesActive;
-    const centerEdgeActive = sectionActive.expEdge
+    const centerEdgeActive = sectionActive.filters
       && !!enable.centerEdge
       && (
         hasPositive(centerEdgeCfg.center)
@@ -540,28 +526,28 @@ export function createGlyphAtlas(options) {
         || hasPositive(centerEdgeCfg.thicken)
       );
 
-    const fuzzExpActive = sectionActive.expEdge
+    const fuzzExpActive = sectionActive.filters
       && (fuzzExpCfg.enable !== false)
       && hasPositive(fuzzExpCfg.thicken);
-    const counterFillActive = sectionActive.expEdge
+    const counterFillActive = sectionActive.filters
       && !!enable.counterFill
       && hasPositive(counterFillCfg.fill);
-    const textureActive = sectionActive.expGrain
+    const textureActive = sectionActive.filters
       && !!enable.grainSpeck
       && (hasPositive(inkCfg.speckDark) || hasPositive(inkCfg.speckLight));
-    const fuzzActive = sectionActive.expEdge
+    const fuzzActive = sectionActive.filters
       && !!enable.edgeFuzz
       && hasPositive(edgeFuzzCfg.opacity)
       && (hasPositive(edgeFuzzCfg.inBand) || hasPositive(edgeFuzzCfg.outBand));
-    const dropoutsActive = sectionActive.expGrain
+    const dropoutsActive = sectionActive.filters
       && !!enable.dropouts
       && hasPositive(dropoutsCfg.amount)
       && hasPositive(dropoutsCfg.width);
-    const punchActive = sectionActive.expDefects
+    const punchActive = sectionActive.filters
       && !!enable.punch
       && hasPositive(punchCfg.intensity)
       && (Number.isFinite(punchCfg.count) ? punchCfg.count > 0 : true);
-    const smudgeActive = sectionActive.expDefects
+    const smudgeActive = sectionActive.filters
       && !!enable.smudge
       && hasPositive(smudgeCfg.strength)
       && hasPositive(smudgeCfg.radius);

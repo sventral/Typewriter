@@ -15,38 +15,35 @@ import { createDefaultInkOpacity } from '../config/inkPalette.js';
 import { TYPEWRITER_DEFAULTS } from '../config/typewriterMode.js';
 
 const SECTION_STRENGTH_DEFAULTS = {
-  expTone: getDefaultInkSectionStrength('expTone'),
-  expEdge: getDefaultInkSectionStrength('expEdge'),
-  expGrain: getDefaultInkSectionStrength('expGrain'),
-  expDefects: getDefaultInkSectionStrength('expDefects'),
+  filters: getDefaultInkSectionStrength('filters'),
 };
 
 const SECTION_QUALITY_DEFAULTS = {
-  expToneVariations: getDefaultInkSubsectionQuality('expTone.variations'),
-  expToneRibbon: getDefaultInkSubsectionQuality('expTone.ribbon'),
-  expEdgeRim: getDefaultInkSubsectionQuality('expEdge.rim'),
-  expEdgeFuzz: getDefaultInkSubsectionQuality('expEdge.fuzz'),
-  expEdgeCounterFill: getDefaultInkSubsectionQuality('expEdge.counterFill'),
-  expEdgeGrain: getDefaultInkSubsectionQuality('expEdge.grain'),
-  expEdgeWeight: getDefaultInkSubsectionQuality('expEdge.weight'),
-  expGrainSpeckle: getDefaultInkSubsectionQuality('expGrain.speckle'),
-  expGrainDropouts: getDefaultInkSubsectionQuality('expGrain.dropouts'),
-  expDefectsSmudge: getDefaultInkSubsectionQuality('expDefects.smudge'),
-  expDefectsPunch: getDefaultInkSubsectionQuality('expDefects.punch'),
+  filtersVariations: getDefaultInkSubsectionQuality('filters.variations'),
+  filtersRibbon: getDefaultInkSubsectionQuality('filters.ribbon'),
+  filtersRim: getDefaultInkSubsectionQuality('filters.rim'),
+  filtersFuzz: getDefaultInkSubsectionQuality('filters.fuzz'),
+  filtersCounterFill: getDefaultInkSubsectionQuality('filters.counterFill'),
+  filtersGrain: getDefaultInkSubsectionQuality('filters.grain'),
+  filtersWeight: getDefaultInkSubsectionQuality('filters.weight'),
+  filtersSpeckle: getDefaultInkSubsectionQuality('filters.speckle'),
+  filtersDropouts: getDefaultInkSubsectionQuality('filters.dropouts'),
+  filtersSmudge: getDefaultInkSubsectionQuality('filters.smudge'),
+  filtersPunch: getDefaultInkSubsectionQuality('filters.punch'),
 };
 
 const SECTION_SCALE_DEFAULTS = {
-  expToneVariations: getDefaultInkSubsectionScale('expTone.variations'),
-  expToneRibbon: getDefaultInkSubsectionScale('expTone.ribbon'),
-  expEdgeRim: getDefaultInkSubsectionScale('expEdge.rim'),
-  expEdgeFuzz: getDefaultInkSubsectionScale('expEdge.fuzz'),
-  expEdgeCounterFill: getDefaultInkSubsectionScale('expEdge.counterFill'),
-  expEdgeGrain: getDefaultInkSubsectionScale('expEdge.grain'),
-  expEdgeWeight: getDefaultInkSubsectionScale('expEdge.weight'),
-  expGrainSpeckle: getDefaultInkSubsectionScale('expGrain.speckle'),
-  expGrainDropouts: getDefaultInkSubsectionScale('expGrain.dropouts'),
-  expDefectsSmudge: getDefaultInkSubsectionScale('expDefects.smudge'),
-  expDefectsPunch: getDefaultInkSubsectionScale('expDefects.punch'),
+  filtersVariations: getDefaultInkSubsectionScale('filters.variations'),
+  filtersRibbon: getDefaultInkSubsectionScale('filters.ribbon'),
+  filtersRim: getDefaultInkSubsectionScale('filters.rim'),
+  filtersFuzz: getDefaultInkSubsectionScale('filters.fuzz'),
+  filtersCounterFill: getDefaultInkSubsectionScale('filters.counterFill'),
+  filtersGrain: getDefaultInkSubsectionScale('filters.grain'),
+  filtersWeight: getDefaultInkSubsectionScale('filters.weight'),
+  filtersSpeckle: getDefaultInkSubsectionScale('filters.speckle'),
+  filtersDropouts: getDefaultInkSubsectionScale('filters.dropouts'),
+  filtersSmudge: getDefaultInkSubsectionScale('filters.smudge'),
+  filtersPunch: getDefaultInkSubsectionScale('filters.punch'),
 };
 
 export const DEFAULT_INK_SECTION_ORDER = PRESET_INK_SECTION_ORDER.slice();
@@ -78,32 +75,29 @@ export function createMainState(app, gridDiv = 8) {
     lineStepMu: Math.round(gridDiv * 1.5),
     zoom: 1.0,
     effectsOverallStrength: 100,
-    expToneStrength: SECTION_STRENGTH_DEFAULTS.expTone,
-    expEdgeStrength: SECTION_STRENGTH_DEFAULTS.expEdge,
-    expGrainStrength: SECTION_STRENGTH_DEFAULTS.expGrain,
-    expDefectsStrength: SECTION_STRENGTH_DEFAULTS.expDefects,
-    expToneVariationsQuality: SECTION_QUALITY_DEFAULTS.expToneVariations,
-    expToneRibbonQuality: SECTION_QUALITY_DEFAULTS.expToneRibbon,
-    expEdgeRimQuality: SECTION_QUALITY_DEFAULTS.expEdgeRim,
-    expEdgeFuzzQuality: SECTION_QUALITY_DEFAULTS.expEdgeFuzz,
-    expEdgeCounterFillQuality: SECTION_QUALITY_DEFAULTS.expEdgeCounterFill,
-    expEdgeGrainQuality: SECTION_QUALITY_DEFAULTS.expEdgeGrain,
-    expEdgeWeightQuality: SECTION_QUALITY_DEFAULTS.expEdgeWeight,
-    expGrainSpeckleQuality: SECTION_QUALITY_DEFAULTS.expGrainSpeckle,
-    expGrainDropoutsQuality: SECTION_QUALITY_DEFAULTS.expGrainDropouts,
-    expDefectsSmudgeQuality: SECTION_QUALITY_DEFAULTS.expDefectsSmudge,
-    expDefectsPunchQuality: SECTION_QUALITY_DEFAULTS.expDefectsPunch,
-    expToneVariationsScale: SECTION_SCALE_DEFAULTS.expToneVariations,
-    expToneRibbonScale: SECTION_SCALE_DEFAULTS.expToneRibbon,
-    expEdgeRimScale: SECTION_SCALE_DEFAULTS.expEdgeRim,
-    expEdgeFuzzScale: SECTION_SCALE_DEFAULTS.expEdgeFuzz,
-    expEdgeCounterFillScale: SECTION_SCALE_DEFAULTS.expEdgeCounterFill,
-    expEdgeGrainScale: SECTION_SCALE_DEFAULTS.expEdgeGrain,
-    expEdgeWeightScale: SECTION_SCALE_DEFAULTS.expEdgeWeight,
-    expGrainSpeckleScale: SECTION_SCALE_DEFAULTS.expGrainSpeckle,
-    expGrainDropoutsScale: SECTION_SCALE_DEFAULTS.expGrainDropouts,
-    expDefectsSmudgeScale: SECTION_SCALE_DEFAULTS.expDefectsSmudge,
-    expDefectsPunchScale: SECTION_SCALE_DEFAULTS.expDefectsPunch,
+    filtersStrength: SECTION_STRENGTH_DEFAULTS.filters,
+    filtersVariationsQuality: SECTION_QUALITY_DEFAULTS.filtersVariations,
+    filtersRibbonQuality: SECTION_QUALITY_DEFAULTS.filtersRibbon,
+    filtersRimQuality: SECTION_QUALITY_DEFAULTS.filtersRim,
+    filtersFuzzQuality: SECTION_QUALITY_DEFAULTS.filtersFuzz,
+    filtersCounterFillQuality: SECTION_QUALITY_DEFAULTS.filtersCounterFill,
+    filtersGrainQuality: SECTION_QUALITY_DEFAULTS.filtersGrain,
+    filtersWeightQuality: SECTION_QUALITY_DEFAULTS.filtersWeight,
+    filtersSpeckleQuality: SECTION_QUALITY_DEFAULTS.filtersSpeckle,
+    filtersDropoutsQuality: SECTION_QUALITY_DEFAULTS.filtersDropouts,
+    filtersSmudgeQuality: SECTION_QUALITY_DEFAULTS.filtersSmudge,
+    filtersPunchQuality: SECTION_QUALITY_DEFAULTS.filtersPunch,
+    filtersVariationsScale: SECTION_SCALE_DEFAULTS.filtersVariations,
+    filtersRibbonScale: SECTION_SCALE_DEFAULTS.filtersRibbon,
+    filtersRimScale: SECTION_SCALE_DEFAULTS.filtersRim,
+    filtersFuzzScale: SECTION_SCALE_DEFAULTS.filtersFuzz,
+    filtersCounterFillScale: SECTION_SCALE_DEFAULTS.filtersCounterFill,
+    filtersGrainScale: SECTION_SCALE_DEFAULTS.filtersGrain,
+    filtersWeightScale: SECTION_SCALE_DEFAULTS.filtersWeight,
+    filtersSpeckleScale: SECTION_SCALE_DEFAULTS.filtersSpeckle,
+    filtersDropoutsScale: SECTION_SCALE_DEFAULTS.filtersDropouts,
+    filtersSmudgeScale: SECTION_SCALE_DEFAULTS.filtersSmudge,
+    filtersPunchScale: SECTION_SCALE_DEFAULTS.filtersPunch,
     altSeed: 0x51F15EED,
     inkSectionOrder: DEFAULT_INK_SECTION_ORDER.slice(),
     glyphJitterEnabled: GLYPH_JITTER_DEFAULTS.enabled,
@@ -164,31 +158,28 @@ export function createEphemeralState() {
 export function resetInkEffectsState(state) {
   if (!state) return;
   state.effectsOverallStrength = 100;
-  state.expToneStrength = SECTION_STRENGTH_DEFAULTS.expTone;
-  state.expEdgeStrength = SECTION_STRENGTH_DEFAULTS.expEdge;
-  state.expGrainStrength = SECTION_STRENGTH_DEFAULTS.expGrain;
-  state.expDefectsStrength = SECTION_STRENGTH_DEFAULTS.expDefects;
-  state.expToneVariationsQuality = SECTION_QUALITY_DEFAULTS.expToneVariations;
-  state.expToneRibbonQuality = SECTION_QUALITY_DEFAULTS.expToneRibbon;
-  state.expEdgeRimQuality = SECTION_QUALITY_DEFAULTS.expEdgeRim;
-  state.expEdgeFuzzQuality = SECTION_QUALITY_DEFAULTS.expEdgeFuzz;
-  state.expEdgeCounterFillQuality = SECTION_QUALITY_DEFAULTS.expEdgeCounterFill;
-  state.expEdgeGrainQuality = SECTION_QUALITY_DEFAULTS.expEdgeGrain;
-  state.expEdgeWeightQuality = SECTION_QUALITY_DEFAULTS.expEdgeWeight;
-  state.expGrainSpeckleQuality = SECTION_QUALITY_DEFAULTS.expGrainSpeckle;
-  state.expGrainDropoutsQuality = SECTION_QUALITY_DEFAULTS.expGrainDropouts;
-  state.expDefectsSmudgeQuality = SECTION_QUALITY_DEFAULTS.expDefectsSmudge;
-  state.expDefectsPunchQuality = SECTION_QUALITY_DEFAULTS.expDefectsPunch;
-  state.expToneVariationsScale = SECTION_SCALE_DEFAULTS.expToneVariations;
-  state.expToneRibbonScale = SECTION_SCALE_DEFAULTS.expToneRibbon;
-  state.expEdgeRimScale = SECTION_SCALE_DEFAULTS.expEdgeRim;
-  state.expEdgeFuzzScale = SECTION_SCALE_DEFAULTS.expEdgeFuzz;
-  state.expEdgeCounterFillScale = SECTION_SCALE_DEFAULTS.expEdgeCounterFill;
-  state.expEdgeGrainScale = SECTION_SCALE_DEFAULTS.expEdgeGrain;
-  state.expEdgeWeightScale = SECTION_SCALE_DEFAULTS.expEdgeWeight;
-  state.expGrainSpeckleScale = SECTION_SCALE_DEFAULTS.expGrainSpeckle;
-  state.expGrainDropoutsScale = SECTION_SCALE_DEFAULTS.expGrainDropouts;
-  state.expDefectsSmudgeScale = SECTION_SCALE_DEFAULTS.expDefectsSmudge;
-  state.expDefectsPunchScale = SECTION_SCALE_DEFAULTS.expDefectsPunch;
+  state.filtersStrength = SECTION_STRENGTH_DEFAULTS.filters;
+  state.filtersVariationsQuality = SECTION_QUALITY_DEFAULTS.filtersVariations;
+  state.filtersRibbonQuality = SECTION_QUALITY_DEFAULTS.filtersRibbon;
+  state.filtersRimQuality = SECTION_QUALITY_DEFAULTS.filtersRim;
+  state.filtersFuzzQuality = SECTION_QUALITY_DEFAULTS.filtersFuzz;
+  state.filtersCounterFillQuality = SECTION_QUALITY_DEFAULTS.filtersCounterFill;
+  state.filtersGrainQuality = SECTION_QUALITY_DEFAULTS.filtersGrain;
+  state.filtersWeightQuality = SECTION_QUALITY_DEFAULTS.filtersWeight;
+  state.filtersSpeckleQuality = SECTION_QUALITY_DEFAULTS.filtersSpeckle;
+  state.filtersDropoutsQuality = SECTION_QUALITY_DEFAULTS.filtersDropouts;
+  state.filtersSmudgeQuality = SECTION_QUALITY_DEFAULTS.filtersSmudge;
+  state.filtersPunchQuality = SECTION_QUALITY_DEFAULTS.filtersPunch;
+  state.filtersVariationsScale = SECTION_SCALE_DEFAULTS.filtersVariations;
+  state.filtersRibbonScale = SECTION_SCALE_DEFAULTS.filtersRibbon;
+  state.filtersRimScale = SECTION_SCALE_DEFAULTS.filtersRim;
+  state.filtersFuzzScale = SECTION_SCALE_DEFAULTS.filtersFuzz;
+  state.filtersCounterFillScale = SECTION_SCALE_DEFAULTS.filtersCounterFill;
+  state.filtersGrainScale = SECTION_SCALE_DEFAULTS.filtersGrain;
+  state.filtersWeightScale = SECTION_SCALE_DEFAULTS.filtersWeight;
+  state.filtersSpeckleScale = SECTION_SCALE_DEFAULTS.filtersSpeckle;
+  state.filtersDropoutsScale = SECTION_SCALE_DEFAULTS.filtersDropouts;
+  state.filtersSmudgeScale = SECTION_SCALE_DEFAULTS.filtersSmudge;
+  state.filtersPunchScale = SECTION_SCALE_DEFAULTS.filtersPunch;
   state.inkSectionOrder = DEFAULT_INK_SECTION_ORDER.slice();
 }

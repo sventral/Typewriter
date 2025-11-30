@@ -9,59 +9,59 @@ import {
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
 const INPUT_OVERRIDES = {
-  'expTone.ink.pressureMid': { type: 'range', min: 0, max: 1.6, step: 0.01, precision: 2 },
-  'expTone.ink.pressureVar': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
-  'expTone.ink.inkGamma': { type: 'range', min: 0.4, max: 2.5, step: 0.01, precision: 2 },
-  'expTone.ink.toneJitter': { type: 'range', min: 0, max: 0.6, step: 0.01, precision: 2 },
-  'expTone.ribbon.height': { type: 'range', min: 0.05, max: 1, step: 0.01, precision: 2 },
-  'expTone.ribbon.position': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expTone.ribbon.delta': { type: 'range', min: -0.5, max: 0.5, step: 0.01, precision: 2 },
-  'expTone.ribbon.fade': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expTone.ribbon.wobble': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expTone.noise.lfScale': { type: 'range', min: 8, max: 40, step: 0.5, precision: 2 },
-  'expEdge.centerEdge.center': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.centerEdge.edge': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.ink.rim': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
-  'expEdge.ink.rimCurve': { type: 'range', min: 0.4, max: 3, step: 0.01, precision: 2 },
-  'expEdge.edgeFuzz.opacity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.edgeFuzz.inBand': { type: 'range', min: 0, max: 4, step: 0.01, precision: 2 },
-  'expEdge.edgeFuzz.outBand': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
-  'expEdge.edgeFuzz.rough': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.edgeFuzz.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
-  'expEdge.edgeFuzz.mix': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.counterFill.transparency': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.counterFill.fill': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
-  'expEdge.counterFill.coverage': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.counterFill.noise': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.fuzzExp.thicken': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
-  'expEdge.fuzzExp.patchFill': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.centerEdge.thicken': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
-  'expEdge.centerEdge.patchFill': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expEdge.centerEdge.patchSize': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expGrain.ink.mottling': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
-  'expGrain.ink.speckDark': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
-  'expGrain.ink.speckLight': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
-  'expGrain.ink.speckGrayBias': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expGrain.dropouts.amount': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
-  'expGrain.dropouts.width': { type: 'range', min: 0, max: 5, step: 0.01, precision: 2 },
-  'expGrain.dropouts.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
-  'expGrain.dropouts.pinhole': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expGrain.dropouts.streakDensity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expGrain.dropouts.pinholeWeight': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expDefects.smudge.strength': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
-  'expDefects.smudge.radius': { type: 'range', min: 0, max: 15, step: 0.25, precision: 2 },
-  'expDefects.smudge.falloff': { type: 'range', min: 0, max: 4, step: 0.01, precision: 2 },
-  'expDefects.smudge.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
-  'expDefects.smudge.density': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expDefects.smudge.dirDeg': { type: 'range', min: 0, max: 360, step: 1, precision: 0 },
-  'expDefects.smudge.spread': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expDefects.punch.chance': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
-  'expDefects.punch.count': { type: 'range', min: 0, max: 10, step: 1, precision: 0 },
-  'expDefects.punch.rMin': { type: 'range', min: 0.002, max: 0.08, step: 0.001, precision: 3 },
-  'expDefects.punch.rMax': { type: 'range', min: 0.004, max: 0.12, step: 0.001, precision: 3 },
-  'expDefects.punch.edgeBias': { type: 'range', min: -1, max: 1, step: 0.01, precision: 2 },
-  'expDefects.punch.soft': { type: 'range', min: 0, max: 0.4, step: 0.005, precision: 3 },
-  'expDefects.punch.intensity': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
+  'filters.ink.pressureMid': { type: 'range', min: 0, max: 1.6, step: 0.01, precision: 2 },
+  'filters.ink.pressureVar': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
+  'filters.ink.inkGamma': { type: 'range', min: 0.4, max: 2.5, step: 0.01, precision: 2 },
+  'filters.ink.toneJitter': { type: 'range', min: 0, max: 0.6, step: 0.01, precision: 2 },
+  'filters.ribbon.height': { type: 'range', min: 0.05, max: 1, step: 0.01, precision: 2 },
+  'filters.ribbon.position': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.ribbon.delta': { type: 'range', min: -0.5, max: 0.5, step: 0.01, precision: 2 },
+  'filters.ribbon.fade': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.ribbon.wobble': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.noise.lfScale': { type: 'range', min: 8, max: 40, step: 0.5, precision: 2 },
+  'filters.centerEdge.center': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.centerEdge.edge': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.ink.rim': { type: 'range', min: 0, max: 0.8, step: 0.01, precision: 2 },
+  'filters.ink.rimCurve': { type: 'range', min: 0.4, max: 3, step: 0.01, precision: 2 },
+  'filters.edgeFuzz.opacity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.edgeFuzz.inBand': { type: 'range', min: 0, max: 4, step: 0.01, precision: 2 },
+  'filters.edgeFuzz.outBand': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
+  'filters.edgeFuzz.rough': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.edgeFuzz.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
+  'filters.edgeFuzz.mix': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.counterFill.transparency': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.counterFill.fill': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
+  'filters.counterFill.coverage': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.counterFill.noise': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.fuzzExp.thicken': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
+  'filters.fuzzExp.patchFill': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.centerEdge.thicken': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
+  'filters.centerEdge.patchFill': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.centerEdge.patchSize': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.ink.mottling': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
+  'filters.ink.speckDark': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
+  'filters.ink.speckLight': { type: 'range', min: 0, max: 3, step: 0.01, precision: 2 },
+  'filters.ink.speckGrayBias': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.dropouts.amount': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
+  'filters.dropouts.width': { type: 'range', min: 0, max: 5, step: 0.01, precision: 2 },
+  'filters.dropouts.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
+  'filters.dropouts.pinhole': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.dropouts.streakDensity': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.dropouts.pinholeWeight': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.smudge.strength': { type: 'range', min: 0, max: 2, step: 0.01, precision: 2 },
+  'filters.smudge.radius': { type: 'range', min: 0, max: 15, step: 0.25, precision: 2 },
+  'filters.smudge.falloff': { type: 'range', min: 0, max: 4, step: 0.01, precision: 2 },
+  'filters.smudge.scale': { type: 'range', min: 2, max: 64, step: 1, precision: 0 },
+  'filters.smudge.density': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.smudge.dirDeg': { type: 'range', min: 0, max: 360, step: 1, precision: 0 },
+  'filters.smudge.spread': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.punch.chance': { type: 'range', min: 0, max: 1, step: 0.01, precision: 2 },
+  'filters.punch.count': { type: 'range', min: 0, max: 10, step: 1, precision: 0 },
+  'filters.punch.rMin': { type: 'range', min: 0.002, max: 0.08, step: 0.001, precision: 3 },
+  'filters.punch.rMax': { type: 'range', min: 0.004, max: 0.12, step: 0.001, precision: 3 },
+  'filters.punch.edgeBias': { type: 'range', min: -1, max: 1, step: 0.01, precision: 2 },
+  'filters.punch.soft': { type: 'range', min: 0, max: 0.4, step: 0.005, precision: 3 },
+  'filters.punch.intensity': { type: 'range', min: 0, max: 1.5, step: 0.01, precision: 2 },
 };
 
 function getInputOverride(sectionId, path) {
@@ -163,47 +163,28 @@ const EXP_DEFECT_KEYS = [
   { path: 'punch.intensity', label: 'Brightness' },
 ];
 
+const FILTER_KEYS = [
+  ...EXP_TONE_KEYS,
+  ...EXP_EDGE_KEYS,
+  ...EXP_GRAIN_KEYS,
+  ...EXP_DEFECT_KEYS,
+];
+
+const FILTER_LABELS = {
+  ...EXP_EDGE_LABELS,
+};
+
 const SECTION_DEFS = [
   {
-    id: 'expTone',
-    label: 'Tone',
+    id: 'filters',
+    label: 'Filters',
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
-    keyOrder: EXP_TONE_KEYS,
+    keyOrder: FILTER_KEYS,
+    labels: FILTER_LABELS,
     trigger: 'glyph',
-    stateKey: 'expToneStrength',
-    defaultStrength: getDefaultInkSectionStrength('expTone'),
-  },
-  {
-    id: 'expEdge',
-    label: 'Edge',
-    mode: 'experimental',
-    config: EXPERIMENTAL_EFFECTS_CONFIG,
-    keyOrder: EXP_EDGE_KEYS,
-    labels: EXP_EDGE_LABELS,
-    trigger: 'glyph',
-    stateKey: 'expEdgeStrength',
-    defaultStrength: getDefaultInkSectionStrength('expEdge'),
-  },
-  {
-    id: 'expGrain',
-    label: 'Texture',
-    mode: 'experimental',
-    config: EXPERIMENTAL_EFFECTS_CONFIG,
-    keyOrder: EXP_GRAIN_KEYS,
-    trigger: 'glyph',
-    stateKey: 'expGrainStrength',
-    defaultStrength: getDefaultInkSectionStrength('expGrain'),
-  },
-  {
-    id: 'expDefects',
-    label: 'Defects',
-    mode: 'experimental',
-    config: EXPERIMENTAL_EFFECTS_CONFIG,
-    keyOrder: EXP_DEFECT_KEYS,
-    trigger: 'glyph',
-    stateKey: 'expDefectsStrength',
-    defaultStrength: getDefaultInkSectionStrength('expDefects'),
+    stateKey: 'filtersStrength',
+    defaultStrength: getDefaultInkSectionStrength('filters'),
   },
 ];
 
@@ -216,39 +197,33 @@ const EFFECT_SCALE_MIN = 0;
 const EFFECT_SCALE_MAX = 200;
 
 const SUBGROUP_CONFIG = {
-  expTone: [
+  filters: [
     { id: 'variations', label: 'Variations', paths: ['enable.toneDynamics', 'ink.pressureMid', 'ink.pressureVar', 'ink.inkGamma', 'ink.toneJitter', 'noise.lfScale'] },
     { id: 'ribbon', label: 'Ribbon', paths: ['enable.ribbonBands', 'ribbon.height', 'ribbon.position', 'ribbon.delta', 'ribbon.fade', 'ribbon.wobble'] },
-  ],
-  expEdge: [
     { id: 'rim', label: 'Rim', paths: ['enable.rim', 'ink.rim', 'ink.rimCurve'] },
     { id: 'fuzz', label: 'Fuzz', paths: ['enable.edgeFuzz', 'edgeFuzz.opacity', 'edgeFuzz.inBand', 'edgeFuzz.outBand', 'edgeFuzz.rough', 'edgeFuzz.scale', 'edgeFuzz.mix'] },
     { id: 'counterFill', label: 'Counter fill', paths: ['enable.counterFill', 'counterFill.transparency', 'counterFill.fill', 'counterFill.coverage', 'counterFill.noise'] },
     { id: 'grain', label: 'Grain', paths: ['fuzzExp', 'fuzzExp.enable', 'fuzzExp.thicken', 'fuzzExp.patchFill'] },
     { id: 'weight', label: 'Weight', paths: ['enable.centerEdge', 'centerEdge.center', 'centerEdge.edge', 'centerEdge.thicken', 'centerEdge.patchFill', 'centerEdge.patchSize'] },
-  ],
-  expGrain: [
     { id: 'speckle', label: 'Speckle', paths: ['enable.grainSpeck', 'ink.mottling', 'ink.speckDark', 'ink.speckLight', 'ink.speckGrayBias'] },
     { id: 'dropouts', label: 'Dropouts', paths: ['enable.dropouts', 'dropouts.amount', 'dropouts.width', 'dropouts.scale', 'dropouts.pinhole', 'dropouts.streakDensity', 'dropouts.pinholeWeight'] },
-  ],
-  expDefects: [
     { id: 'smudge', label: 'Smudge halo', paths: ['enable.smudge', 'smudge.strength', 'smudge.radius', 'smudge.falloff', 'smudge.scale', 'smudge.density', 'smudge.dirDeg', 'smudge.spread'] },
     { id: 'punch', label: 'Punch defects', paths: ['enable.punch', 'punch.chance', 'punch.count', 'punch.rMin', 'punch.rMax', 'punch.edgeBias', 'punch.soft', 'punch.intensity'] },
   ],
 };
 
 const SUBSECTION_STAGE_MAP = Object.freeze({
-  'expTone.variations': ['tone'],
-  'expTone.ribbon': ['tone'],
-  'expEdge.rim': ['tone'],
-  'expEdge.fuzz': ['fuzz'],
-  'expEdge.counterFill': ['counterFill'],
-  'expEdge.grain': ['fuzzExp'],
-  'expEdge.weight': ['centerEdge'],
-  'expGrain.speckle': ['texture'],
-  'expGrain.dropouts': ['dropouts'],
-  'expDefects.smudge': ['smudge'],
-  'expDefects.punch': ['punch'],
+  'filters.variations': ['tone'],
+  'filters.ribbon': ['tone'],
+  'filters.rim': ['tone'],
+  'filters.fuzz': ['fuzz'],
+  'filters.counterFill': ['counterFill'],
+  'filters.grain': ['fuzzExp'],
+  'filters.weight': ['centerEdge'],
+  'filters.speckle': ['texture'],
+  'filters.dropouts': ['dropouts'],
+  'filters.smudge': ['smudge'],
+  'filters.punch': ['punch'],
 });
 
 function makeSubsectionStateKey(sectionId, subgroupId, suffix) {
@@ -557,16 +532,31 @@ function normalizeStyleRecord(style, index = 0) {
     const record = {
       id: typeof style?.id === 'string' && style.id.trim() ? style.id.trim() : generateStyleId(),
       name: sanitizeStyleName(style?.name) || `Style ${index + 1}`,
-      overall: clamp(Math.round(Number(style?.overall ?? 100)), 0, 100),
+      overall: clamp(Math.round(Number(style?.overall ?? style?.strength ?? 100)), 0, 100),
       sections: {},
-      sectionOrder: normalizeSectionOrder(style?.sectionOrder),
+      sectionOrder: normalizeSectionOrder(style?.sectionOrder || style?.sections?.order || style?.inkSectionOrder || style?.inkSectionsOrder || style?.sectionOrder),
     };
+    const legacySectionStrengths = ['expTone', 'expEdge', 'expGrain', 'expDefects']
+      .map(id => style?.sections?.[id]?.strength ?? style?.[id]?.strength)
+      .filter(val => Number.isFinite(val));
+    const legacyStrengthFallback = legacySectionStrengths.length
+      ? Math.max(...legacySectionStrengths)
+      : null;
     SECTION_DEFS.forEach(def => {
       const rawSection = style?.sections && typeof style.sections === 'object'
         ? style.sections[def.id]
         : (style && typeof style === 'object' && typeof style[def.id] === 'object' ? style[def.id] : null);
-      const section = rawSection && typeof rawSection === 'object' ? rawSection : {};
-      const strength = clamp(Math.round(Number(section?.strength ?? def.defaultStrength ?? 0)), 0, 100);
+      let section = rawSection && typeof rawSection === 'object' ? rawSection : {};
+      if (!rawSection) {
+        const mergedConfig = deepCloneValue(def.config);
+        ['expTone', 'expEdge', 'expGrain', 'expDefects'].forEach(legacyId => {
+          const legacy = style?.sections?.[legacyId] || style?.[legacyId];
+          if (!legacy || typeof legacy !== 'object') return;
+          applyConfigToTarget(mergedConfig, legacy.config ?? legacy.settings ?? legacy);
+        });
+        section = { ...section, config: mergedConfig };
+      }
+      const strength = clamp(Math.round(Number(section?.strength ?? legacyStrengthFallback ?? def.defaultStrength ?? 0)), 0, 100);
       let configSource = section.config != null
         ? section.config
         : section.settings != null
@@ -581,10 +571,27 @@ function normalizeStyleRecord(style, index = 0) {
       const subsectionIds = SUBSECTION_IDS_BY_SECTION[def.id] || [];
       subsectionIds.forEach(subId => {
         const subKey = subId.split('.')[1];
+        const legacySectionId = {
+          variations: 'expTone',
+          ribbon: 'expTone',
+          rim: 'expEdge',
+          fuzz: 'expEdge',
+          counterFill: 'expEdge',
+          grain: 'expEdge',
+          weight: 'expEdge',
+          speckle: 'expGrain',
+          dropouts: 'expGrain',
+          smudge: 'expDefects',
+          punch: 'expDefects',
+        }[subKey];
         const defaultQuality = getDefaultInkSubsectionQuality(subId);
         const qualitySource = section?.qualities?.[subKey]
           ?? section?.qualities?.[subId]
           ?? section?.quality
+          ?? (legacySectionId ? style?.sections?.[legacySectionId]?.qualities?.[subKey] : null)
+          ?? (legacySectionId ? style?.sections?.[legacySectionId]?.qualities?.[`${legacySectionId}.${subKey}`] : null)
+          ?? (legacySectionId ? style?.[legacySectionId]?.qualities?.[subKey] : null)
+          ?? (legacySectionId ? style?.[legacySectionId]?.qualities?.[`${legacySectionId}.${subKey}`] : null)
           ?? getDefaultInkSectionQuality(def.id);
         record.sections[def.id].qualities[subKey] = clampQualityValue(
           qualitySource,
@@ -594,6 +601,10 @@ function normalizeStyleRecord(style, index = 0) {
         const scaleSource = section?.scales?.[subKey]
           ?? section?.scales?.[subId]
           ?? section?.scale
+          ?? (legacySectionId ? style?.sections?.[legacySectionId]?.scales?.[subKey] : null)
+          ?? (legacySectionId ? style?.sections?.[legacySectionId]?.scales?.[`${legacySectionId}.${subKey}`] : null)
+          ?? (legacySectionId ? style?.[legacySectionId]?.scales?.[subKey] : null)
+          ?? (legacySectionId ? style?.[legacySectionId]?.scales?.[`${legacySectionId}.${subKey}`] : null)
           ?? EFFECT_SCALE_DEFAULT;
         record.sections[def.id].scales[subKey] = clampScaleValue(
           scaleSource,
@@ -601,15 +612,15 @@ function normalizeStyleRecord(style, index = 0) {
         );
       });
     });
-    const legacyDropouts = extractDropoutsConfig(style?.sections?.expDefects || style?.expDefects);
-    if (legacyDropouts) {
-      const textureSection = record.sections.expGrain;
+    const legacyDropouts = extractDropoutsConfig(style?.sections?.filters || style?.filters || style?.sections?.expDefects || style?.expDefects);
+    if (legacyDropouts && record.sections.filters) {
+      const filtersSection = record.sections.filters;
       if (legacyDropouts.dropouts) {
-        textureSection.config.dropouts = legacyDropouts.dropouts;
+        filtersSection.config.dropouts = legacyDropouts.dropouts;
       }
       if (legacyDropouts.enabled !== null) {
-        textureSection.config.enable = {
-          ...(textureSection.config.enable || {}),
+        filtersSection.config.enable = {
+          ...(filtersSection.config.enable || {}),
           dropouts: legacyDropouts.enabled,
         };
       }

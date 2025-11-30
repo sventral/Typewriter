@@ -50,45 +50,51 @@ const EFFECT_SCALE_MAX = 200;
 const METADATA_VERSION = 2;
 
 const SECTION_STRENGTH_DEFAULTS = Object.freeze({
-  expTone: getDefaultInkSectionStrength('expTone'),
-  expEdge: getDefaultInkSectionStrength('expEdge'),
-  expGrain: getDefaultInkSectionStrength('expGrain'),
-  expDefects: getDefaultInkSectionStrength('expDefects'),
+  filters: getDefaultInkSectionStrength('filters'),
 });
 
 const SECTION_QUALITY_DEFAULTS = Object.freeze({
-  'expTone.variations': getDefaultInkSubsectionQuality('expTone.variations'),
-  'expTone.ribbon': getDefaultInkSubsectionQuality('expTone.ribbon'),
-  'expEdge.rim': getDefaultInkSubsectionQuality('expEdge.rim'),
-  'expEdge.fuzz': getDefaultInkSubsectionQuality('expEdge.fuzz'),
-  'expEdge.counterFill': getDefaultInkSubsectionQuality('expEdge.counterFill'),
-  'expEdge.grain': getDefaultInkSubsectionQuality('expEdge.grain'),
-  'expEdge.weight': getDefaultInkSubsectionQuality('expEdge.weight'),
-  'expGrain.speckle': getDefaultInkSubsectionQuality('expGrain.speckle'),
-  'expGrain.dropouts': getDefaultInkSubsectionQuality('expGrain.dropouts'),
-  'expDefects.smudge': getDefaultInkSubsectionQuality('expDefects.smudge'),
-  'expDefects.punch': getDefaultInkSubsectionQuality('expDefects.punch'),
+  'filters.variations': getDefaultInkSubsectionQuality('filters.variations'),
+  'filters.ribbon': getDefaultInkSubsectionQuality('filters.ribbon'),
+  'filters.rim': getDefaultInkSubsectionQuality('filters.rim'),
+  'filters.fuzz': getDefaultInkSubsectionQuality('filters.fuzz'),
+  'filters.counterFill': getDefaultInkSubsectionQuality('filters.counterFill'),
+  'filters.grain': getDefaultInkSubsectionQuality('filters.grain'),
+  'filters.weight': getDefaultInkSubsectionQuality('filters.weight'),
+  'filters.speckle': getDefaultInkSubsectionQuality('filters.speckle'),
+  'filters.dropouts': getDefaultInkSubsectionQuality('filters.dropouts'),
+  'filters.smudge': getDefaultInkSubsectionQuality('filters.smudge'),
+  'filters.punch': getDefaultInkSubsectionQuality('filters.punch'),
 });
 
 const SECTION_SCALE_DEFAULTS = Object.freeze({
-  'expTone.variations': getDefaultInkSubsectionScale('expTone.variations'),
-  'expTone.ribbon': getDefaultInkSubsectionScale('expTone.ribbon'),
-  'expEdge.rim': getDefaultInkSubsectionScale('expEdge.rim'),
-  'expEdge.fuzz': getDefaultInkSubsectionScale('expEdge.fuzz'),
-  'expEdge.counterFill': getDefaultInkSubsectionScale('expEdge.counterFill'),
-  'expEdge.grain': getDefaultInkSubsectionScale('expEdge.grain'),
-  'expEdge.weight': getDefaultInkSubsectionScale('expEdge.weight'),
-  'expGrain.speckle': getDefaultInkSubsectionScale('expGrain.speckle'),
-  'expGrain.dropouts': getDefaultInkSubsectionScale('expGrain.dropouts'),
-  'expDefects.smudge': getDefaultInkSubsectionScale('expDefects.smudge'),
-  'expDefects.punch': getDefaultInkSubsectionScale('expDefects.punch'),
+  'filters.variations': getDefaultInkSubsectionScale('filters.variations'),
+  'filters.ribbon': getDefaultInkSubsectionScale('filters.ribbon'),
+  'filters.rim': getDefaultInkSubsectionScale('filters.rim'),
+  'filters.fuzz': getDefaultInkSubsectionScale('filters.fuzz'),
+  'filters.counterFill': getDefaultInkSubsectionScale('filters.counterFill'),
+  'filters.grain': getDefaultInkSubsectionScale('filters.grain'),
+  'filters.weight': getDefaultInkSubsectionScale('filters.weight'),
+  'filters.speckle': getDefaultInkSubsectionScale('filters.speckle'),
+  'filters.dropouts': getDefaultInkSubsectionScale('filters.dropouts'),
+  'filters.smudge': getDefaultInkSubsectionScale('filters.smudge'),
+  'filters.punch': getDefaultInkSubsectionScale('filters.punch'),
 });
 
 const SECTION_TO_SUBSECTIONS = Object.freeze({
-  expTone: ['expTone.variations', 'expTone.ribbon'],
-  expEdge: ['expEdge.rim', 'expEdge.fuzz', 'expEdge.counterFill', 'expEdge.grain', 'expEdge.weight'],
-  expGrain: ['expGrain.speckle', 'expGrain.dropouts'],
-  expDefects: ['expDefects.smudge', 'expDefects.punch'],
+  filters: [
+    'filters.variations',
+    'filters.ribbon',
+    'filters.rim',
+    'filters.fuzz',
+    'filters.counterFill',
+    'filters.grain',
+    'filters.weight',
+    'filters.speckle',
+    'filters.dropouts',
+    'filters.smudge',
+    'filters.punch',
+  ],
 });
 
 function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
@@ -334,32 +340,29 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     lineHeightFactor: state.lineHeightFactor,
     zoom: state.zoom,
     effectsOverallStrength: clamp(Number(state.effectsOverallStrength ?? 100), 0, 100),
-    expToneStrength: clamp(Number(state.expToneStrength ?? SECTION_STRENGTH_DEFAULTS.expTone), 0, 100),
-    expEdgeStrength: clamp(Number(state.expEdgeStrength ?? SECTION_STRENGTH_DEFAULTS.expEdge), 0, 100),
-    expGrainStrength: clamp(Number(state.expGrainStrength ?? SECTION_STRENGTH_DEFAULTS.expGrain), 0, 100),
-    expDefectsStrength: clamp(Number(state.expDefectsStrength ?? SECTION_STRENGTH_DEFAULTS.expDefects), 0, 100),
-    expToneVariationsQuality: clamp(Number(state.expToneVariationsQuality ?? SECTION_QUALITY_DEFAULTS['expTone.variations']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expToneRibbonQuality: clamp(Number(state.expToneRibbonQuality ?? SECTION_QUALITY_DEFAULTS['expTone.ribbon']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expEdgeRimQuality: clamp(Number(state.expEdgeRimQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.rim']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expEdgeFuzzQuality: clamp(Number(state.expEdgeFuzzQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.fuzz']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expEdgeCounterFillQuality: clamp(Number(state.expEdgeCounterFillQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.counterFill']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expEdgeGrainQuality: clamp(Number(state.expEdgeGrainQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.grain']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expEdgeWeightQuality: clamp(Number(state.expEdgeWeightQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.weight']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expGrainSpeckleQuality: clamp(Number(state.expGrainSpeckleQuality ?? SECTION_QUALITY_DEFAULTS['expGrain.speckle']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expGrainDropoutsQuality: clamp(Number(state.expGrainDropoutsQuality ?? SECTION_QUALITY_DEFAULTS['expGrain.dropouts']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expDefectsSmudgeQuality: clamp(Number(state.expDefectsSmudgeQuality ?? SECTION_QUALITY_DEFAULTS['expDefects.smudge']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expDefectsPunchQuality: clamp(Number(state.expDefectsPunchQuality ?? SECTION_QUALITY_DEFAULTS['expDefects.punch']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
-    expToneVariationsScale: clamp(Number(state.expToneVariationsScale ?? SECTION_SCALE_DEFAULTS['expTone.variations']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
-    expToneRibbonScale: clamp(Number(state.expToneRibbonScale ?? SECTION_SCALE_DEFAULTS['expTone.ribbon']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
-    expEdgeRimScale: clamp(Number(state.expEdgeRimScale ?? SECTION_SCALE_DEFAULTS['expEdge.rim']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
-    expEdgeFuzzScale: clamp(Number(state.expEdgeFuzzScale ?? SECTION_SCALE_DEFAULTS['expEdge.fuzz']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
-    expEdgeCounterFillScale: clamp(Number(state.expEdgeCounterFillScale ?? SECTION_SCALE_DEFAULTS['expEdge.counterFill']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
-    expEdgeGrainScale: clamp(Number(state.expEdgeGrainScale ?? SECTION_SCALE_DEFAULTS['expEdge.grain']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
-    expEdgeWeightScale: clamp(Number(state.expEdgeWeightScale ?? SECTION_SCALE_DEFAULTS['expEdge.weight']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
-    expGrainSpeckleScale: clamp(Number(state.expGrainSpeckleScale ?? SECTION_SCALE_DEFAULTS['expGrain.speckle']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
-    expGrainDropoutsScale: clamp(Number(state.expGrainDropoutsScale ?? SECTION_SCALE_DEFAULTS['expGrain.dropouts']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
-    expDefectsSmudgeScale: clamp(Number(state.expDefectsSmudgeScale ?? SECTION_SCALE_DEFAULTS['expDefects.smudge']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
-    expDefectsPunchScale: clamp(Number(state.expDefectsPunchScale ?? SECTION_SCALE_DEFAULTS['expDefects.punch']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersStrength: clamp(Number(state.filtersStrength ?? SECTION_STRENGTH_DEFAULTS.filters), 0, 100),
+    filtersVariationsQuality: clamp(Number(state.filtersVariationsQuality ?? SECTION_QUALITY_DEFAULTS['filters.variations']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersRibbonQuality: clamp(Number(state.filtersRibbonQuality ?? SECTION_QUALITY_DEFAULTS['filters.ribbon']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersRimQuality: clamp(Number(state.filtersRimQuality ?? SECTION_QUALITY_DEFAULTS['filters.rim']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersFuzzQuality: clamp(Number(state.filtersFuzzQuality ?? SECTION_QUALITY_DEFAULTS['filters.fuzz']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersCounterFillQuality: clamp(Number(state.filtersCounterFillQuality ?? SECTION_QUALITY_DEFAULTS['filters.counterFill']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersGrainQuality: clamp(Number(state.filtersGrainQuality ?? SECTION_QUALITY_DEFAULTS['filters.grain']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersWeightQuality: clamp(Number(state.filtersWeightQuality ?? SECTION_QUALITY_DEFAULTS['filters.weight']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersSpeckleQuality: clamp(Number(state.filtersSpeckleQuality ?? SECTION_QUALITY_DEFAULTS['filters.speckle']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersDropoutsQuality: clamp(Number(state.filtersDropoutsQuality ?? SECTION_QUALITY_DEFAULTS['filters.dropouts']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersSmudgeQuality: clamp(Number(state.filtersSmudgeQuality ?? SECTION_QUALITY_DEFAULTS['filters.smudge']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersPunchQuality: clamp(Number(state.filtersPunchQuality ?? SECTION_QUALITY_DEFAULTS['filters.punch']), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX),
+    filtersVariationsScale: clamp(Number(state.filtersVariationsScale ?? SECTION_SCALE_DEFAULTS['filters.variations']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersRibbonScale: clamp(Number(state.filtersRibbonScale ?? SECTION_SCALE_DEFAULTS['filters.ribbon']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersRimScale: clamp(Number(state.filtersRimScale ?? SECTION_SCALE_DEFAULTS['filters.rim']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersFuzzScale: clamp(Number(state.filtersFuzzScale ?? SECTION_SCALE_DEFAULTS['filters.fuzz']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersCounterFillScale: clamp(Number(state.filtersCounterFillScale ?? SECTION_SCALE_DEFAULTS['filters.counterFill']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersGrainScale: clamp(Number(state.filtersGrainScale ?? SECTION_SCALE_DEFAULTS['filters.grain']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersWeightScale: clamp(Number(state.filtersWeightScale ?? SECTION_SCALE_DEFAULTS['filters.weight']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersSpeckleScale: clamp(Number(state.filtersSpeckleScale ?? SECTION_SCALE_DEFAULTS['filters.speckle']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersDropoutsScale: clamp(Number(state.filtersDropoutsScale ?? SECTION_SCALE_DEFAULTS['filters.dropouts']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersSmudgeScale: clamp(Number(state.filtersSmudgeScale ?? SECTION_SCALE_DEFAULTS['filters.smudge']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
+    filtersPunchScale: clamp(Number(state.filtersPunchScale ?? SECTION_SCALE_DEFAULTS['filters.punch']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
     inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
     wordWrap: state.wordWrap,
     stageWidthFactor: state.stageWidthFactor,
@@ -566,6 +569,15 @@ export function deserializeDocumentState(data, context) {
     storedLineSlant?.range,
     state.lineSlantRangeDeg ?? LINE_SLANT_DEFAULTS.range,
   );
+  const legacySectionStrengths = [
+    data.expToneStrength,
+    data.expEdgeStrength,
+    data.expGrainStrength,
+    data.expDefectsStrength,
+  ].filter(val => Number.isFinite(val));
+  const legacyStrengthFallback = legacySectionStrengths.length
+    ? Math.max(...legacySectionStrengths)
+    : null;
 
   Object.assign(state, {
     marginL: data.margins?.L ?? state.marginL,
@@ -591,133 +603,228 @@ export function deserializeDocumentState(data, context) {
     lowResZoomSoftCapPct: normalizedLowResZoom.softCapPct ?? LOW_RES_ZOOM_DEFAULTS.softCapPct,
     lowResZoomMarginPct: normalizedLowResZoom.marginPct ?? LOW_RES_ZOOM_DEFAULTS.marginPct,
     effectsOverallStrength: clamp(Number(data.effectsOverallStrength ?? state.effectsOverallStrength ?? 100), 0, 100),
-    expToneStrength: clamp(
-      Number(data.expToneStrength ?? state.expToneStrength ?? SECTION_STRENGTH_DEFAULTS.expTone),
+    filtersStrength: clamp(
+      Number(data.filtersStrength ?? state.filtersStrength ?? legacyStrengthFallback ?? SECTION_STRENGTH_DEFAULTS.filters),
       0,
       100,
     ),
-    expEdgeStrength: clamp(
-      Number(data.expEdgeStrength ?? state.expEdgeStrength ?? SECTION_STRENGTH_DEFAULTS.expEdge),
-      0,
-      100,
-    ),
-    expGrainStrength: clamp(
-      Number(data.expGrainStrength ?? state.expGrainStrength ?? SECTION_STRENGTH_DEFAULTS.expGrain),
-      0,
-      100,
-    ),
-    expDefectsStrength: clamp(
-      Number(data.expDefectsStrength ?? state.expDefectsStrength ?? SECTION_STRENGTH_DEFAULTS.expDefects),
-      0,
-      100,
-    ),
-    expToneVariationsQuality: clamp(
-      Number(data.expToneVariationsQuality ?? state.expToneVariationsQuality ?? SECTION_QUALITY_DEFAULTS['expTone.variations']),
+    filtersVariationsQuality: clamp(
+      Number(
+        data.filtersVariationsQuality
+        ?? state.filtersVariationsQuality
+        ?? data.expToneVariationsQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.variations']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expToneRibbonQuality: clamp(
-      Number(data.expToneRibbonQuality ?? state.expToneRibbonQuality ?? SECTION_QUALITY_DEFAULTS['expTone.ribbon']),
+    filtersRibbonQuality: clamp(
+      Number(
+        data.filtersRibbonQuality
+        ?? state.filtersRibbonQuality
+        ?? data.expToneRibbonQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.ribbon']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expEdgeRimQuality: clamp(
-      Number(data.expEdgeRimQuality ?? state.expEdgeRimQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.rim']),
+    filtersRimQuality: clamp(
+      Number(
+        data.filtersRimQuality
+        ?? state.filtersRimQuality
+        ?? data.expEdgeRimQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.rim']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expEdgeFuzzQuality: clamp(
-      Number(data.expEdgeFuzzQuality ?? state.expEdgeFuzzQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.fuzz']),
+    filtersFuzzQuality: clamp(
+      Number(
+        data.filtersFuzzQuality
+        ?? state.filtersFuzzQuality
+        ?? data.expEdgeFuzzQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.fuzz']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expEdgeCounterFillQuality: clamp(
-      Number(data.expEdgeCounterFillQuality ?? state.expEdgeCounterFillQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.counterFill']),
+    filtersCounterFillQuality: clamp(
+      Number(
+        data.filtersCounterFillQuality
+        ?? state.filtersCounterFillQuality
+        ?? data.expEdgeCounterFillQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.counterFill']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expEdgeGrainQuality: clamp(
-      Number(data.expEdgeGrainQuality ?? state.expEdgeGrainQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.grain']),
+    filtersGrainQuality: clamp(
+      Number(
+        data.filtersGrainQuality
+        ?? state.filtersGrainQuality
+        ?? data.expEdgeGrainQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.grain']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expEdgeWeightQuality: clamp(
-      Number(data.expEdgeWeightQuality ?? state.expEdgeWeightQuality ?? SECTION_QUALITY_DEFAULTS['expEdge.weight']),
+    filtersWeightQuality: clamp(
+      Number(
+        data.filtersWeightQuality
+        ?? state.filtersWeightQuality
+        ?? data.expEdgeWeightQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.weight']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expGrainSpeckleQuality: clamp(
-      Number(data.expGrainSpeckleQuality ?? state.expGrainSpeckleQuality ?? SECTION_QUALITY_DEFAULTS['expGrain.speckle']),
+    filtersSpeckleQuality: clamp(
+      Number(
+        data.filtersSpeckleQuality
+        ?? state.filtersSpeckleQuality
+        ?? data.expGrainSpeckleQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.speckle']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expGrainDropoutsQuality: clamp(
-      Number(data.expGrainDropoutsQuality ?? state.expGrainDropoutsQuality ?? SECTION_QUALITY_DEFAULTS['expGrain.dropouts']),
+    filtersDropoutsQuality: clamp(
+      Number(
+        data.filtersDropoutsQuality
+        ?? state.filtersDropoutsQuality
+        ?? data.expGrainDropoutsQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.dropouts']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expDefectsSmudgeQuality: clamp(
-      Number(data.expDefectsSmudgeQuality ?? state.expDefectsSmudgeQuality ?? SECTION_QUALITY_DEFAULTS['expDefects.smudge']),
+    filtersSmudgeQuality: clamp(
+      Number(
+        data.filtersSmudgeQuality
+        ?? state.filtersSmudgeQuality
+        ?? data.expDefectsSmudgeQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.smudge']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expDefectsPunchQuality: clamp(
-      Number(data.expDefectsPunchQuality ?? state.expDefectsPunchQuality ?? SECTION_QUALITY_DEFAULTS['expDefects.punch']),
+    filtersPunchQuality: clamp(
+      Number(
+        data.filtersPunchQuality
+        ?? state.filtersPunchQuality
+        ?? data.expDefectsPunchQuality
+        ?? SECTION_QUALITY_DEFAULTS['filters.punch']
+      ),
       EFFECT_QUALITY_MIN,
       EFFECT_QUALITY_MAX,
     ),
-    expToneVariationsScale: clamp(
-      Number(data.expToneVariationsScale ?? state.expToneVariationsScale ?? SECTION_SCALE_DEFAULTS['expTone.variations']),
+    filtersVariationsScale: clamp(
+      Number(
+        data.filtersVariationsScale
+        ?? state.filtersVariationsScale
+        ?? data.expToneVariationsScale
+        ?? SECTION_SCALE_DEFAULTS['filters.variations']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),
-    expToneRibbonScale: clamp(
-      Number(data.expToneRibbonScale ?? state.expToneRibbonScale ?? SECTION_SCALE_DEFAULTS['expTone.ribbon']),
+    filtersRibbonScale: clamp(
+      Number(
+        data.filtersRibbonScale
+        ?? state.filtersRibbonScale
+        ?? data.expToneRibbonScale
+        ?? SECTION_SCALE_DEFAULTS['filters.ribbon']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),
-    expEdgeRimScale: clamp(
-      Number(data.expEdgeRimScale ?? state.expEdgeRimScale ?? SECTION_SCALE_DEFAULTS['expEdge.rim']),
+    filtersRimScale: clamp(
+      Number(
+        data.filtersRimScale
+        ?? state.filtersRimScale
+        ?? data.expEdgeRimScale
+        ?? SECTION_SCALE_DEFAULTS['filters.rim']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),
-    expEdgeFuzzScale: clamp(
-      Number(data.expEdgeFuzzScale ?? state.expEdgeFuzzScale ?? SECTION_SCALE_DEFAULTS['expEdge.fuzz']),
+    filtersFuzzScale: clamp(
+      Number(
+        data.filtersFuzzScale
+        ?? state.filtersFuzzScale
+        ?? data.expEdgeFuzzScale
+        ?? SECTION_SCALE_DEFAULTS['filters.fuzz']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),
-    expEdgeCounterFillScale: clamp(
-      Number(data.expEdgeCounterFillScale ?? state.expEdgeCounterFillScale ?? SECTION_SCALE_DEFAULTS['expEdge.counterFill']),
+    filtersCounterFillScale: clamp(
+      Number(
+        data.filtersCounterFillScale
+        ?? state.filtersCounterFillScale
+        ?? data.expEdgeCounterFillScale
+        ?? SECTION_SCALE_DEFAULTS['filters.counterFill']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),
-    expEdgeGrainScale: clamp(
-      Number(data.expEdgeGrainScale ?? state.expEdgeGrainScale ?? SECTION_SCALE_DEFAULTS['expEdge.grain']),
+    filtersGrainScale: clamp(
+      Number(
+        data.filtersGrainScale
+        ?? state.filtersGrainScale
+        ?? data.expEdgeGrainScale
+        ?? SECTION_SCALE_DEFAULTS['filters.grain']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),
-    expEdgeWeightScale: clamp(
-      Number(data.expEdgeWeightScale ?? state.expEdgeWeightScale ?? SECTION_SCALE_DEFAULTS['expEdge.weight']),
+    filtersWeightScale: clamp(
+      Number(
+        data.filtersWeightScale
+        ?? state.filtersWeightScale
+        ?? data.expEdgeWeightScale
+        ?? SECTION_SCALE_DEFAULTS['filters.weight']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),
-    expGrainSpeckleScale: clamp(
-      Number(data.expGrainSpeckleScale ?? state.expGrainSpeckleScale ?? SECTION_SCALE_DEFAULTS['expGrain.speckle']),
+    filtersSpeckleScale: clamp(
+      Number(
+        data.filtersSpeckleScale
+        ?? state.filtersSpeckleScale
+        ?? data.expGrainSpeckleScale
+        ?? SECTION_SCALE_DEFAULTS['filters.speckle']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),
-    expGrainDropoutsScale: clamp(
-      Number(data.expGrainDropoutsScale ?? state.expGrainDropoutsScale ?? SECTION_SCALE_DEFAULTS['expGrain.dropouts']),
+    filtersDropoutsScale: clamp(
+      Number(
+        data.filtersDropoutsScale
+        ?? state.filtersDropoutsScale
+        ?? data.expGrainDropoutsScale
+        ?? SECTION_SCALE_DEFAULTS['filters.dropouts']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),
-    expDefectsSmudgeScale: clamp(
-      Number(data.expDefectsSmudgeScale ?? state.expDefectsSmudgeScale ?? SECTION_SCALE_DEFAULTS['expDefects.smudge']),
+    filtersSmudgeScale: clamp(
+      Number(
+        data.filtersSmudgeScale
+        ?? state.filtersSmudgeScale
+        ?? data.expDefectsSmudgeScale
+        ?? SECTION_SCALE_DEFAULTS['filters.smudge']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),
-    expDefectsPunchScale: clamp(
-      Number(data.expDefectsPunchScale ?? state.expDefectsPunchScale ?? SECTION_SCALE_DEFAULTS['expDefects.punch']),
+    filtersPunchScale: clamp(
+      Number(
+        data.filtersPunchScale
+        ?? state.filtersPunchScale
+        ?? data.expDefectsPunchScale
+        ?? SECTION_SCALE_DEFAULTS['filters.punch']
+      ),
       EFFECT_SCALE_MIN,
       EFFECT_SCALE_MAX,
     ),

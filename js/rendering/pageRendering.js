@@ -40,7 +40,7 @@ export function createPageRenderer(options) {
   const { touchPage, visibleWindowIndices } = lifecycle || {};
   const getInkSectionOrderFn = typeof getInkSectionOrder === 'function'
     ? getInkSectionOrder
-    : (() => ['expTone', 'expEdge', 'expGrain', 'expDefects']);
+    : (() => ['filters']);
   const getLineStepMu = () => {
     const step = Number.isFinite(state?.lineStepMu) ? state.lineStepMu : gridDiv;
     return Number.isFinite(step) && step > 0 ? step : 1;
