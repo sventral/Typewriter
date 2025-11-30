@@ -2052,13 +2052,22 @@ function buildObjectControls(meta, container, obj, path, label) {
   if (subgroupLabel) {
     const headingRow = document.createElement('div');
     headingRow.className = 'ink-subheading-row';
+    const headingWrap = document.createElement('div');
+    headingWrap.className = 'ink-subheading-wrap';
+    const dragHandle = document.createElement('button');
+    dragHandle.type = 'button';
+    dragHandle.className = 'ink-subgroup-drag-handle';
+    dragHandle.setAttribute('aria-label', `Reorder ${subgroupLabel}`);
+    dragHandle.innerHTML = '<span aria-hidden="true">⋮</span>';
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
     const headingLabel = subgroupLabel;
     const lock = createLockToggle(headingLabel, locked => setGroupLocked(meta, subgroupKey, locked));
     heading.appendChild(lock);
     heading.appendChild(document.createTextNode(headingLabel));
-    headingRow.appendChild(heading);
+    headingWrap.appendChild(dragHandle);
+    headingWrap.appendChild(heading);
+    headingRow.appendChild(headingWrap);
     if (path === 'fuzzExp') {
       const toggle = createInputForValue(obj.enable ?? false, `${path}.enable`, meta?.id);
       toggle.classList.add('ink-subheading-toggle');
@@ -2068,6 +2077,7 @@ function buildObjectControls(meta, container, obj, path, label) {
       registerMetaInput(meta, `${path}.enable`, toggle);
     }
     group.appendChild(headingRow);
+    dragHandle.addEventListener('pointerdown', event => startPointerSubgroupDrag(event, meta, subgroupKey));
   }
 
   const body = document.createElement('div');
