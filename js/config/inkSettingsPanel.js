@@ -1764,6 +1764,19 @@ function buildObjectControls(meta, container, obj, path, label) {
     group.appendChild(headingRow);
   }
 
+  const body = document.createElement('div');
+  body.className = 'ink-subgroup-body';
+  group.appendChild(body);
+  const footer = document.createElement('div');
+  footer.className = 'ink-subgroup-footer';
+  const divider = document.createElement('div');
+  divider.className = 'ink-subgroup-divider';
+  const attachFooter = () => {
+    if (footer.parentElement) return;
+    group.appendChild(footer);
+    group.appendChild(divider);
+  };
+
   // Attach per-subsection quality/scale controls for object-style subgroups (e.g., fuzzExp)
   const subsectionInfo = {
     subgroupId: path,
@@ -1773,22 +1786,24 @@ function buildObjectControls(meta, container, obj, path, label) {
   };
   const qualityCfg = SUBSECTION_QUALITY_CONFIG[subsectionId];
   if (qualityCfg) {
-    const qc = createQualityControl(meta, group, qualityCfg, `${subsectionId}:quality`);
+    const qc = createQualityControl(meta, footer, qualityCfg, `${subsectionId}:quality`);
     if (qc) {
       const startQuality = getSubsectionQualityPercent(subsectionId, qualityCfg.defaultValue ?? EFFECT_QUALITY_DEFAULT);
       qc.slider.value = String(startQuality);
       qc.numberInput.value = String(startQuality);
       subsectionInfo.qualityControl = qc;
+      attachFooter();
     }
   }
   const scaleCfg = SUBSECTION_SCALE_CONFIG[subsectionId];
   if (scaleCfg) {
-    const sc = createScaleControl(meta, group, scaleCfg, `${subsectionId}:scale`);
+    const sc = createScaleControl(meta, footer, scaleCfg, `${subsectionId}:scale`);
     if (sc) {
       const startScale = getSubsectionScalePercent(subsectionId, scaleCfg.defaultValue ?? EFFECT_SCALE_DEFAULT);
       sc.slider.value = String(startScale);
       sc.numberInput.value = String(startScale);
       subsectionInfo.scaleControl = sc;
+      attachFooter();
     }
   }
   if (!meta.subsectionControls?.has(subgroupKey)) {
@@ -1801,11 +1816,11 @@ function buildObjectControls(meta, container, obj, path, label) {
     const keyPath = path ? `${path}.${key}` : key;
     const value = obj[key];
     if (Array.isArray(value)) {
-      buildArrayControls(meta, group, value, keyPath, key);
+      buildArrayControls(meta, body, value, keyPath, key);
       return;
     }
     if (value && typeof value === 'object') {
-      buildObjectControls(meta, group, value, keyPath, key);
+      buildObjectControls(meta, body, value, keyPath, key);
       return;
     }
     const input = createInputForValue(value, keyPath, meta?.id);
@@ -1813,7 +1828,7 @@ function buildObjectControls(meta, container, obj, path, label) {
     const rowLabel = meta.labels?.[keyPath] || key;
     const row = buildControlRow(rowLabel, input);
     tagRowWithGroup(row, subgroupKey);
-    group.appendChild(row);
+    body.appendChild(row);
     registerMetaInput(meta, keyPath, input);
   });
   setGroupLocked(meta, subgroupKey, isGroupLocked(meta, subgroupKey));
@@ -2020,12 +2035,27 @@ function buildSection(def, root) {
       registerMetaInput(meta, togglePath, toggle);
     }
     group.appendChild(headingRow);
+    const body = document.createElement('div');
+    body.className = 'ink-subgroup-body';
+    group.appendChild(body);
+    const footer = document.createElement('div');
+    footer.className = 'ink-subgroup-footer';
+    const divider = document.createElement('div');
+    divider.className = 'ink-subgroup-divider';
+    const attachFooter = () => {
+      if (footer.parentElement) return;
+      group.appendChild(footer);
+      group.appendChild(divider);
+    };
     meta.groupElements.set(found.id, group);
     meta.body.appendChild(group);
     setGroupLocked(meta, found.id, isGroupLocked(meta, found.id));
     const subsectionId = `${meta.id}.${found.id}`;
     const info = {
       group,
+      body,
+      footer,
+      divider,
       togglePath,
       headingRow,
       subsectionId,
@@ -2035,23 +2065,25 @@ function buildSection(def, root) {
 
     const qualityCfg = SUBSECTION_QUALITY_CONFIG[subsectionId];
     if (qualityCfg) {
-      const qc = createQualityControl(meta, group, qualityCfg, `${subsectionId}:quality`);
+      const qc = createQualityControl(meta, footer, qualityCfg, `${subsectionId}:quality`);
       if (qc) {
         const startQuality = getSubsectionQualityPercent(subsectionId, qualityCfg.defaultValue ?? EFFECT_QUALITY_DEFAULT);
         qc.slider.value = String(startQuality);
         qc.numberInput.value = String(startQuality);
         info.qualityControl = qc;
+        attachFooter();
       }
     }
 
     const scaleCfg = SUBSECTION_SCALE_CONFIG[subsectionId];
     if (scaleCfg) {
-      const sc = createScaleControl(meta, group, scaleCfg, `${subsectionId}:scale`);
+      const sc = createScaleControl(meta, footer, scaleCfg, `${subsectionId}:scale`);
       if (sc) {
         const startScale = getSubsectionScalePercent(subsectionId, scaleCfg.defaultValue ?? EFFECT_SCALE_DEFAULT);
         sc.slider.value = String(startScale);
         sc.numberInput.value = String(startScale);
         info.scaleControl = sc;
+        attachFooter();
       }
     }
 
@@ -2099,7 +2131,7 @@ function buildSection(def, root) {
     }
     if (subgroup) {
       tagRowWithGroup(row, subgroup.group.dataset.groupPath);
-      subgroup.group.appendChild(row);
+      subgroup.body.appendChild(row);
     } else {
       body.appendChild(row);
     }
