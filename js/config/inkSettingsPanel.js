@@ -376,6 +376,7 @@ const panelState = {
   importInput: null,
   resetButton: null,
   randomizeButton: null,
+  keepOrderCheckbox: null,
   lockState: {
     groups: {},
     quality: {},
@@ -1014,6 +1015,18 @@ function setSubsectionOrderOnState(order) {
   const appState = getAppState();
   if (!appState) return;
   appState.inkSubsectionOrder = normalizeSubsectionOrder(order);
+}
+
+function getKeepOrderFlagFromState() {
+  const appState = getAppState();
+  if (!appState) return false;
+  return appState.inkRandomizeKeepOrder === true;
+}
+
+function setKeepOrderFlagOnState(value) {
+  const appState = getAppState();
+  if (!appState) return;
+  appState.inkRandomizeKeepOrder = value === true;
 }
 
 function arraysEqual(a, b) {
@@ -3072,11 +3085,6 @@ function resetInkSettingsToDefaults() {
 }
 
 function handleResetInkSettings() {
-  let confirmed = true;
-  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-    confirmed = window.confirm('Reset all ink settings to their default values?');
-  }
-  if (!confirmed) return;
   resetInkSettingsToDefaults();
 }
 
@@ -3109,22 +3117,25 @@ function randomizeInkSection(meta) {
 
 function randomizeInkSettings() {
   if (!panelState.initialized) return;
+  const keepOrder = getKeepOrderFlagFromState();
   runWithPersistSuppressed(() => {
     // Randomize should keep overall strength at the default maximum.
     setOverallStrength(100);
 
-    // Randomize section order
-    if (Array.isArray(panelState.sectionOrder) && panelState.sectionOrder.length > 0) {
+    // Randomize section order unless keep-order toggle is enabled
+    if (!keepOrder && Array.isArray(panelState.sectionOrder) && panelState.sectionOrder.length > 0) {
       const newOrder = shuffleArray(panelState.sectionOrder);
       // Apply order silently to avoid redundant refreshes; the subsequent section randomization will trigger the rebuild.
       applySectionOrder(newOrder, { syncDom: true, silent: true });
     }
 
-    // Randomize subsection order for filters so filter order changes alongside settings
-    const filterOrder = getSectionSubsectionOrder('filters');
-    if (filterOrder.length) {
-      const shuffledFilters = shuffleArray(filterOrder);
-      applySubsectionOrderForSection('filters', shuffledFilters, { syncDom: true, silent: true });
+    // Randomize subsection order for filters so filter order changes alongside settings unless order is locked
+    if (!keepOrder) {
+      const filterOrder = getSectionSubsectionOrder('filters');
+      if (filterOrder.length) {
+        const shuffledFilters = shuffleArray(filterOrder);
+        applySubsectionOrderForSection('filters', shuffledFilters, { syncDom: true, silent: true });
+      }
     }
 
     panelState.metas.forEach(meta => randomizeInkSection(meta));
@@ -3390,12 +3401,20 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.importInput = document.getElementById('inkStyleImportInput');
   panelState.resetButton = document.getElementById('inkStyleResetBtn');
   panelState.randomizeButton = document.getElementById('inkStyleRandomizeBtn');
+  panelState.keepOrderCheckbox = document.getElementById('inkStyleKeepOrderCb');
   panelState.sectionsRoot = sectionsRoot;
 
   panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
   setSectionOrderOnState(panelState.sectionOrder);
   panelState.subsectionOrder = normalizeSubsectionOrder(getSubsectionOrderFromState());
   setSubsectionOrderOnState(panelState.subsectionOrder);
+  if (panelState.keepOrderCheckbox) {
+    panelState.keepOrderCheckbox.checked = getKeepOrderFlagFromState();
+    panelState.keepOrderCheckbox.addEventListener('change', () => {
+      setKeepOrderFlagOnState(panelState.keepOrderCheckbox.checked);
+      persistPanelState();
+    });
+  }
 
   if (panelState.styleNameInput) {
     panelState.styleNameInput.addEventListener('input', () => panelState.styleNameInput.classList.remove('input-error'));

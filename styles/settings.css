@@ -326,8 +326,25 @@
   }
 .ink-style-actions-row .btn-text.danger { color: var(--danger-color, #c24141); }
 .ink-style-actions-row .btn-text:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
-  .ink-style-reset-row { display: flex; justify-content: flex-end; gap: 8px; margin: 16px 0; }
-  .ink-style-reset-row .btn-text { color: var(--danger-color, #c24141); }
+  .ink-style-reset-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 16px;
+    margin: 16px 0;
+    width: max-content;
+    margin-left: auto;
+  }
+  .ink-style-randomize-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    width: 100%;
+  }
+  .ink-style-reset-row .btn { width: 100%; }
+  .ink-keep-order-toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; justify-content: flex-start; }
+  .ink-keep-order-toggle input { margin: 0; }
   .input-with-suffix { position: relative; display: flex; }
   .input-with-suffix input { width: 100%; }
   .input-with-suffix span { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0.5; }

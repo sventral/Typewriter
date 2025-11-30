@@ -542,8 +542,14 @@
           </div>
           <div id="inkSettingsSections"></div>
           <div class="ink-style-reset-row">
-            <button class="btn" id="inkStyleRandomizeBtn" type="button">Randomize</button>
-            <button class="btn-text danger" id="inkStyleResetBtn" type="button">Reset to defaults</button>
+            <div class="ink-style-randomize-block">
+              <button class="btn" id="inkStyleRandomizeBtn" type="button">Randomize</button>
+              <label class="ink-keep-order-toggle">
+                <input type="checkbox" id="inkStyleKeepOrderCb" />
+                <span>Keep filter order</span>
+              </label>
+            </div>
+            <button class="btn" id="inkStyleResetBtn" type="button">Reset to defaults</button>
           </div>
           <section class="ink-styles-section" aria-labelledby="inkStylesHeader">
             <h4 id="inkStylesHeader">Saved ink styles</h4>
@@ -703,7 +709,7 @@
         </div>
       </details>
     </div>
-    <div class="app-version">v.40.9b</div>
+    <div class="app-version">v.41.4b</div>
   </aside>
 
   <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>
