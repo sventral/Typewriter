@@ -1527,6 +1527,15 @@ function randomBetween(lower, upper, step = null) {
   return raw;
 }
 
+function shuffleArray(list) {
+  const arr = Array.isArray(list) ? list.slice() : [];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 function deriveNumericBounds(input) {
   const parsedMin = Number.parseFloat(input?.min);
   const parsedMax = Number.parseFloat(input?.max);
@@ -3054,13 +3063,16 @@ function randomizeInkSettings() {
 
     // Randomize section order
     if (Array.isArray(panelState.sectionOrder) && panelState.sectionOrder.length > 0) {
-      const newOrder = panelState.sectionOrder.slice();
-      for (let i = newOrder.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]];
-      }
+      const newOrder = shuffleArray(panelState.sectionOrder);
       // Apply order silently to avoid redundant refreshes; the subsequent section randomization will trigger the rebuild.
       applySectionOrder(newOrder, { syncDom: true, silent: true });
+    }
+
+    // Randomize subsection order for filters so filter order changes alongside settings
+    const filterOrder = getSectionSubsectionOrder('filters');
+    if (filterOrder.length) {
+      const shuffledFilters = shuffleArray(filterOrder);
+      applySubsectionOrderForSection('filters', shuffledFilters, { syncDom: true, silent: true });
     }
 
     panelState.metas.forEach(meta => randomizeInkSection(meta));
