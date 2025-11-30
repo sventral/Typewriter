@@ -230,24 +230,23 @@
 .ink-section-body.is-sub-drop-end::after { content: ''; display: block; border-bottom: 2px solid var(--accent-color); margin-top: 4px; }
 .ink-subgroup-collapse {
   appearance: none;
-  border: 1px solid var(--control-border, rgba(0,0,0,0.25));
-  background: var(--control-bg, rgba(255,255,255,0.08));
+  border: 0;
+  background: none;
   color: inherit;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1;
   padding: 0;
-  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+  margin: 0 4px 0 0;
+  transform: rotate(90deg);
+  transition: transform 0.18s ease, opacity 0.16s ease;
+  opacity: 0.8;
 }
-.ink-subgroup-collapse:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
-.ink-subgroup-collapse-icon { display: inline-block; transform: rotate(90deg); transition: transform 0.18s ease; }
-.ink-subgroup.is-collapsed .ink-subgroup-collapse-icon { transform: rotate(0deg); }
+.ink-subgroup-collapse:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
+.ink-subgroup.is-collapsed .ink-subgroup-collapse { transform: rotate(0deg); opacity: 0.65; }
 .ink-subgroup.is-collapsed .ink-subgroup-body,
 .ink-subgroup.is-collapsed .ink-subgroup-footer,
 .ink-subgroup.is-collapsed .ink-subgroup-divider { display: none; }

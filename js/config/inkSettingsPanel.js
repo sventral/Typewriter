@@ -2098,11 +2098,7 @@ function buildObjectControls(meta, container, obj, path, label) {
     collapseBtn.type = 'button';
     collapseBtn.className = 'ink-subgroup-collapse';
     collapseBtn.setAttribute('aria-label', `Toggle ${subgroupLabel} details`);
-    const collapseIcon = document.createElement('span');
-    collapseIcon.className = 'ink-subgroup-collapse-icon';
-    collapseIcon.setAttribute('aria-hidden', 'true');
-    collapseIcon.textContent = '▸';
-    collapseBtn.appendChild(collapseIcon);
+    collapseBtn.textContent = '▸';
     collapseBtn.dataset.collapsed = '1';
     collapseBtn.setAttribute('aria-expanded', 'false');
     collapseBtn.addEventListener('click', () => {
@@ -2399,11 +2395,7 @@ function buildSection(def, root) {
     collapseBtn.type = 'button';
     collapseBtn.className = 'ink-subgroup-collapse';
     collapseBtn.setAttribute('aria-label', `Toggle ${found.label} details`);
-    const collapseIcon = document.createElement('span');
-    collapseIcon.className = 'ink-subgroup-collapse-icon';
-    collapseIcon.setAttribute('aria-hidden', 'true');
-    collapseIcon.textContent = '▸';
-    collapseBtn.appendChild(collapseIcon);
+    collapseBtn.textContent = '▸';
     collapseBtn.dataset.collapsed = '1';
     collapseBtn.setAttribute('aria-expanded', 'false');
     collapseBtn.addEventListener('click', () => {
@@ -3090,8 +3082,11 @@ function handleResetInkSettings() {
 
 function randomizeInkSection(meta) {
   if (!meta) return;
-  const enabled = Math.random() >= SECTION_OFF_CHANCE;
-  const targetStrength = enabled ? Math.round(randomBetween(20, 100, 1)) : 0;
+  const enabled = meta.id === 'filters' ? true : Math.random() >= SECTION_OFF_CHANCE;
+  const defaultOn = Number.isFinite(meta.defaultStrength) && meta.defaultStrength > 0 ? meta.defaultStrength : 100;
+  const targetStrength = enabled
+    ? Math.round(randomBetween(meta.id === 'filters' ? defaultOn : 20, 100, 1))
+    : 0;
   applySectionStrength(meta, targetStrength, { syncSlider: true, syncNumber: true });
 
   meta.inputs.forEach(input => {
