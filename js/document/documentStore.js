@@ -118,6 +118,27 @@ function normalizeInkSectionOrder(order, fallback = KNOWN_INK_SECTIONS) {
   return normalized;
 }
 
+function normalizeInkSubsectionOrder(order, fallback = KNOWN_INK_SUBSECTIONS) {
+  const base = Array.isArray(order) ? order : [];
+  const seen = new Set();
+  const normalized = [];
+  base.forEach(id => {
+    if (typeof id !== 'string') return;
+    const trimmed = id.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    if (!KNOWN_INK_SUBSECTIONS.includes(trimmed)) return;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  });
+  (Array.isArray(fallback) ? fallback : KNOWN_INK_SUBSECTIONS).forEach(id => {
+    if (!KNOWN_INK_SUBSECTIONS.includes(id)) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    normalized.push(id);
+  });
+  return normalized;
+}
+
 function cloneInkStyleValue(value) {
   if (Array.isArray(value)) {
     return value.map(item => cloneInkStyleValue(item));
@@ -187,7 +208,22 @@ function sanitizeStyleSection(sectionValue, sectionId) {
     SECTION_SCALE_DEFAULTS,
     { min: EFFECT_SCALE_MIN, max: EFFECT_SCALE_MAX },
   );
-  return { strength, config, qualities, scales };
+  const convertSubId = val => {
+    if (typeof val !== 'string') return null;
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    return trimmed.includes('.') ? trimmed : `${sectionId}.${trimmed}`;
+  };
+  const rawOrder = Array.isArray(sectionValue.order)
+    ? sectionValue.order
+    : Array.isArray(sectionValue.subsectionOrder)
+      ? sectionValue.subsectionOrder
+      : null;
+  const normalizedOrder = normalizeInkSubsectionOrder(
+    rawOrder ? rawOrder.map(convertSubId).filter(Boolean) : SECTION_TO_SUBSECTIONS[sectionId],
+    SECTION_TO_SUBSECTIONS[sectionId],
+  ).filter(id => id.startsWith(`${sectionId}.`));
+  return { strength, config, qualities, scales, order: normalizedOrder };
 }
 
 function sanitizeSavedInkStyle(style, index = 0) {
@@ -198,6 +234,7 @@ function sanitizeSavedInkStyle(style, index = 0) {
       overall: 100,
       sections: {},
       sectionOrder: KNOWN_INK_SECTIONS.slice(),
+      subsectionOrder: KNOWN_INK_SUBSECTIONS.slice(),
     };
   }
   const id = typeof style.id === 'string' && style.id.trim()
@@ -220,12 +257,16 @@ function sanitizeSavedInkStyle(style, index = 0) {
     sections[sectionId] = sanitizeStyleSection(style[sectionId], sectionId);
   });
   const sectionOrder = normalizeInkSectionOrder(style.sectionOrder);
+  const subsectionOrder = normalizeInkSubsectionOrder(
+    style.subsectionOrder || style.inkSubsectionOrder || Object.values(sections).flatMap(section => section.order || []),
+  );
   return {
     id,
     name,
     overall,
     sections,
     sectionOrder,
+    subsectionOrder,
   };
 }
 
@@ -316,7 +357,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
   );
 
   return {
-    v: 30,
+    v: 31,
     fontName: activeFont,
     documentId: typeof state.documentId === 'string' ? state.documentId : null,
     documentTitle: typeof state.documentTitle === 'string'
@@ -364,6 +405,7 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
     filtersSmudgeScale: clamp(Number(state.filtersSmudgeScale ?? SECTION_SCALE_DEFAULTS['filters.smudge']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
     filtersPunchScale: clamp(Number(state.filtersPunchScale ?? SECTION_SCALE_DEFAULTS['filters.punch']), EFFECT_SCALE_MIN, EFFECT_SCALE_MAX),
     inkSectionOrder: normalizeInkSectionOrder(state.inkSectionOrder),
+    inkSubsectionOrder: normalizeInkSubsectionOrder(state.inkSubsectionOrder),
     wordWrap: state.wordWrap,
     stageWidthFactor: state.stageWidthFactor,
     stageHeightFactor: state.stageHeightFactor,
@@ -409,7 +451,7 @@ export function deserializeDocumentState(data, context) {
 
   if (!state || !app) return false;
   const gridDiv = typeof getGridDiv === 'function' ? getGridDiv() : 0;
-  if (!data || data.v < 2 || data.v > 30) return false;
+  if (!data || data.v < 2 || data.v > 31) return false;
   const targetPaperSize = typeof data.paperSize === 'string'
     ? data.paperSize
     : state.paperSize || DEFAULT_PAPER_SIZE;
@@ -869,6 +911,7 @@ export function deserializeDocumentState(data, context) {
     ? sanitizeSavedInkStyle(data.currentInkStyle)
     : null;
   state.inkSectionOrder = normalizeInkSectionOrder(data.inkSectionOrder, state.inkSectionOrder);
+  state.inkSubsectionOrder = normalizeInkSubsectionOrder(data.inkSubsectionOrder, state.inkSubsectionOrder);
   if (typeof data.documentId === 'string' && data.documentId.trim()) {
     state.documentId = data.documentId.trim();
   }

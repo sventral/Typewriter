@@ -146,6 +146,10 @@
   .ink-section-drag-handle:active { cursor: grabbing; }
   .ink-section-drag-handle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; opacity: 1; }
   .ink-section-drag-handle span { pointer-events: none; }
+  .ink-subgroup-drag-handle { appearance: none; border: none; background: none; color: inherit; display: inline-flex; align-items: center; justify-content: center; cursor: grab; padding: 0 4px 0 0; font-size: 13px; opacity: 0.65; }
+  .ink-subgroup-drag-handle:active { cursor: grabbing; }
+  .ink-subgroup-drag-handle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; opacity: 1; }
+  .ink-subgroup-drag-handle span { pointer-events: none; }
   .ink-section-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; justify-self: stretch; justify-content: flex-start; white-space: nowrap; flex: 1; min-width: 0; }
   .ink-section-toggle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
   .ink-section-toggle-icon { display: inline-flex; width: 16px; justify-content: center; transition: transform 0.18s ease; transform: rotate(90deg); font-size: 16px; line-height: 1; }
@@ -220,11 +224,16 @@
   opacity: 0.55;
 }
 .ink-subgroup { border-left: 2px solid rgba(0,0,0,0.06); padding-left: 10px; margin: 6px 0 10px; }
+.ink-subgroup.is-dragging { opacity: 0.6; }
+.ink-subgroup.is-drop-before { box-shadow: inset 0 2px 0 var(--accent-color); }
+.ink-subgroup.is-drop-after { box-shadow: inset 0 -2px 0 var(--accent-color); }
+.ink-section-body.is-sub-drop-end::after { content: ''; display: block; border-bottom: 2px solid var(--accent-color); margin-top: 4px; }
 .ink-subheading { font-size: 13px; font-weight: 700; opacity: 0.8; margin: 8px 0 6px; text-transform: uppercase; letter-spacing: 0.4px; display: inline-flex; align-items: center; gap: 6px; }
 .ink-subgroup-plain { border-left: 0; padding-left: 0; margin-left: 0; }
 .ink-subheading-plain { text-transform: none; font-size: 13px; opacity: 1; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .ink-subheading-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .ink-subheading-row .ink-subheading { display: inline-flex; align-items: center; gap: 6px; }
+.ink-subheading-wrap { display: inline-flex; align-items: center; gap: 6px; }
 .ink-subheading-toggle { margin-left: 6px; }
 .ink-subgroup-body { display: flex; flex-direction: column; }
 .ink-subgroup-footer { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }

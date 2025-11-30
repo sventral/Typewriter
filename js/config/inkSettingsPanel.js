@@ -1,4 +1,5 @@
 import {
+  DEFAULT_INK_SUBSECTION_ORDER,
   cloneDefaultExperimentalConfig,
   getDefaultInkSectionStrength,
   getDefaultInkSectionQuality,
@@ -250,6 +251,13 @@ Object.entries(SUBGROUP_CONFIG).forEach(([sectionId, subgroups]) => {
   });
 });
 
+const SUBSECTION_DEF_MAP = SUBSECTION_DEFS.reduce((acc, def) => {
+  acc[def.id] = def;
+  return acc;
+}, {});
+
+const DEFAULT_SUBSECTION_ORDER = DEFAULT_INK_SUBSECTION_ORDER.slice();
+
 const SUBSECTION_IDS_BY_SECTION = SUBSECTION_DEFS.reduce((acc, def) => {
   if (!acc[def.sectionId]) acc[def.sectionId] = [];
   acc[def.sectionId].push(def.id);
@@ -318,6 +326,34 @@ function normalizeSectionOrder(order, fallback = DEFAULT_SECTION_ORDER) {
   return normalized;
 }
 
+function normalizeSubsectionOrder(order, sectionId = null, fallback = DEFAULT_SUBSECTION_ORDER) {
+  const base = Array.isArray(order) ? order : [];
+  const allowed = sectionId
+    ? SUBSECTION_IDS_BY_SECTION[sectionId] || []
+    : DEFAULT_SUBSECTION_ORDER;
+  const seen = new Set();
+  const normalized = [];
+  base.forEach(id => {
+    if (typeof id !== 'string') return;
+    const trimmed = id.trim();
+    if (!trimmed) return;
+    const fullId = sectionId && !trimmed.includes('.') ? `${sectionId}.${trimmed}` : trimmed;
+    if (seen.has(fullId)) return;
+    if (!SUBSECTION_DEF_MAP[fullId]) return;
+    if (sectionId && !fullId.startsWith(`${sectionId}.`)) return;
+    seen.add(fullId);
+    normalized.push(fullId);
+  });
+  (Array.isArray(fallback) ? fallback : DEFAULT_SUBSECTION_ORDER).forEach(id => {
+    if (sectionId && !id.startsWith(`${sectionId}.`)) return;
+    if (!SUBSECTION_DEF_MAP[id]) return;
+    if (seen.has(id)) return;
+    seen.add(id);
+    normalized.push(id);
+  });
+  return normalized;
+}
+
 const panelState = {
   appState: null,
   app: null,
@@ -347,7 +383,9 @@ const panelState = {
   },
   sectionsRoot: null,
   sectionOrder: DEFAULT_SECTION_ORDER.slice(),
+  subsectionOrder: DEFAULT_SUBSECTION_ORDER.slice(),
   dragState: null,
+  subgroupDragState: null,
   persistDepth: 0,
 };
 
@@ -529,12 +567,20 @@ function generateStyleId() {
 
 function normalizeStyleRecord(style, index = 0) {
   try {
+    let subsectionOrder = normalizeSubsectionOrder(
+      style?.subsectionOrder
+      || style?.inkSubsectionOrder
+      || style?.sections?.subsectionOrder
+      || style?.subsectionsOrder
+      || DEFAULT_SUBSECTION_ORDER
+    );
     const record = {
       id: typeof style?.id === 'string' && style.id.trim() ? style.id.trim() : generateStyleId(),
       name: sanitizeStyleName(style?.name) || `Style ${index + 1}`,
       overall: clamp(Math.round(Number(style?.overall ?? style?.strength ?? 100)), 0, 100),
       sections: {},
       sectionOrder: normalizeSectionOrder(style?.sectionOrder || style?.sections?.order || style?.inkSectionOrder || style?.inkSectionsOrder || style?.sectionOrder),
+      subsectionOrder: normalizeSubsectionOrder(subsectionOrder),
     };
     const legacySectionStrengths = ['expTone', 'expEdge', 'expGrain', 'expDefects']
       .map(id => style?.sections?.[id]?.strength ?? style?.[id]?.strength)
@@ -567,6 +613,7 @@ function normalizeStyleRecord(style, index = 0) {
         config: deepCloneValue(configSource == null ? def.config : configSource),
         qualities: {},
         scales: {},
+        order: [],
       };
       const subsectionIds = SUBSECTION_IDS_BY_SECTION[def.id] || [];
       subsectionIds.forEach(subId => {
@@ -611,6 +658,17 @@ function normalizeStyleRecord(style, index = 0) {
           defaultScale,
         );
       });
+      const sectionOrder = normalizeSubsectionOrder(
+        section?.order || section?.subsectionOrder,
+        def.id,
+        subsectionOrder,
+      );
+      const fallbackOrder = normalizeSubsectionOrder(subsectionOrder, def.id, SUBSECTION_IDS_BY_SECTION[def.id]);
+      record.sections[def.id].order = sectionOrder.length ? sectionOrder : fallbackOrder;
+      if (sectionOrder.length) {
+        const withoutSection = subsectionOrder.filter(id => !id.startsWith(`${def.id}.`));
+        subsectionOrder = normalizeSubsectionOrder([...withoutSection, ...sectionOrder]);
+      }
     });
     const legacyDropouts = extractDropoutsConfig(style?.sections?.filters || style?.filters || style?.sections?.expDefects || style?.expDefects);
     if (legacyDropouts && record.sections.filters) {
@@ -625,6 +683,7 @@ function normalizeStyleRecord(style, index = 0) {
         };
       }
     }
+    record.subsectionOrder = normalizeSubsectionOrder(subsectionOrder);
     return record;
   } catch (error) {
     if (typeof console !== 'undefined' && typeof console.error === 'function') {
@@ -641,6 +700,7 @@ function createDefaultStyleRecord(index = 0) {
     overall: 100,
     sections: {},
     sectionOrder: DEFAULT_SECTION_ORDER.slice(),
+    subsectionOrder: DEFAULT_SUBSECTION_ORDER.slice(),
   };
   SECTION_DEFS.forEach(def => {
     record.sections[def.id] = {
@@ -648,6 +708,7 @@ function createDefaultStyleRecord(index = 0) {
       config: deepCloneValue(def.config),
       qualities: {},
       scales: {},
+      order: (SUBSECTION_IDS_BY_SECTION[def.id] || []).slice(),
     };
     const subsectionIds = SUBSECTION_IDS_BY_SECTION[def.id] || [];
     subsectionIds.forEach(subId => {
@@ -697,6 +758,9 @@ function createStyleSnapshot(name, existingId = null) {
     sectionOrder: Array.isArray(panelState.sectionOrder)
       ? panelState.sectionOrder.slice()
       : DEFAULT_SECTION_ORDER.slice(),
+    subsectionOrder: Array.isArray(panelState.subsectionOrder)
+      ? panelState.subsectionOrder.slice()
+      : DEFAULT_SUBSECTION_ORDER.slice(),
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
@@ -709,6 +773,7 @@ function createStyleSnapshot(name, existingId = null) {
       config: deepCloneValue(configSource),
       qualities: {},
       scales: {},
+      order: getSectionSubsectionOrder(def.id),
     };
     const subsectionIds = SUBSECTION_IDS_BY_SECTION[def.id] || [];
     subsectionIds.forEach(subId => {
@@ -919,6 +984,18 @@ function setSectionOrderOnState(order) {
   appState.inkSectionOrder = normalizeSectionOrder(order);
 }
 
+function getSubsectionOrderFromState() {
+  const appState = getAppState();
+  if (!appState) return DEFAULT_SUBSECTION_ORDER.slice();
+  return normalizeSubsectionOrder(appState.inkSubsectionOrder);
+}
+
+function setSubsectionOrderOnState(order) {
+  const appState = getAppState();
+  if (!appState) return;
+  appState.inkSubsectionOrder = normalizeSubsectionOrder(order);
+}
+
 function arraysEqual(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b)) return false;
   if (a.length !== b.length) return false;
@@ -968,6 +1045,55 @@ function applySectionOrder(order, options = {}) {
   if (options.silent !== true) {
     scheduleGlyphRefresh(true, { preserveFrontBuffer: true });
     scheduleGrainRefresh();
+  }
+}
+
+function getSectionSubsectionOrder(sectionId) {
+  const base = Array.isArray(panelState.subsectionOrder) && panelState.subsectionOrder.length
+    ? panelState.subsectionOrder
+    : normalizeSubsectionOrder(getSubsectionOrderFromState());
+  return normalizeSubsectionOrder(base, sectionId);
+}
+
+function updateSubsectionDomOrder(sectionId, order) {
+  const meta = findMetaById(sectionId);
+  if (!meta || !meta.body || !meta.groupElements?.size) return;
+  clearSubgroupDragIndicators(meta);
+  const normalized = normalizeSubsectionOrder(order, sectionId, getSectionSubsectionOrder(sectionId));
+  const desiredKeys = normalized.map(id => id.split('.')[1]).filter(Boolean);
+  const remaining = Array.from(meta.groupElements.keys()).filter(key => !desiredKeys.includes(key));
+  const finalKeys = [...desiredKeys, ...remaining];
+  finalKeys.forEach(key => {
+    const group = meta.groupElements.get(key);
+    if (group && group.parentNode === meta.body) {
+      meta.body.appendChild(group);
+    }
+  });
+}
+
+function applySubsectionOrderForSection(sectionId, order, options = {}) {
+  if (!sectionId) return;
+  const normalized = normalizeSubsectionOrder(order, sectionId, getSectionSubsectionOrder(sectionId));
+  const currentGlobal = Array.isArray(panelState.subsectionOrder) ? panelState.subsectionOrder.slice() : normalizeSubsectionOrder(getSubsectionOrderFromState());
+  const withoutSection = currentGlobal.filter(id => !id.startsWith(`${sectionId}.`));
+  const next = normalizeSubsectionOrder([...withoutSection, ...normalized]);
+  panelState.subsectionOrder = next;
+  if (!options.skipStateUpdate) {
+    setSubsectionOrderOnState(next);
+    if (!options.silent) persistPanelState();
+  }
+  updateSubsectionDomOrder(sectionId, normalized);
+}
+
+function applySubsectionOrder(order, options = {}) {
+  const normalized = normalizeSubsectionOrder(order);
+  panelState.subsectionOrder = normalized;
+  if (!options.skipStateUpdate) {
+    setSubsectionOrderOnState(normalized);
+    if (!options.silent) persistPanelState();
+  }
+  if (options.syncDom !== false) {
+    SECTION_DEFS.forEach(def => updateSubsectionDomOrder(def.id, getSectionSubsectionOrder(def.id)));
   }
 }
 
@@ -1097,6 +1223,171 @@ function updatePointerDropTarget(clientX, clientY) {
   dragState.dropIndex = dropIndex;
 }
 
+function clearSubgroupDragIndicators(meta) {
+  if (!meta?.body) return;
+  meta.body.classList.remove('is-sub-drop-end');
+  meta.body.querySelectorAll('.ink-subgroup').forEach(group => {
+    group.classList.remove('is-drop-before', 'is-drop-after');
+  });
+}
+
+function endSubgroupDrag() {
+  const dragState = panelState.subgroupDragState;
+  if (dragState?.cleanup) {
+    try {
+      dragState.cleanup();
+    } catch (err) {
+      // noop
+    }
+  }
+  if (dragState?.element) {
+    dragState.element.classList.remove('is-dragging');
+  }
+  if (dragState?.meta) {
+    clearSubgroupDragIndicators(dragState.meta);
+  }
+  panelState.subgroupDragState = null;
+}
+
+function commitPointerSubgroupDrop() {
+  const dragState = panelState.subgroupDragState;
+  if (!dragState || dragState.mode !== 'pointer') return;
+  const { sectionId, subgroupId, dropIndex } = dragState;
+  if (!sectionId || !subgroupId || typeof dropIndex !== 'number') return;
+  const currentOrder = getSectionSubsectionOrder(sectionId);
+  const fullId = `${sectionId}.${subgroupId}`;
+  const fromIndex = currentOrder.indexOf(fullId);
+  if (fromIndex === -1) return;
+  const order = currentOrder.slice();
+  order.splice(fromIndex, 1);
+  const insertIndex = Math.max(0, Math.min(order.length, Math.round(dropIndex)));
+  order.splice(insertIndex, 0, fullId);
+  applySubsectionOrderForSection(sectionId, order);
+}
+
+function updatePointerSubgroupDropTarget(meta, clientX, clientY) {
+  if (!meta || !meta.body) return;
+  const dragState = panelState.subgroupDragState;
+  if (!dragState || dragState.mode !== 'pointer' || dragState.meta !== meta) return;
+  clearSubgroupDragIndicators(meta);
+  const bodyRect = meta.body.getBoundingClientRect();
+  const insideHorizontal = clientX >= bodyRect.left && clientX <= bodyRect.right;
+  if (!insideHorizontal) {
+    dragState.dropTargetId = null;
+    dragState.dropIndex = null;
+    dragState.dropToEnd = false;
+    return;
+  }
+  const groups = Array.from(meta.body.querySelectorAll('.ink-subgroup'))
+    .filter(group => !group.classList.contains('is-dragging'));
+  if (!groups.length) {
+    meta.body.classList.add('is-sub-drop-end');
+    dragState.dropTargetId = null;
+    dragState.dropToEnd = true;
+    dragState.dropIndex = 0;
+    return;
+  }
+  let dropIndex = groups.length;
+  if (clientY <= bodyRect.top) {
+    dropIndex = 0;
+  } else if (clientY >= bodyRect.bottom) {
+    dropIndex = groups.length;
+  } else {
+    for (let i = 0; i < groups.length; i++) {
+      const rect = groups[i].getBoundingClientRect();
+      const midpoint = rect.top + rect.height / 2;
+      if (clientY < midpoint) {
+        dropIndex = i;
+        break;
+      }
+    }
+  }
+  if (dropIndex >= groups.length) {
+    const last = groups[groups.length - 1];
+    if (last) last.classList.add('is-drop-after');
+    meta.body.classList.add('is-sub-drop-end');
+    dragState.dropTargetId = last?.dataset.groupPath || null;
+    dragState.dropToEnd = true;
+    dragState.dropIndex = groups.length;
+    return;
+  }
+  const target = groups[dropIndex];
+  if (target) {
+    target.classList.add('is-drop-before');
+    dragState.dropTargetId = target.dataset.groupPath || null;
+    dragState.dropToEnd = false;
+    dragState.dropIndex = dropIndex;
+  }
+}
+
+function startPointerSubgroupDrag(event, meta, subgroupId) {
+  if (!meta || !meta.body || !subgroupId) return;
+  if (event?.button !== undefined && event.button !== 0) return;
+  if (typeof event?.pointerId !== 'number') return;
+  const handle = event.currentTarget;
+  const group = meta.groupElements?.get(subgroupId);
+  if (!handle || !group) return;
+  event.preventDefault();
+  if (panelState.subgroupDragState) {
+    endSubgroupDrag();
+  }
+  clearSubgroupDragIndicators(meta);
+  const moveHandler = moveEvent => {
+    if (!panelState.subgroupDragState || panelState.subgroupDragState.pointerId !== moveEvent.pointerId) return;
+    moveEvent.preventDefault();
+    updatePointerSubgroupDropTarget(meta, moveEvent.clientX, moveEvent.clientY);
+  };
+  const upHandler = upEvent => {
+    if (!panelState.subgroupDragState || panelState.subgroupDragState.pointerId !== upEvent.pointerId) return;
+    upEvent.preventDefault();
+    try {
+      commitPointerSubgroupDrop();
+    } finally {
+      endSubgroupDrag();
+    }
+  };
+  const cancelHandler = cancelEvent => {
+    if (!panelState.subgroupDragState || panelState.subgroupDragState.pointerId !== cancelEvent.pointerId) return;
+    cancelEvent.preventDefault();
+    endSubgroupDrag();
+  };
+  panelState.subgroupDragState = {
+    sectionId: meta.id,
+    subgroupId,
+    meta,
+    element: group,
+    mode: 'pointer',
+    pointerId: event.pointerId,
+    dropTargetId: null,
+    dropIndex: null,
+    dropToEnd: false,
+    cleanup: () => {
+      handle.removeEventListener('pointermove', moveHandler);
+      handle.removeEventListener('pointerup', upHandler);
+      handle.removeEventListener('pointercancel', cancelHandler);
+      if (typeof handle.releasePointerCapture === 'function') {
+        try {
+          handle.releasePointerCapture(event.pointerId);
+        } catch (err) {
+          // noop
+        }
+      }
+    },
+  };
+  group.classList.add('is-dragging');
+  if (typeof handle.setPointerCapture === 'function') {
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch (err) {
+      // noop
+    }
+  }
+  handle.addEventListener('pointermove', moveHandler);
+  handle.addEventListener('pointerup', upHandler);
+  handle.addEventListener('pointercancel', cancelHandler);
+  updatePointerSubgroupDropTarget(meta, event.clientX, event.clientY);
+}
+
 function startPointerSectionDrag(event, meta) {
   if (!meta || !meta.root) return;
   if (event?.button !== undefined && event.button !== 0) return;
@@ -1105,6 +1396,10 @@ function startPointerSectionDrag(event, meta) {
   if (!handle) return;
 
   event.preventDefault();
+
+  if (panelState.subgroupDragState) {
+    endSubgroupDrag();
+  }
 
   if (panelState.dragState) {
     endSectionDrag();
@@ -2029,12 +2324,21 @@ function buildSection(def, root) {
     group.dataset.groupPath = found.id;
     const headingRow = document.createElement('div');
     headingRow.className = 'ink-subheading-row';
+    const headingWrap = document.createElement('div');
+    headingWrap.className = 'ink-subheading-wrap';
+    const dragHandle = document.createElement('button');
+    dragHandle.type = 'button';
+    dragHandle.className = 'ink-subgroup-drag-handle';
+    dragHandle.setAttribute('aria-label', `Reorder ${found.label}`);
+    dragHandle.innerHTML = '<span aria-hidden="true">⋮</span>';
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
     const lock = createLockToggle(found.label, locked => setGroupLocked(meta, found.id, locked));
     heading.appendChild(lock);
     heading.appendChild(document.createTextNode(found.label));
-    headingRow.appendChild(heading);
+    headingWrap.appendChild(dragHandle);
+    headingWrap.appendChild(heading);
+    headingRow.appendChild(headingWrap);
     if (togglePath) {
       const toggle = document.createElement('input');
       toggle.type = 'checkbox';
@@ -2100,6 +2404,7 @@ function buildSection(def, root) {
 
     meta.subsectionControls.set(found.id, info);
     subgroupMap.set(found.id, info);
+    dragHandle.addEventListener('pointerdown', event => startPointerSubgroupDrag(event, meta, found.id));
     return info;
   };
 
@@ -2150,6 +2455,7 @@ function buildSection(def, root) {
   });
 
   ensureSubgroupLocks(meta);
+  updateSubsectionDomOrder(def.id, getSectionSubsectionOrder(def.id));
 
   sectionEl.appendChild(body);
   root.appendChild(sectionEl);
@@ -2770,6 +3076,12 @@ function applyStyleSnapshot(style, options = {}) {
         silent: persist ? false : true,
       });
     }
+    if (Array.isArray(workingStyle.subsectionOrder) && workingStyle.subsectionOrder.length) {
+      applySubsectionOrder(workingStyle.subsectionOrder, {
+        syncDom: true,
+        silent: persist ? false : true,
+      });
+    }
     if (Number.isFinite(workingStyle.overall)) {
       setOverallStrength(workingStyle.overall);
     }
@@ -2777,6 +3089,12 @@ function applyStyleSnapshot(style, options = {}) {
       const meta = findMetaById(def.id);
       if (!meta) return;
       const section = workingStyle.sections && workingStyle.sections[def.id];
+      if (section && (Array.isArray(section.order) || Array.isArray(section.subsectionOrder))) {
+        applySubsectionOrderForSection(def.id, section.order || section.subsectionOrder, {
+          syncDom: true,
+          silent: persist ? false : true,
+        });
+      }
       if (section && section.config) {
         applyConfigToTarget(meta.config, section.config);
         syncInputs(meta);
@@ -2989,6 +3307,8 @@ export function setupInkSettingsPanel(options = {}) {
 
   panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
   setSectionOrderOnState(panelState.sectionOrder);
+  panelState.subsectionOrder = normalizeSubsectionOrder(getSubsectionOrderFromState());
+  setSubsectionOrderOnState(panelState.subsectionOrder);
 
   if (panelState.styleNameInput) {
     panelState.styleNameInput.addEventListener('input', () => panelState.styleNameInput.classList.remove('input-error'));

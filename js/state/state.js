@@ -100,6 +100,7 @@ export function createMainState(app, gridDiv = 8) {
     filtersPunchScale: SECTION_SCALE_DEFAULTS.filtersPunch,
     altSeed: 0x51F15EED,
     inkSectionOrder: DEFAULT_INK_SECTION_ORDER.slice(),
+    inkSubsectionOrder: DEFAULT_INK_SUBSECTION_ORDER.slice(),
     glyphJitterEnabled: GLYPH_JITTER_DEFAULTS.enabled,
     glyphJitterAmountPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.amountPct),
     glyphJitterFrequencyPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.frequencyPct),
@@ -182,4 +183,5 @@ export function resetInkEffectsState(state) {
   state.filtersSmudgeScale = SECTION_SCALE_DEFAULTS.filtersSmudge;
   state.filtersPunchScale = SECTION_SCALE_DEFAULTS.filtersPunch;
   state.inkSectionOrder = DEFAULT_INK_SECTION_ORDER.slice();
+  state.inkSubsectionOrder = DEFAULT_INK_SUBSECTION_ORDER.slice();
 }
