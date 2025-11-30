@@ -483,6 +483,26 @@ function isScaleLocked(meta, scope = 'scale') {
   return !!panelState.lockState.scale[key];
 }
 
+function setSubgroupCollapsed(meta, subgroupId, collapsed = true) {
+  if (!meta || !subgroupId) return;
+  if (!meta.subgroupCollapsed) meta.subgroupCollapsed = new Map();
+  meta.subgroupCollapsed.set(subgroupId, !!collapsed);
+  const group = meta.groupElements?.get(subgroupId);
+  if (group) {
+    group.classList.toggle('is-collapsed', !!collapsed);
+    const toggle = group.querySelector('.ink-subgroup-collapse');
+    if (toggle) {
+      toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      toggle.dataset.collapsed = collapsed ? '1' : '0';
+    }
+  }
+}
+
+function isSubgroupCollapsed(meta, subgroupId) {
+  if (!meta || !subgroupId) return false;
+  return !!meta.subgroupCollapsed?.get(subgroupId);
+}
+
 const HEX_MATCH_RE = /seed|hash/i;
 const STYLE_NAME_MAX_LEN = 60;
 const STYLE_EXPORT_VERSION = 2;
@@ -2074,6 +2094,21 @@ function buildObjectControls(meta, container, obj, path, label) {
     dragHandle.className = 'ink-subgroup-drag-handle';
     dragHandle.setAttribute('aria-label', `Reorder ${subgroupLabel}`);
     dragHandle.innerHTML = '<span aria-hidden="true">⋮</span>';
+    const collapseBtn = document.createElement('button');
+    collapseBtn.type = 'button';
+    collapseBtn.className = 'ink-subgroup-collapse';
+    collapseBtn.setAttribute('aria-label', `Toggle ${subgroupLabel} details`);
+    const collapseIcon = document.createElement('span');
+    collapseIcon.className = 'ink-subgroup-collapse-icon';
+    collapseIcon.setAttribute('aria-hidden', 'true');
+    collapseIcon.textContent = '▸';
+    collapseBtn.appendChild(collapseIcon);
+    collapseBtn.dataset.collapsed = '1';
+    collapseBtn.setAttribute('aria-expanded', 'false');
+    collapseBtn.addEventListener('click', () => {
+      const next = !isSubgroupCollapsed(meta, subgroupKey);
+      setSubgroupCollapsed(meta, subgroupKey, next);
+    });
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
     const headingLabel = subgroupLabel;
@@ -2081,6 +2116,7 @@ function buildObjectControls(meta, container, obj, path, label) {
     heading.appendChild(lock);
     heading.appendChild(document.createTextNode(headingLabel));
     headingWrap.appendChild(dragHandle);
+    headingWrap.appendChild(collapseBtn);
     headingWrap.appendChild(heading);
     headingRow.appendChild(headingWrap);
     if (path === 'fuzzExp') {
@@ -2140,6 +2176,8 @@ function buildObjectControls(meta, container, obj, path, label) {
   if (!meta.subsectionControls?.has(subgroupKey)) {
     meta.subsectionControls?.set(subgroupKey, subsectionInfo);
   }
+  const initialCollapsed = isSubgroupCollapsed(meta, subgroupKey) || !meta.subgroupCollapsed.has(subgroupKey);
+  setSubgroupCollapsed(meta, subgroupKey, initialCollapsed);
 
   const keys = getObjectKeys(path, obj);
   keys.forEach(key => {
@@ -2334,6 +2372,7 @@ function buildSection(def, root) {
     qualityControl: null,
     scaleControl: null,
     subsectionControls: new Map(),
+    subgroupCollapsed: new Map(),
   };
 
   const subgroupDefs = SUBGROUP_CONFIG[def.id] || [];
@@ -2356,12 +2395,28 @@ function buildSection(def, root) {
     dragHandle.className = 'ink-subgroup-drag-handle';
     dragHandle.setAttribute('aria-label', `Reorder ${found.label}`);
     dragHandle.innerHTML = '<span aria-hidden="true">⋮</span>';
+    const collapseBtn = document.createElement('button');
+    collapseBtn.type = 'button';
+    collapseBtn.className = 'ink-subgroup-collapse';
+    collapseBtn.setAttribute('aria-label', `Toggle ${found.label} details`);
+    const collapseIcon = document.createElement('span');
+    collapseIcon.className = 'ink-subgroup-collapse-icon';
+    collapseIcon.setAttribute('aria-hidden', 'true');
+    collapseIcon.textContent = '▸';
+    collapseBtn.appendChild(collapseIcon);
+    collapseBtn.dataset.collapsed = '1';
+    collapseBtn.setAttribute('aria-expanded', 'false');
+    collapseBtn.addEventListener('click', () => {
+      const next = !isSubgroupCollapsed(meta, found.id);
+      setSubgroupCollapsed(meta, found.id, next);
+    });
     const heading = document.createElement('div');
     heading.className = 'ink-subheading';
     const lock = createLockToggle(found.label, locked => setGroupLocked(meta, found.id, locked));
     heading.appendChild(lock);
     heading.appendChild(document.createTextNode(found.label));
     headingWrap.appendChild(dragHandle);
+    headingWrap.appendChild(collapseBtn);
     headingWrap.appendChild(heading);
     headingRow.appendChild(headingWrap);
     if (togglePath) {
@@ -2430,6 +2485,8 @@ function buildSection(def, root) {
     meta.subsectionControls.set(found.id, info);
     subgroupMap.set(found.id, info);
     dragHandle.addEventListener('pointerdown', event => startPointerSubgroupDrag(event, meta, found.id));
+    const initialCollapsed = isSubgroupCollapsed(meta, found.id) || !meta.subgroupCollapsed.has(found.id);
+    setSubgroupCollapsed(meta, found.id, initialCollapsed);
     return info;
   };
 
