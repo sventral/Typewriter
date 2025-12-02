@@ -104,6 +104,8 @@ async function resolveFontFaceSource(raw) {
   return null;
 }
 
+const DEFAULT_FONT_SAMPLE = 'The quick brown fox 123456';
+
 export function createInkControls({
   app,
   state,
@@ -119,7 +121,7 @@ export function createInkControls({
   let customFontSeq = 0;
   let customFontName = null;
 
-  const setCustomFontSample = (text, fontName = null, isError = false) => {
+  const setCustomFontSample = (text = DEFAULT_FONT_SAMPLE, fontName = null, isError = false) => {
     if (!app.customFontSample) return;
     const el = app.customFontSample;
     el.textContent = text;
@@ -149,7 +151,7 @@ export function createInkControls({
       customFontName = name;
       updateCustomFontRadio(name);
       await loadFontAndApply(name);
-      setCustomFontSample(`Using ${name}`, name, false);
+      setCustomFontSample(DEFAULT_FONT_SAMPLE, name, false);
     } catch (err) {
       console.error('Failed to load custom font', err);
       setCustomFontSample('Could not load that font. Please try another file or URL.', null, true);
@@ -309,7 +311,7 @@ export function createInkControls({
 
   function bindCustomFontControls() {
     if (app.customFontSample) {
-      setCustomFontSample('Load a font to preview it here.');
+      setCustomFontSample(DEFAULT_FONT_SAMPLE);
     }
     updateCustomFontRadio(null);
 

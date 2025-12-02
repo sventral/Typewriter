@@ -178,6 +178,7 @@
     opacity: 0.75;
     white-space: nowrap;
   }
+  .font-sample.is-error { color: var(--danger, #b33); }
   .custom-font-sample.is-error { color: var(--danger, #b33); }
 
   .zoom-controls{
