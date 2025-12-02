@@ -1546,8 +1546,20 @@ function clampQualityValue(value, fallback = EFFECT_QUALITY_DEFAULT) {
   return clamp(Math.round(normalized), EFFECT_QUALITY_MIN, EFFECT_QUALITY_MAX);
 }
 
-const SECTION_OFF_CHANCE = 0.10;
-const TOGGLE_OFF_CHANCE = 0.20;
+const SECTION_OFF_CHANCE_BUCKETS = Object.freeze({
+  sparse: { min: 0.60, max: 0.90 },
+  balanced: { min: 0.30, max: 0.65 },
+  dense: { min: 0.10, max: 0.35 },
+});
+
+const TOGGLE_OFF_CHANCE_BUCKETS = Object.freeze({
+  sparse: { min: 0.40, max: 0.70 },
+  balanced: { min: 0.20, max: 0.50 },
+  dense: { min: 0.05, max: 0.25 },
+});
+
+const SECTION_OFF_CHANCE_DEFAULT = SECTION_OFF_CHANCE_BUCKETS.dense.min;
+const TOGGLE_OFF_CHANCE_DEFAULT = TOGGLE_OFF_CHANCE_BUCKETS.dense.min;
 
 function randomBetween(lower, upper, step = null) {
   const min = Math.min(lower, upper);
@@ -1568,6 +1580,18 @@ function shuffleArray(list) {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
+}
+
+function pickRandomizationProfile() {
+  // Weight towards sparser runs to counter previous bias toward many-enabled outcomes.
+  const roll = Math.random();
+  const bucketKey = roll < 0.50 ? 'sparse' : roll < 0.80 ? 'balanced' : 'dense';
+  const sectionBucket = SECTION_OFF_CHANCE_BUCKETS[bucketKey] || SECTION_OFF_CHANCE_BUCKETS.dense;
+  const toggleBucket = TOGGLE_OFF_CHANCE_BUCKETS[bucketKey] || TOGGLE_OFF_CHANCE_BUCKETS.dense;
+  return {
+    sectionOffChance: clamp(randomBetween(sectionBucket.min, sectionBucket.max), 0, 1),
+    toggleOffChance: clamp(randomBetween(toggleBucket.min, toggleBucket.max), 0, 1),
+  };
 }
 
 function deriveNumericBounds(input) {
@@ -3094,9 +3118,15 @@ function handleResetInkSettings() {
   resetInkSettingsToDefaults();
 }
 
-function randomizeInkSection(meta) {
+function randomizeInkSection(meta, options = {}) {
   if (!meta) return;
-  const enabled = meta.id === 'filters' ? true : Math.random() >= SECTION_OFF_CHANCE;
+  const sectionOffChance = Number.isFinite(options.sectionOffChance)
+    ? clamp(options.sectionOffChance, 0, 1)
+    : SECTION_OFF_CHANCE_DEFAULT;
+  const toggleOffChance = Number.isFinite(options.toggleOffChance)
+    ? clamp(options.toggleOffChance, 0, 1)
+    : TOGGLE_OFF_CHANCE_DEFAULT;
+  const enabled = meta.id === 'filters' ? true : Math.random() >= sectionOffChance;
   const defaultOn = Number.isFinite(meta.defaultStrength) && meta.defaultStrength > 0 ? meta.defaultStrength : 100;
   const targetStrength = enabled
     ? Math.round(randomBetween(meta.id === 'filters' ? defaultOn : 20, 100, 1))
@@ -3106,7 +3136,7 @@ function randomizeInkSection(meta) {
   meta.inputs.forEach(input => {
     const groupPath = input.dataset.groupPath;
     if (groupPath && isGroupLocked(meta, groupPath)) return;
-    randomizeSingleInput(input, { offChance: TOGGLE_OFF_CHANCE });
+    randomizeSingleInput(input, { offChance: toggleOffChance });
   });
   meta.subsectionControls?.forEach(info => {
     if (info?.qualityControl && !isQualityLocked(meta, `${info.subsectionId}:quality`)) {
@@ -3124,6 +3154,7 @@ function randomizeInkSection(meta) {
 function randomizeInkSettings() {
   if (!panelState.initialized) return;
   const keepOrder = getKeepOrderFlagFromState();
+  const { sectionOffChance, toggleOffChance } = pickRandomizationProfile();
   runWithPersistSuppressed(() => {
     // Randomize should keep overall strength at the default maximum.
     setOverallStrength(100);
@@ -3144,7 +3175,7 @@ function randomizeInkSettings() {
       }
     }
 
-    panelState.metas.forEach(meta => randomizeInkSection(meta));
+    panelState.metas.forEach(meta => randomizeInkSection(meta, { sectionOffChance, toggleOffChance }));
   });
   persistPanelState();
   syncInkStrengthDisplays();
