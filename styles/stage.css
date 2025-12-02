@@ -157,6 +157,29 @@
     opacity: 0.8;
   }
 
+  .custom-fonts-block {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .custom-font-title { margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.4px; font-size: 12px; opacity: 0.8; }
+  .custom-font-action {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .custom-font-action input[type="text"],
+  .custom-font-action input[type="url"] {
+    flex: 1;
+    min-width: 0;
+  }
+  .custom-font-action .btn { min-width: 76px; }
+  .custom-font-hint {
+    font-size: 12px;
+    opacity: 0.75;
+    white-space: nowrap;
+  }
+  .custom-font-sample.is-error { color: var(--danger, #b33); }
+
   .zoom-controls{
     position:fixed;
     right:0px;

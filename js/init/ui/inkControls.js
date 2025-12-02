@@ -44,6 +44,66 @@ function setGlyphJitterInputsDisabled(app, disabled) {
   }
 }
 
+function sanitizeFontLabel(value, fallback = 'Custom Font') {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (trimmed) return trimmed.slice(0, 64);
+  return fallback;
+}
+
+function deriveFontNameFromFile(file) {
+  if (!file || !file.name) return null;
+  const base = file.name.replace(/\.[^.]+$/, '') || 'Local Font';
+  return sanitizeFontLabel(base);
+}
+
+function deriveFontNameFromUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    const parts = url.pathname.split('/').filter(Boolean);
+    const last = parts[parts.length - 1] || url.hostname || 'Web Font';
+    return sanitizeFontLabel(last.replace(/\.[^.]+$/, '') || 'Web Font');
+  } catch {
+    return sanitizeFontLabel('Web Font');
+  }
+}
+
+function extractFontUrl(raw) {
+  if (!raw) return null;
+  const text = String(raw).trim();
+  const urlMatch = text.match(/url\((['"]?)([^'"\)]+)\1\)/i);
+  if (urlMatch && urlMatch[2]) return urlMatch[2];
+  if (/^https?:\/\//i.test(text)) return text;
+  return null;
+}
+
+async function resolveFontFaceSource(raw) {
+  const extractedUrl = extractFontUrl(raw);
+  if (!extractedUrl) return null;
+
+  const directFontExtensions = ['.woff2', '.woff', '.ttf', '.otf'];
+  if (directFontExtensions.some((ext) => extractedUrl.toLowerCase().includes(ext))) {
+    const name = deriveFontNameFromUrl(extractedUrl);
+    return { name, source: `url(${extractedUrl})` };
+  }
+
+  try {
+    const res = await fetch(extractedUrl, { mode: 'cors' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const css = await res.text();
+    const familyMatch = css.match(/font-family:\s*["']([^"']+)["']/i);
+    const srcMatch = css.match(/src:\s*([^;]+);/i);
+    const urlMatch = css.match(/url\(([^)]+)\)/i);
+    const source = srcMatch ? srcMatch[1].trim() : (urlMatch ? `url(${urlMatch[1]})` : null);
+    const name = familyMatch ? familyMatch[1].trim() : deriveFontNameFromUrl(extractedUrl);
+    if (source && name) {
+      return { name, source };
+    }
+  } catch (err) {
+    console.error('Failed to resolve font CSS', err);
+  }
+  return null;
+}
+
 export function createInkControls({
   app,
   state,
@@ -56,6 +116,78 @@ export function createInkControls({
   theme,
   refreshLagAssistState = () => {},
 }) {
+  let customFontSeq = 0;
+  let customFontName = null;
+
+  const setCustomFontSample = (text, fontName = null, isError = false) => {
+    if (!app.customFontSample) return;
+    const el = app.customFontSample;
+    el.textContent = text;
+    el.style.fontFamily = fontName ? `"${fontName}", Courier, "Courier New", monospace` : '';
+    el.classList.toggle('is-error', !!isError);
+  };
+
+  const resolveDesiredFontName = (fallback) => sanitizeFontLabel(fallback);
+
+  const updateCustomFontRadio = (name) => {
+    if (!app.customFontRadio) return;
+    const label = document.getElementById('customFontNameLabel');
+    const hasName = !!name;
+    app.customFontRadio.value = hasName ? name : '';
+    app.customFontRadio.disabled = !hasName;
+    if (label) label.textContent = hasName ? name : 'Custom font (none loaded)';
+    if (hasName) app.customFontRadio.checked = true;
+  };
+
+  const applyLoadedCustomFont = async (name, source) => {
+    const seq = ++customFontSeq;
+    try {
+      const face = new FontFace(name, source);
+      const loaded = await face.load();
+      document.fonts.add(loaded);
+      if (seq !== customFontSeq) return;
+      customFontName = name;
+      updateCustomFontRadio(name);
+      await loadFontAndApply(name);
+      setCustomFontSample(`Using ${name}`, name, false);
+    } catch (err) {
+      console.error('Failed to load custom font', err);
+      setCustomFontSample('Could not load that font. Please try another file or URL.', null, true);
+    }
+  };
+
+  const handleLocalFontFile = async (file) => {
+    if (!file) return;
+    const fallbackName = deriveFontNameFromFile(file);
+    const name = resolveDesiredFontName(fallbackName);
+    try {
+      const buffer = await file.arrayBuffer();
+      await applyLoadedCustomFont(name, buffer);
+    } catch (err) {
+      console.error('Local font read error', err);
+      setCustomFontSample('Could not read that font file.', null, true);
+    }
+  };
+
+  const handleWebFontUrl = async () => {
+    let raw = '';
+    try {
+      raw = window.prompt('Paste @import url(...) or direct font URL');
+    } catch {
+      raw = '';
+    }
+    if (!raw) {
+      setCustomFontSample('Paste @import url(...) or direct font URL.', null, true);
+      return;
+    }
+    const resolved = await resolveFontFaceSource(raw);
+    if (!resolved) {
+      setCustomFontSample('Paste @import url(...) or direct font URL.', null, true);
+      return;
+    }
+    const name = resolveDesiredFontName(resolved.name);
+    await applyLoadedCustomFont(name, resolved.source);
+  };
   function bindOpacitySliders() {
     let opacityPaintScheduled = false;
 
@@ -167,10 +299,45 @@ export function createInkControls({
       app.fontRadios().forEach((radio) => {
         radio.addEventListener('change', async () => {
           if (radio.checked) {
-            await loadFontAndApply(radio.value);
+            await loadFontAndApply(radio.value || customFontName || radio.value);
             focusStage();
           }
         });
+      });
+    }
+  }
+
+  function bindCustomFontControls() {
+    if (app.customFontSample) {
+      setCustomFontSample('Load a font to preview it here.');
+    }
+    updateCustomFontRadio(null);
+
+    if (app.customFontFileBtn && app.customFontFileInput) {
+      app.customFontFileBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        app.customFontFileInput.click();
+      });
+      app.customFontFileInput.addEventListener('change', () => {
+        const [file] = app.customFontFileInput.files || [];
+        handleLocalFontFile(file);
+        app.customFontFileInput.value = '';
+      });
+    }
+
+    if (app.customFontUrlLoadBtn) {
+      app.customFontUrlLoadBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleWebFontUrl();
+      });
+    }
+
+    if (app.customFontRadio) {
+      app.customFontRadio.addEventListener('change', async () => {
+        if (app.customFontRadio.checked && customFontName) {
+          await loadFontAndApply(customFontName);
+          focusStage();
+        }
       });
     }
   }
@@ -434,6 +601,7 @@ export function createInkControls({
     bindOpacitySliders();
     bindInkButtons();
     bindDialogToggles();
+    bindCustomFontControls();
     bindGlyphJitterControls();
     bindLineSlantControls();
     bindAppearanceControls();

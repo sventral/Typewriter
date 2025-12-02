@@ -293,6 +293,25 @@
           <span class="settings-summary-label">Fonts</span>
         </summary>
         <div class="settings-section-content">
+          <div class="settings-group-new custom-fonts-block">
+            <h4 class="custom-font-title">Custom font</h4>
+            <div class="custom-font-action">
+              <button class="btn" type="button" id="customFontFileBtn">Local</button>
+              <input type="file" id="customFontFileInput" accept=".ttf,.otf,.woff,.woff2,.ttc,.otc" hidden />
+              <span class="custom-font-hint">Load local TTF / OTF / WOFF(2) font</span>
+            </div>
+            <div class="custom-font-action">
+              <button class="btn apply-btn" type="button" id="customFontUrlLoadBtn">Load</button>
+              <span class="custom-font-hint">Load @import url</span>
+            </div>
+            <label class="font-option">
+              <div class="font-option-header">
+                <input type="radio" name="fontChoice" value="" id="customFontRadio" disabled />
+                <span class="font-name" id="customFontNameLabel">Custom font (none loaded)</span>
+              </div>
+              <span class="font-sample" id="customFontSample" aria-live="polite">Load a font to preview it here.</span>
+            </label>
+          </div>
           <div class="settings-group-new fonts-settings-group">
             <label class="font-option">
               <div class="font-option-header">
@@ -690,7 +709,7 @@
         </div>
       </details>
     </div>
-    <div class="app-version">v.42.5b</div>
+    <div class="app-version">v.42.9b</div>
   </aside>
 
   <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>

@@ -86,6 +86,13 @@ const DOM_ID_GROUPS = {
     inkOpacityUValue: 'inkOpacityUValue',
     inkOpacityWValue: 'inkOpacityWValue',
   },
+  customFonts: {
+    customFontFileInput: 'customFontFileInput',
+    customFontFileBtn: 'customFontFileBtn',
+    customFontUrlLoadBtn: 'customFontUrlLoadBtn',
+    customFontRadio: 'customFontRadio',
+    customFontSample: 'customFontSample',
+  },
   typography: {
     cpiSelect: 'cpiSelect',
     colsPreviewSpan: 'colsPreview',
