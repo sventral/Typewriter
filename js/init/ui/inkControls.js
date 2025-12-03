@@ -96,7 +96,6 @@ function variantKey(variant) {
   return [
     variant?.style || 'normal',
     variant?.weight || '400',
-    variant?.unicodeRange || 'all',
   ].join('|');
 }
 
@@ -139,9 +138,19 @@ function pickFontFaceFromCss(css) {
   };
 
   const sorted = parsed.sort((a, b) => score(a) - score(b));
+  // Deduplicate by style+weight, preferring coversAscii.
+  const deduped = [];
+  const seen = new Set();
+  for (const v of sorted) {
+    const key = variantKey(v);
+    if (seen.has(key)) continue;
+    // Keep the first (best-scored) instance for each key.
+    seen.add(key);
+    deduped.push(v);
+  }
   return {
     best: sorted[0],
-    variants: sorted,
+    variants: deduped,
   };
 }
 
@@ -249,7 +258,8 @@ export function createInkControls({
         weight: descriptors?.weight || '400',
         unicodeRange: descriptors?.unicodeRange || null,
       });
-      updateCustomFontRadio(name, displayLabel);
+      const label = displayLabel || customFontBaseName || name;
+      updateCustomFontRadio(name, label);
       await loadFontAndApply(name);
       setCustomFontSample(DEFAULT_FONT_SAMPLE, name, false);
     } catch (err) {
@@ -296,11 +306,8 @@ export function createInkControls({
     customFontVariants = resolved.variants || [];
     currentVariantKey = resolved.defaultVariantKey || (customFontVariants[0]?.key ?? null);
     renderCustomFontVariants();
-    const displayLabel = currentVariantKey
-      ? `${baseName} (${formatVariantLabelFromKey(currentVariantKey)})`
-      : baseName;
     const familyName = buildVariantFamilyName(baseName, currentVariantKey);
-    await applyLoadedCustomFont(familyName, resolved.source, resolved.descriptors, displayLabel);
+    await applyLoadedCustomFont(familyName, resolved.source, resolved.descriptors, baseName);
   };
 
   function renderCustomFontVariants() {
@@ -322,15 +329,7 @@ export function createInkControls({
   function formatVariantLabel(variant) {
     const weightLabel = variant.weight || '400';
     const styleLabel = variant.style || 'normal';
-    const rangeLabel = variant.unicodeRange ? ` (${variant.unicodeRange})` : '';
-    return `${weightLabel} ${styleLabel}${rangeLabel}`;
-  }
-
-  function formatVariantLabelFromKey(key) {
-    if (!key) return '';
-    const [style, weight, range] = key.split('|');
-    const rangeLabel = range && range !== 'all' ? ` (${range})` : '';
-    return `${weight || '400'} ${style || 'normal'}${rangeLabel}`;
+    return `${weightLabel} ${styleLabel}`;
   }
 
   function buildVariantFamilyName(baseName, variantKeyValue) {
@@ -502,7 +501,7 @@ export function createInkControls({
         currentVariantKey = variant?.key || null;
         if (variant) {
           const familyName = buildVariantFamilyName(customFontBaseName || customFontName, currentVariantKey);
-          const displayLabel = `${customFontBaseName || customFontName} (${formatVariantLabel(variant)})`;
+          const displayLabel = customFontBaseName || customFontName;
           await applyLoadedCustomFont(familyName, variant.source, {
             style: variant.style || 'normal',
             weight: variant.weight || '400',
