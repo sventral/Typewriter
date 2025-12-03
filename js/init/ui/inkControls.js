@@ -212,6 +212,7 @@ export function createInkControls({
 }) {
   let customFontSeq = 0;
   let customFontName = null;
+  let customFontBaseName = null;
   let customFontVariants = [];
   let currentVariantKey = null;
 
@@ -225,17 +226,17 @@ export function createInkControls({
 
   const resolveDesiredFontName = (fallback) => sanitizeFontLabel(fallback);
 
-  const updateCustomFontRadio = (name) => {
+  const updateCustomFontRadio = (name, labelText = null) => {
     if (!app.customFontRadio) return;
     const label = document.getElementById('customFontNameLabel');
     const hasName = !!name;
     app.customFontRadio.value = hasName ? name : '';
     app.customFontRadio.disabled = !hasName;
-    if (label) label.textContent = hasName ? name : 'Custom font (none loaded)';
+    if (label) label.textContent = hasName ? (labelText || name) : 'Custom font (none loaded)';
     if (hasName) app.customFontRadio.checked = true;
   };
 
-  const applyLoadedCustomFont = async (name, source, descriptors = {}) => {
+  const applyLoadedCustomFont = async (name, source, descriptors = {}, displayLabel = null) => {
     const seq = ++customFontSeq;
     try {
       const face = new FontFace(name, source, descriptors);
@@ -248,7 +249,7 @@ export function createInkControls({
         weight: descriptors?.weight || '400',
         unicodeRange: descriptors?.unicodeRange || null,
       });
-      updateCustomFontRadio(name);
+      updateCustomFontRadio(name, displayLabel);
       await loadFontAndApply(name);
       setCustomFontSample(DEFAULT_FONT_SAMPLE, name, false);
     } catch (err) {
@@ -261,6 +262,7 @@ export function createInkControls({
     if (!file) return;
     const fallbackName = deriveFontNameFromFile(file);
     const name = resolveDesiredFontName(fallbackName);
+    customFontBaseName = name;
     customFontVariants = [];
     currentVariantKey = null;
     renderCustomFontVariants();
@@ -289,11 +291,16 @@ export function createInkControls({
       setCustomFontSample('Paste @import url(...) or direct font URL.', null, true);
       return;
     }
-    const name = resolveDesiredFontName(resolved.name);
+    const baseName = resolveDesiredFontName(resolved.name);
+    customFontBaseName = baseName;
     customFontVariants = resolved.variants || [];
     currentVariantKey = resolved.defaultVariantKey || (customFontVariants[0]?.key ?? null);
     renderCustomFontVariants();
-    await applyLoadedCustomFont(name, resolved.source, resolved.descriptors);
+    const displayLabel = currentVariantKey
+      ? `${baseName} (${formatVariantLabelFromKey(currentVariantKey)})`
+      : baseName;
+    const familyName = buildVariantFamilyName(baseName, currentVariantKey);
+    await applyLoadedCustomFont(familyName, resolved.source, resolved.descriptors, displayLabel);
   };
 
   function renderCustomFontVariants() {
@@ -306,13 +313,32 @@ export function createInkControls({
     customFontVariants.forEach((variant) => {
       const opt = document.createElement('option');
       opt.value = variant.key;
-      const weightLabel = variant.weight || '400';
-      const styleLabel = variant.style || 'normal';
-      const rangeLabel = variant.unicodeRange ? ` (${variant.unicodeRange})` : '';
-      opt.textContent = `${weightLabel} ${styleLabel}${rangeLabel}`;
+      opt.textContent = formatVariantLabel(variant);
       select.appendChild(opt);
     });
     select.value = currentVariantKey || customFontVariants[0]?.key || '';
+  }
+
+  function formatVariantLabel(variant) {
+    const weightLabel = variant.weight || '400';
+    const styleLabel = variant.style || 'normal';
+    const rangeLabel = variant.unicodeRange ? ` (${variant.unicodeRange})` : '';
+    return `${weightLabel} ${styleLabel}${rangeLabel}`;
+  }
+
+  function formatVariantLabelFromKey(key) {
+    if (!key) return '';
+    const [style, weight, range] = key.split('|');
+    const rangeLabel = range && range !== 'all' ? ` (${range})` : '';
+    return `${weight || '400'} ${style || 'normal'}${rangeLabel}`;
+  }
+
+  function buildVariantFamilyName(baseName, variantKeyValue) {
+    if (!variantKeyValue) return baseName;
+    const [style, weight] = variantKeyValue.split('|');
+    const weightLabel = weight || '400';
+    const styleLabel = style || 'normal';
+    return `${baseName} ${weightLabel} ${styleLabel}`.trim();
   }
   function bindOpacitySliders() {
     let opacityPaintScheduled = false;
@@ -475,11 +501,13 @@ export function createInkControls({
         const variant = customFontVariants.find((v) => v.key === selectedKey) || customFontVariants[0];
         currentVariantKey = variant?.key || null;
         if (variant) {
-          await applyLoadedCustomFont(customFontName, variant.source, {
+          const familyName = buildVariantFamilyName(customFontBaseName || customFontName, currentVariantKey);
+          const displayLabel = `${customFontBaseName || customFontName} (${formatVariantLabel(variant)})`;
+          await applyLoadedCustomFont(familyName, variant.source, {
             style: variant.style || 'normal',
             weight: variant.weight || '400',
             unicodeRange: variant.unicodeRange,
-          });
+          }, displayLabel);
           focusStage();
         }
       });
