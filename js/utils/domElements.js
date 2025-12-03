@@ -92,6 +92,8 @@ const DOM_ID_GROUPS = {
     customFontUrlLoadBtn: 'customFontUrlLoadBtn',
     customFontRadio: 'customFontRadio',
     customFontSample: 'customFontSample',
+    customFontVariantRow: 'customFontVariantRow',
+    customFontVariantSelect: 'customFontVariantSelect',
   },
   typography: {
     cpiSelect: 'cpiSelect',
