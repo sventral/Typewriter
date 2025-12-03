@@ -76,6 +76,63 @@ function extractFontUrl(raw) {
   return null;
 }
 
+function parseUnicodeRanges(rangeText) {
+  if (!rangeText) return [];
+  return rangeText
+    .split(',')
+    .map((part) => part.trim())
+    .map((part) => {
+      const m = part.match(/^u\+([0-9a-f]+)(?:-([0-9a-f]+))?$/i);
+      if (!m) return null;
+      const start = parseInt(m[1], 16);
+      const end = m[2] ? parseInt(m[2], 16) : start;
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+      return { start, end };
+    })
+    .filter(Boolean);
+}
+
+function pickFontFaceFromCss(css) {
+  const blocks = Array.from(css.matchAll(/@font-face\s*{[^}]+}/gi));
+  if (!blocks.length) return null;
+
+  const parseBlock = (block) => {
+    const family = block.match(/font-family:\s*["']([^"']+)["']/i)?.[1]?.trim();
+    const src = block.match(/src:\s*([^;]+);/i)?.[1]?.trim();
+    const style = block.match(/font-style:\s*([^;]+);/i)?.[1]?.trim();
+    const weight = block.match(/font-weight:\s*([^;]+);/i)?.[1]?.trim();
+    const unicodeRange = block.match(/unicode-range:\s*([^;]+);/i)?.[1]?.trim();
+    const ranges = parseUnicodeRanges(unicodeRange);
+    const coversAscii = !ranges.length
+      || ranges.some(({ start, end }) => start <= 0x41 && end >= 0x7a) // basic Latin letters fall in this span
+      || ranges.some(({ start, end }) => start <= 0x20 && end >= 0x7e); // printable ASCII
+    return { family, src, style, weight, unicodeRange, coversAscii };
+  };
+
+  const parsed = blocks
+    .map((m) => parseBlock(m[0]))
+    .filter((b) => b.family && b.src);
+
+  if (!parsed.length) return null;
+
+  // Prefer a face that includes ASCII so basic Latin characters render.
+  const score = (b) => {
+    const isNormalStyle = b.style?.toLowerCase() === 'normal';
+    const isWeight400 = b.weight === '400';
+    const coversAscii = !!b.coversAscii;
+    if (coversAscii && isNormalStyle && isWeight400) return 0;
+    if (coversAscii && isNormalStyle) return 1;
+    if (coversAscii && isWeight400) return 2;
+    if (coversAscii) return 3;
+    if (isNormalStyle && isWeight400) return 4;
+    if (isNormalStyle) return 5;
+    if (isWeight400) return 6;
+    return 7;
+  };
+
+  return parsed.sort((a, b) => score(a) - score(b))[0];
+}
+
 async function resolveFontFaceSource(raw) {
   const extractedUrl = extractFontUrl(raw);
   if (!extractedUrl) return null;
@@ -89,14 +146,27 @@ async function resolveFontFaceSource(raw) {
   try {
     const res = await fetch(extractedUrl, { mode: 'cors' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const css = await res.text();
-    const familyMatch = css.match(/font-family:\s*["']([^"']+)["']/i);
-    const srcMatch = css.match(/src:\s*([^;]+);/i);
+    const css = await res.text().catch(() => '');
+    const block = pickFontFaceFromCss(css);
+    if (block?.family && block.src) {
+      return {
+        name: block.family,
+        source: block.src,
+        descriptors: {
+          style: block.style || 'normal',
+          weight: block.weight || '400',
+          unicodeRange: block.unicodeRange,
+        },
+      };
+    }
+
+    // Fallback: grab the first url if parsing failed.
     const urlMatch = css.match(/url\(([^)]+)\)/i);
-    const source = srcMatch ? srcMatch[1].trim() : (urlMatch ? `url(${urlMatch[1]})` : null);
-    const name = familyMatch ? familyMatch[1].trim() : deriveFontNameFromUrl(extractedUrl);
-    if (source && name) {
-      return { name, source };
+    if (urlMatch?.[1]) {
+      return {
+        name: deriveFontNameFromUrl(extractedUrl),
+        source: `url(${urlMatch[1]})`,
+      };
     }
   } catch (err) {
     console.error('Failed to resolve font CSS', err);
@@ -141,10 +211,10 @@ export function createInkControls({
     if (hasName) app.customFontRadio.checked = true;
   };
 
-  const applyLoadedCustomFont = async (name, source) => {
+  const applyLoadedCustomFont = async (name, source, descriptors = {}) => {
     const seq = ++customFontSeq;
     try {
-      const face = new FontFace(name, source);
+      const face = new FontFace(name, source, descriptors);
       const loaded = await face.load();
       document.fonts.add(loaded);
       if (seq !== customFontSeq) return;
@@ -188,7 +258,7 @@ export function createInkControls({
       return;
     }
     const name = resolveDesiredFontName(resolved.name);
-    await applyLoadedCustomFont(name, resolved.source);
+    await applyLoadedCustomFont(name, resolved.source, resolved.descriptors);
   };
   function bindOpacitySliders() {
     let opacityPaintScheduled = false;
