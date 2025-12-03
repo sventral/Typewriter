@@ -122,6 +122,30 @@ function pickFontFaceFromCss(css) {
 
   if (!parsed.length) return null;
 
+  // If a block exposes a weight range (e.g., "100 900"), synthesize a handful of concrete variants.
+  const synthetic = [];
+  for (const b of parsed) {
+    const weightRangeMatch = b.weight?.match(/^\s*(\d+)\s+(\d+)\s*$/);
+    if (weightRangeMatch) {
+      const min = parseInt(weightRangeMatch[1], 10);
+      const max = parseInt(weightRangeMatch[2], 10);
+      if (Number.isFinite(min) && Number.isFinite(max) && max > min) {
+        const preferred = [300, 400, 500, 600, 700, 800, 900];
+        const picks = preferred.filter((w) => w >= min && w <= max);
+        const useWeights = picks.length ? picks : [min, max];
+        for (const w of useWeights) {
+          synthetic.push({
+            ...b,
+            weight: String(w),
+            variationValue: w,
+          });
+        }
+        continue;
+      }
+    }
+    synthetic.push(b);
+  }
+
   // Prefer a face that includes ASCII so basic Latin characters render.
   const score = (b) => {
     const isNormalStyle = b.style?.toLowerCase() === 'normal';
@@ -137,7 +161,7 @@ function pickFontFaceFromCss(css) {
     return 7;
   };
 
-  const sorted = parsed.sort((a, b) => score(a) - score(b));
+  const sorted = synthetic.sort((a, b) => score(a) - score(b));
   // Deduplicate by style+weight, preferring coversAscii.
   const deduped = [];
   const seen = new Set();
@@ -177,6 +201,7 @@ async function resolveFontFaceSource(raw) {
         style: v.style || 'normal',
         weight: v.weight || '400',
         unicodeRange: v.unicodeRange,
+        variationValue: v.variationValue,
       }));
       return {
         name: block.family,
@@ -185,6 +210,7 @@ async function resolveFontFaceSource(raw) {
           style: block.style || 'normal',
           weight: block.weight || '400',
           unicodeRange: block.unicodeRange,
+          variationSettings: block.variationValue ? `"wght" ${block.variationValue}` : undefined,
         },
         variants,
         defaultVariantKey: block ? variantKey(block) : null,
@@ -500,17 +526,20 @@ export function createInkControls({
         const variant = customFontVariants.find((v) => v.key === selectedKey) || customFontVariants[0];
         currentVariantKey = variant?.key || null;
         if (variant) {
-          const familyName = buildVariantFamilyName(customFontBaseName || customFontName, currentVariantKey);
-          const displayLabel = customFontBaseName || customFontName;
-          await applyLoadedCustomFont(familyName, variant.source, {
-            style: variant.style || 'normal',
-            weight: variant.weight || '400',
-            unicodeRange: variant.unicodeRange,
-          }, displayLabel);
-          focusStage();
-        }
-      });
-    }
+        const familyName = buildVariantFamilyName(customFontBaseName || customFontName, currentVariantKey);
+        const displayLabel = customFontBaseName || customFontName;
+        await applyLoadedCustomFont(familyName, variant.source, {
+          style: variant.style || 'normal',
+          weight: variant.weight || '400',
+          unicodeRange: variant.unicodeRange,
+          variationSettings: variant.variationValue
+            ? `"wght" ${variant.variationValue}`
+            : undefined,
+        }, displayLabel);
+        focusStage();
+      }
+    });
+  }
   }
 
   function bindGlyphJitterControls() {
