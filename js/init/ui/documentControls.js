@@ -668,6 +668,7 @@ export function createDocumentControls({
     setRenderScaleForZoom?.();
     setZoomPercent(exportZoomPct);
     setRenderScaleForZoom?.();
+    refreshPageBuffersForCurrentZoom();
     try {
       await exportDocumentAsPdf({
         app,
