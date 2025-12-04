@@ -1663,11 +1663,19 @@ function parseInputValue(input, path) {
 function registerMetaInput(meta, path, input) {
   if (!meta || !path || !input) return;
   meta.inputs.set(path, input);
-  const applyCurrentSection = () => applySection(meta);
+
+  const scheduleApply = (options = {}) => scheduleSectionApply(meta, options);
+
   if (input.type === 'range') {
-    input.addEventListener('input', applyCurrentSection);
+    // Dragging a slider: update visuals with a cheap refresh, defer rebuild/persist.
+    input.addEventListener('input', () => scheduleApply({ forceRebuild: false, persist: false }));
+    // Finalize on release/change with full rebuild + persist.
+    input.addEventListener('change', () => scheduleApply({ forceRebuild: true, persist: true }));
+  } else {
+    // Other controls: coalesce rapid input but still apply promptly.
+    input.addEventListener('input', () => scheduleApply({ forceRebuild: false, persist: false }));
+    input.addEventListener('change', () => scheduleApply({ forceRebuild: true, persist: true }));
   }
-  input.addEventListener('change', applyCurrentSection);
 }
 
 function parseArrayString(value) {
@@ -2396,6 +2404,25 @@ function scheduleRefreshForMeta(meta, options = {}) {
   }
 }
 
+function scheduleSectionApply(meta, options = {}) {
+  if (!meta) return;
+  const target = meta;
+  const pending = target._pendingApply || { forceRebuild: false, persist: false };
+  pending.forceRebuild = pending.forceRebuild || options.forceRebuild === true;
+  pending.persist = pending.persist || options.persist === true;
+  target._pendingApply = pending;
+  if (target._pendingApplyRaf) return;
+  target._pendingApplyRaf = requestAnimationFrame(() => {
+    const opts = target._pendingApply || {};
+    target._pendingApply = null;
+    target._pendingApplyRaf = 0;
+    applySection(target, {
+      forceRebuild: opts.forceRebuild !== false,
+      persist: opts.persist !== false,
+    });
+  });
+}
+
 function applySectionStrength(meta, percent, options = {}) {
   if (!meta || !SECTION_STATE_KEY_MAP[meta.id]) return;
   const pct = clamp(Math.round(Number(percent) || 0), 0, 100);
@@ -2548,7 +2575,7 @@ function syncInputs(meta) {
   }
 }
 
-function applySection(meta) {
+function applySection(meta, options = {}) {
   for (const [path, input] of meta.inputs.entries()) {
     if (!input) continue;
     if (input.dataset.string === '1' && Array.isArray(getValueByPath(meta.config, path))) {
@@ -2559,8 +2586,12 @@ function applySection(meta) {
     const value = parseInputValue(input, path);
     setValueByPath(meta.config, path, value);
   }
-  scheduleRefreshForMeta(meta, { forceRebuild: true });
-  persistPanelState();
+  const forceRebuild = options.forceRebuild !== false;
+  const persist = options.persist !== false;
+  scheduleRefreshForMeta(meta, { forceRebuild });
+  if (persist) {
+    persistPanelState();
+  }
   syncInputs(meta);
 }
 
