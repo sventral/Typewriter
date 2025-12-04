@@ -134,8 +134,24 @@ export async function persistDocuments(storageKey, docState, options = {}) {
   const blobWrites = [];
   documents.forEach((doc) => {
     if (!doc || typeof doc !== 'object') return;
-    const encoded = encodeDocumentDataForStorage(doc.data);
-    const size = encoded ? estimateStoredBytes(encoded) : (Number(doc.dataSize) || 0);
+    const revision = Number.isInteger(doc.lastSavedRevision)
+      ? doc.lastSavedRevision
+      : (Number.isInteger(doc.revision) ? doc.revision : null);
+    const persistedRevision = Number.isInteger(doc.lastPersistedRevision) ? doc.lastPersistedRevision : null;
+    const needsPersist = doc.data && (revision == null || revision !== persistedRevision);
+
+    let encoded = null;
+    let size = Number(doc.dataSize) || 0;
+
+    if (needsPersist) {
+      encoded = encodeDocumentDataForStorage(doc.data);
+      size = encoded ? estimateStoredBytes(encoded) : size;
+      if (doc.id && encoded) {
+        blobWrites.push(saveDocumentPayload(doc.id, encoded));
+        doc.lastPersistedRevision = revision;
+      }
+    }
+
     if (doc.id) {
       keepIds.add(doc.id);
     }
@@ -145,10 +161,13 @@ export async function persistDocuments(storageKey, docState, options = {}) {
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
       dataSize: size || 0,
-      hasData: !!encoded || !!doc.dataSize,
+      hasData: (!!encoded) || !!doc.dataSize,
     });
-    if (doc.id && encoded) {
-      blobWrites.push(saveDocumentPayload(doc.id, encoded));
+    // Preserve cached size metadata even when skipping compression for unchanged docs.
+    if (!needsPersist && size && !doc.dataSize) {
+      doc.dataSize = size;
+    } else if (needsPersist) {
+      doc.dataSize = size;
     }
   });
   const payload = {

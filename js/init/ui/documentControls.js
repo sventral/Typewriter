@@ -728,6 +728,7 @@ export function createDocumentControls({
           updatedAt: now,
           data: serialized,
           dataSize: encodedBytes,
+          lastSavedRevision: state.saveRevision,
         };
         docState.documents.push(doc);
       } else {
@@ -735,6 +736,7 @@ export function createDocumentControls({
         doc.updatedAt = now;
         doc.data = serialized;
         doc.dataSize = encodedBytes;
+        doc.lastSavedRevision = state.saveRevision;
         if (!Number.isFinite(doc.createdAt)) {
           doc.createdAt = now;
         }
