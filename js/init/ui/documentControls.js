@@ -11,7 +11,7 @@ import {
 } from '../../document/documentStore.js';
 import { getPaperSize, normalizePaperSizeId, DEFAULT_PAPER_SIZE } from '../../config/paperSizes.js';
 import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../../state/saveRevision.js';
-import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/inkSettingsPanel.js';
+import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/ink/InkSettingsPanelView.js';
 import { createExportDialog } from './exportDialog.js';
 import { exportDocumentAsPdf } from '../../export/pdfExporter.js';
 import { detectCanvasDimensionLimit, DEFAULT_CANVAS_DIMENSION_CAP } from '../../init/environment.js';

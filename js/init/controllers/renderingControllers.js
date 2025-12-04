@@ -1,13 +1,4 @@
-import {
-  getInkEffectFactor,
-  getInkSectionStrength,
-  getInkSectionOrder,
-  getInkSubsectionOrder,
-  getExperimentalEffectsConfig,
-  getExperimentalQualitySettings,
-  getExperimentalScaleSettings,
-  isInkSectionEnabled,
-} from '../../config/inkSettingsPanel.js';
+import { createInkSettingsStateApi } from '../../config/ink/inkSettingsState.js';
 import { createGlyphAtlas } from '../../rendering/glyphAtlas.js';
 import { createPageRenderer } from '../../rendering/pageRendering.js';
 
@@ -22,6 +13,8 @@ export function registerRenderingControllers(options) {
     editing,
   } = options;
 
+  const inkState = createInkSettingsStateApi({ state });
+
   const { rebuildAllAtlases, drawGlyph } = createGlyphAtlas({
     context,
     app,
@@ -34,14 +27,14 @@ export function registerRenderingControllers(options) {
     getCharWidth: () => metricsStore.CHAR_W,
     getRenderScale: () => metricsStore.RENDER_SCALE,
     getStateZoom: () => state.zoom,
-    getInkEffectFactor,
-    getInkSectionStrength,
-    getInkSectionOrder,
-    getInkSubsectionOrder,
-    getExperimentalEffectsConfig,
-    getExperimentalQualitySettings,
-    getExperimentalScaleSettings,
-    isInkSectionEnabled,
+    getInkEffectFactor: inkState.getInkEffectFactor,
+    getInkSectionStrength: inkState.getInkSectionStrength,
+    getInkSectionOrder: inkState.getInkSectionOrder,
+    getInkSubsectionOrder: inkState.getInkSubsectionOrder,
+    getExperimentalEffectsConfig: inkState.getExperimentalEffectsConfig,
+    getExperimentalQualitySettings: inkState.getExperimentalQualitySettings,
+    getExperimentalScaleSettings: inkState.getExperimentalScaleSettings,
+    isInkSectionEnabled: inkState.isInkSectionEnabled,
   });
 
   context.registerRendererApi({
@@ -67,7 +60,7 @@ export function registerRenderingControllers(options) {
     lifecycle: context.controllers.lifecycle,
     getCurrentBounds: editing.editingController.getCurrentBounds,
     getBatchDepth: editing.getBatchDepth,
-    getInkSectionOrder,
+    getInkSectionOrder: inkState.getInkSectionOrder,
   });
 
   context.registerRendererApi({ schedulePaint });

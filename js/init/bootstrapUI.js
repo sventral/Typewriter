@@ -1,5 +1,5 @@
 import { markDocumentDirty } from '../state/saveRevision.js';
-import { setupInkSettingsPanel } from '../config/inkSettingsPanel.js';
+import { setupInkSettingsPanel } from '../config/ink/InkSettingsPanelView.js';
 import { syncRulerToggleButton } from './ui/rulerToggle.js';
 
 export async function bootstrapUI({

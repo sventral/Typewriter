@@ -1,4 +1,8 @@
-import { refreshSavedInkStylesUI, syncInkStrengthDisplays, hydrateInkSettingsFromState } from '../../config/inkSettingsPanel.js';
+import {
+  refreshSavedInkStylesUI,
+  syncInkStrengthDisplays,
+  hydrateInkSettingsFromState,
+} from '../../config/ink/InkSettingsPanelView.js';
 import {
   GLYPH_JITTER_DEFAULTS,
   normalizeGlyphJitterAmount,
