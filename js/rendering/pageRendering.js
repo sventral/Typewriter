@@ -601,26 +601,37 @@ export function createPageRenderer(options) {
     };
 
     const dirtyRowSet = page?._dirtyRows instanceof Set ? page._dirtyRows : null;
-    if (dirtyRowSet?.size) {
-      for (const rowMu of dirtyRowSet) {
-        addRow(rowMu);
-      }
-    }
     const pageNumberRow = computePageNumberRow(page);
     if (pageNumberRow) {
       addRow(pageNumberRow.rowMu, pageNumberRow.rowMap);
     }
 
-    let lastMu = -Infinity;
-    let orderTrusted = true;
-    for (const [rowMu, rowMap] of page.grid) {
-      if (orderTrusted && rowMu < lastMu) {
-        orderTrusted = false; 
+    if (dirtyRowSet?.size) {
+      // When we know exactly which rows are dirty, avoid scanning the entire
+      // page grid. Instead, render the dirty rows plus a small neighbor pad
+      // to capture bleed/ink overlap without an O(totalRows) walk.
+      const neighborPad = Math.max(0, Math.ceil(maxNeighborGapMu));
+      for (const rowMu of dirtyRowSet) {
+        addRow(rowMu);
+        if (neighborPad === 0) continue;
+        for (let k = 1; k <= neighborPad; k++) {
+          addRow(rowMu - k);
+          addRow(rowMu + k);
+        }
       }
-      lastMu = rowMu;
-      if (rowMu < minMu) continue;
-      if (orderTrusted && rowMu > maxMu) break;
-      addRow(rowMu, rowMap);
+    } else {
+      // Fallback: we don't have an explicit dirty set, so scan the grid.
+      let lastMu = -Infinity;
+      let orderTrusted = true;
+      for (const [rowMu, rowMap] of page.grid) {
+        if (orderTrusted && rowMu < lastMu) {
+          orderTrusted = false; 
+        }
+        lastMu = rowMu;
+        if (rowMu < minMu) continue;
+        if (orderTrusted && rowMu > maxMu) break;
+        addRow(rowMu, rowMap);
+      }
     }
 
     if (rowsToRender.length) {
