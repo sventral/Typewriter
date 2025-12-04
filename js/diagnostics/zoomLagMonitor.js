@@ -119,7 +119,10 @@ export function createZoomLagMonitor({
     return true;
   };
 
-  const longTaskSupported = typeof PerformanceObserver === 'function';
+  const longTaskSupported =
+    typeof PerformanceObserver === 'function'
+    && Array.isArray(PerformanceObserver.supportedEntryTypes)
+    && PerformanceObserver.supportedEntryTypes.includes('longtask');
   const emitLagState = (phase) => {
     if (typeof onLagStateChange === 'function') {
       onLagStateChange(phase);

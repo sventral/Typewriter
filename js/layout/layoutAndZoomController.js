@@ -108,8 +108,28 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       zoomLagMonitor.syncEnabledState();
     }
   };
-  const trackZoomLag = (payload) => {
+  // Skip the very first automatic redraw monitor (startup) to avoid showing
+  // the spinner while the app is already responsive. After that, allow redraws
+  // or any real zoom change to arm the monitor.
+  let hasMeaningfulZoomChange = false;
+  let suppressedInitialRedraw = true;
+  const trackZoomLag = (payload = {}) => {
     if (!zoomLagMonitor || typeof zoomLagMonitor.trackZoomEvent !== 'function') return;
+
+    const reason = payload?.reason;
+    const deltaAbs = Number.isFinite(payload?.delta) ? Math.abs(payload.delta) : 0;
+
+    if (reason === 'zoom-redraw' && !hasMeaningfulZoomChange) {
+      if (suppressedInitialRedraw) {
+        suppressedInitialRedraw = false;
+        return;
+      }
+    }
+
+    if (reason !== 'zoom-redraw' && deltaAbs > 0.0001) {
+      hasMeaningfulZoomChange = true;
+    }
+
     zoomLagMonitor.trackZoomEvent(payload);
   };
   let pendingZoomLagEvent = null;
