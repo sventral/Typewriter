@@ -9,10 +9,12 @@ import {
   loadDocumentDataById,
   estimateDocumentDataBytes,
 } from '../../document/documentStore.js';
+import { getPaperSize, normalizePaperSizeId, DEFAULT_PAPER_SIZE } from '../../config/paperSizes.js';
 import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../../state/saveRevision.js';
 import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/inkSettingsPanel.js';
 import { createExportDialog } from './exportDialog.js';
 import { exportDocumentAsPdf } from '../../export/pdfExporter.js';
+import { detectCanvasDimensionLimit, DEFAULT_CANVAS_DIMENSION_CAP } from '../../init/environment.js';
 
 export function createDocumentControls({
   app,
@@ -639,18 +641,33 @@ export function createDocumentControls({
     downloadBlob(blob, buildExportFileName({ suffix: 'raw', ext: 'json' }));
   }
 
+  function computeExportZoomPct() {
+    const paper = getPaperSize(normalizePaperSizeId(state?.paperSize || DEFAULT_PAPER_SIZE));
+    const cssPpi = paper?.widthIn && app?.PAGE_W ? app.PAGE_W / paper.widthIn : 110;
+    const targetDpi = 300; // aim for print-friendly resolution without blowing memory
+    const dpr = Math.max(1, Math.min(4, window.devicePixelRatio || 1));
+    const baseScale = targetDpi / Math.max(1, cssPpi);
+    const { width: capW = DEFAULT_CANVAS_DIMENSION_CAP, height: capH = DEFAULT_CANVAS_DIMENSION_CAP } = detectCanvasDimensionLimit() || {};
+    const capScale = Math.min(
+      capW && app?.PAGE_W ? capW / app.PAGE_W : baseScale,
+      capH && app?.PAGE_H ? capH / app.PAGE_H : baseScale,
+    );
+    const exportScale = Math.max(1, Math.min(baseScale, capScale, 3.5));
+    const pct = Math.round((exportScale / dpr) * 100);
+    return Math.min(400, Math.max(150, pct || 200));
+  }
+
   async function exportPdfFile() {
     const previewUrl = makeStagePreview();
     beginPdfExportUi('Preparing PDF…', previewUrl);
     await waitForOverlayPaint();
     const prevZoomPct = Math.round(Math.max(1, (state.zoom || 1) * 100));
+    const exportZoomPct = computeExportZoomPct();
     const prevLowRes = state.lowResZoomEnabled;
     state.lowResZoomEnabled = false;
     setRenderScaleForZoom?.();
-    setZoomPercent(400);
+    setZoomPercent(exportZoomPct);
     setRenderScaleForZoom?.();
-    setAllPagesActive(true);
-    refreshPageBuffersForCurrentZoom();
     try {
       await exportDocumentAsPdf({
         app,
