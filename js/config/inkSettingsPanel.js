@@ -64,9 +64,9 @@ const panelState = {
   keepOrderCheckbox: null,
   includeInputs: {},
   loadSelectedButton: null,
-  updateSelectedButton: null,
   deleteSelectedButton: null,
   exportSelectedButton: null,
+  newStyleButton: null,
   lockState: {
     groups: {},
     quality: {},
@@ -811,6 +811,7 @@ function normalizeImportedStyle(rawStyle) {
     sanitized.id = generateStyleId();
   }
   sanitized.name = ensureUniqueStyleName(usedFallback ? 'Imported style' : sanitized.name, existing);
+  panelState.selectedStyleId = sanitized.id;
   return sanitized;
 }
 
@@ -2979,15 +2980,11 @@ function handleSaveStyle(event) {
   const input = panelState.styleNameInput;
   if (!input) return;
   const sanitized = sanitizeStyleName(input.value);
-  if (!sanitized) {
-    input.classList.add('input-error');
-    input.focus();
-    return;
-  }
-  const existingStyles = getSavedStyles();
-  const existingIdx = existingStyles.findIndex(style => style && style.name && style.name.toLowerCase() === sanitized.toLowerCase());
-  const existingId = existingIdx >= 0 ? existingStyles[existingIdx].id : null;
-  const snapshot = createStyleSnapshot(sanitized, existingId);
+  const styles = getSavedStyles();
+  const targetId = panelState.selectedStyleId
+    || (styles.find(style => style && style.name && style.name.toLowerCase() === sanitized.toLowerCase())?.id ?? null);
+  const finalName = sanitized || ensureUniqueStyleName('Style', styles);
+  const snapshot = createStyleSnapshot(finalName, targetId);
   if (!snapshot) {
     if (typeof window !== 'undefined' && typeof window.alert === 'function') {
       window.alert('Could not save ink style. Please try again.');
@@ -2995,14 +2992,20 @@ function handleSaveStyle(event) {
     return;
   }
   let updated;
-  if (existingIdx >= 0) {
+  if (targetId) {
     updated = existingStyles.slice();
-    updated[existingIdx] = snapshot;
+    const idx = updated.findIndex(style => style && style.id === targetId);
+    if (idx >= 0) {
+      updated[idx] = snapshot;
+    } else {
+      updated = [snapshot, ...updated];
+    }
   } else {
-    updated = [snapshot, ...existingStyles];
+    updated = [snapshot, ...styles];
   }
   setSavedStyles(updated);
   persistPanelState();
+  panelState.selectedStyleId = snapshot.id;
   renderSavedStylesList({ focusId: snapshot.id });
   input.value = '';
   input.classList.remove('input-error');
@@ -3239,6 +3242,25 @@ function applySavedStyle(styleId) {
   updateSelectedStyleMeta(style.id);
 }
 
+function handleNewStyle(event) {
+  if (event) event.preventDefault();
+  const styles = getSavedStyles();
+  const input = panelState.styleNameInput;
+  const sanitized = sanitizeStyleName(input?.value);
+  const name = sanitized || ensureUniqueStyleName('Style', styles);
+  const snapshot = createStyleSnapshot(name);
+  if (!snapshot) return;
+  const updated = [snapshot, ...styles];
+  setSavedStyles(updated);
+  panelState.selectedStyleId = snapshot.id;
+  persistPanelState();
+  renderSavedStylesList({ focusId: snapshot.id });
+  if (input) {
+    input.value = '';
+    input.classList.remove('input-error');
+  }
+}
+
 export function hydrateInkSettingsFromState(options = {}) {
   if (!panelState.initialized) return;
   const fromState = getCurrentStyleFromState();
@@ -3393,6 +3415,7 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.resetButton = document.getElementById('inkStyleResetBtn');
   panelState.randomizeButton = document.getElementById('inkStyleRandomizeBtn');
   panelState.keepOrderCheckbox = document.getElementById('inkStyleKeepOrderCb');
+  panelState.newStyleButton = document.getElementById('inkStyleNewBtn');
   panelState.includeInputs = {
     font: document.getElementById('inkStyleIncludeFont'),
     slant: document.getElementById('inkStyleIncludeSlant'),
@@ -3400,7 +3423,6 @@ export function setupInkSettingsPanel(options = {}) {
     effects: document.getElementById('inkStyleIncludeEffects'),
   };
   panelState.loadSelectedButton = document.getElementById('inkStyleLoadSelectedBtn');
-  panelState.updateSelectedButton = document.getElementById('inkStyleUpdateSelectedBtn');
   panelState.deleteSelectedButton = document.getElementById('inkStyleDeleteSelectedBtn');
   panelState.exportSelectedButton = document.getElementById('inkStyleExportSelectedBtn');
   panelState.sectionsRoot = sectionsRoot;
@@ -3429,6 +3451,9 @@ export function setupInkSettingsPanel(options = {}) {
   if (panelState.saveStyleButton) {
     panelState.saveStyleButton.addEventListener('click', handleSaveStyle);
   }
+  if (panelState.newStyleButton) {
+    panelState.newStyleButton.addEventListener('click', handleNewStyle);
+  }
   if (panelState.exportButton) {
     panelState.exportButton.addEventListener('click', exportCurrentStyle);
   }
@@ -3440,12 +3465,6 @@ export function setupInkSettingsPanel(options = {}) {
     panelState.loadSelectedButton.addEventListener('click', () => {
       const id = getSelectedStyleId();
       if (id) applySavedStyle(id);
-    });
-  }
-  if (panelState.updateSelectedButton) {
-    panelState.updateSelectedButton.addEventListener('click', () => {
-      const id = getSelectedStyleId();
-      if (id) updateSavedStyle(id);
     });
   }
   if (panelState.deleteSelectedButton) {

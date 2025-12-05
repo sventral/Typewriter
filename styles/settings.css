@@ -292,7 +292,7 @@
   .ink-style-include-options { display: flex; flex-wrap: nowrap; gap: 12px; align-items: center; }
   .ink-style-include-option { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
   .ink-style-include-option input { accent-color: var(--accent-color); }
-  .ink-style-save-actions { display: flex; justify-content: flex-end; }
+  .ink-style-save-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .ink-style-io-row { display: flex; gap: 8px; align-items: center; }
   .ink-style-io-row .btn { flex: 0 0 auto; }
   .ink-styles-list { display: flex; flex-direction: column; gap: 10px; }
