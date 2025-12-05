@@ -302,14 +302,14 @@
     border-radius: 10px;
     padding: 10px 12px;
     background: var(--panel-bg);
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 8px 12px;
+    display: flex;
+    gap: 12px;
     align-items: center;
+    cursor: pointer;
   }
-  .ink-style-radio { accent-color: var(--accent-color); }
   .ink-style-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .ink-style-item.is-active { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color); }
+  .ink-style-item.is-selected { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color); }
+  .ink-style-item.is-loaded { background: color-mix(in srgb, var(--panel-bg) 85%, var(--accent-color) 15%); }
   .ink-style-name-row { display: flex; align-items: center; min-width: 0; gap: 8px; }
   .ink-style-name-input {
     background: none;

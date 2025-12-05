@@ -882,8 +882,6 @@ function getAppState() {
 }
 
 function getSelectedStyleId() {
-  const selectedInput = panelState.stylesList?.querySelector('input[name="inkStyleSelection"]:checked');
-  if (selectedInput?.value) return selectedInput.value;
   return panelState.selectedStyleId || null;
 }
 
@@ -2904,24 +2902,25 @@ function renderSavedStylesList(options = {}) {
     const item = document.createElement('div');
     item.className = 'ink-style-item';
     item.dataset.styleId = style.id;
+    item.tabIndex = 0;
     if (panelState.lastLoadedStyleId && panelState.lastLoadedStyleId === style.id) {
-      item.classList.add('is-active');
+      item.classList.add('is-loaded');
     }
-
-    const radio = document.createElement('input');
-    radio.type = 'radio';
-    radio.name = 'inkStyleSelection';
-    radio.className = 'ink-style-radio';
-    radio.value = style.id;
-    radio.checked = panelState.selectedStyleId
-      ? panelState.selectedStyleId === style.id
-      : panelState.lastLoadedStyleId === style.id;
-    radio.setAttribute('aria-label', `Select ${style.name}`);
-    radio.addEventListener('change', () => {
+    if (panelState.selectedStyleId && panelState.selectedStyleId === style.id) {
+      item.classList.add('is-selected');
+    }
+    const selectStyle = () => {
       panelState.selectedStyleId = style.id;
-      panelState.lastLoadedStyleId = style.id;
       syncIncludeInputsFromStyle(style);
       updateSelectedStyleMeta(style.id);
+      list.querySelectorAll('.ink-style-item').forEach(el => el.classList.toggle('is-selected', el.dataset.styleId === style.id));
+    };
+    item.addEventListener('click', () => selectStyle());
+    item.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectStyle();
+      }
     });
     if (!firstId) firstId = style.id;
 
@@ -2956,7 +2955,6 @@ function renderSavedStylesList(options = {}) {
 
     body.appendChild(nameRow);
 
-    item.appendChild(radio);
     item.appendChild(body);
     list.appendChild(item);
 
@@ -2968,8 +2966,10 @@ function renderSavedStylesList(options = {}) {
   if (selected) {
     panelState.selectedStyleId = selected;
     updateSelectedStyleMeta(selected);
-    const input = list.querySelector(`input[value="${selected}"]`);
-    if (input && !input.checked) input.checked = true;
+    list.querySelectorAll('.ink-style-item').forEach(el => {
+      el.classList.toggle('is-selected', el.dataset.styleId === selected);
+      el.classList.toggle('is-loaded', panelState.lastLoadedStyleId && el.dataset.styleId === panelState.lastLoadedStyleId);
+    });
   } else {
     updateSelectedStyleMeta(null);
   }
@@ -3240,6 +3240,13 @@ function applySavedStyle(styleId) {
   applyStyleSnapshot(style, { persist: true, rememberLoaded: true, refreshList: true, focusLoadedStyle: style.id });
   panelState.selectedStyleId = style.id;
   updateSelectedStyleMeta(style.id);
+  const list = panelState.stylesList;
+  if (list) {
+    list.querySelectorAll('.ink-style-item').forEach(el => {
+      el.classList.toggle('is-selected', el.dataset.styleId === style.id);
+      el.classList.toggle('is-loaded', el.dataset.styleId === style.id);
+    });
+  }
 }
 
 function handleNewStyle(event) {
