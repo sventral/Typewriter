@@ -735,8 +735,30 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const RENDER_SCALE = getRenderScaleFn();
     const COLORS = colors;
 
-    const ASCII_START = 32;
-    const ASCII_END = 126;
+    const BASE_CHAR_RANGES = [
+      [32, 126], // Basic Latin
+      [160, 255], // Latin-1 Supplement
+    ];
+    const EXTRA_CHAR_CODES = [
+      0x2013, // en dash
+      0x2014, // em dash
+      0x2018, // left single quotation mark
+      0x2019, // right single quotation mark / apostrophe
+      0x201A, // single low-9 quotation mark
+      0x201C, // left double quotation mark
+      0x201D, // right double quotation mark
+      0x201E, // double low-9 quotation mark
+      0x2026, // ellipsis
+    ];
+    const CHAR_CODES = (() => {
+      const set = new Set();
+      BASE_CHAR_RANGES.forEach(([start, end]) => {
+        for (let c = start; c <= end; c++) set.add(c);
+      });
+      EXTRA_CHAR_CODES.forEach((c) => set.add(c));
+      return Array.from(set).sort((a, b) => a - b);
+    })();
+    const MAX_CODE = CHAR_CODES[CHAR_CODES.length - 1];
     const ATLAS_COLS = 32;
 
     const GLYPH_BLEED = Math.ceil((ASC + DESC) * 0.5);
@@ -777,7 +799,7 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const cellH_draw_dp = Math.ceil(CELL_H_CSS * RENDER_SCALE);
     const cellW_pack_dp = cellW_draw_dp + 2 * GUTTER_DP;
     const cellH_pack_dp = cellH_draw_dp + 2 * GUTTER_DP;
-    const ATLAS_ROWS = Math.ceil((ASCII_END - ASCII_START + 1) / ATLAS_COLS);
+    const ATLAS_ROWS = Math.ceil(CHAR_CODES.length / ATLAS_COLS);
     const width_dp = Math.max(1, ATLAS_COLS * cellW_pack_dp);
     const height_dp = Math.max(1, ATLAS_ROWS * cellH_pack_dp);
 
@@ -795,7 +817,7 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     ctx.globalCompositeOperation = 'source-over';
 
     const rectDpByCode = [];
-    const advCache = new Float32Array(ASCII_END + 1);
+    const advCache = new Float32Array(MAX_CODE + 1);
     const SHIFT_EPS = 0.5;
     const sampleScale = 1;
 
@@ -838,12 +860,13 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
     const effectiveOrder = hasExperimentalStages ? pipelineStages : null;
     const runExperimentalEffects = needsEffectsPipeline && Array.isArray(effectiveOrder) && effectiveOrder.length;
 
-    let code = ASCII_START;
+    let codeIdx = 0;
     for (let row = 0; row < ATLAS_ROWS; row++) {
       for (let col = 0; col < ATLAS_COLS; col++) {
-        if (code > ASCII_END) break;
+        if (codeIdx >= CHAR_CODES.length) break;
         const packX_css = (col * cellW_pack_dp) / RENDER_SCALE;
         const packY_css = (row * cellH_pack_dp) / RENDER_SCALE;
+        const code = CHAR_CODES[codeIdx];
         const ch = String.fromCharCode(code);
         
         const metrics = ctx.measureText(ch);
@@ -1042,7 +1065,7 @@ function ensureExperimentalAtlas(ink, variantIdx = 0, effectOverride = 'auto') {
           sw_dp: cellW_draw_dp,
           sh_dp: cellH_draw_dp,
         };
-        code++;
+        codeIdx++;
       }
     }
 
