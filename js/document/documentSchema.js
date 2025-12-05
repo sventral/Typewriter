@@ -250,6 +250,13 @@ function sanitizeSavedInkStyle(style, index = 0) {
       sectionOrder: KNOWN_INK_SECTIONS.slice(),
       subsectionOrder: KNOWN_INK_SUBSECTIONS.slice(),
       includes: { ...STYLE_INCLUDE_DEFAULTS },
+      fontName: null,
+      lineSlantEnabled: null,
+      lineSlantRangeDeg: null,
+      glyphJitterEnabled: null,
+      glyphJitterAmountPct: null,
+      glyphJitterFrequencyPct: null,
+      glyphJitterSeed: null,
     };
   }
   const id = typeof style.id === 'string' && style.id.trim()
@@ -283,6 +290,19 @@ function sanitizeSavedInkStyle(style, index = 0) {
     sectionOrder,
     subsectionOrder,
     includes: sanitizeStyleIncludes(style.includes),
+    fontName: typeof style.fontName === 'string' ? style.fontName : null,
+    lineSlantEnabled: typeof style.lineSlantEnabled === 'boolean' ? style.lineSlantEnabled : null,
+    lineSlantRangeDeg: style.lineSlantRangeDeg && typeof style.lineSlantRangeDeg === 'object'
+      ? cloneInkStyleValue(style.lineSlantRangeDeg)
+      : null,
+    glyphJitterEnabled: typeof style.glyphJitterEnabled === 'boolean' ? style.glyphJitterEnabled : null,
+    glyphJitterAmountPct: style.glyphJitterAmountPct && typeof style.glyphJitterAmountPct === 'object'
+      ? cloneInkStyleValue(style.glyphJitterAmountPct)
+      : null,
+    glyphJitterFrequencyPct: style.glyphJitterFrequencyPct && typeof style.glyphJitterFrequencyPct === 'object'
+      ? cloneInkStyleValue(style.glyphJitterFrequencyPct)
+      : null,
+    glyphJitterSeed: Number.isFinite(style.glyphJitterSeed) ? style.glyphJitterSeed >>> 0 : null,
   };
 }
 

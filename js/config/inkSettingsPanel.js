@@ -318,6 +318,19 @@ function normalizeStyleRecord(style, index = 0) {
       sectionOrder: normalizeSectionOrder(style?.sectionOrder || style?.sections?.order || style?.inkSectionOrder || style?.inkSectionsOrder || style?.sectionOrder),
       subsectionOrder: normalizeSubsectionOrder(subsectionOrder),
       includes: normalizeStyleIncludes(style?.includes),
+      fontName: typeof style?.fontName === 'string' ? style.fontName : null,
+      lineSlantEnabled: typeof style?.lineSlantEnabled === 'boolean' ? style.lineSlantEnabled : null,
+      lineSlantRangeDeg: style?.lineSlantRangeDeg && typeof style.lineSlantRangeDeg === 'object'
+        ? deepCloneValue(style.lineSlantRangeDeg)
+        : null,
+      glyphJitterEnabled: typeof style?.glyphJitterEnabled === 'boolean' ? style.glyphJitterEnabled : null,
+      glyphJitterAmountPct: style?.glyphJitterAmountPct && typeof style.glyphJitterAmountPct === 'object'
+        ? deepCloneValue(style.glyphJitterAmountPct)
+        : null,
+      glyphJitterFrequencyPct: style?.glyphJitterFrequencyPct && typeof style.glyphJitterFrequencyPct === 'object'
+        ? deepCloneValue(style.glyphJitterFrequencyPct)
+        : null,
+      glyphJitterSeed: Number.isFinite(style?.glyphJitterSeed) ? style.glyphJitterSeed >>> 0 : null,
     };
     const legacySectionStrengths = ['expTone', 'expEdge', 'expGrain', 'expDefects']
       .map(id => style?.sections?.[id]?.strength ?? style?.[id]?.strength)
@@ -439,6 +452,13 @@ function createDefaultStyleRecord(index = 0) {
     sectionOrder: DEFAULT_SECTION_ORDER.slice(),
     subsectionOrder: DEFAULT_SUBSECTION_ORDER.slice(),
     includes: normalizeStyleIncludes(DEFAULT_STYLE_INCLUDES),
+    fontName: null,
+    lineSlantEnabled: null,
+    lineSlantRangeDeg: null,
+    glyphJitterEnabled: null,
+    glyphJitterAmountPct: null,
+    glyphJitterFrequencyPct: null,
+    glyphJitterSeed: null,
   };
   SECTION_DEFS.forEach(def => {
     record.sections[def.id] = {
@@ -542,7 +562,91 @@ function updateSelectedStyleMeta(styleId) {
   metaRoot.appendChild(metaRow);
 }
 
+function applyFontFromStyle(style) {
+  const includes = normalizeStyleIncludes(style?.includes);
+  if (!includes.font || !style?.fontName) return;
+  if (panelState.app && typeof panelState.app.setActiveFontName === 'function') {
+    panelState.app.setActiveFontName(style.fontName);
+  }
+}
+
+function applySlantFromStyle(style) {
+  const includes = normalizeStyleIncludes(style?.includes);
+  if (!includes.slant) return;
+  const state = getAppState();
+  if (!state) return;
+  if (typeof style?.lineSlantEnabled === 'boolean') {
+    state.lineSlantEnabled = style.lineSlantEnabled;
+  }
+  if (style?.lineSlantRangeDeg && typeof style.lineSlantRangeDeg === 'object') {
+    state.lineSlantRangeDeg = deepCloneValue(style.lineSlantRangeDeg);
+  }
+  const toggle = document.getElementById('lineSlantToggle');
+  if (toggle) toggle.checked = !!state.lineSlantEnabled;
+  const minInput = document.getElementById('lineSlantMin');
+  const maxInput = document.getElementById('lineSlantMax');
+  const range = state.lineSlantRangeDeg;
+  if (minInput && range?.min != null) minInput.value = String(range.min);
+  if (maxInput && range?.max != null) maxInput.value = String(range.max);
+}
+
+function applyJitterFromStyle(style) {
+  const includes = normalizeStyleIncludes(style?.includes);
+  if (!includes.jitter) return;
+  const state = getAppState();
+  if (!state) return;
+  if (typeof style?.glyphJitterEnabled === 'boolean') {
+    state.glyphJitterEnabled = style.glyphJitterEnabled;
+  }
+  if (style?.glyphJitterAmountPct) {
+    state.glyphJitterAmountPct = deepCloneValue(style.glyphJitterAmountPct);
+  }
+  if (style?.glyphJitterFrequencyPct) {
+    state.glyphJitterFrequencyPct = deepCloneValue(style.glyphJitterFrequencyPct);
+  }
+  if (Number.isFinite(style?.glyphJitterSeed)) {
+    state.glyphJitterSeed = style.glyphJitterSeed >>> 0;
+  }
+  const toggle = document.getElementById('glyphJitterToggle');
+  if (toggle) toggle.checked = !!state.glyphJitterEnabled;
+  const amountMin = document.getElementById('glyphJitterAmountMin');
+  const amountMax = document.getElementById('glyphJitterAmountMax');
+  if (amountMin && state.glyphJitterAmountPct?.min != null) {
+    amountMin.value = String(state.glyphJitterAmountPct.min);
+  }
+  if (amountMax && state.glyphJitterAmountPct?.max != null) {
+    amountMax.value = String(state.glyphJitterAmountPct.max);
+  }
+  const freqMin = document.getElementById('glyphJitterFrequencyMin');
+  const freqMax = document.getElementById('glyphJitterFrequencyMax');
+  if (freqMin && state.glyphJitterFrequencyPct?.min != null) {
+    freqMin.value = String(state.glyphJitterFrequencyPct.min);
+  }
+  if (freqMax && state.glyphJitterFrequencyPct?.max != null) {
+    freqMax.value = String(state.glyphJitterFrequencyPct.max);
+  }
+}
+
 function createStyleSnapshot(name, existingId = null) {
+  const appState = getAppState();
+  const includes = resolveIncludesForSnapshot(existingId);
+  const fontName = includes.font && panelState.app?.getActiveFontName
+    ? panelState.app.getActiveFontName()
+    : null;
+  const jitterAmount = includes.jitter ? deepCloneValue(appState?.glyphJitterAmountPct) : null;
+  const jitterFreq = includes.jitter ? deepCloneValue(appState?.glyphJitterFrequencyPct) : null;
+  const jitterSeed = includes.jitter && Number.isFinite(appState?.glyphJitterSeed)
+    ? appState.glyphJitterSeed >>> 0
+    : null;
+  const jitterEnabled = includes.jitter && typeof appState?.glyphJitterEnabled === 'boolean'
+    ? appState.glyphJitterEnabled
+    : null;
+  const slantEnabled = includes.slant && typeof appState?.lineSlantEnabled === 'boolean'
+    ? appState.lineSlantEnabled
+    : null;
+  const slantRange = includes.slant && appState?.lineSlantRangeDeg
+    ? deepCloneValue(appState.lineSlantRangeDeg)
+    : null;
   const base = {
     id: existingId || generateStyleId(),
     name,
@@ -554,7 +658,14 @@ function createStyleSnapshot(name, existingId = null) {
     subsectionOrder: Array.isArray(panelState.subsectionOrder)
       ? panelState.subsectionOrder.slice()
       : DEFAULT_SUBSECTION_ORDER.slice(),
-    includes: resolveIncludesForSnapshot(existingId),
+    includes,
+    fontName,
+    lineSlantEnabled: slantEnabled,
+    lineSlantRangeDeg: slantRange,
+    glyphJitterEnabled: jitterEnabled,
+    glyphJitterAmountPct: jitterAmount,
+    glyphJitterFrequencyPct: jitterFreq,
+    glyphJitterSeed: jitterSeed,
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
@@ -3042,49 +3153,52 @@ function applyStyleSnapshot(style, options = {}) {
         silent: persist ? false : true,
       });
     }
-    if (Number.isFinite(workingStyle.overall)) {
+    if (normalizeStyleIncludes(workingStyle.includes).effects && Number.isFinite(workingStyle.overall)) {
       setOverallStrength(workingStyle.overall);
     }
-    SECTION_DEFS.forEach((def) => {
-      const meta = findMetaById(def.id);
-      if (!meta) return;
-      const section = workingStyle.sections && workingStyle.sections[def.id];
-      if (section && (Array.isArray(section.order) || Array.isArray(section.subsectionOrder))) {
-        applySubsectionOrderForSection(def.id, section.order || section.subsectionOrder, {
-          syncDom: true,
-          silent: persist ? false : true,
-        });
-      }
-      if (section && section.config) {
-        applyConfigToTarget(meta.config, section.config);
-        syncInputs(meta);
-        scheduleRefreshForMeta(meta, { forceRebuild: true });
-      } else {
-        syncInputs(meta);
-      }
-      const strength = Number(section?.strength);
-      if (meta.hasStrengthControl && Number.isFinite(strength)) {
-        applySectionStrength(meta, strength);
-      }
-      if (meta.subsectionControls?.size) {
-        meta.subsectionControls.forEach(info => {
-          if (!info?.subsectionId) return;
-          const subKey = info.subsectionId.split('.')[1];
-          const qualityValue = section?.qualities && Object.prototype.hasOwnProperty.call(section.qualities, subKey)
-            ? section.qualities[subKey]
-            : Number(section?.quality);
-          const scaleValue = section?.scales && Object.prototype.hasOwnProperty.call(section.scales, subKey)
-            ? section.scales[subKey]
-            : Number(section?.scale);
-          if (info.qualityControl && Number.isFinite(qualityValue)) {
-            applySubsectionQuality(meta, info.subsectionId, qualityValue);
-          }
-          if (info.scaleControl && Number.isFinite(scaleValue)) {
-            applySubsectionScale(meta, info.subsectionId, scaleValue);
-          }
-        });
-      }
-    });
+    const includeEffects = normalizeStyleIncludes(workingStyle.includes).effects;
+    if (includeEffects) {
+      SECTION_DEFS.forEach((def) => {
+        const meta = findMetaById(def.id);
+        if (!meta) return;
+        const section = workingStyle.sections && workingStyle.sections[def.id];
+        if (section && (Array.isArray(section.order) || Array.isArray(section.subsectionOrder))) {
+          applySubsectionOrderForSection(def.id, section.order || section.subsectionOrder, {
+            syncDom: true,
+            silent: persist ? false : true,
+          });
+        }
+        if (section && section.config) {
+          applyConfigToTarget(meta.config, section.config);
+          syncInputs(meta);
+          scheduleRefreshForMeta(meta, { forceRebuild: true });
+        } else {
+          syncInputs(meta);
+        }
+        const strength = Number(section?.strength);
+        if (meta.hasStrengthControl && Number.isFinite(strength)) {
+          applySectionStrength(meta, strength);
+        }
+        if (meta.subsectionControls?.size) {
+          meta.subsectionControls.forEach(info => {
+            if (!info?.subsectionId) return;
+            const subKey = info.subsectionId.split('.')[1];
+            const qualityValue = section?.qualities && Object.prototype.hasOwnProperty.call(section.qualities, subKey)
+              ? section.qualities[subKey]
+              : Number(section?.quality);
+            const scaleValue = section?.scales && Object.prototype.hasOwnProperty.call(section.scales, subKey)
+              ? section.scales[subKey]
+              : Number(section?.scale);
+            if (info.qualityControl && Number.isFinite(qualityValue)) {
+              applySubsectionQuality(meta, info.subsectionId, qualityValue);
+            }
+            if (info.scaleControl && Number.isFinite(scaleValue)) {
+              applySubsectionScale(meta, info.subsectionId, scaleValue);
+            }
+          });
+        }
+      });
+    }
     if (rememberLoaded && workingStyle.id) {
       panelState.lastLoadedStyleId = workingStyle.id;
       panelState.selectedStyleId = workingStyle.id;
@@ -3101,6 +3215,9 @@ function applyStyleSnapshot(style, options = {}) {
 
   const runAndMaybeRefresh = () => {
     applyCore();
+    applyFontFromStyle(workingStyle);
+    applySlantFromStyle(workingStyle);
+    applyJitterFromStyle(workingStyle);
     if (refreshList) {
       renderSavedStylesList({ focusId: focusLoadedStyle });
     }
