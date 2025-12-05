@@ -265,15 +265,15 @@
   .ink-styles-section { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; }
   .ink-style-grid { display: flex; flex-direction: column; gap: 12px; }
   .ink-style-card {
-    border: 1px solid var(--panel-border);
-    border-radius: 10px;
-    padding: 12px;
-    background: var(--panel-item-bg);
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    background: none;
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
-  .ink-style-card__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .ink-style-card__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
   .ink-style-label { font-size: 12px; font-weight: 600; opacity: 0.85; }
   .ink-style-card input[type="text"] {
     flex: 1 1 auto;
@@ -343,7 +343,7 @@
   .ink-style-include-badge[data-enabled="0"] { opacity: 0.55; text-decoration: line-through; }
   .ink-style-selected-meta { margin-top: 4px; }
   .ink-style-actions-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-  .ink-style-actions-row--global { justify-content: flex-start; }
+  .ink-style-actions-row--global { justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; }
   .ink-style-actions-row .btn-text {
     font-size: 12px;
     padding: 0;
