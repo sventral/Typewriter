@@ -263,35 +263,54 @@
   .ink-section-apply-row .btn { margin-left: 12px; }
   .ink-seed-input { font-family: 'SFMono-Regular', 'SFMono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; }
   .ink-styles-section { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; }
-  .ink-style-save-row, .ink-style-io-row { display: flex; gap: 8px; align-items: center; }
-  .ink-style-save-row input[type="text"] {
+  .ink-style-grid { display: flex; flex-direction: column; gap: 12px; }
+  .ink-style-card {
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 12px;
+    background: var(--panel-item-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ink-style-card__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .ink-style-label { font-size: 12px; font-weight: 600; opacity: 0.85; }
+  .ink-style-card input[type="text"] {
     flex: 1 1 auto;
     min-width: 0;
-    height: 28px;
-    border-radius: 6px;
+    height: 32px;
+    border-radius: 8px;
     border: 1px solid var(--control-border);
-    padding: 0 8px;
+    padding: 0 10px;
     background: var(--control-bg);
     color: var(--ui-text);
     font-size: 13px;
   }
-  .ink-style-save-row input[type="text"].input-error { border-color: var(--danger-border, #c24141); }
-  .ink-style-save-row .btn { white-space: nowrap; }
-  .ink-style-io-row { justify-content: flex-start; }
+  .ink-style-card input[type="text"].input-error { border-color: var(--danger-border, #c24141); }
+  .ink-style-include-row { display: flex; flex-direction: column; gap: 6px; }
+  .ink-style-include-title { font-size: 12px; font-weight: 600; text-transform: lowercase; opacity: 0.7; }
+  .ink-style-include-options { display: flex; flex-wrap: nowrap; gap: 12px; align-items: center; }
+  .ink-style-include-option { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+  .ink-style-include-option input { accent-color: var(--accent-color); }
+  .ink-style-save-actions { display: flex; justify-content: flex-end; }
+  .ink-style-io-row { display: flex; gap: 8px; align-items: center; }
   .ink-style-io-row .btn { flex: 0 0 auto; }
-  .ink-styles-list { display: flex; flex-direction: column; gap: 8px; }
+  .ink-styles-list { display: flex; flex-direction: column; gap: 10px; }
   .ink-styles-empty { font-size: 12px; opacity: 0.6; }
   .ink-style-item {
     border: 1px solid var(--panel-border);
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 10px 12px;
-    background: var(--panel-item-bg);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    background: var(--panel-bg);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 12px;
+    align-items: center;
   }
+  .ink-style-radio { accent-color: var(--accent-color); }
+  .ink-style-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .ink-style-item.is-active { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color); }
-  .ink-style-name-row { display: flex; align-items: center; min-width: 0; }
+  .ink-style-name-row { display: flex; align-items: center; min-width: 0; gap: 8px; }
   .ink-style-name-input {
     background: none;
     border: 1px solid transparent;
@@ -301,7 +320,7 @@
     font-weight: 600;
     width: 100%;
     min-width: 0;
-    padding: 2px 6px;
+    padding: 4px 6px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -311,7 +330,20 @@
     outline-offset: 1px;
   }
   .ink-style-name-input.input-error { border-color: var(--danger-border, #c24141); }
+  .ink-style-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; opacity: 0.8; }
+  .ink-style-include-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel-item-bg);
+  }
+  .ink-style-include-badge[data-enabled="0"] { opacity: 0.55; text-decoration: line-through; }
+  .ink-style-selected-meta { margin-top: 4px; }
   .ink-style-actions-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .ink-style-actions-row--global { justify-content: flex-start; }
   .ink-style-actions-row .btn-text {
     font-size: 12px;
     padding: 0;

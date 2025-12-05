@@ -592,17 +592,53 @@
             <button class="btn" id="inkStyleResetBtn" type="button">Reset to defaults</button>
           </div>
           <section class="ink-styles-section" aria-labelledby="inkStylesHeader">
-            <h4 id="inkStylesHeader">Saved ink styles</h4>
-            <div class="ink-style-save-row">
-              <input type="text" id="inkStyleNameInput" placeholder="Name this style" aria-label="Name this ink style" />
-              <button class="btn" id="inkStyleSaveBtn" type="button">Save current</button>
+            <div class="ink-style-grid">
+              <div class="ink-style-card">
+                <h4 id="inkStylesHeader">Save style</h4>
+                <label class="ink-style-label" for="inkStyleNameInput">Name</label>
+                <input type="text" id="inkStyleNameInput" placeholder="Name this style" aria-label="Name this ink style" />
+                <div class="ink-style-include-row" role="group" aria-label="Choose which settings to include">
+                  <div class="ink-style-include-title">Include</div>
+                  <div class="ink-style-include-options">
+                    <label class="ink-style-include-option">
+                      <input type="checkbox" id="inkStyleIncludeFont" checked />
+                      <span>Font</span>
+                    </label>
+                    <label class="ink-style-include-option">
+                      <input type="checkbox" id="inkStyleIncludeSlant" checked />
+                      <span>Slant</span>
+                    </label>
+                    <label class="ink-style-include-option">
+                      <input type="checkbox" id="inkStyleIncludeJitter" checked />
+                      <span>Jitter</span>
+                    </label>
+                    <label class="ink-style-include-option">
+                      <input type="checkbox" id="inkStyleIncludeEffects" checked />
+                      <span>Effects</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="ink-style-save-actions">
+                  <button class="btn" id="inkStyleSaveBtn" type="button">Save</button>
+                </div>
+              </div>
+
+              <div class="ink-style-card ink-style-card--list">
+                <div class="ink-style-card__header">
+                  <h4>Saved styles</h4>
+                </div>
+                <div id="inkStylesList" class="ink-styles-list" aria-live="polite" aria-atomic="false"></div>
+                <div class="ink-style-selected-meta" id="inkStyleSelectedMeta" aria-live="polite"></div>
+                <div class="ink-style-actions-row ink-style-actions-row--global">
+                  <button class="btn btn-small" id="inkStyleLoadSelectedBtn" type="button">Load</button>
+                  <button class="btn btn-small" id="inkStyleUpdateSelectedBtn" type="button">Update</button>
+                  <button class="btn btn-small danger" id="inkStyleDeleteSelectedBtn" type="button">Delete</button>
+                  <button class="btn btn-small" id="inkStyleExportSelectedBtn" type="button">Export</button>
+                  <input type="file" id="inkStyleImportInput" accept="application/json" hidden />
+                  <button class="btn btn-small" id="inkStyleImportBtn" type="button">Import</button>
+                </div>
+              </div>
             </div>
-            <div class="ink-style-io-row">
-              <button class="btn" id="inkStyleExportBtn" type="button">Export current</button>
-              <input type="file" id="inkStyleImportInput" accept="application/json" hidden />
-              <button class="btn" id="inkStyleImportBtn" type="button">Import</button>
-            </div>
-            <div id="inkStylesList" class="ink-styles-list" aria-live="polite" aria-atomic="false"></div>
           </section>
         </div>
       </details>
@@ -714,7 +750,7 @@
         </div>
       </details>
     </div>
-    <div class="app-version">v.44.7b</div>
+    <div class="app-version">v.45.0b</div>
   </aside>
 
   <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>

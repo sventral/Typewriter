@@ -76,6 +76,13 @@ const SECTION_SCALE_DEFAULTS = Object.freeze({
   'filters.punch': getDefaultInkSubsectionScale('filters.punch'),
 });
 
+const STYLE_INCLUDE_DEFAULTS = Object.freeze({
+  font: true,
+  slant: true,
+  jitter: true,
+  effects: true,
+});
+
 const SECTION_TO_SUBSECTIONS = Object.freeze({
   filters: [
     'filters.variations',
@@ -176,6 +183,18 @@ function normalizeSubsectionSettings(sectionId, source, legacyValue, defaults, r
   return result;
 }
 
+function sanitizeStyleIncludes(source) {
+  const base = { ...STYLE_INCLUDE_DEFAULTS };
+  if (source && typeof source === 'object') {
+    Object.keys(base).forEach(key => {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        base[key] = !!source[key];
+      }
+    });
+  }
+  return base;
+}
+
 function sanitizeStyleSection(sectionValue, sectionId) {
   if (!sectionValue || typeof sectionValue !== 'object') {
     return { strength: 0, config: null, qualities: {}, scales: {} };
@@ -230,6 +249,7 @@ function sanitizeSavedInkStyle(style, index = 0) {
       sections: {},
       sectionOrder: KNOWN_INK_SECTIONS.slice(),
       subsectionOrder: KNOWN_INK_SUBSECTIONS.slice(),
+      includes: { ...STYLE_INCLUDE_DEFAULTS },
     };
   }
   const id = typeof style.id === 'string' && style.id.trim()
@@ -262,6 +282,7 @@ function sanitizeSavedInkStyle(style, index = 0) {
     sections,
     sectionOrder,
     subsectionOrder,
+    includes: sanitizeStyleIncludes(style.includes),
   };
 }
 

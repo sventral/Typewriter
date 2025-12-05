@@ -62,6 +62,11 @@ const panelState = {
   resetButton: null,
   randomizeButton: null,
   keepOrderCheckbox: null,
+  includeInputs: {},
+  loadSelectedButton: null,
+  updateSelectedButton: null,
+  deleteSelectedButton: null,
+  exportSelectedButton: null,
   lockState: {
     groups: {},
     quality: {},
@@ -192,6 +197,19 @@ function isSubgroupCollapsed(meta, subgroupId) {
 const HEX_MATCH_RE = /seed|hash/i;
 const STYLE_NAME_MAX_LEN = 60;
 const STYLE_EXPORT_VERSION = 2;
+const STYLE_INCLUDE_KEYS = ['font', 'slant', 'jitter', 'effects'];
+const DEFAULT_STYLE_INCLUDES = Object.freeze({
+  font: true,
+  slant: true,
+  jitter: true,
+  effects: true,
+});
+const INCLUDE_LABELS = Object.freeze({
+  font: 'Font',
+  slant: 'Slant',
+  jitter: 'Jitter',
+  effects: 'Effects',
+});
 
 function deepCloneValue(value) {
   if (Array.isArray(value)) {
@@ -262,6 +280,18 @@ function ensureUniqueStyleName(name, existingStyles, excludeId = null) {
   return candidate;
 }
 
+function normalizeStyleIncludes(source, fallback = DEFAULT_STYLE_INCLUDES) {
+  const base = { ...(fallback || DEFAULT_STYLE_INCLUDES) };
+  if (source && typeof source === 'object') {
+    STYLE_INCLUDE_KEYS.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        base[key] = !!source[key];
+      }
+    });
+  }
+  return base;
+}
+
 function generateStyleId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -287,6 +317,7 @@ function normalizeStyleRecord(style, index = 0) {
       sections: {},
       sectionOrder: normalizeSectionOrder(style?.sectionOrder || style?.sections?.order || style?.inkSectionOrder || style?.inkSectionsOrder || style?.sectionOrder),
       subsectionOrder: normalizeSubsectionOrder(subsectionOrder),
+      includes: normalizeStyleIncludes(style?.includes),
     };
     const legacySectionStrengths = ['expTone', 'expEdge', 'expGrain', 'expDefects']
       .map(id => style?.sections?.[id]?.strength ?? style?.[id]?.strength)
@@ -407,6 +438,7 @@ function createDefaultStyleRecord(index = 0) {
     sections: {},
     sectionOrder: DEFAULT_SECTION_ORDER.slice(),
     subsectionOrder: DEFAULT_SUBSECTION_ORDER.slice(),
+    includes: normalizeStyleIncludes(DEFAULT_STYLE_INCLUDES),
   };
   SECTION_DEFS.forEach(def => {
     record.sections[def.id] = {
@@ -455,6 +487,61 @@ function setSavedStyles(styles) {
   return normalized;
 }
 
+function getIncludeSelectionFromInputs() {
+  const flags = {};
+  STYLE_INCLUDE_KEYS.forEach((key) => {
+    const input = panelState.includeInputs?.[key];
+    flags[key] = input ? !!input.checked : DEFAULT_STYLE_INCLUDES[key];
+  });
+  return normalizeStyleIncludes(flags);
+}
+
+function resolveIncludesForSnapshot(existingId = null) {
+  const fromInputs = getIncludeSelectionFromInputs();
+  if (fromInputs) return fromInputs;
+  const styles = getSavedStyles();
+  if (existingId && Array.isArray(styles)) {
+    const match = styles.find(style => style && style.id === existingId);
+    if (match) return normalizeStyleIncludes(match.includes);
+  }
+  if (panelState.lastLoadedStyleId && Array.isArray(styles)) {
+    const loaded = styles.find(style => style && style.id === panelState.lastLoadedStyleId);
+    if (loaded) return normalizeStyleIncludes(loaded.includes);
+  }
+  const fromState = getCurrentStyleFromState();
+  if (fromState?.includes) return normalizeStyleIncludes(fromState.includes);
+  return normalizeStyleIncludes(DEFAULT_STYLE_INCLUDES);
+}
+
+function syncIncludeInputsFromStyle(style) {
+  const includes = normalizeStyleIncludes(style?.includes);
+  STYLE_INCLUDE_KEYS.forEach((key) => {
+    const input = panelState.includeInputs?.[key];
+    if (input) input.checked = includes[key];
+  });
+}
+
+function updateSelectedStyleMeta(styleId) {
+  const metaRoot = document.getElementById('inkStyleSelectedMeta');
+  if (!metaRoot) return;
+  metaRoot.innerHTML = '';
+  if (!styleId) return;
+  const styles = getSavedStyles();
+  const style = styles.find(s => s && s.id === styleId);
+  if (!style) return;
+  const includes = normalizeStyleIncludes(style.includes);
+  const metaRow = document.createElement('div');
+  metaRow.className = 'ink-style-meta';
+  STYLE_INCLUDE_KEYS.forEach((key) => {
+    const badge = document.createElement('span');
+    badge.className = 'ink-style-include-badge';
+    badge.dataset.enabled = includes[key] ? '1' : '0';
+    badge.textContent = INCLUDE_LABELS[key] || key;
+    metaRow.appendChild(badge);
+  });
+  metaRoot.appendChild(metaRow);
+}
+
 function createStyleSnapshot(name, existingId = null) {
   const base = {
     id: existingId || generateStyleId(),
@@ -467,6 +554,7 @@ function createStyleSnapshot(name, existingId = null) {
     subsectionOrder: Array.isArray(panelState.subsectionOrder)
       ? panelState.subsectionOrder.slice()
       : DEFAULT_SUBSECTION_ORDER.slice(),
+    includes: resolveIncludesForSnapshot(existingId),
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);
@@ -569,6 +657,14 @@ function exportCurrentStyle() {
   exportStyleToFile(snapshot);
 }
 
+function exportSavedStyle(styleId) {
+  if (!styleId) return;
+  const styles = getSavedStyles();
+  const style = styles.find(s => s && s.id === styleId);
+  if (!style) return;
+  exportStyleToFile(style);
+}
+
 function extractStyleFromPayload(payload) {
   if (!payload) return null;
   if (Array.isArray(payload)) {
@@ -633,6 +729,7 @@ function handleImportStyleContent(text) {
   const styles = getSavedStyles();
   const updated = [normalized, ...(Array.isArray(styles) ? styles : [])];
   setSavedStyles(updated);
+  panelState.selectedStyleId = normalized.id;
   persistPanelState();
   renderSavedStylesList({ focusId: normalized.id });
 }
@@ -670,6 +767,12 @@ function isHexField(path) {
 
 function getAppState() {
   return panelState.appState;
+}
+
+function getSelectedStyleId() {
+  const selectedInput = panelState.stylesList?.querySelector('input[name="inkStyleSelection"]:checked');
+  if (selectedInput?.value) return selectedInput.value;
+  return panelState.selectedStyleId || null;
 }
 
 function getCurrentStyleFromState() {
@@ -2680,8 +2783,10 @@ function renderSavedStylesList(options = {}) {
     empty.className = 'ink-styles-empty';
     empty.textContent = 'No saved styles yet.';
     list.appendChild(empty);
+    updateSelectedStyleMeta(null);
     return;
   }
+  let firstId = null;
   styles.forEach(style => {
     if (!style) return;
     const item = document.createElement('div');
@@ -2690,6 +2795,26 @@ function renderSavedStylesList(options = {}) {
     if (panelState.lastLoadedStyleId && panelState.lastLoadedStyleId === style.id) {
       item.classList.add('is-active');
     }
+
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'inkStyleSelection';
+    radio.className = 'ink-style-radio';
+    radio.value = style.id;
+    radio.checked = panelState.selectedStyleId
+      ? panelState.selectedStyleId === style.id
+      : panelState.lastLoadedStyleId === style.id;
+    radio.setAttribute('aria-label', `Select ${style.name}`);
+    radio.addEventListener('change', () => {
+      panelState.selectedStyleId = style.id;
+      panelState.lastLoadedStyleId = style.id;
+      syncIncludeInputsFromStyle(style);
+      updateSelectedStyleMeta(style.id);
+    });
+    if (!firstId) firstId = style.id;
+
+    const body = document.createElement('div');
+    body.className = 'ink-style-body';
 
     const nameRow = document.createElement('div');
     nameRow.className = 'ink-style-name-row';
@@ -2717,36 +2842,25 @@ function renderSavedStylesList(options = {}) {
     });
     nameRow.appendChild(nameInput);
 
-    const actionsRow = document.createElement('div');
-    actionsRow.className = 'ink-style-actions-row';
-    const loadBtn = document.createElement('button');
-    loadBtn.type = 'button';
-    loadBtn.className = 'btn btn-small';
-    loadBtn.textContent = 'Load';
-    loadBtn.addEventListener('click', () => applySavedStyle(style.id));
-    const updateBtn = document.createElement('button');
-    updateBtn.type = 'button';
-    updateBtn.className = 'btn-text';
-    updateBtn.textContent = 'Update';
-    updateBtn.title = 'Update this style with the current settings';
-    updateBtn.addEventListener('click', () => updateSavedStyle(style.id));
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.className = 'btn-text danger';
-    deleteBtn.textContent = 'Delete';
-    deleteBtn.addEventListener('click', () => removeSavedStyle(style.id));
-    actionsRow.appendChild(loadBtn);
-    actionsRow.appendChild(updateBtn);
-    actionsRow.appendChild(deleteBtn);
+    body.appendChild(nameRow);
 
-    item.appendChild(nameRow);
-    item.appendChild(actionsRow);
+    item.appendChild(radio);
+    item.appendChild(body);
     list.appendChild(item);
 
     if (focusId && focusId === style.id) {
-      requestAnimationFrame(() => loadBtn.focus());
+      requestAnimationFrame(() => radio.focus());
     }
   });
+  const selected = getSelectedStyleId() || focusId || panelState.selectedStyleId || panelState.lastLoadedStyleId || firstId;
+  if (selected) {
+    panelState.selectedStyleId = selected;
+    updateSelectedStyleMeta(selected);
+    const input = list.querySelector(`input[value="${selected}"]`);
+    if (input && !input.checked) input.checked = true;
+  } else {
+    updateSelectedStyleMeta(null);
+  }
 }
 
 function handleSaveStyle(event) {
@@ -2819,6 +2933,9 @@ function removeSavedStyle(styleId) {
   setSavedStyles(updated);
   if (panelState.lastLoadedStyleId === styleId) {
     panelState.lastLoadedStyleId = null;
+  }
+  if (panelState.selectedStyleId === styleId) {
+    panelState.selectedStyleId = null;
   }
   persistPanelState();
   renderSavedStylesList();
@@ -2970,9 +3087,12 @@ function applyStyleSnapshot(style, options = {}) {
     });
     if (rememberLoaded && workingStyle.id) {
       panelState.lastLoadedStyleId = workingStyle.id;
+      panelState.selectedStyleId = workingStyle.id;
     } else if (!rememberLoaded) {
       panelState.lastLoadedStyleId = null;
+      panelState.selectedStyleId = null;
     }
+    syncIncludeInputsFromStyle(workingStyle);
     if (updateStyleName && panelState.styleNameInput) {
       panelState.styleNameInput.value = workingStyle.name || 'Current style';
       panelState.styleNameInput.classList.remove('input-error');
@@ -2998,6 +3118,8 @@ function applySavedStyle(styleId) {
   const style = styles.find(s => s && s.id === styleId);
   if (!style) return;
   applyStyleSnapshot(style, { persist: true, rememberLoaded: true, refreshList: true, focusLoadedStyle: style.id });
+  panelState.selectedStyleId = style.id;
+  updateSelectedStyleMeta(style.id);
 }
 
 export function hydrateInkSettingsFromState(options = {}) {
@@ -3154,6 +3276,16 @@ export function setupInkSettingsPanel(options = {}) {
   panelState.resetButton = document.getElementById('inkStyleResetBtn');
   panelState.randomizeButton = document.getElementById('inkStyleRandomizeBtn');
   panelState.keepOrderCheckbox = document.getElementById('inkStyleKeepOrderCb');
+  panelState.includeInputs = {
+    font: document.getElementById('inkStyleIncludeFont'),
+    slant: document.getElementById('inkStyleIncludeSlant'),
+    jitter: document.getElementById('inkStyleIncludeJitter'),
+    effects: document.getElementById('inkStyleIncludeEffects'),
+  };
+  panelState.loadSelectedButton = document.getElementById('inkStyleLoadSelectedBtn');
+  panelState.updateSelectedButton = document.getElementById('inkStyleUpdateSelectedBtn');
+  panelState.deleteSelectedButton = document.getElementById('inkStyleDeleteSelectedBtn');
+  panelState.exportSelectedButton = document.getElementById('inkStyleExportSelectedBtn');
   panelState.sectionsRoot = sectionsRoot;
 
   panelState.sectionOrder = normalizeSectionOrder(getSectionOrderFromState());
@@ -3187,6 +3319,30 @@ export function setupInkSettingsPanel(options = {}) {
     panelState.importButton.addEventListener('click', () => panelState.importInput.click());
     panelState.importInput.addEventListener('change', handleImportInputChange);
   }
+  if (panelState.loadSelectedButton) {
+    panelState.loadSelectedButton.addEventListener('click', () => {
+      const id = getSelectedStyleId();
+      if (id) applySavedStyle(id);
+    });
+  }
+  if (panelState.updateSelectedButton) {
+    panelState.updateSelectedButton.addEventListener('click', () => {
+      const id = getSelectedStyleId();
+      if (id) updateSavedStyle(id);
+    });
+  }
+  if (panelState.deleteSelectedButton) {
+    panelState.deleteSelectedButton.addEventListener('click', () => {
+      const id = getSelectedStyleId();
+      if (id) removeSavedStyle(id);
+    });
+  }
+  if (panelState.exportSelectedButton) {
+    panelState.exportSelectedButton.addEventListener('click', () => {
+      const id = getSelectedStyleId();
+      if (id) exportSavedStyle(id);
+    });
+  }
   if (panelState.resetButton) {
     panelState.resetButton.addEventListener('click', handleResetInkSettings);
   }
@@ -3194,6 +3350,7 @@ export function setupInkSettingsPanel(options = {}) {
     panelState.randomizeButton.addEventListener('click', handleRandomizeInkSettings);
   }
 
+  syncIncludeInputsFromStyle(getCurrentStyleFromState());
   if (panelState.appState) {
     setSavedStyles(getSavedStyles());
   }
