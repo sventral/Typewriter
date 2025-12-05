@@ -42,6 +42,7 @@ const CURRENT_STYLE_STATE_ID = 'current-style';
 const panelState = {
   appState: null,
   app: null,
+  metricsStore: null,
   callbacks: {
     refreshGlyphs: null,
   },
@@ -630,8 +631,10 @@ function applyJitterFromStyle(style) {
 function createStyleSnapshot(name, existingId = null) {
   const appState = getAppState();
   const includes = resolveIncludesForSnapshot(existingId);
-  const fontName = includes.font && panelState.app?.getActiveFontName
-    ? panelState.app.getActiveFontName()
+  const fontName = includes.font
+    ? (panelState.app?.getActiveFontName?.()
+      || panelState.metricsStore?.ACTIVE_FONT_NAME
+      || null)
     : null;
   const jitterAmount = includes.jitter ? deepCloneValue(appState?.glyphJitterAmountPct) : null;
   const jitterFreq = includes.jitter ? deepCloneValue(appState?.glyphJitterFrequencyPct) : null;
@@ -2993,7 +2996,7 @@ function handleSaveStyle(event) {
   }
   let updated;
   if (targetId) {
-    updated = existingStyles.slice();
+    updated = styles.slice();
     const idx = updated.findIndex(style => style && style.id === targetId);
     if (idx >= 0) {
       updated[idx] = snapshot;
@@ -3397,6 +3400,7 @@ export function setupInkSettingsPanel(options = {}) {
   const {
     state,
     app,
+    metricsStore,
     refreshGlyphs,
     saveState,
   } = options || {};
@@ -3406,6 +3410,9 @@ export function setupInkSettingsPanel(options = {}) {
   }
   if (app && typeof app === 'object') {
     panelState.app = app;
+  }
+  if (metricsStore && typeof metricsStore === 'object') {
+    panelState.metricsStore = metricsStore;
   }
   panelState.callbacks.refreshGlyphs = typeof refreshGlyphs === 'function' ? refreshGlyphs : null;
   panelState.saveState = typeof saveState === 'function' ? saveState : null;
