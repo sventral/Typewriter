@@ -7,6 +7,7 @@ import { createZoomLagMonitor } from '../diagnostics/zoomLagMonitor.js';
 import { createWheelAxisStabilizer } from './wheelAxisStabilizer.js';
 import { BASE_PADDING_X_PX, BASE_PADDING_Y_PX } from './stageLayout.js';
 import { createZoomSliderContrastManager } from './zoomSliderContrast.js';
+import { isSafari } from '../utils/platform.js';
 
 export function createLayoutAndZoomController(context, pageLifecycle, editingController) {
   const {
@@ -133,6 +134,23 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     zoomLagMonitor.trackZoomEvent(payload);
   };
   let pendingZoomLagEvent = null;
+
+  const isSafariLayoutZoom = () => isSafari() && state.lowResZoomEnabled === false;
+
+  const previewCanvasCssScale = () => {
+    if (!isSafariLayoutZoom()) return;
+    const layoutZoom = layoutZoomFactor();
+    const cssW = app.PAGE_W * layoutZoom;
+    const cssH = app.PAGE_H * layoutZoom;
+    for (const page of state.pages) {
+      if (!page?.canvas) continue;
+      page.canvas.style.width = `${cssW}px`;
+      page.canvas.style.height = `${cssH}px`;
+      if (page.pageEl?.style) {
+        page.pageEl.style.height = `${cssH}px`;
+      }
+    }
+  };
 
   const flushPendingZoomLagEvent = (reason) => {
     if (pendingZoomLagEvent) {
@@ -865,6 +883,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
       }
     }
     applyZoomCSS();
+    previewCanvasCssScale();
     reanchorCaretAfterZoomChange();
     scheduleZoomCrispRedraw();
     updateZoomUIFromState();

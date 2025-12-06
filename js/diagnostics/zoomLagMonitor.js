@@ -1,4 +1,6 @@
 // LOWERED: Detect lag sooner. 100ms is enough to feel "sticky".
+import { isSafari } from '../utils/platform.js';
+
 const DEFAULT_THRESHOLD_MS = 100; 
 
 // LOWERED: Drastically reduced from 60ms to 24ms. 
@@ -9,6 +11,11 @@ const DEFAULT_RECOVERY_THRESHOLD_MS = 24;
 
 // INCREASED: Wait 60 frames (approx 1 second) of continuous smooth performance.
 const DEFAULT_RECOVERY_FRAMES = 60; 
+
+const SAFARI_RECOVERY_THRESHOLD_MS = 36;
+const SAFARI_RECOVERY_FRAMES = 40;
+const SAFARI_CHECK_WINDOW_MS = 3200;
+const SAFARI_AUTO_RECOVER_MS = 1400;
 
 const MIN_ZOOM_FOR_NOTICE = 1.08;
 const MIN_ZOOM_DELTA = 0.05;
@@ -95,6 +102,19 @@ export function createZoomLagMonitor({
   const notice = createLagNotice(app);
   if (!notice) return null;
 
+  const safari = isSafari();
+  const stallThreshold = thresholdMs;
+  const recoveryThreshold = safari
+    ? Math.max(recoveryThresholdMs, SAFARI_RECOVERY_THRESHOLD_MS)
+    : recoveryThresholdMs;
+  const recoveryFrames = safari
+    ? Math.min(recoveryFrameCount, SAFARI_RECOVERY_FRAMES)
+    : recoveryFrameCount;
+  const monitorWindowMs = safari
+    ? Math.min(checkWindowMs, SAFARI_CHECK_WINDOW_MS)
+    : checkWindowMs;
+  const autoRecoverMs = safari ? SAFARI_AUTO_RECOVER_MS : 0;
+
   const state = {
     disposed: false,
     rafHandle: 0,
@@ -106,6 +126,7 @@ export function createZoomLagMonitor({
     cachedZoom: 1,
     lastReason: 'zoom',
     preLagActive: false,
+    lastStallTs: 0,
   };
 
   const lagAssistEnabled = () => {
@@ -151,6 +172,7 @@ export function createZoomLagMonitor({
     state.lagActive = false;
     state.preLagActive = false;
     state.smoothFrames = 0;
+    state.lastStallTs = 0;
     notice.hide({ immediate });
     emitLagState('idle');
   }
@@ -198,6 +220,7 @@ export function createZoomLagMonitor({
     state.lagActive = true;
     state.preLagActive = false;
     state.smoothFrames = 0;
+    state.lastStallTs = now();
     notice.showLag({
       zoom: state.cachedZoom,
       frameGapMs: ms,
@@ -209,9 +232,9 @@ export function createZoomLagMonitor({
 
   function handleRecovery(gap) {
     if (!state.lagActive) return;
-    if (gap <= recoveryThresholdMs) {
+    if (gap <= recoveryThreshold) {
       state.smoothFrames += 1;
-      if (state.smoothFrames >= recoveryFrameCount) {
+      if (state.smoothFrames >= recoveryFrames) {
         hideNotice();
         // We’re back to stable; drop the armed window early to avoid
         // running RAF/perf observers for the full checkWindowMs.
@@ -243,10 +266,19 @@ export function createZoomLagMonitor({
     }
     const gap = timestamp - state.lastFrameTs;
     state.lastFrameTs = timestamp;
-    if (armed && gap >= thresholdMs) {
+    if (armed && gap >= stallThreshold) {
       recordStall({ duration: gap, via: 'frame' });
     } else {
       handleRecovery(gap);
+    }
+    if (autoRecoverMs) {
+      const sinceStall = state.lastStallTs ? timestamp - state.lastStallTs : 0;
+      if (state.lagActive && sinceStall >= autoRecoverMs) {
+        hideNotice();
+        state.armedUntil = 0;
+        stopWatchersIfIdle();
+        return;
+      }
     }
     scheduleLoop();
   }
@@ -284,7 +316,7 @@ export function createZoomLagMonitor({
       state.cachedZoom = numericZoom;
     }
     state.lastReason = reason;
-    state.armedUntil = Math.max(state.armedUntil, now() + checkWindowMs);
+    state.armedUntil = Math.max(state.armedUntil, now() + monitorWindowMs);
     state.preLagActive = true;
     notice.showPending({ zoom: state.cachedZoom, reason: state.lastReason });
     emitLagState('pending');

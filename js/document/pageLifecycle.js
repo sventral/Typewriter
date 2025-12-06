@@ -231,8 +231,14 @@ export function createPageLifecycleController(context, editingController) {
     canvas.width = Math.floor(app.PAGE_W * getRenderScale());
     canvas.height = Math.floor(app.PAGE_H * getRenderScale());
     const displayZoom = layoutZoomFactor();
-    canvas.style.width = (app.PAGE_W * displayZoom) + 'px';
-    canvas.style.height = (app.PAGE_H * displayZoom) + 'px';
+    const cssW = app.PAGE_W * displayZoom;
+    const cssH = app.PAGE_H * displayZoom;
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    const pageEl = canvas.parentElement;
+    if (pageEl && pageEl.style) {
+      pageEl.style.height = cssH + 'px';
+    }
   }
 
   function configureCanvasContext(ctx) {

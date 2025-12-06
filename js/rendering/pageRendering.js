@@ -1,5 +1,6 @@
 import { computeGlyphJitterOffset } from './glyphJitter.js';
 import { sanitizePageNumberingSettings } from '../config/pageNumbering.js';
+import { isSafari } from '../utils/platform.js';
 
 export function createPageRenderer(options) {
   const {
@@ -46,10 +47,9 @@ export function createPageRenderer(options) {
     return Number.isFinite(step) && step > 0 ? step : 1;
   };
 
-  // INCREASED BUDGET:
-  // Raised from 7ms to 14ms. This utilizes almost the entire 16ms frame budget (60fps),
-  // significantly increasing throughput when filling pages.
-  const FULL_PAINT_TIME_BUDGET_MS = 14;
+  // Keep paint slices shorter on Safari to avoid long tasks that stall text input.
+  // Other browsers keep the higher budget for throughput.
+  const FULL_PAINT_TIME_BUDGET_MS = isSafari() ? 10 : 14;
   
   const now = (() => {
     if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
