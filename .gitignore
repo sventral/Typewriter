@@ -4,3 +4,7 @@
 .cache/
 ms-playwright/
 **/ms-playwright/
+
+# Playwright / caches
+.cache/
+**/ms-playwright/
