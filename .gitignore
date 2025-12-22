@@ -1,1 +1,6 @@
 .DS_Store
+
+# Playwright / caches
+.cache/
+ms-playwright/
+**/ms-playwright/
