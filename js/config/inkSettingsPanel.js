@@ -2064,6 +2064,7 @@ function buildObjectControls(meta, container, obj, path, label) {
     if (path === 'fuzzExp') {
       const toggle = createInputForValue(obj.enable ?? false, `${path}.enable`, meta?.id);
       toggle.classList.add('ink-subheading-toggle');
+      toggle.dataset.groupPath = subgroupKey;
       toggle.setAttribute('aria-label', `Toggle ${heading.textContent}`);
       toggle.title = `Toggle ${heading.textContent}`;
       headingRow.appendChild(toggle);
