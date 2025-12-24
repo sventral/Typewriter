@@ -48,7 +48,6 @@ const BASE_SECTION_CONFIG = deepFreeze({
     ribbonBands: false,
     rim: false,
     centerEdge: false,
-    fuzzExp: false,
     grainSpeck: true,
     dropouts: true,
     edgeFuzz: true,

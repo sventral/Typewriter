@@ -289,7 +289,6 @@ export function createGlyphAtlas(options) {
       enable.edgeFuzz = false;
       enable.rim = false;
       enable.centerEdge = false;
-      enable.fuzzExp = false;
       enable.counterFill = false;
       enable.grainSpeck = false;
       enable.dropouts = false;
