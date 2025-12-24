@@ -2395,6 +2395,7 @@ function buildSection(def, root) {
       divider,
       togglePath,
       headingRow,
+      subgroupId: found.id,
       subsectionId,
       qualityControl: null,
       scaleControl: null,
@@ -3089,6 +3090,8 @@ function randomizeInkSection(meta, options = {}) {
     randomizeSingleInput(input, { offChance: toggleOffChance });
   });
   meta.subsectionControls?.forEach(info => {
+    const subgroupId = info?.subgroupId || info?.subsectionId?.split('.')?.pop();
+    if (subgroupId && isGroupLocked(meta, subgroupId)) return;
     if (info?.qualityControl && !isQualityLocked(meta, `${info.subsectionId}:quality`)) {
       applySubsectionQuality(meta, info.subsectionId, EFFECT_QUALITY_DEFAULT, { syncInputs: true });
     }
