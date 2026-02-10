@@ -778,8 +778,6 @@ export function createDocumentEditingController(context) {
         return;
       }
 
-      state.caret = { page: pageIndex, rowMu, col: startCol + buf.length };
-      updateCaretPosition();
       schedule(processSlice);
     };
 
