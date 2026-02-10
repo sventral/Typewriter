@@ -8,6 +8,7 @@ import { createWheelAxisStabilizer } from './wheelAxisStabilizer.js';
 import { BASE_PADDING_X_PX, BASE_PADDING_Y_PX } from './stageLayout.js';
 import { createZoomSliderContrastManager } from './zoomSliderContrast.js';
 import { isSafari } from '../utils/platform.js';
+import { createRulerCanvasRenderer } from './rulerCanvasRenderer.js';
 
 export function createLayoutAndZoomController(context, pageLifecycle, editingController) {
   const {
@@ -169,6 +170,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let pendingRulerRAF2 = 0;
   let lastRulerSnapshot = null;
   let cachedRulerHostSize = { width: 0, height: 0 };
+  let rulerStopHandles = null;
   const MIN_PAPER_OFFSET_DELTA_PX = 1 / 8;
   const initialPaperOffset = state.paperOffset || { x: 0, y: 0 };
   let lastSnappedPaperOffset = {
@@ -203,6 +205,11 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   let lastScrollLaneViewport = 0;
   let lastScrollLaneRange = 0;
   let lastScrollLaneVisible = false;
+  const rulerCanvasRenderer = createRulerCanvasRenderer({
+    app,
+    getPaperWidthMm,
+    getPaperHeightMm,
+  });
 
   function scrollLaneElements() {
     return {
@@ -641,18 +648,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     return new DOMRect(left, top, width, height);
   }
 
-  function updateRulerTicks(activePageRect, { preferLiveLayout = true } = {}) {
-    const ticksH = app.rulerH_host ? app.rulerH_host.querySelector('.ruler-ticks') : null;
-    const ticksV = app.rulerV_host ? app.rulerV_host.querySelector('.ruler-v-ticks') : null;
-    if (!ticksH || !ticksV) return;
-    ticksH.innerHTML = '';
-    ticksV.innerHTML = '';
-    const widthMm = Math.max(
-      1,
-      typeof getPaperWidthMm === 'function' ? getPaperWidthMm() : 210,
-    );
-    const ppiH = (activePageRect.width / widthMm) * 25.4;
-    const originX = activePageRect.left;
+  function resolveRulerHostDimensions(activePageRect, { preferLiveLayout = true } = {}) {
     let hostWidth = cachedRulerHostSize.width;
     if (preferLiveLayout && app.rulerH_host) {
       const rect = app.rulerH_host.getBoundingClientRect();
@@ -664,31 +660,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     if (!hostWidth || !Number.isFinite(hostWidth)) {
       hostWidth = typeof window !== 'undefined' ? window.innerWidth : activePageRect.width;
     }
-    const startInchH = Math.floor(-originX / ppiH);
-    const endInchH = Math.ceil((hostWidth - originX) / ppiH);
-    for (let i = startInchH; i <= endInchH; i++) {
-      for (let j = 0; j < 10; j++) {
-        const x = originX + (i + j / 10) * ppiH;
-        if (x < 0 || x > hostWidth) continue;
-        const tick = document.createElement('div');
-        tick.className = j === 0 ? 'tick major' : j === 5 ? 'tick medium' : 'tick minor';
-        tick.style.left = `${x}px`;
-        ticksH.appendChild(tick);
-        if (j === 0) {
-          const lbl = document.createElement('div');
-          lbl.className = 'tick-num';
-          lbl.textContent = i;
-          lbl.style.left = `${x + 4}px`;
-          ticksH.appendChild(lbl);
-        }
-      }
-    }
-    const heightMm = Math.max(
-      1,
-      typeof getPaperHeightMm === 'function' ? getPaperHeightMm() : 297,
-    );
-    const ppiV = (activePageRect.height / heightMm) * 25.4;
-    const originY = activePageRect.top;
+
     let hostHeight = cachedRulerHostSize.height;
     if (preferLiveLayout && app.rulerV_host) {
       const rect = app.rulerV_host.getBoundingClientRect();
@@ -700,25 +672,40 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     if (!hostHeight || !Number.isFinite(hostHeight)) {
       hostHeight = typeof window !== 'undefined' ? window.innerHeight : activePageRect.height;
     }
-    const startInchV = Math.floor(-originY / ppiV);
-    const endInchV = Math.ceil((hostHeight - originY) / ppiV);
-    for (let i = startInchV; i <= endInchV; i++) {
-      for (let j = 0; j < 10; j++) {
-        const y = originY + (i + j / 10) * ppiV;
-        if (y < 0 || y > hostHeight) continue;
-        const tick = document.createElement('div');
-        tick.className = j === 0 ? 'tick-v major' : j === 5 ? 'tick-v medium' : 'tick-v minor';
-        tick.style.top = `${y}px`;
-        ticksV.appendChild(tick);
-        if (j === 0) {
-          const lbl = document.createElement('div');
-          lbl.className = 'tick-v-num';
-          lbl.textContent = i;
-          lbl.style.top = `${y + 4}px`;
-          ticksV.appendChild(lbl);
-        }
-      }
-    }
+
+    return { hostWidth, hostHeight };
+  }
+
+  function ensureRulerStopHandles() {
+    if (!app.rulerH_stops_container || !app.rulerV_stops_container) return null;
+    const connected = rulerStopHandles
+      && rulerStopHandles.left?.isConnected
+      && rulerStopHandles.right?.isConnected
+      && rulerStopHandles.top?.isConnected
+      && rulerStopHandles.bottom?.isConnected;
+    if (connected) return rulerStopHandles;
+
+    app.rulerH_stops_container.textContent = '';
+    app.rulerV_stops_container.textContent = '';
+
+    const left = document.createElement('div');
+    left.className = 'tri left';
+    app.rulerH_stops_container.appendChild(left);
+
+    const right = document.createElement('div');
+    right.className = 'tri right';
+    app.rulerH_stops_container.appendChild(right);
+
+    const top = document.createElement('div');
+    top.className = 'tri-v top';
+    app.rulerV_stops_container.appendChild(top);
+
+    const bottom = document.createElement('div');
+    bottom.className = 'tri-v bottom';
+    app.rulerV_stops_container.appendChild(bottom);
+
+    rulerStopHandles = { left, right, top, bottom };
+    return rulerStopHandles;
   }
 
   function positionRulers(options = {}) {
@@ -729,26 +716,19 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     if (preferLiveLayout) {
       snapshotRulerLayout(pageRect);
     }
-    app.rulerH_stops_container.innerHTML = '';
-    app.rulerV_stops_container.innerHTML = '';
+    const stops = ensureRulerStopHandles();
+    if (!stops) return;
     const snap = computeSnappedVisualMargins();
-    const mLeft = document.createElement('div');
-    mLeft.className = 'tri left';
-    mLeft.style.left = `${pageRect.left + snap.leftPx * state.zoom}px`;
-    app.rulerH_stops_container.appendChild(mLeft);
-    const mRight = document.createElement('div');
-    mRight.className = 'tri right';
-    mRight.style.left = `${pageRect.left + snap.rightPx * state.zoom}px`;
-    app.rulerH_stops_container.appendChild(mRight);
-    const mTop = document.createElement('div');
-    mTop.className = 'tri-v top';
-    mTop.style.top = `${pageRect.top + snap.topPx * state.zoom}px`;
-    app.rulerV_stops_container.appendChild(mTop);
-    const mBottom = document.createElement('div');
-    mBottom.className = 'tri-v bottom';
-    mBottom.style.top = `${pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom}px`;
-    app.rulerV_stops_container.appendChild(mBottom);
-    updateRulerTicks(pageRect, { preferLiveLayout });
+    stops.left.style.left = `${pageRect.left + snap.leftPx * state.zoom}px`;
+    stops.right.style.left = `${pageRect.left + snap.rightPx * state.zoom}px`;
+    stops.top.style.top = `${pageRect.top + snap.topPx * state.zoom}px`;
+    stops.bottom.style.top = `${pageRect.top + (app.PAGE_H - snap.bottomPx) * state.zoom}px`;
+    const { hostWidth, hostHeight } = resolveRulerHostDimensions(pageRect, { preferLiveLayout });
+    rulerCanvasRenderer.draw({
+      activePageRect: pageRect,
+      hostWidth,
+      hostHeight,
+    });
   }
 
   function queueRulerRepositionAfterVisualMove() {
