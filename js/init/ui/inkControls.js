@@ -15,6 +15,7 @@ import {
   clampLineSlantDeg,
 } from '../../config/lineSlantConfig.js';
 import { INK_PALETTE, createDefaultInkOpacity } from '../../config/inkPalette.js';
+import { markPageContentDirty } from '../../state/saveRevision.js';
 
 function formatNumberForInput(value, fractionDigits = 2) {
   if (!Number.isFinite(value)) return '';
@@ -646,6 +647,7 @@ export function createInkControls({
           p.marginBoxEl.style.setProperty('--line-slant-deg', `${p.lineSlantDeg}deg`);
         }
         p.dirtyAll = true;
+        markPageContentDirty(p);
         if (p.active) schedulePaint(p);
       }
     };

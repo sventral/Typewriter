@@ -1,12 +1,16 @@
 export {
   DEFAULT_DOCUMENT_TITLE,
   normalizeDocumentTitle,
+  serializeDocumentPage,
+  serializeDocumentPages,
+  serializeDocumentStateBase,
   serializeDocumentState,
   deserializeDocumentState,
   generateDocumentId,
   createDocumentRecord,
   METADATA_VERSION,
   encodeDocumentDataForStorage,
+  encodeDocumentDataForStorageAsync,
   decodeDocumentDataFromStorage,
 } from './documentSchema.js';
 

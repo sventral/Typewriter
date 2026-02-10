@@ -1,10 +1,12 @@
 import { clamp } from '../utils/math.js';
 import { recalcMetrics as recalcMetricsForContext } from '../config/metrics.js';
-import { markDocumentDirty } from '../state/saveRevision.js';
+import { markDocumentDirty, markPageContentDirty, getDirtyPageIndices, syncSavedPageRevisions } from '../state/saveRevision.js';
 import {
   DEFAULT_DOCUMENT_TITLE,
   normalizeDocumentTitle,
   serializeDocumentState,
+  serializeDocumentStateBase,
+  serializeDocumentPage,
   deserializeDocumentState,
   generateDocumentId,
 } from './documentStore.js';
@@ -143,6 +145,7 @@ export function createDocumentEditingController(context) {
   const recalcMetrics = (face) => recalcMetricsForContext(face, metricsOptions || {});
 
   function markRowAsDirty(page, rowMu) {
+    markPageContentDirty(page);
     if (rendererHooks.markRowAsDirty) {
       rendererHooks.markRowAsDirty(page, rowMu);
     }
@@ -1289,6 +1292,15 @@ export function createDocumentEditingController(context) {
     return serializeDocumentState(state, { getActiveFontName });
   }
 
+  function serializeStateBase() {
+    return serializeDocumentStateBase(state, { getActiveFontName });
+  }
+
+  function serializePageState(pageIndex) {
+    const index = Number.isInteger(pageIndex) ? pageIndex : 0;
+    return serializeDocumentPage(state.pages[index]);
+  }
+
   function deserializeState(data) {
     resetOvertypeSession();
     return deserializeDocumentState(data, {
@@ -1392,7 +1404,11 @@ export function createDocumentEditingController(context) {
     moveCaretByLines,
     rewrapDocumentToCurrentBounds,
     serializeState,
+    serializeStateBase,
+    serializePageState,
     deserializeState,
+    getDirtyPageIndices: () => getDirtyPageIndices(state),
+    syncSavedPageRevisions: (pageIndices = null) => syncSavedPageRevisions(state, pageIndices),
     setInk,
     createNewDocument,
   };

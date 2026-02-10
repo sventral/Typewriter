@@ -1,5 +1,6 @@
 import { clamp } from '../utils/math.js';
 import { sampleLineSlantDeg, clampLineSlantDeg } from '../config/lineSlantConfig.js';
+import { ensurePageRevisionState } from '../state/saveRevision.js';
 
 export function createPageLifecycleController(context, editingController) {
   const {
@@ -290,6 +291,7 @@ export function createPageLifecycleController(context, editingController) {
         : (state.zoom || 1)),
       geometry: { baseTop: 0, baseHeight: app.PAGE_H, dirty: true },
     };
+    ensurePageRevisionState(page);
     const slantDeg = state.lineSlantEnabled ? sampleLineSlantDeg(state.lineSlantRangeDeg) : 0;
     page.lineSlantDeg = clampLineSlantDeg(slantDeg, state.lineSlantRangeDeg);
     if (marginBoxEl) {

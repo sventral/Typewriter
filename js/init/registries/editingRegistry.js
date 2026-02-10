@@ -56,6 +56,10 @@ function createDocumentFacade(editing) {
     setInk: editing.setInk,
     createNewDocument: editing.createNewDocument,
     serializeState: editing.serializeState,
+    serializeStateBase: editing.serializeStateBase,
+    serializePageState: editing.serializePageState,
+    getDirtyPageIndices: editing.getDirtyPageIndices,
+    syncSavedPageRevisions: editing.syncSavedPageRevisions,
     deserializeState: editing.deserializeState,
     inputController: editing.inputController,
   };

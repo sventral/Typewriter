@@ -1,7 +1,7 @@
 import {
   createDocumentRecord,
   decodeDocumentDataFromStorage,
-  encodeDocumentDataForStorage,
+  encodeDocumentDataForStorageAsync,
   generateDocumentId,
   METADATA_VERSION,
   normalizeDocumentTitle,
@@ -132,8 +132,8 @@ export async function persistDocuments(storageKey, docState, options = {}) {
   const keepIds = new Set();
   const payloadDocs = [];
   const blobWrites = [];
-  documents.forEach((doc) => {
-    if (!doc || typeof doc !== 'object') return;
+  for (const doc of documents) {
+    if (!doc || typeof doc !== 'object') continue;
     const revision = Number.isInteger(doc.lastSavedRevision)
       ? doc.lastSavedRevision
       : (Number.isInteger(doc.revision) ? doc.revision : null);
@@ -144,7 +144,7 @@ export async function persistDocuments(storageKey, docState, options = {}) {
     let size = Number(doc.dataSize) || 0;
 
     if (needsPersist) {
-      encoded = encodeDocumentDataForStorage(doc.data);
+      encoded = await encodeDocumentDataForStorageAsync(doc.data);
       size = encoded ? estimateStoredBytes(encoded) : size;
       if (doc.id && encoded) {
         blobWrites.push(saveDocumentPayload(doc.id, encoded));
@@ -169,7 +169,7 @@ export async function persistDocuments(storageKey, docState, options = {}) {
     } else if (needsPersist) {
       doc.dataSize = size;
     }
-  });
+  }
   const payload = {
     version: METADATA_VERSION,
     activeId: docState?.activeId || null,

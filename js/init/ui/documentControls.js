@@ -10,7 +10,13 @@ import {
   estimateDocumentDataBytes,
 } from '../../document/documentStore.js';
 import { getPaperSize, normalizePaperSizeId, DEFAULT_PAPER_SIZE } from '../../config/paperSizes.js';
-import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../../state/saveRevision.js';
+import {
+  markDocumentDirty,
+  hasPendingDocumentChanges,
+  syncSavedRevision,
+  getDirtyPageIndices as getTrackedDirtyPageIndices,
+  syncSavedPageRevisions as syncTrackedPageRevisions,
+} from '../../state/saveRevision.js';
 import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/ink/InkSettingsPanelView.js';
 import { createExportDialog } from './exportDialog.js';
 import { exportDocumentAsPdf } from '../../export/pdfExporter.js';
@@ -34,6 +40,10 @@ export function createDocumentControls({
   isZooming,
   createNewDocument,
   serializeState,
+  serializeStateBase,
+  serializePageState,
+  getDirtyPageIndices,
+  syncSavedPageRevisions,
   deserializeState,
   getSaveTimer,
   setSaveTimer,
@@ -702,23 +712,86 @@ export function createDocumentControls({
     saveStateDebounced();
   }
 
+  function normalizeChangedPageIndices(pageCount, tracked = []) {
+    const deduped = new Set();
+    if (Array.isArray(tracked)) {
+      tracked.forEach((index) => {
+        if (!Number.isInteger(index)) return;
+        if (index < 0 || index >= pageCount) return;
+        deduped.add(index);
+      });
+    }
+    return Array.from(deduped).sort((a, b) => a - b);
+  }
+
+  function buildIncrementalSerializedState(previousSerialized = null) {
+    const fullSnapshot = () => ({
+      serialized: serializeState(),
+      changedPages: null,
+      usedIncremental: false,
+    });
+
+    if (typeof serializeStateBase !== 'function' || typeof serializePageState !== 'function') {
+      return fullSnapshot();
+    }
+
+    const base = serializeStateBase();
+    if (!base || typeof base !== 'object') {
+      return fullSnapshot();
+    }
+
+    const pageCount = Array.isArray(state.pages) ? state.pages.length : 0;
+    const previousPages = Array.isArray(previousSerialized?.pages) ? previousSerialized.pages : null;
+    const mergedPages = previousPages ? previousPages.slice(0, pageCount) : new Array(pageCount);
+    const rawDirtyPages = typeof getDirtyPageIndices === 'function'
+      ? getDirtyPageIndices()
+      : getTrackedDirtyPageIndices(state);
+    const changedPageSet = new Set(normalizeChangedPageIndices(pageCount, rawDirtyPages));
+
+    if (!previousPages) {
+      for (let i = 0; i < pageCount; i += 1) changedPageSet.add(i);
+    } else if (previousPages.length < pageCount) {
+      for (let i = previousPages.length; i < pageCount; i += 1) changedPageSet.add(i);
+    }
+
+    for (let i = 0; i < pageCount; i += 1) {
+      if (mergedPages[i] !== undefined) continue;
+      changedPageSet.add(i);
+    }
+
+    const changedPages = Array.from(changedPageSet).sort((a, b) => a - b);
+    changedPages.forEach((index) => {
+      mergedPages[index] = serializePageState(index);
+    });
+
+    return {
+      serialized: {
+        ...base,
+        pages: mergedPages,
+      },
+      changedPages,
+      usedIncremental: true,
+    };
+  }
+
   async function saveStateNow(options = {}) {
     const force = typeof options === 'object' && options !== null ? !!options.force : false;
     if (!force && !hasPendingDocumentChanges(state)) {
       return;
     }
     try {
-      const serialized = serializeState();
+      const activeId = typeof state.documentId === 'string' && state.documentId.trim()
+        ? state.documentId.trim()
+        : (docState.activeId || generateDocumentId(new Set(docState.documents.map((doc) => doc.id))));
+      let doc = docState.documents.find((d) => d.id === activeId);
+      const serializedBuild = buildIncrementalSerializedState(doc?.data);
+      const serialized = serializedBuild.serialized;
       const encodedBytes = estimateDocumentDataBytes(serialized);
       if (encodedBytes >= LARGE_DOC_SIZE_WARNING) {
         showStorageNotice('This document is large; saving may take a moment.', { durationMs: 5000 });
       }
-      const activeId = typeof state.documentId === 'string' && state.documentId.trim()
-        ? state.documentId.trim()
-        : (docState.activeId || generateDocumentId(new Set(docState.documents.map((doc) => doc.id))));
       const title = normalizeDocumentTitle(serialized.documentTitle || state.documentTitle);
       const now = Date.now();
-      let doc = docState.documents.find((d) => d.id === activeId);
       const previousBytes = Number(doc?.dataSize) || 0;
       if (!doc) {
         doc = {
@@ -748,6 +821,12 @@ export function createDocumentControls({
       await persistDocumentIndex();
       syncDocumentUi();
       syncSavedRevision(state);
+      if (serializedBuild.usedIncremental) {
+        const syncPages = typeof syncSavedPageRevisions === 'function'
+          ? syncSavedPageRevisions
+          : (pageIndices) => syncTrackedPageRevisions(state, pageIndices);
+        syncPages(serializedBuild.changedPages);
+      }
       lastSaveNowTs = Date.now();
     } catch (err) {
       showStorageNotice('Save failed. Export your document to avoid losing changes.', { level: 'error', durationMs: 8000 });

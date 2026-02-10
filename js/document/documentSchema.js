@@ -332,35 +332,39 @@ export function generateDocumentId(existingIds = null) {
   return id;
 }
 
-export function serializeDocumentState(state, { getActiveFontName } = {}) {
+export function serializeDocumentPage(page) {
+  if (!page || typeof page !== 'object' || !(page.grid instanceof Map)) {
+    return { rows: [] };
+  }
+  const rows = [];
+  for (const [rmu, rowMap] of page.grid) {
+    if (!(rowMap instanceof Map)) continue;
+    const cols = [];
+    for (const [c, stack] of rowMap) {
+      if (!Array.isArray(stack) || !Number.isFinite(c)) continue;
+      cols.push([
+        c,
+        stack.map((s) => serializeGlyphEntry(s)),
+      ]);
+    }
+    rows.push([rmu, cols]);
+  }
+  const slant = Number.isFinite(page.lineSlantDeg) ? page.lineSlantDeg : undefined;
+  return { rows, slant };
+}
+
+export function serializeDocumentPages(pages) {
+  if (!Array.isArray(pages)) return [];
+  return pages.map((page) => serializeDocumentPage(page));
+}
+
+export function serializeDocumentStateBase(state, { getActiveFontName } = {}) {
   if (!state || typeof state !== 'object') {
     return null;
   }
   const activeFont = typeof getActiveFontName === 'function'
     ? getActiveFontName()
     : undefined;
-  const pages = Array.isArray(state.pages)
-    ? state.pages.map((p) => {
-        if (!p || typeof p !== 'object' || !(p.grid instanceof Map)) {
-          return { rows: [] };
-        }
-        const rows = [];
-        for (const [rmu, rowMap] of p.grid) {
-          if (!(rowMap instanceof Map)) continue;
-          const cols = [];
-          for (const [c, stack] of rowMap) {
-            if (!Array.isArray(stack) || !Number.isFinite(c)) continue;
-            cols.push([
-              c,
-              stack.map((s) => serializeGlyphEntry(s)),
-            ]);
-          }
-          rows.push([rmu, cols]);
-        }
-        const slant = Number.isFinite(p.lineSlantDeg) ? p.lineSlantDeg : undefined;
-        return { rows, slant };
-      })
-    : [];
   const glyphJitterAmount = normalizeGlyphJitterAmount(state.glyphJitterAmountPct, GLYPH_JITTER_DEFAULTS.amountPct);
   const glyphJitterFrequency = normalizeGlyphJitterFrequency(state.glyphJitterFrequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
   const glyphJitterSeed = normalizeGlyphJitterSeed(state.glyphJitterSeed, GLYPH_JITTER_DEFAULTS.seed);
@@ -468,7 +472,17 @@ export function serializeDocumentState(state, { getActiveFontName } = {}) {
       softCapPct: lowResZoom.softCapPct ?? LOW_RES_ZOOM_DEFAULTS.softCapPct,
       marginPct: lowResZoom.marginPct ?? LOW_RES_ZOOM_DEFAULTS.marginPct,
     },
-    pages,
+  };
+}
+
+export function serializeDocumentState(state, { getActiveFontName } = {}) {
+  const base = serializeDocumentStateBase(state, { getActiveFontName });
+  if (!base) {
+    return null;
+  }
+  return {
+    ...base,
+    pages: serializeDocumentPages(state.pages),
   };
 }
 
@@ -993,4 +1007,8 @@ export function createDocumentRecord({ id, title, data, createdAt, updatedAt } =
   };
 }
 
-export { encodeDocumentDataForStorage, decodeDocumentDataFromStorage } from '../storage/jsonCompression.js';
+export {
+  encodeDocumentDataForStorage,
+  encodeDocumentDataForStorageAsync,
+  decodeDocumentDataFromStorage,
+} from '../storage/jsonCompression.js';
