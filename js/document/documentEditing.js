@@ -535,21 +535,144 @@ export function createDocumentEditingController(context) {
     }
     if (changed) markRowAsDirty(page, rowMu);
   }
-  function insertStringFast(s) {
-    const text = (s || '').replace(/\r\n?/g, '\n');
+  const BULK_INSERT_SLICE_CHAR_BUDGET = 2048;
+  const BULK_INSERT_SLICE_TIME_BUDGET_MS = 8;
+
+  function isWhitespaceChar(ch) {
+    return /\s/.test(ch);
+  }
+
+  function insertStringFastSync(text, onComplete = null) {
     const bounds = getCurrentBounds();
 
-  let pageIndex = state.caret.page;
-  let page = state.pages[pageIndex] || addPage();
-  let rowMu = state.caret.rowMu;
-  let startCol = state.caret.col;
-  const ink = state.ink;
+    let pageIndex = state.caret.page;
+    let page = state.pages[pageIndex] || addPage();
+    let rowMu = state.caret.rowMu;
+    let startCol = state.caret.col;
+    const ink = state.ink;
 
     const prevFreeze = getFreezeVirtual();
     setFreezeVirtual(true);
     try {
       const newline = () => {
         startCol = bounds.L;
+        rowMu += state.lineStepMu;
+        if (rowMu > bounds.Bmu) {
+          pageIndex++;
+          page = state.pages[pageIndex] || addPage();
+          rowMu = bounds.Tmu;
+        }
+      };
+
+      let buf = '';
+      let lastSpacePos = -1;
+
+      const flush = () => {
+        if (buf.length) {
+          writeRunToRow(page, rowMu, startCol, buf, ink);
+          startCol += buf.length;
+          buf = '';
+          lastSpacePos = -1;
+        }
+      };
+
+      const strictTypewriter = state.realTypewriterEnabled && !state.realTypewriterBackspaceEnabled;
+
+      if (strictTypewriter) {
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          if (ch === '\n') {
+            newline();
+            continue;
+          }
+          const currentPage = state.pages[state.caret.page] || addPage();
+          overtypeCharacter(currentPage, state.caret.rowMu, state.caret.col, ch, state.ink);
+          advanceCaret();
+        }
+        return;
+      }
+
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+
+        if (ch === '\n') {
+          flush();
+          newline();
+          continue;
+        }
+
+        buf += ch;
+        if (isWhitespaceChar(ch)) lastSpacePos = buf.length - 1;
+
+        const colForCh = startCol + buf.length - 1;
+
+        if (colForCh > bounds.R) {
+          if (state.wordWrap && lastSpacePos >= 0) {
+            const head = buf.slice(0, lastSpacePos);
+            const tail = buf.slice(lastSpacePos + 1);
+            if (head.length) writeRunToRow(page, rowMu, startCol, head, ink);
+            newline();
+            startCol = bounds.L;
+            buf = tail;
+            lastSpacePos = -1;
+          } else {
+            const head = buf.slice(0, buf.length - 1);
+            if (head.length) writeRunToRow(page, rowMu, startCol, head, ink);
+            newline();
+            startCol = bounds.L;
+            buf = ch;
+            lastSpacePos = isWhitespaceChar(ch) ? 0 : -1;
+          }
+        }
+      }
+      flush();
+
+      state.caret = { page: pageIndex, rowMu, col: startCol };
+    } finally {
+      setFreezeVirtual(prevFreeze);
+      updateCaretPosition();
+      positionRulers();
+      requestVirtualization();
+      markDocumentDirty(state);
+      saveStateDebounced();
+      if (typeof onComplete === 'function') {
+        onComplete();
+      }
+    }
+  }
+
+  function insertStringFastProgressive(text, { onComplete } = {}) {
+    const bounds = getCurrentBounds();
+
+    let pageIndex = state.caret.page;
+    let page = state.pages[pageIndex] || addPage();
+    let rowMu = state.caret.rowMu;
+    let startCol = state.caret.col;
+    const ink = state.ink;
+    let i = 0;
+    let buf = '';
+    let lastSpacePos = -1;
+    let finalized = false;
+
+    const prevFreeze = getFreezeVirtual();
+    setFreezeVirtual(true);
+
+    const now = () => {
+      if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+        return performance.now();
+      }
+      return Date.now();
+    };
+
+    const schedule = (callback) => {
+      if (typeof requestAnimationFrame === 'function') {
+        return requestAnimationFrame(callback);
+      }
+      return setTimeout(callback, 0);
+    };
+
+    const newline = () => {
+      startCol = bounds.L;
       rowMu += state.lineStepMu;
       if (rowMu > bounds.Bmu) {
         pageIndex++;
@@ -557,9 +680,6 @@ export function createDocumentEditingController(context) {
         rowMu = bounds.Tmu;
       }
     };
-
-    let buf = '';
-    let lastSpacePos = -1;
 
     const flush = () => {
       if (buf.length) {
@@ -570,67 +690,121 @@ export function createDocumentEditingController(context) {
       }
     };
 
-    const strictTypewriter = state.realTypewriterEnabled && !state.realTypewriterBackspaceEnabled;
-
-    if (strictTypewriter) {
-      for (let i = 0; i < text.length; i++) {
-        const ch = text[i];
-        if (ch === '\n') {
-          newline();
-          continue;
-        }
-        const page = state.pages[state.caret.page] || addPage();
-        overtypeCharacter(page, state.caret.rowMu, state.caret.col, ch, state.ink);
-        advanceCaret();
+    const finalize = () => {
+      if (finalized) return;
+      finalized = true;
+      flush();
+      state.caret = { page: pageIndex, rowMu, col: startCol };
+      setFreezeVirtual(prevFreeze);
+      updateCaretPosition();
+      positionRulers();
+      requestVirtualization();
+      markDocumentDirty(state);
+      saveStateDebounced();
+      if (typeof onComplete === 'function') {
+        onComplete();
       }
-      return;
-    }
+    };
 
-    for (let i = 0; i < text.length; i++) {
-      const ch = text[i];
+    const fail = (err) => {
+      console.error('Typewriter: progressive paste failed.', err);
+      finalize();
+    };
 
+    const processChar = (ch) => {
       if (ch === '\n') {
         flush();
         newline();
-        continue;
+        return;
       }
 
       buf += ch;
-      if (/\s/.test(ch)) lastSpacePos = buf.length - 1;
+      if (isWhitespaceChar(ch)) lastSpacePos = buf.length - 1;
 
       const colForCh = startCol + buf.length - 1;
+      if (colForCh <= bounds.R) return;
 
-      if (colForCh > bounds.R) {
-        if (state.wordWrap && lastSpacePos >= 0) {
-          const head = buf.slice(0, lastSpacePos);
-          const tail = buf.slice(lastSpacePos + 1);
-          if (head.length) writeRunToRow(page, rowMu, startCol, head, ink);
-          newline();
-          startCol = bounds.L;
-          buf = tail;
-          lastSpacePos = -1;
-        } else {
-          const head = buf.slice(0, buf.length - 1);
-          if (head.length) writeRunToRow(page, rowMu, startCol, head, ink);
-          newline();
-          startCol = bounds.L;
-          buf = ch;
-          lastSpacePos = /\s/.test(ch) ? 0 : -1;
-        }
+      if (state.wordWrap && lastSpacePos >= 0) {
+        const head = buf.slice(0, lastSpacePos);
+        const tail = buf.slice(lastSpacePos + 1);
+        if (head.length) writeRunToRow(page, rowMu, startCol, head, ink);
+        newline();
+        startCol = bounds.L;
+        buf = tail;
+        lastSpacePos = -1;
+      } else {
+        const head = buf.slice(0, buf.length - 1);
+        if (head.length) writeRunToRow(page, rowMu, startCol, head, ink);
+        newline();
+        startCol = bounds.L;
+        buf = ch;
+        lastSpacePos = isWhitespaceChar(ch) ? 0 : -1;
       }
-    }
-    flush();
+    };
 
-    state.caret = { page: pageIndex, rowMu, col: startCol };
-  } finally {
-    setFreezeVirtual(prevFreeze);
-    updateCaretPosition();
-    positionRulers();
-    requestVirtualization();
-    markDocumentDirty(state);
-    saveStateDebounced();
+    const processSlice = () => {
+      if (finalized) return;
+      const sliceStart = now();
+      let processed = 0;
+      let error = null;
+
+      beginBatch();
+      try {
+        while (i < text.length) {
+          processChar(text[i]);
+          i += 1;
+          processed += 1;
+
+          if (processed >= BULK_INSERT_SLICE_CHAR_BUDGET) {
+            if ((now() - sliceStart) >= BULK_INSERT_SLICE_TIME_BUDGET_MS) {
+              break;
+            }
+            processed = 0;
+          }
+        }
+      } catch (err) {
+        error = err;
+      } finally {
+        endBatch();
+      }
+
+      if (error) {
+        fail(error);
+        return;
+      }
+
+      if (i >= text.length) {
+        finalize();
+        return;
+      }
+
+      state.caret = { page: pageIndex, rowMu, col: startCol + buf.length };
+      updateCaretPosition();
+      schedule(processSlice);
+    };
+
+    schedule(processSlice);
+    return true;
   }
-}
+
+  function insertStringFast(s, options = {}) {
+    const text = (s || '').replace(/\r\n?/g, '\n');
+    if (!text.length) {
+      if (typeof options?.onComplete === 'function') {
+        options.onComplete();
+      }
+      return false;
+    }
+
+    const progressive = options?.progressive === true;
+    const strictTypewriter = state.realTypewriterEnabled && !state.realTypewriterBackspaceEnabled;
+    if (progressive && !strictTypewriter) {
+      return insertStringFastProgressive(text, options);
+    }
+
+    insertStringFastSync(text, options?.onComplete);
+    return false;
+  }
 
 
   function advanceCaret() {
