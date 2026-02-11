@@ -16,6 +16,8 @@ const SAFARI_RECOVERY_THRESHOLD_MS = 36;
 const SAFARI_RECOVERY_FRAMES = 40;
 const SAFARI_CHECK_WINDOW_MS = 3200;
 const SAFARI_AUTO_RECOVER_MS = 1400;
+const PENDING_DISPLAY_FRACTION = 0.5;
+const MIN_PENDING_DISPLAY_MS = 1200;
 
 const MIN_ZOOM_FOR_NOTICE = 1.08;
 const MIN_ZOOM_DELTA = 0.05;
@@ -114,6 +116,11 @@ export function createZoomLagMonitor({
     ? Math.min(checkWindowMs, SAFARI_CHECK_WINDOW_MS)
     : checkWindowMs;
   const autoRecoverMs = safari ? SAFARI_AUTO_RECOVER_MS : 0;
+  const pendingDisplayMs = Math.max(
+    MIN_PENDING_DISPLAY_MS,
+    Math.min(monitorWindowMs, Math.round(checkWindowMs * PENDING_DISPLAY_FRACTION)),
+  );
+  const pendingRecoveryFrames = Math.max(18, Math.floor(recoveryFrames * 0.5));
 
   const state = {
     disposed: false,
@@ -127,6 +134,8 @@ export function createZoomLagMonitor({
     lastReason: 'zoom',
     preLagActive: false,
     lastStallTs: 0,
+    pendingSinceTs: 0,
+    pendingSmoothFrames: 0,
   };
 
   const lagAssistEnabled = () => {
@@ -173,6 +182,8 @@ export function createZoomLagMonitor({
     state.preLagActive = false;
     state.smoothFrames = 0;
     state.lastStallTs = 0;
+    state.pendingSinceTs = 0;
+    state.pendingSmoothFrames = 0;
     notice.hide({ immediate });
     emitLagState('idle');
   }
@@ -221,6 +232,7 @@ export function createZoomLagMonitor({
     state.preLagActive = false;
     state.smoothFrames = 0;
     state.lastStallTs = now();
+    state.pendingSmoothFrames = 0;
     notice.showLag({
       zoom: state.cachedZoom,
       frameGapMs: ms,
@@ -246,6 +258,21 @@ export function createZoomLagMonitor({
     }
   }
 
+  function handlePendingRelease({ timestamp, gap, armed }) {
+    if (!armed || state.lagActive || !state.preLagActive) return;
+    if (gap <= recoveryThreshold) {
+      state.pendingSmoothFrames += 1;
+    } else {
+      state.pendingSmoothFrames = 0;
+    }
+    const pendingElapsed = state.pendingSinceTs ? (timestamp - state.pendingSinceTs) : 0;
+    if (pendingElapsed < pendingDisplayMs) return;
+    if (state.pendingSmoothFrames < pendingRecoveryFrames) return;
+    // Hide the UI lock once rendering is stable enough, but keep observers alive
+    // until the full monitor window expires so late stalls are still surfaced.
+    hideNotice();
+  }
+
   function step(timestamp) {
     if (state.disposed) return;
     if (!lagAssistEnabled()) {
@@ -269,6 +296,7 @@ export function createZoomLagMonitor({
     if (armed && gap >= stallThreshold) {
       recordStall({ duration: gap, via: 'frame' });
     } else {
+      handlePendingRelease({ timestamp, gap, armed });
       handleRecovery(gap);
     }
     if (autoRecoverMs) {
@@ -318,6 +346,8 @@ export function createZoomLagMonitor({
     state.lastReason = reason;
     state.armedUntil = Math.max(state.armedUntil, now() + monitorWindowMs);
     state.preLagActive = true;
+    state.pendingSinceTs = now();
+    state.pendingSmoothFrames = 0;
     notice.showPending({ zoom: state.cachedZoom, reason: state.lastReason });
     emitLagState('pending');
     ensurePerformanceObserver();
