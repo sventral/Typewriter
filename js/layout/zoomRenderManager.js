@@ -1,10 +1,13 @@
+import { preparePageCanvasForViewport } from '../rendering/pageCanvasPreparation.js';
+
 export function createZoomRenderManager(options) {
   const {
     state,
     app,
-    prepareCanvas,
     configureCanvasContext,
     getEffectiveRenderZoom,
+    getRenderScale,
+    getLayoutZoomFactor,
     schedulePaint,
     rebuildAllAtlases,
     setFreezeVirtual,
@@ -22,9 +25,10 @@ export function createZoomRenderManager(options) {
 
   let pendingZoomRedrawRAF = 0;
   let pendingZoomRedrawIsTimeout = false;
-  let lastAtlasRenderZoom = null;
+  let lastAtlasRebuildScale = null;
   const MAX_FALLBACK_ACTIVE_PRIORITY = 6;
   const SECONDARY_WINDOW_PAD = 1;
+  const ATLAS_REBUILD_SCALE_DELTA_RATIO = 0.15;
 
   function clearPendingZoomRedrawFrame() {
     if (!pendingZoomRedrawRAF) return;
@@ -134,40 +138,58 @@ export function createZoomRenderManager(options) {
       priority.push(state.pages[0]);
     }
 
+    const effectiveZoom = typeof getEffectiveRenderZoom === 'function'
+      ? getEffectiveRenderZoom()
+      : (state.zoom || 1);
+    const renderScale = typeof getRenderScale === 'function'
+      ? getRenderScale()
+      : effectiveZoom;
+    const layoutZoom = typeof getLayoutZoomFactor === 'function'
+      ? getLayoutZoomFactor()
+      : 1;
+
     const now =
       typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? () => performance.now()
         : () => Date.now();
 
+    let anyRedrawRequested = false;
     const prepPage = (page) => {
       if (!page) return;
-      if (page.canvas) prepareCanvas(page.canvas);
-      if (page.backCanvas) prepareCanvas(page.backCanvas);
-      if (page.ctx) configureCanvasContext(page.ctx);
-      if (page.backCtx) configureCanvasContext(page.backCtx);
-      const effectiveZoom = typeof getEffectiveRenderZoom === 'function'
-        ? getEffectiveRenderZoom()
-        : (state.zoom || 1);
+      const prep = preparePageCanvasForViewport({
+        page,
+        app,
+        renderScale,
+        layoutZoom,
+        configureCanvasContext,
+      });
       page.zoomPreparedFor = effectiveZoom;
-      page.dirtyAll = true;
-      if (page.active) schedulePaint(page);
+      if (prep.needsRedraw) {
+        page.preserveFrontBufferForFullPaint = true;
+        page.dirtyAll = true;
+        anyRedrawRequested = true;
+      }
+      if (page.active) {
+        const hasPendingRows = page._dirtyRowMinMu !== undefined || page._dirtyRowMaxMu !== undefined;
+        if (page.dirtyAll || hasPendingRows) {
+          schedulePaint(page);
+        }
+      }
     };
 
     for (const page of priority) prepPage(page);
     const deferredQueue = secondary.slice();
-
-    const effectiveZoom = typeof getEffectiveRenderZoom === 'function'
-      ? getEffectiveRenderZoom()
-      : (state.zoom || 1);
-
-    const zoomDeltaBigEnough =
-      !Number.isFinite(lastAtlasRenderZoom)
-      || Math.abs(effectiveZoom - lastAtlasRenderZoom) / Math.max(lastAtlasRenderZoom, 0.1) >= 0.02;
-
-    const hasVisiblePages = !!(windowInfo?.set?.size);
-    if (zoomDeltaBigEnough && hasVisiblePages) {
+    const scaleDeltaForAtlasRebuild =
+      !Number.isFinite(lastAtlasRebuildScale)
+      || Math.abs(renderScale - lastAtlasRebuildScale)
+        / Math.max(lastAtlasRebuildScale, 0.1) >= ATLAS_REBUILD_SCALE_DELTA_RATIO;
+    const shouldRebuildAtlases =
+      anyRedrawRequested
+      && state.lowResZoomEnabled === false
+      && scaleDeltaForAtlasRebuild;
+    if (shouldRebuildAtlases) {
       rebuildAllAtlases();
-      lastAtlasRenderZoom = effectiveZoom;
+      lastAtlasRebuildScale = renderScale;
     }
 
     let finalized = false;

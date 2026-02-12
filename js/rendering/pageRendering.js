@@ -1,6 +1,7 @@
 import { computeGlyphJitterOffset } from './glyphJitter.js';
 import { sanitizePageNumberingSettings } from '../config/pageNumbering.js';
 import { isSafari } from '../utils/platform.js';
+import { computeFullPaintCadence } from './fullPaintCadence.js';
 
 export function createPageRenderer(options) {
   const {
@@ -331,6 +332,14 @@ export function createPageRenderer(options) {
 
     const sliceStart = now();
     const rawBands = [];
+    const cadence = computeFullPaintCadence({
+      pages: state?.pages,
+      renderScale: getRenderScaleFn(),
+      safari: isSafari(),
+      baseBudgetMs: FULL_PAINT_TIME_BUDGET_MS,
+    });
+    const sliceBudgetMs = cadence.sliceBudgetMs;
+    const yieldCheckInterval = cadence.yieldCheckInterval;
 
     let processedCount = 0;
     while (page.fullPaintCursor < queue.length || page.fullPaintCurrentRowCols) {
@@ -366,12 +375,9 @@ export function createPageRenderer(options) {
         page.fullPaintColIndex++;
         processedCount++;
 
-        // INCREASED BATCH SIZE:
-        // Check time budget only every 64 items instead of 24.
-        // This reduces overhead and allows more work per frame.
-        if (processedCount >= 64) {
+        if (processedCount >= yieldCheckInterval) {
           processedCount = 0;
-          if ((now() - sliceStart) >= FULL_PAINT_TIME_BUDGET_MS) {
+          if ((now() - sliceStart) >= sliceBudgetMs) {
             yielded = true;
             break;
           }
