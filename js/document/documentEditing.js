@@ -305,7 +305,7 @@ export function createDocumentEditingController(context) {
     playBell: (soundId, volume) => bellPlayer.play(soundId, volume),
     onStopSound: () => {
       if (state.realTypewriterStopEnabled === false) return;
-      bellPlayer.playStop(state.realTypewriterStopSound, state.realTypewriterBellVolume);
+      bellPlayer.playStop(state.realTypewriterStopSound, state.realTypewriterStopVolume);
     },
   });
   setMarginReleaseState({ available: false, active: false, enabled: true });

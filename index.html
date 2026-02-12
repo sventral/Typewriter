@@ -254,7 +254,7 @@
               <input id="wordWrapCb" type="checkbox" checked />
             </div>
             <div class="control-row subtle-note" id="wordWrapNote" aria-live="polite" hidden>
-              Word wrap is disabled while real typewriter mode is on.
+              Word wrap is disabled while typewriter realism is active.
             </div>
           </div>
           <div class="settings-group-new">
@@ -645,24 +645,24 @@
       <details class="settings-section" id="typewriterSettings">
         <summary>
           <span class="settings-toggle-icon" aria-hidden="true"></span>
-          <span class="settings-summary-label">Real typewriter</span>
+          <span class="settings-summary-label">Typewriter realism</span>
         </summary>
         <div class="settings-section-content">
           <div class="settings-group-new">
-            <label class="appearance-toggle">
-              <input type="checkbox" id="realTypewriterToggle" />
-              <span>Enable real typewriter mode</span>
-            </label>
-            <label class="appearance-toggle">
-              <input type="checkbox" id="typewriterBackspaceToggle" />
-              <span>Allow conventional text editing</span>
-            </label>
-            <label class="appearance-toggle">
-              <input type="checkbox" id="typewriterCaretLockToggle" checked />
-              <span>Enable caret lock</span>
-            </label>
             <div class="control-row">
-              <label for="typewriterBellSelect">Bell sound</label>
+              <label for="typewriterBackspaceToggle">Allow conventional text editing</label>
+              <input type="checkbox" id="typewriterBackspaceToggle" />
+            </div>
+            <div class="control-row">
+              <label for="typewriterCaretLockToggle">Enable caret lock</label>
+              <input type="checkbox" id="typewriterCaretLockToggle" checked />
+            </div>
+            <div class="control-row">
+              <label for="typewriterBellToggle">Bell sound</label>
+              <input type="checkbox" id="typewriterBellToggle" />
+            </div>
+            <div class="control-row typewriter-sub-row" id="typewriterBellSoundRow">
+              <label for="typewriterBellSelect">Sound selection</label>
               <select id="typewriterBellSelect">
                 <option value="bell-1">Bell 1</option>
                 <option value="bell-2">Bell 2</option>
@@ -672,21 +672,21 @@
                 ▶
               </button>
             </div>
-            <div class="control-row">
+            <div class="control-row typewriter-sub-row" id="typewriterBellVolumeRow">
               <label for="typewriterBellVolume">Bell volume</label>
               <input id="typewriterBellVolume" type="range" min="0" max="100" step="1" value="70" />
               <span class="range-value" id="typewriterBellVolumeValue">70%</span>
             </div>
-            <div class="control-row">
+            <div class="control-row typewriter-sub-row" id="typewriterBellLeadRow">
               <label for="typewriterBellLead">Bell warning (chars)</label>
               <input id="typewriterBellLead" type="number" min="0" max="40" step="1" value="5" />
             </div>
             <div class="control-row">
-              <label for="typewriterStopToggle">Play stop sound</label>
-              <input type="checkbox" id="typewriterStopToggle" checked />
+              <label for="typewriterStopToggle">Stop sound</label>
+              <input type="checkbox" id="typewriterStopToggle" />
             </div>
-            <div class="control-row">
-              <label for="typewriterStopSelect">Stop sound</label>
+            <div class="control-row typewriter-sub-row" id="typewriterStopSoundRow">
+              <label for="typewriterStopSelect">Sound selection</label>
               <select id="typewriterStopSelect">
                 <option value="stop-1">Stop 1</option>
                 <option value="stop-2">Stop 2</option>
@@ -694,6 +694,11 @@
               <button type="button" class="btn icon-only" id="typewriterStopPreview" title="Play stop sound">
                 ▶
               </button>
+            </div>
+            <div class="control-row typewriter-sub-row" id="typewriterStopVolumeRow">
+              <label for="typewriterStopVolume">Stop volume</label>
+              <input id="typewriterStopVolume" type="range" min="0" max="100" step="1" value="70" />
+              <span class="range-value" id="typewriterStopVolumeValue">70%</span>
             </div>
           </div>
         </div>
@@ -750,7 +755,7 @@
         </div>
       </details>
     </div>
-    <div class="app-version">v.47.0b</div>
+    <div class="app-version">v.47.2b</div>
   </aside>
 
   <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>

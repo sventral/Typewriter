@@ -74,7 +74,7 @@ export function createTypewriterMode({
     const crossedIntoLead = movedForward && previousCol < threshold && state.caret.col >= threshold;
     if (crossedIntoLead) {
       warnedRowKey = key;
-      if (state.realTypewriterEnabled) {
+      if (state.realTypewriterEnabled && state.realTypewriterBellEnabled) {
         playBell(state.realTypewriterBellSound, state.realTypewriterBellVolume);
       }
       setArmed(true);

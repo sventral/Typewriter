@@ -389,4 +389,7 @@
   #typewriterSettings .control-row input[type="range"] { flex: 2; }
   #typewriterSettings .control-row input[type="number"] { width: 96px; }
   #typewriterSettings .range-value { min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; opacity: .8; }
+  #typewriterSettings .typewriter-sub-row { margin-left: 24px; }
+  #typewriterSettings .typewriter-sub-row.is-disabled { opacity: 0.55; }
+  #typewriterSettings .typewriter-sub-row.is-disabled label { color: var(--fg-muted, #8a8a8a); }
   #wordWrapRow.is-disabled label { color: var(--fg-muted, #8a8a8a); opacity: 0.6; }
