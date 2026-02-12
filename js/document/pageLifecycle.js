@@ -411,6 +411,7 @@ export function createPageLifecycleController(context, editingController) {
   let prevScrollFocusIndex = 0;
   let lastScrollDirection = 0;
   let lastPaperOffsetY = 0;
+  let lastVirtualizationZoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
   let cachedActiveWindow = { start: 0, end: -1 };
   let hasCachedActiveWindow = false;
   let frozenVirtualWindow = null;
@@ -560,6 +561,8 @@ export function createPageLifecycleController(context, editingController) {
 
   function visibleWindowIndices() {
     if (!state.pages.length) return [0, 0];
+    const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+    const isZoomDownshift = zoom < (lastVirtualizationZoom - 1e-3);
     const sp = app.stage.getBoundingClientRect();
     const viewportCtx = computeViewportContext();
     const viewTop = sp.top;
@@ -623,14 +626,14 @@ export function createPageLifecycleController(context, editingController) {
       for (const idx of fallbackIndices) {
         evaluatePageIndex(idx);
       }
-      if (!visibleCandidates.length) {
+      const shouldAllowFullScanFallback = !isZoomDownshift || evaluatedIndices.size === 0;
+      if (!visibleCandidates.length && shouldAllowFullScanFallback) {
         for (let i = 0; i < state.pages.length; i += 1) {
           evaluatePageIndex(i);
         }
       }
     }
 
-    const zoom = state.zoom || 1;
     const lastIndex = state.pages.length - 1;
 
     if (zoom >= 2 && visibleCandidates.length) {
@@ -700,6 +703,7 @@ export function createPageLifecycleController(context, editingController) {
       } else if (lastScrollDirection < 0 && start > 0) {
         start = Math.max(0, start - 1);
       }
+      lastVirtualizationZoom = zoom;
       return [start, end];
     }
 
@@ -723,6 +727,7 @@ export function createPageLifecycleController(context, editingController) {
     } else if (lastScrollDirection < 0 && i0 > 0) {
       i0 = Math.max(0, i0 - 1);
     }
+    lastVirtualizationZoom = zoom;
     return [i0, i1];
   }
 
