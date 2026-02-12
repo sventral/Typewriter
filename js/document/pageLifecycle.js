@@ -508,7 +508,8 @@ export function createPageLifecycleController(context, editingController) {
       preserveMainBitmap: page.active === true,
     });
     page.zoomPreparedFor = currentZoom;
-    if (prep.needsRedraw) {
+    const deferImmediateFullRepaint = page.active === true && prep.renderScaleDecreased;
+    if (prep.needsRedraw && !deferImmediateFullRepaint) {
       if (page.active) {
         page.preserveFrontBufferForFullPaint = true;
       }

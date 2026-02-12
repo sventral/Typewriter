@@ -151,6 +151,9 @@ export function preparePageCanvasForViewport({
   const previousLayoutZoom = sanitizePositive(page.layoutZoomPreparedFor, safeLayoutZoom);
   const renderScaleChanged = !nearlyEqual(previousRenderScale, safeRenderScale);
   const layoutZoomChanged = !nearlyEqual(previousLayoutZoom, safeLayoutZoom);
+  const renderScaleDelta = safeRenderScale - previousRenderScale;
+  const renderScaleIncreased = renderScaleChanged && renderScaleDelta > EPSILON;
+  const renderScaleDecreased = renderScaleChanged && renderScaleDelta < -EPSILON;
 
   const contextNeedsUpdate = resized
     || renderScaleChanged
@@ -171,6 +174,9 @@ export function preparePageCanvasForViewport({
     cssChanged,
     contextUpdated,
     renderScaleChanged,
+    renderScaleDelta,
+    renderScaleIncreased,
+    renderScaleDecreased,
     layoutZoomChanged,
   };
 }
