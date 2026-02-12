@@ -162,6 +162,7 @@ export function createZoomRenderManager(options) {
         renderScale,
         layoutZoom,
         configureCanvasContext,
+        preserveMainBitmap: page.active === true,
       });
       page.zoomPreparedFor = effectiveZoom;
       if (prep.needsRedraw) {

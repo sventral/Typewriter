@@ -62,12 +62,59 @@ function resizeCanvasPixels(canvas, widthPx, heightPx) {
   return true;
 }
 
+function resizeMainCanvasWithSnapshot(canvas, widthPx, heightPx, preserveBitmap = false) {
+  if (!canvas) return false;
+  if (canvas.width === widthPx && canvas.height === heightPx) return false;
+
+  let snapshot = null;
+  if (
+    preserveBitmap
+    && canvas.width > 1
+    && canvas.height > 1
+    && typeof document !== 'undefined'
+    && typeof document.createElement === 'function'
+  ) {
+    try {
+      snapshot = document.createElement('canvas');
+      snapshot.width = canvas.width;
+      snapshot.height = canvas.height;
+      const snapshotCtx = snapshot.getContext('2d');
+      if (snapshotCtx) {
+        snapshotCtx.setTransform(1, 0, 0, 1, 0, 0);
+        snapshotCtx.globalCompositeOperation = 'copy';
+        snapshotCtx.drawImage(canvas, 0, 0);
+      } else {
+        snapshot = null;
+      }
+    } catch {
+      snapshot = null;
+    }
+  }
+
+  canvas.width = widthPx;
+  canvas.height = heightPx;
+
+  if (!snapshot) return true;
+  try {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return true;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'copy';
+    ctx.drawImage(snapshot, 0, 0, snapshot.width, snapshot.height, 0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = 'source-over';
+  } catch {
+    // No-op fallback: canvas has been resized, redraw will still occur.
+  }
+  return true;
+}
+
 export function preparePageCanvasForViewport({
   page,
   app,
   renderScale,
   layoutZoom,
   configureCanvasContext,
+  preserveMainBitmap = false,
 } = {}) {
   if (!page || !app) {
     return {
@@ -87,7 +134,12 @@ export function preparePageCanvasForViewport({
   const targetWidthCss = app.PAGE_W * safeLayoutZoom;
   const targetHeightCss = app.PAGE_H * safeLayoutZoom;
 
-  const resizedMain = resizeCanvasPixels(page.canvas, targetWidthPx, targetHeightPx);
+  const resizedMain = resizeMainCanvasWithSnapshot(
+    page.canvas,
+    targetWidthPx,
+    targetHeightPx,
+    preserveMainBitmap,
+  );
   const resizedBack = resizeCanvasPixels(page.backCanvas, targetWidthPx, targetHeightPx);
   const resized = resizedMain || resizedBack;
 

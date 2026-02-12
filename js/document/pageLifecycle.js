@@ -505,9 +505,13 @@ export function createPageLifecycleController(context, editingController) {
       renderScale,
       layoutZoom,
       configureCanvasContext,
+      preserveMainBitmap: page.active === true,
     });
     page.zoomPreparedFor = currentZoom;
     if (prep.needsRedraw) {
+      if (page.active) {
+        page.preserveFrontBufferForFullPaint = true;
+      }
       page.dirtyAll = true;
     }
   }
