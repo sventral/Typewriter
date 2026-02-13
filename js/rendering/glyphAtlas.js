@@ -1,6 +1,6 @@
 import { clamp } from '../utils/math.js';
-import { createExperimentalGlyphProcessor } from './experimental/glyphProcessor.js';
-import { computeInsideDistance, computeOutsideDistance } from './experimental/distanceMaps.js';
+import { createExperimentalGlyphProcessor } from './advanced/glyphProcessor.js';
+import { computeInsideDistance, computeOutsideDistance } from './advanced/distanceMaps.js';
 
 function parseColorToRgb(color) {
   if (typeof color !== 'string') return { r: 0, g: 0, b: 0 };

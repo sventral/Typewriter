@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node scripts/serve.js",
     "build": "echo \"Static site – nothing to build.\"",
-    "test": "node js/rendering/experimental/detailNoiseCache.test.js && node js/rendering/experimental/stagePipeline.test.js"
+    "test": "node js/rendering/advanced/detailNoiseCache.test.js && node js/rendering/advanced/stagePipeline.test.js"
   },
   "dependencies": {},
   "devDependencies": {},
