@@ -1,51 +1,38 @@
 # Typewriter
 
-Typewriter is a single-page web app that recreates the feel of writing on a mechanical typewriter. The page canvas renders every keystroke, applies ink grain, and respects ruler and margin settings without any server component.
+Typewriter is a browser-only, single-page writing app that emulates mechanical typewriter behavior while keeping modern editing and export controls.
 
-## Highlights
-- Canvas-based typing stage with ruler guides, draggable margins, and zoom controls.
-- Black, red, and erase inks with grain effects and adjustable opacity.
-- Documents and settings persist automatically in browser storage, while the **Save** button downloads a snapshot of the current text.
+## What it includes
+- Canvas-based page rendering with rulers, margins, page controls, and zoom.
+- Settings panels for `Page`, `Fonts`, `Effects`, `Typewriter realism`, and `Appearance`.
+- Ink/effect controls including line slant, glyph jitter, filters, effect randomization, and saved styles.
+- Document menu with local persistence, plus export options for raw data, plain text, and PDF.
 
-## Run it locally
+## Run locally
 ```bash
 npm start
-# Serves the project on http://localhost:8080
+# Serves on http://localhost:8080
 ```
 
-Any static file server (for example, `python -m http.server 8080`) can also host the app.
+Any static file server also works.
 
-## Basic usage
-1. Start a local server and open the site in a modern browser.
-2. Click the paper to focus the stage and begin typing.
-3. Use the toolbar to tweak fonts, margins, zoom, and ink options.
-4. Press **Save** to download a text export; typing updates are saved to local storage automatically.
+## Basic use
+1. Start the server and open the app in a modern browser.
+2. Click the page and type.
+3. Open settings from the gear button to tune layout, fonts, effects, and realism options.
+4. Use the file toolbar for document switching and export.
+
 
 ## Project layout
-```
+```text
 Typewriter/
-├── index.html         # Application shell and UI markup
-├── styles.css         # Aggregates modular CSS imports
-├── styles/            # Modular CSS partials (variables, fonts, base, ink, UI, stage, settings)
-│   ├── variables.css
-│   ├── fonts.css
-│   ├── base.css
-│   ├── ink.css
-│   ├── ui.css
-│   ├── stage.css
-│   └── settings.css
-├── js/
-│   ├── main.js        # Entry point that bootstraps the app
-│   ├── initApp.js     # Core initialization and wiring
-│   ├── init/          # Context factories and UI bindings
-│   ├── document/      # Document editing and page lifecycle helpers
-│   ├── layout/        # Stage sizing and zoom management
-│   ├── rendering/     # Glyph atlas and page rendering logic
-│   ├── state/         # Persistent and transient state stores
-│   └── utils/         # DOM, math, and form utilities
-├── fonts/             # Bundled TT2020 typewriter fonts
-└── scripts/serve.js   # Minimal static dev server used by `npm start`
+├── index.html         # App shell and UI markup
+├── styles.css         # CSS entrypoint
+├── styles/            # Modular stylesheets
+├── js/                # App logic (init, document, layout, rendering, state, config, utils)
+├── fonts/             # Bundled fonts
+└── scripts/serve.js   # Local static server
 ```
 
 ## License
-The project is currently distributed without a declared license (marked `UNLICENSED` in `package.json`).
+`UNLICENSED` (see `package.json`).
