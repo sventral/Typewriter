@@ -27,7 +27,7 @@ import {
   getDefaultInkSubsectionQuality,
   getDefaultInkSubsectionScale,
 } from '../config/inkEffectDefaultStyle.js';
-import { TYPEWRITER_DEFAULTS, normalizeTypewriterSettings } from '../config/typewriterMode.js';
+import { TYPEWRITER_DEFAULTS, normalizeTypewriterSettings } from '../config/typewriterSettings.js';
 import { hydrateGlyphEntry, serializeGlyphEntry } from './glyphStack.js';
 import { STAGE_HEIGHT_MAX, STAGE_HEIGHT_MIN, STAGE_WIDTH_MAX, STAGE_WIDTH_MIN } from '../layout/stageLayout.js';
 import { createDefaultPageNumberingSettings, sanitizePageNumberingSettings } from '../config/pageNumbering.js';

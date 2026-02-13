@@ -7,7 +7,7 @@ import {
   ZOOM_SLIDER_MIN_PCT,
 } from '../../config/lowResZoom.js';
 import { createDefaultPageNumberingSettings, sanitizePageNumberingSettings } from '../../config/pageNumbering.js';
-import { TYPEWRITER_DEFAULTS, normalizeTypewriterSettings } from '../../config/typewriterMode.js';
+import { TYPEWRITER_DEFAULTS, normalizeTypewriterSettings } from '../../config/typewriterSettings.js';
 
 export function createMeasurementControls({
   app,

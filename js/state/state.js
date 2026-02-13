@@ -12,7 +12,7 @@ import {
 } from '../config/inkEffectDefaultStyle.js';
 import { createDefaultPageNumberingSettings } from '../config/pageNumbering.js';
 import { createDefaultInkOpacity } from '../config/inkPalette.js';
-import { TYPEWRITER_DEFAULTS } from '../config/typewriterMode.js';
+import { TYPEWRITER_DEFAULTS } from '../config/typewriterSettings.js';
 
 const SECTION_STRENGTH_DEFAULTS = {
   filters: getDefaultInkSectionStrength('filters'),

@@ -4,4 +4,4 @@ export {
   hydrateInkSettingsFromState,
   syncInkStrengthDisplays,
   refreshSavedInkStylesUI,
-} from '../inkSettingsPanel.js';
+} from './inkSettingsPanel.js';

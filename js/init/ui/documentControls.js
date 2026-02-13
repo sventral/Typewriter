@@ -17,7 +17,7 @@ import {
   getDirtyPageIndices as getTrackedDirtyPageIndices,
   syncSavedPageRevisions as syncTrackedPageRevisions,
 } from '../../state/saveRevision.js';
-import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/ink/InkSettingsPanelView.js';
+import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/ink/inkSettingsView.js';
 import { createExportDialog } from './exportDialog.js';
 import { exportDocumentAsPdf } from '../../export/pdfExporter.js';
 import { detectCanvasDimensionLimit, DEFAULT_CANVAS_DIMENSION_CAP } from '../../init/environment.js';

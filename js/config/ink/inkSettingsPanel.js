@@ -1,4 +1,4 @@
-import { clamp } from '../utils/math.js';
+import { clamp } from '../../utils/math.js';
 import {
   INPUT_OVERRIDES,
   getInputOverride,
@@ -31,11 +31,11 @@ import {
   SECTION_STATE_KEY_MAP,
   normalizeSectionOrder,
   normalizeSubsectionOrder,
-} from './ink/inkSettingsConfig.js';
+} from './inkSettingsConfig.js';
 import {
   getDefaultInkSubsectionQuality,
   getDefaultInkSubsectionScale,
-} from './inkEffectDefaultStyle.js';
+} from '../inkEffectDefaultStyle.js';
 
 const CURRENT_STYLE_STATE_ID = 'current-style';
 
