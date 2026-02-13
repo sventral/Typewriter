@@ -134,7 +134,9 @@ const DOM_ID_GROUPS = {
   },
   pageNumbers: {
     pageNumberToggle: 'pageNumberToggle',
+    pageNumberOffsetRow: 'pageNumberOffsetRow',
     pageNumberOffset: 'pageNumberOffset',
+    pageNumberAlignRow: 'pageNumberAlignRow',
     pageNumberAlignLeft: 'pageNumberAlignLeft',
     pageNumberAlignCenter: 'pageNumberAlignCenter',
     pageNumberAlignRight: 'pageNumberAlignRight',

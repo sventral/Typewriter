@@ -68,6 +68,10 @@
 .page-number-align-options { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-left: auto; }
 .page-number-align-options label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .page-number-align-options input[type="radio"] { margin: 0; }
+.page-number-sub-row { margin-left: 24px; }
+.page-number-sub-row.is-disabled { opacity: 0.55; }
+.page-number-sub-row.is-disabled .page-number-align-label,
+.page-number-sub-row.is-disabled label { color: var(--fg-muted, #8a8a8a); }
   .low-res-zoom-controls { display: flex; flex-direction: column; gap: 12px; margin-left: 24px; padding: 12px 0 0; border-top: 1px solid rgba(0,0,0,0.08); }
   body.dark .low-res-zoom-controls { border-color: rgba(255,255,255,0.1); }
   .low-res-zoom-toggle { display: flex; align-items: center; gap: 12px; font-size: 13px; }

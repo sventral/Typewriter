@@ -197,6 +197,7 @@
         </summary>
         <div class="settings-section-content">
           <div class="settings-group-new">
+            <h4>Layout</h4>
             <div class="control-row">
               <label for="cpiSelect">CPI</label>
               <select id="cpiSelect">
@@ -263,11 +264,11 @@
               <label for="pageNumberToggle">Page numbers</label>
               <input type="checkbox" id="pageNumberToggle" />
             </div>
-            <div class="control-row">
+            <div class="control-row page-number-sub-row" id="pageNumberOffsetRow">
               <label for="pageNumberOffset">Lines from bottom</label>
               <input id="pageNumberOffset" type="number" min="0" step="1" value="1" />
             </div>
-            <div class="page-number-align">
+            <div class="page-number-align page-number-sub-row" id="pageNumberAlignRow">
               <span class="page-number-align-label">Alignment</span>
               <div class="page-number-align-options" role="group" aria-label="Page number alignment">
                 <label>
@@ -755,7 +756,7 @@
         </div>
       </details>
     </div>
-    <div class="app-version">v.47.2b</div>
+    <div class="app-version">v.47.3b</div>
   </aside>
 
   <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>

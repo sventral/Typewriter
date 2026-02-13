@@ -388,6 +388,9 @@ export function createMeasurementControls({
       app.pageNumberOffset.value = String(settings.offsetLines);
       app.pageNumberOffset.disabled = !enabled;
     }
+    if (app.pageNumberOffsetRow) {
+      app.pageNumberOffsetRow.classList.toggle('is-disabled', !enabled);
+    }
     const alignInputs = [
       app.pageNumberAlignLeft,
       app.pageNumberAlignCenter,
@@ -397,6 +400,9 @@ export function createMeasurementControls({
       inp.disabled = !enabled;
       inp.checked = inp.value === settings.alignment;
     });
+    if (app.pageNumberAlignRow) {
+      app.pageNumberAlignRow.classList.toggle('is-disabled', !enabled);
+    }
   }
 
   function bindPageNumberingControls() {
