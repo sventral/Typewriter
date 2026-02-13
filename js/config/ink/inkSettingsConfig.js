@@ -186,6 +186,7 @@ export const SECTION_DEFS = [
     stateKey: 'filtersStrength',
     defaultStrength: getDefaultInkSectionStrength('filters'),
     dragHandle: false,
+    collapsible: false,
   },
 ];
 

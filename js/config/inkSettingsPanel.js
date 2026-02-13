@@ -2244,25 +2244,32 @@ function createScaleControl(meta, container, cfg, lockScope = 'scale') {
 
 function buildSection(def, root) {
   if (def?.hidden) return null;
+  const isCollapsible = def?.collapsible !== false;
   const sectionEl = document.createElement('section');
   sectionEl.className = 'ink-section';
   sectionEl.dataset.sectionId = def.id;
 
   const header = document.createElement('div');
   header.className = 'ink-section-header';
-  const toggleBtn = document.createElement('button');
-  toggleBtn.type = 'button';
-  toggleBtn.className = 'ink-section-toggle';
-  toggleBtn.setAttribute('aria-expanded', 'false');
-  const icon = document.createElement('span');
-  icon.className = 'ink-section-toggle-icon';
-  icon.setAttribute('aria-hidden', 'true');
-  icon.textContent = '▸';
-  toggleBtn.appendChild(icon);
+  const sectionHeadingEl = isCollapsible
+    ? document.createElement('button')
+    : document.createElement('div');
+  if (isCollapsible) {
+    sectionHeadingEl.type = 'button';
+    sectionHeadingEl.className = 'ink-section-toggle';
+    sectionHeadingEl.setAttribute('aria-expanded', 'false');
+    const icon = document.createElement('span');
+    icon.className = 'ink-section-toggle-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = '▸';
+    sectionHeadingEl.appendChild(icon);
+  } else {
+    sectionHeadingEl.className = 'ink-section-heading';
+  }
   const title = document.createElement('span');
   title.className = 'ink-section-title';
   title.textContent = def.label;
-  toggleBtn.appendChild(title);
+  sectionHeadingEl.appendChild(title);
 
   const topLine = document.createElement('div');
   topLine.className = 'ink-section-topline';
@@ -2275,7 +2282,7 @@ function buildSection(def, root) {
     dragHandle.innerHTML = '<span aria-hidden="true">⋮⋮</span>';
     topLine.appendChild(dragHandle);
   }
-  topLine.appendChild(toggleBtn);
+  topLine.appendChild(sectionHeadingEl);
   header.appendChild(topLine);
 
   const hasStrengthControl = typeof def.stateKey === 'string' && def.stateKey.length > 0;
@@ -2301,7 +2308,9 @@ function buildSection(def, root) {
   body.className = 'ink-section-body';
   const bodyId = `inkSection-${def.id}`;
   body.id = bodyId;
-  toggleBtn.setAttribute('aria-controls', bodyId);
+  if (isCollapsible) {
+    sectionHeadingEl.setAttribute('aria-controls', bodyId);
+  }
   const meta = {
     id: def.id,
     config: def.config,
@@ -2312,9 +2321,10 @@ function buildSection(def, root) {
     groupElements: new Map(),
     checkbox,
     body,
-    toggleButton: toggleBtn,
+    toggleButton: isCollapsible ? sectionHeadingEl : null,
     defaultStrength: def.defaultStrength ?? 0,
     hasStrengthControl,
+    isCollapsible,
     qualityControl: null,
     scaleControl: null,
     subsectionControls: new Map(),
@@ -2488,9 +2498,11 @@ function buildSection(def, root) {
   root.appendChild(sectionEl);
   panelState.metas.push(meta);
 
-  toggleBtn.addEventListener('click', () => {
-    setSectionCollapsed(meta, !meta.isCollapsed);
-  });
+  if (isCollapsible) {
+    sectionHeadingEl.addEventListener('click', () => {
+      setSectionCollapsed(meta, !meta.isCollapsed);
+    });
+  }
   if (checkbox) {
     checkbox.addEventListener('change', () => {
       const enabledStrength = meta.defaultStrength > 0 ? meta.defaultStrength : 100;
@@ -2542,7 +2554,7 @@ function buildSection(def, root) {
     }
   });
 
-  setSectionCollapsed(meta, true);
+  setSectionCollapsed(meta, isCollapsible);
   if (hasStrengthControl) {
     applySectionStrength(meta, startPercent, { silent: true, syncSlider: false, syncNumber: false });
   }

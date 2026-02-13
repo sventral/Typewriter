@@ -507,10 +507,11 @@
       <details class="settings-section" id="inkStylesSettings">
         <summary>
           <span class="settings-toggle-icon" aria-hidden="true"></span>
-          <span class="settings-summary-label">Ink styles</span>
+          <span class="settings-summary-label">Effects</span>
         </summary>
         <div class="settings-section-content">
           <div class="settings-group-new">
+            <h4>Dynamics</h4>
             <div class="control-row">
               <label for="lineSlantToggle">Line slant</label>
               <input id="lineSlantToggle" type="checkbox" checked />
@@ -584,13 +585,13 @@
           </div>
           <div class="ink-style-reset-row">
             <div class="ink-style-randomize-block">
-              <button class="btn" id="inkStyleRandomizeBtn" type="button">Randomize</button>
-              <label class="ink-keep-order-toggle">
+              <button class="btn" id="inkStyleRandomizeBtn" type="button">Random</button>
+              <label class="ink-keep-order-toggle" for="inkStyleKeepOrderCb">
                 <input type="checkbox" id="inkStyleKeepOrderCb" />
-                <span>Keep filter order</span>
+                <span>Keep order</span>
               </label>
             </div>
-            <button class="btn" id="inkStyleResetBtn" type="button">Reset to defaults</button>
+            <button class="btn" id="inkStyleResetBtn" type="button">Reset</button>
           </div>
           <section class="ink-styles-section" aria-labelledby="inkStylesHeader">
             <div class="ink-style-grid">
@@ -756,7 +757,7 @@
         </div>
       </details>
     </div>
-    <div class="app-version">v.47.3b</div>
+    <div class="app-version">v.47.6b</div>
   </aside>
 
   <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>
