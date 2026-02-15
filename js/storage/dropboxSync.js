@@ -369,9 +369,12 @@ function summarizeDropboxError(err) {
     err?.error_summary,
     err?.message,
     err?.error?.error_summary,
+    err?.error?.error?.error_summary,
+    err?.error?.error,
     err?.error?.reason?.['.tag'],
     err?.error?.reason,
     err?.response?.error_summary,
+    err?.response?.error?.error_summary,
     err?.statusText,
   ];
 
@@ -387,6 +390,8 @@ function summarizeDropboxError(err) {
 }
 
 function isDropboxPathNotFound(err) {
+  const status = Number(err?.status ?? err?.response?.status);
+  if (status === 409) return true;
   const detail = summarizeDropboxError(err).toLowerCase();
   return detail.includes('path/not_found') || detail.includes('not_found');
 }
