@@ -106,6 +106,32 @@
     white-space: normal;
   }
   .dropbox-sync-error[hidden] { display: none !important; }
+  .about-group {
+    gap: 10px;
+  }
+  .about-note,
+  .about-font-pending {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.45;
+    opacity: 0.82;
+  }
+  .about-credit-list {
+    margin: 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .about-credit-list li {
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .about-credit-list a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
   .page-numbering-group { gap: 10px; }
 .page-number-align { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .page-number-align-label { font-weight: 500; text-align: left; margin-right: auto; }
