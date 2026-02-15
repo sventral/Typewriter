@@ -756,8 +756,40 @@
           </div>
         </div>
       </details>
+      <details class="settings-section" id="dropboxSyncSettings">
+        <summary>
+          <span class="settings-toggle-icon" aria-hidden="true"></span>
+          <span class="settings-summary-label">Dropbox Sync</span>
+        </summary>
+        <div class="settings-section-content">
+          <div class="settings-group-new dropbox-sync-group">
+            <div class="dropbox-sync-actions">
+              <button class="btn" id="dropboxConnectBtn" type="button">Connect</button>
+              <button class="btn btn-secondary" id="dropboxDisconnectBtn" type="button">Disconnect</button>
+              <button class="btn apply-btn" id="dropboxSyncNowBtn" type="button">Sync now</button>
+            </div>
+            <div class="control-row">
+              <label>Status</label>
+              <span id="dropboxStatus">Not connected</span>
+            </div>
+            <div class="control-row">
+              <label>Folder path</label>
+              <code id="dropboxFolderPath">/Apps/Typewriter</code>
+            </div>
+            <label class="appearance-toggle dropbox-auto-sync-toggle" for="dropboxAutoSyncToggle">
+              <input type="checkbox" id="dropboxAutoSyncToggle" />
+              <span>Auto-sync after local saves</span>
+            </label>
+            <div class="control-row">
+              <label>Last sync</label>
+              <span id="dropboxLastSync">Never</span>
+            </div>
+            <p class="dropbox-sync-error" id="dropboxError" role="status" aria-live="polite" hidden></p>
+          </div>
+        </div>
+      </details>
     </div>
-    <div class="app-version">v.47.9b</div>
+    <div class="app-version">v.48.0b</div>
   </aside>
 
   <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>
@@ -789,6 +821,7 @@
     </div>
   </div>
 
+  <script src="https://unpkg.com/dropbox/dist/Dropbox-sdk.min.js"></script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

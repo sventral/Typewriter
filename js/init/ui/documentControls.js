@@ -21,6 +21,7 @@ import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../conf
 import { createExportDialog } from './exportDialog.js';
 import { exportDocumentAsPdf } from '../../export/pdfExporter.js';
 import { detectCanvasDimensionLimit, DEFAULT_CANVAS_DIMENSION_CAP } from '../../init/environment.js';
+import { createDropboxSyncController } from '../../storage/dropboxSync.js';
 
 export function createDocumentControls({
   app,
@@ -60,6 +61,7 @@ export function createDocumentControls({
   let pdfExportRestoreState = null;
   let pdfVisualMaskRestore = null;
   let pdfOverlayStartTs = 0;
+  let suppressDropboxAutoSync = false;
 
   const waitForOverlayPaint = () => new Promise((resolve) => {
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
@@ -437,6 +439,77 @@ export function createDocumentControls({
     return doc.data || null;
   }
 
+  async function hydrateAllDocumentData() {
+    if (!Array.isArray(docState.documents) || !docState.documents.length) return;
+    await Promise.all(docState.documents.map((doc) => ensureDocumentData(doc)));
+  }
+
+  function cloneSyncDocument(doc) {
+    if (!doc || !doc.data || typeof doc.data !== 'object') return null;
+    return {
+      id: doc.id,
+      title: normalizeDocumentTitle(doc.title),
+      createdAt: Number.isFinite(doc.createdAt) ? Number(doc.createdAt) : Date.now(),
+      updatedAt: Number.isFinite(doc.updatedAt) ? Number(doc.updatedAt) : Date.now(),
+      dataSize: Number.isFinite(doc.dataSize) ? Number(doc.dataSize) : 0,
+      data: JSON.parse(JSON.stringify(doc.data)),
+    };
+  }
+
+  async function getDropboxLocalSnapshot() {
+    await hydrateAllDocumentData();
+    const documents = docState.documents
+      .map((doc) => cloneSyncDocument(doc))
+      .filter(Boolean);
+    const idSet = new Set(documents.map((doc) => doc.id));
+    const activeId = (typeof docState.activeId === 'string' && idSet.has(docState.activeId))
+      ? docState.activeId
+      : (documents[0]?.id || null);
+    return { activeId, documents };
+  }
+
+  async function applyDropboxMergedSnapshot(snapshot = {}) {
+    const incoming = Array.isArray(snapshot.documents) ? snapshot.documents : [];
+    const seen = new Set();
+    const nextDocuments = incoming
+      .map((entry) => {
+        const item = entry && typeof entry === 'object' ? entry : {};
+        if (!item.data || typeof item.data !== 'object') return null;
+        return createDocumentRecord({
+          id: item.id,
+          title: item.title,
+          createdAt: Number(item.createdAt),
+          updatedAt: Number(item.updatedAt),
+          data: item.data,
+        }, seen);
+      })
+      .filter(Boolean);
+
+    if (!nextDocuments.length) return;
+
+    const validIds = new Set(nextDocuments.map((doc) => doc.id));
+    const nextActiveId = (typeof snapshot.activeId === 'string' && validIds.has(snapshot.activeId))
+      ? snapshot.activeId
+      : (nextDocuments[0]?.id || null);
+
+    suppressDropboxAutoSync = true;
+    try {
+      docState.documents = nextDocuments;
+      docState.activeId = nextActiveId;
+      await persistDocumentIndex();
+
+      const active = getActiveDocument() || docState.documents[0] || null;
+      if (active) {
+        await ensureDocumentData(active);
+        applyDocumentRecord(active);
+      } else {
+        syncDocumentUi();
+      }
+    } finally {
+      suppressDropboxAutoSync = false;
+    }
+  }
+
   function refreshDocumentEnvironment() {
     updateStageEnvironment();
     setZoomPercent(Math.round((state.zoom || 1) * 100) || 100);
@@ -775,7 +848,9 @@ export function createDocumentControls({
   }
 
   async function saveStateNow(options = {}) {
-    const force = typeof options === 'object' && options !== null ? !!options.force : false;
+    const opts = (typeof options === 'object' && options !== null) ? options : {};
+    const force = !!opts.force;
+    const skipDropboxNotify = !!opts.skipDropboxNotify;
     if (!force && !hasPendingDocumentChanges(state)) {
       return;
     }
@@ -828,6 +903,9 @@ export function createDocumentControls({
         syncPages(serializedBuild.changedPages);
       }
       lastSaveNowTs = Date.now();
+      if (!skipDropboxNotify && !suppressDropboxAutoSync) {
+        dropboxSyncController.notifyLocalMutation();
+      }
     } catch (err) {
       showStorageNotice('Save failed. Export your document to avoid losing changes.', { level: 'error', durationMs: 8000 });
       if (typeof console !== 'undefined' && typeof console.error === 'function') {
@@ -888,6 +966,19 @@ export function createDocumentControls({
 
     scheduleIdle();
   }
+
+  const dropboxSyncController = createDropboxSyncController({
+    storageKey,
+    getLocalSnapshot: getDropboxLocalSnapshot,
+    applyMergedSnapshot: applyDropboxMergedSnapshot,
+    beforeSync: async () => {
+      await saveStateNow({ skipDropboxNotify: true });
+    },
+    onNotice: (message, meta = {}) => {
+      if (meta.level !== 'error') return;
+      showStorageNotice(message, { level: 'error', durationMs: 9000 });
+    },
+  });
 
   function bindDocumentControls() {
     const bindDocMenuSet = (source) => {
@@ -970,6 +1061,17 @@ export function createDocumentControls({
       });
     }
     exportDialog.bind();
+    dropboxSyncController.bindUi({
+      connectBtn: app.dropboxConnectBtn,
+      disconnectBtn: app.dropboxDisconnectBtn,
+      syncNowBtn: app.dropboxSyncNowBtn,
+      autoSyncToggle: app.dropboxAutoSyncToggle,
+      statusEl: app.dropboxStatus,
+      folderPathEl: app.dropboxFolderPath,
+      lastSyncEl: app.dropboxLastSync,
+      errorEl: app.dropboxError,
+    });
+    dropboxSyncController.init();
     document.addEventListener('pointerdown', (e) => {
       if (!docMenuState.open) return;
       const inMain = app.docMenuPopup?.contains(e.target) || app.docMenuBtn?.contains(e.target);

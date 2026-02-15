@@ -175,6 +175,16 @@ const DOM_ID_GROUPS = {
     lowResZoomSoftCap: 'lowResZoomSoftCap',
     lowResZoomMargin: 'lowResZoomMargin',
   },
+  dropboxSync: {
+    dropboxConnectBtn: 'dropboxConnectBtn',
+    dropboxDisconnectBtn: 'dropboxDisconnectBtn',
+    dropboxSyncNowBtn: 'dropboxSyncNowBtn',
+    dropboxAutoSyncToggle: 'dropboxAutoSyncToggle',
+    dropboxStatus: 'dropboxStatus',
+    dropboxFolderPath: 'dropboxFolderPath',
+    dropboxLastSync: 'dropboxLastSync',
+    dropboxError: 'dropboxError',
+  },
 };
 
 const DOM_SELECTOR_MAP = {

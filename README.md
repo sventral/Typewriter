@@ -7,6 +7,7 @@ Typewriter is a browser-only, single-page writing app that emulates mechanical t
 - Settings panels for `Page`, `Fonts`, `Effects`, `Typewriter realism`, and `Appearance`.
 - Ink/effect controls including line slant, glyph jitter, filters, effect randomization, and saved styles.
 - Document menu with local persistence, plus export options for raw data, plain text, and PDF.
+- Optional Dropbox sync (`settings.json` + `documents/*.json`) with Connect/Disconnect, manual sync, and auto-sync.
 
 ## Run locally
 ```bash
@@ -21,6 +22,12 @@ Any static file server also works.
 2. Click the page and type.
 3. Open settings from the gear button to tune layout, fonts, effects, and realism options.
 4. Use the file toolbar for document switching and export.
+
+## Dropbox setup (GitHub Pages)
+- In `js/storage/dropboxSync.js`, set `DROPBOX_APP_KEY` to your Dropbox app key.
+- Register this exact redirect URI in your Dropbox app:
+  - `https://sventral.github.io/Typewriter/dropbox-auth.html`
+- Keep Dropbox access type as **App Folder**.
 
 
 ## Project layout
