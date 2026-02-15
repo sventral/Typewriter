@@ -202,6 +202,7 @@
   .ink-section-toggle:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
   .ink-section-toggle-icon { display: inline-flex; width: 16px; justify-content: center; transition: transform 0.18s ease; transform: rotate(90deg); font-size: 16px; line-height: 1; }
   .ink-section-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.9; }
+  .ink-section-title-subheading { font-size: 12px; font-weight: 600; letter-spacing: 0.45px; opacity: 0.75; }
   .ink-lock-toggle {
     appearance: none;
     border: 1px solid var(--control-border, rgba(0,0,0,0.25));

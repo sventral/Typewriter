@@ -178,6 +178,7 @@ export const SECTION_DEFS = [
   {
     id: 'filters',
     label: 'Filters',
+    subheadingStyle: true,
     mode: 'experimental',
     config: EXPERIMENTAL_EFFECTS_CONFIG,
     keyOrder: FILTER_KEYS,
@@ -185,6 +186,7 @@ export const SECTION_DEFS = [
     trigger: 'glyph',
     stateKey: 'filtersStrength',
     defaultStrength: getDefaultInkSectionStrength('filters'),
+    enableCheckbox: false,
     dragHandle: false,
     collapsible: false,
   },

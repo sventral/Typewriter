@@ -2348,6 +2348,9 @@ function buildSection(def, root) {
   }
   const title = document.createElement('span');
   title.className = 'ink-section-title';
+  if (def.subheadingStyle === true) {
+    title.classList.add('ink-section-title-subheading');
+  }
   title.textContent = def.label;
   sectionHeadingEl.appendChild(title);
 
@@ -2366,10 +2369,13 @@ function buildSection(def, root) {
   header.appendChild(topLine);
 
   const hasStrengthControl = typeof def.stateKey === 'string' && def.stateKey.length > 0;
+  const shouldRenderCheckbox = hasStrengthControl && def.enableCheckbox !== false;
   let checkbox = null;
   let startPercent = def.defaultStrength ?? 0;
   if (hasStrengthControl) {
     startPercent = getPercentFromState(def.stateKey, def.defaultStrength ?? 0);
+  }
+  if (shouldRenderCheckbox) {
     const checkboxWrap = document.createElement('div');
     checkboxWrap.className = 'ink-section-enable';
     checkbox = document.createElement('input');
