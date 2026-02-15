@@ -311,15 +311,11 @@
   .ink-section.is-disabled { opacity: 0.55; }
   .ink-section-apply-row .btn { margin-left: 12px; }
   .ink-seed-input { font-family: 'SFMono-Regular', 'SFMono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; }
-  .ink-styles-section { margin-top: 20px; display: flex; flex-direction: column; gap: 12px; }
+  .ink-styles-section { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
   .ink-style-manager {
-    border: 1px solid var(--panel-border);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
-    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
   .ink-style-card__header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 2px; }
   .ink-style-manager-status {
@@ -348,7 +344,7 @@
   .ink-style-menu-divider {
     height: 1px;
     background: var(--divider-color);
-    margin: 8px 0;
+    margin: 4px 0;
   }
   .ink-style-action-menu {
     position: absolute;
