@@ -176,6 +176,13 @@
     flex-direction: column;
     gap: 16px;
   }
+  .settings-section-content > * + * {
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    padding-top: 14px;
+  }
+  html[data-theme='dark'] .settings-section-content > * + * {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
   .ink-section { padding: 12px 0; border-top: 1px solid rgba(0,0,0,0.08); }
   .ink-section:first-of-type { border-top: none; padding-top: 4px; }
   .ink-section.is-dragging { opacity: 0.6; }
