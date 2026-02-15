@@ -702,9 +702,12 @@ export function createDropboxSyncController(options = {}) {
   async function createDropboxClient() {
     const accessToken = await refreshTokenIfNeeded();
     const sdk = getDropboxSdkOrThrow();
+    const fetchImpl = (canUseDom() && typeof window.fetch === 'function')
+      ? window.fetch.bind(window)
+      : fetch;
     return new sdk.Dropbox({
       accessToken,
-      fetch,
+      fetch: fetchImpl,
     });
   }
 
