@@ -14,9 +14,9 @@ const TOKEN_SUFFIX = '::dropbox.oauth.v2';
 const AUTH_RESULT_SUFFIX = '::dropbox.auth.result.v2';
 const SYNC_STATE_SUFFIX = '::dropbox.sync.state.v2';
 
-const APP_KEY_PLACEHOLDER = '7auk49ga7ozfe9y';
+const APP_KEY_PLACEHOLDER = 'PASTE_DROPBOX_APP_KEY_HERE';
+export const DROPBOX_APP_KEY = '7auk49ga7ozfe9y';
 
-export const DROPBOX_APP_KEY = APP_KEY_PLACEHOLDER;
 
 function canUseDom() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -197,18 +197,22 @@ function resolveDefaultHomeUri() {
 function normalizeAppKey(value) {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
-  if (!trimmed || trimmed === APP_KEY_PLACEHOLDER) return '';
+  if (!trimmed || trimmed === 'PASTE_DROPBOX_APP_KEY_HERE') return '';
   return trimmed;
 }
 
+function resolveConfiguredAppKey(explicitAppKey = '') {
+  const direct = normalizeAppKey(explicitAppKey);
+  if (direct) return direct;
+  if (canUseDom()) {
+    const windowValue = normalizeAppKey(window.TYPEWRITER_DROPBOX_APP_KEY);
+    if (windowValue) return windowValue;
+  }
+  return normalizeAppKey(DROPBOX_APP_KEY);
+}
+
 function resolveConfig(options = {}) {
-  const appKey = normalizeAppKey(
-    (typeof options.appKey === 'string' && options.appKey.trim())
-      ? options.appKey
-      : (canUseDom() && typeof window.TYPEWRITER_DROPBOX_APP_KEY === 'string'
-        ? window.TYPEWRITER_DROPBOX_APP_KEY
-        : DROPBOX_APP_KEY),
-  );
+  const appKey = resolveConfiguredAppKey(options.appKey);
 
   const keyPrefix = typeof options.storageKey === 'string' && options.storageKey.trim()
     ? options.storageKey.trim()
@@ -1341,13 +1345,7 @@ export async function completeDropboxAuthRedirectOnCallbackPage(options = {}) {
   const prefix = findPkcePrefixByState(sessionStorageRef, returnedState);
   const keyPrefix = prefix || (typeof options.storageKey === 'string' ? options.storageKey : 'typewriter');
   const keys = buildStorageKeys(keyPrefix);
-  const appKey = normalizeAppKey(
-    (typeof options.appKey === 'string' && options.appKey.trim())
-      ? options.appKey
-      : (canUseDom() && typeof window.TYPEWRITER_DROPBOX_APP_KEY === 'string'
-        ? window.TYPEWRITER_DROPBOX_APP_KEY
-        : DROPBOX_APP_KEY),
-  );
+  const appKey = resolveConfiguredAppKey(options.appKey);
 
   const redirectUri = (typeof options.redirectUri === 'string' && options.redirectUri.trim())
     ? options.redirectUri.trim()
