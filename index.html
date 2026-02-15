@@ -667,115 +667,116 @@
           </section>
         </div>
       </details>
-      <details class="settings-section" id="typewriterSettings">
+      <details class="settings-section" id="behaviorSettings">
         <summary>
           <span class="settings-toggle-icon" aria-hidden="true"></span>
-          <span class="settings-summary-label">Typewriter realism</span>
+          <span class="settings-summary-label">Behavior</span>
         </summary>
         <div class="settings-section-content">
-          <div class="settings-group-new">
-            <div class="control-row">
-              <label for="typewriterBackspaceToggle">Allow conventional text editing</label>
-              <input type="checkbox" id="typewriterBackspaceToggle" />
-            </div>
-            <div class="control-row">
-              <label for="typewriterCaretLockToggle">Enable caret lock</label>
-              <input type="checkbox" id="typewriterCaretLockToggle" checked />
-            </div>
-            <div class="control-row">
-              <label for="typewriterBellToggle">Bell sound</label>
-              <input type="checkbox" id="typewriterBellToggle" />
-            </div>
-            <div class="control-row typewriter-sub-row" id="typewriterBellSoundRow">
-              <label for="typewriterBellSelect">Sound selection</label>
-              <select id="typewriterBellSelect">
-                <option value="bell-1">Bell 1</option>
-                <option value="bell-2">Bell 2</option>
-                <option value="bell-3">Bell 3</option>
-              </select>
-              <button type="button" class="btn icon-only" id="typewriterBellPreview" title="Play bell sound">
-                ▶
-              </button>
-            </div>
-            <div class="control-row typewriter-sub-row" id="typewriterBellVolumeRow">
-              <label for="typewriterBellVolume">Bell volume</label>
-              <input id="typewriterBellVolume" type="range" min="0" max="100" step="1" value="70" />
-              <span class="range-value" id="typewriterBellVolumeValue">70%</span>
-            </div>
-            <div class="control-row typewriter-sub-row" id="typewriterBellLeadRow">
-              <label for="typewriterBellLead">Bell warning (chars)</label>
-              <input id="typewriterBellLead" type="number" min="0" max="40" step="1" value="5" />
-            </div>
-            <div class="control-row">
-              <label for="typewriterStopToggle">Stop sound</label>
-              <input type="checkbox" id="typewriterStopToggle" />
-            </div>
-            <div class="control-row typewriter-sub-row" id="typewriterStopSoundRow">
-              <label for="typewriterStopSelect">Sound selection</label>
-              <select id="typewriterStopSelect">
-                <option value="stop-1">Stop 1</option>
-                <option value="stop-2">Stop 2</option>
-              </select>
-              <button type="button" class="btn icon-only" id="typewriterStopPreview" title="Play stop sound">
-                ▶
-              </button>
-            </div>
-            <div class="control-row typewriter-sub-row" id="typewriterStopVolumeRow">
-              <label for="typewriterStopVolume">Stop volume</label>
-              <input id="typewriterStopVolume" type="range" min="0" max="100" step="1" value="70" />
-              <span class="range-value" id="typewriterStopVolumeValue">70%</span>
-            </div>
-          </div>
-        </div>
-      </details>
-      <details class="settings-section" id="appearanceSettings">
-        <summary>
-          <span class="settings-toggle-icon" aria-hidden="true"></span>
-          <span class="settings-summary-label">Appearance</span>
-        </summary>
-        <div class="settings-section-content">
-          <div class="settings-group-new appearance-group">
-            <div class="appearance-options">
-              <label>
-                <input type="radio" name="appearanceMode" id="appearanceAuto" value="auto" checked />
-                <span>Automatic</span>
-              </label>
-              <label>
-                <input type="radio" name="appearanceMode" id="appearanceLight" value="light" />
-                <span>Light</span>
-              </label>
-              <label>
-                <input type="radio" name="appearanceMode" id="appearanceDark" value="dark" />
-                <span>Dark</span>
-              </label>
-            </div>
-            <label class="appearance-toggle">
-              <input type="checkbox" id="darkPageToggle" />
-              <span>Dark page while in dark mode</span>
-            </label>
-            <div class="low-res-zoom-controls">
-              <label class="low-res-zoom-toggle">
-                <input type="checkbox" id="lowResZoomToggle" checked />
-                <div class="low-res-zoom-copy">
-                  <span>Low res zoom</span>
-                  <small>Soft-cap rendering above the limit</small>
+          <div class="settings-group-new behavior-group">
+            <section class="behavior-subsection" aria-labelledby="behaviorEmulationTitle">
+              <h4 class="behavior-subsection-title" id="behaviorEmulationTitle">Emulation</h4>
+              <div class="settings-group-new behavior-emulation-group">
+                <div class="control-row">
+                  <label for="typewriterBackspaceToggle">Allow conventional text editing</label>
+                  <input type="checkbox" id="typewriterBackspaceToggle" />
                 </div>
-              </label>
-              <div class="low-res-zoom-fields">
+                <div class="control-row">
+                  <label for="typewriterCaretLockToggle">Enable caret lock</label>
+                  <input type="checkbox" id="typewriterCaretLockToggle" checked />
+                </div>
+                <div class="control-row">
+                  <label for="typewriterBellToggle">Bell sound</label>
+                  <input type="checkbox" id="typewriterBellToggle" />
+                </div>
+                <div class="control-row typewriter-sub-row" id="typewriterBellSoundRow">
+                  <label for="typewriterBellSelect">Sound selection</label>
+                  <select id="typewriterBellSelect">
+                    <option value="bell-1">Bell 1</option>
+                    <option value="bell-2">Bell 2</option>
+                    <option value="bell-3">Bell 3</option>
+                  </select>
+                  <button type="button" class="btn icon-only" id="typewriterBellPreview" title="Play bell sound">
+                    ▶
+                  </button>
+                </div>
+                <div class="control-row typewriter-sub-row" id="typewriterBellVolumeRow">
+                  <label for="typewriterBellVolume">Bell volume</label>
+                  <input id="typewriterBellVolume" type="range" min="0" max="100" step="1" value="70" />
+                  <span class="range-value" id="typewriterBellVolumeValue">70%</span>
+                </div>
+                <div class="control-row typewriter-sub-row" id="typewriterBellLeadRow">
+                  <label for="typewriterBellLead">Bell warning (chars)</label>
+                  <input id="typewriterBellLead" type="number" min="0" max="40" step="1" value="5" />
+                </div>
+                <div class="control-row">
+                  <label for="typewriterStopToggle">Stop sound</label>
+                  <input type="checkbox" id="typewriterStopToggle" />
+                </div>
+                <div class="control-row typewriter-sub-row" id="typewriterStopSoundRow">
+                  <label for="typewriterStopSelect">Sound selection</label>
+                  <select id="typewriterStopSelect">
+                    <option value="stop-1">Stop 1</option>
+                    <option value="stop-2">Stop 2</option>
+                  </select>
+                  <button type="button" class="btn icon-only" id="typewriterStopPreview" title="Play stop sound">
+                    ▶
+                  </button>
+                </div>
+                <div class="control-row typewriter-sub-row" id="typewriterStopVolumeRow">
+                  <label for="typewriterStopVolume">Stop volume</label>
+                  <input id="typewriterStopVolume" type="range" min="0" max="100" step="1" value="70" />
+                  <span class="range-value" id="typewriterStopVolumeValue">70%</span>
+                </div>
+              </div>
+            </section>
+            <section class="behavior-subsection" aria-labelledby="behaviorAppearanceTitle">
+              <h4 class="behavior-subsection-title" id="behaviorAppearanceTitle">Appearance</h4>
+              <div class="appearance-options">
                 <label>
-                  <span>Soft cap (%)</span>
-                  <input type="number" id="lowResZoomSoftCap" min="50" max="400" step="10" value="180" />
+                  <input type="radio" name="appearanceMode" id="appearanceAuto" value="auto" checked />
+                  <span>Automatic</span>
                 </label>
                 <label>
-                  <span>Zoom margin (%)</span>
-                  <input type="number" id="lowResZoomMargin" min="0" max="200" step="5" value="20" />
+                  <input type="radio" name="appearanceMode" id="appearanceLight" value="light" />
+                  <span>Light</span>
+                </label>
+                <label>
+                  <input type="radio" name="appearanceMode" id="appearanceDark" value="dark" />
+                  <span>Dark</span>
                 </label>
               </div>
-            </div>
-            <label class="appearance-toggle">
-              <input type="checkbox" id="lagAssistToggle" checked />
-              <span>Block typing and show spinner while busy</span>
-            </label>
+              <label class="appearance-toggle">
+                <input type="checkbox" id="darkPageToggle" />
+                <span>Dark page while in dark mode</span>
+              </label>
+            </section>
+            <section class="behavior-subsection" aria-labelledby="behaviorZoomTitle">
+              <h4 class="behavior-subsection-title" id="behaviorZoomTitle">Zoom</h4>
+              <div class="low-res-zoom-controls">
+                <label class="low-res-zoom-toggle">
+                  <input type="checkbox" id="lowResZoomToggle" checked />
+                  <div class="low-res-zoom-copy">
+                    <span>Low res zoom</span>
+                    <small>Soft-cap rendering above the limit</small>
+                  </div>
+                </label>
+                <div class="low-res-zoom-fields">
+                  <label>
+                    <span>Soft cap (%)</span>
+                    <input type="number" id="lowResZoomSoftCap" min="50" max="400" step="10" value="180" />
+                  </label>
+                  <label>
+                    <span>Zoom margin (%)</span>
+                    <input type="number" id="lowResZoomMargin" min="0" max="200" step="5" value="20" />
+                  </label>
+                </div>
+              </div>
+              <label class="zoom-toggle">
+                <input type="checkbox" id="lagAssistToggle" checked />
+                <span>Block typing and show spinner while busy</span>
+              </label>
+            </section>
           </div>
         </div>
       </details>
@@ -812,7 +813,7 @@
         </div>
       </details>
     </div>
-    <div class="app-version">v.48.2b</div>
+    <div class="app-version">v.48.3b</div>
   </aside>
 
   <div class="export-dialog-scrim" id="exportDialogScrim" aria-hidden="true"></div>

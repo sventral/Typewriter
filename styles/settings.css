@@ -54,6 +54,19 @@
     font-size: 13px;
   }
   .side-panel input[type="checkbox"] { margin-left: auto; display: block; }
+  .behavior-group { gap: 0; }
+  .behavior-subsection { display: flex; flex-direction: column; gap: 12px; padding: 12px 0; }
+  .behavior-subsection:first-child { padding-top: 4px; }
+  .behavior-subsection + .behavior-subsection { border-top: 1px solid rgba(0,0,0,0.08); }
+  html[data-theme='dark'] .behavior-subsection + .behavior-subsection { border-color: rgba(255,255,255,0.1); }
+  .behavior-subsection-title {
+    margin: 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.45px;
+    opacity: 0.7;
+    font-weight: 600;
+  }
   .appearance-group { display: flex; flex-direction: column; gap: 12px; }
   .appearance-options { display: flex; flex-direction: column; gap: 8px; }
   .appearance-options label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
@@ -62,6 +75,8 @@
   .appearance-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: 0.8; margin-left: 24px; }
   .appearance-dark-toggle input[type="checkbox"],
   .appearance-toggle input[type="checkbox"] { margin: 0; }
+  .zoom-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: 0.8; }
+  .zoom-toggle input[type="checkbox"] { margin: 0; }
   .dropbox-sync-group { gap: 10px; }
   .dropbox-sync-actions {
     display: flex;
@@ -101,13 +116,12 @@
 .page-number-sub-row.is-disabled { opacity: 0.55; }
 .page-number-sub-row.is-disabled .page-number-align-label,
 .page-number-sub-row.is-disabled label { color: var(--fg-muted, #8a8a8a); }
-  .low-res-zoom-controls { display: flex; flex-direction: column; gap: 12px; margin-left: 24px; padding: 12px 0 0; border-top: 1px solid rgba(0,0,0,0.08); }
-  body.dark .low-res-zoom-controls { border-color: rgba(255,255,255,0.1); }
+  .low-res-zoom-controls { display: flex; flex-direction: column; gap: 12px; margin-left: 0; padding: 0; border-top: none; }
   .low-res-zoom-toggle { display: flex; align-items: center; gap: 12px; font-size: 13px; }
   .low-res-zoom-toggle input[type="checkbox"] { margin: 0; }
   .low-res-zoom-copy span { display: block; font-weight: 600; }
   .low-res-zoom-copy small { display: block; font-size: 11px; opacity: 0.7; }
-  .low-res-zoom-fields { display: flex; flex-wrap: wrap; gap: 12px; padding-left: 28px; }
+  .low-res-zoom-fields { display: flex; flex-wrap: wrap; gap: 12px; padding-left: 0; }
   .low-res-zoom-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; flex: 1 1 140px; }
   .low-res-zoom-fields input { width: 100%; }
   .low-res-zoom-controls.disabled { opacity: 0.6; }
@@ -533,12 +547,12 @@
   .ink-settings-content .range-input-pair { display: flex; align-items: center; gap: 8px; }
   .ink-settings-content .range-input-pair .input-with-suffix { width: 88px; }
   .ink-settings-content .range-input-pair .range-separator { font-weight: 600; opacity: 0.6; }
-  #typewriterSettings .control-row { display: flex; align-items: center; gap: 10px; }
-  #typewriterSettings .control-row label { flex: 1; }
-  #typewriterSettings .control-row input[type="range"] { flex: 2; }
-  #typewriterSettings .control-row input[type="number"] { width: 96px; }
-  #typewriterSettings .range-value { min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; opacity: .8; }
-  #typewriterSettings .typewriter-sub-row { margin-left: 24px; }
-  #typewriterSettings .typewriter-sub-row.is-disabled { opacity: 0.55; }
-  #typewriterSettings .typewriter-sub-row.is-disabled label { color: var(--fg-muted, #8a8a8a); }
+  .behavior-emulation-group .control-row { display: flex; align-items: center; gap: 10px; }
+  .behavior-emulation-group .control-row label { flex: 1; }
+  .behavior-emulation-group .control-row input[type="range"] { flex: 2; }
+  .behavior-emulation-group .control-row input[type="number"] { width: 96px; }
+  .behavior-emulation-group .range-value { min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; opacity: .8; }
+  .behavior-emulation-group .typewriter-sub-row { margin-left: 24px; }
+  .behavior-emulation-group .typewriter-sub-row.is-disabled { opacity: 0.55; }
+  .behavior-emulation-group .typewriter-sub-row.is-disabled label { color: var(--fg-muted, #8a8a8a); }
   #wordWrapRow.is-disabled label { color: var(--fg-muted, #8a8a8a); opacity: 0.6; }

@@ -4,7 +4,7 @@ Typewriter is a browser-only, single-page writing app that emulates mechanical t
 
 ## What it includes
 - Canvas-based page rendering with rulers, margins, page controls, and zoom.
-- Settings panels for `Page`, `Fonts`, `Effects`, `Typewriter realism`, and `Appearance`.
+- Settings panels for `Page`, `Fonts`, `Effects`, `Behavior` (`Emulation`, `Appearance`, `Zoom`), and `Dropbox Sync`.
 - Ink/effect controls including line slant, glyph jitter, filters, effect randomization, and a Manage styles menu (load/save/delete plus file import/export).
 - Document menu with local persistence, plus export options for raw data, plain text, and PDF.
 - Optional Dropbox sync (`settings.json` + `documents/*.json`) with Connect/Disconnect, manual sync, and auto-sync.
@@ -20,7 +20,7 @@ Any static file server also works.
 ## Basic use
 1. Start the server and open the app in a modern browser.
 2. Click the page and type.
-3. Open settings from the gear button to tune layout, fonts, effects, and realism options.
+3. Open settings from the gear button to tune layout, fonts, effects, and behavior options.
 4. Use the file toolbar for document switching and export.
 
 ## Dropbox setup (GitHub Pages)
