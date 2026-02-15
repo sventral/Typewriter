@@ -324,10 +324,6 @@
     min-height: 32px;
     padding: 0 10px;
   }
-  .ink-style-menu-btn.danger {
-    color: var(--danger-color, #b23a3a);
-    border-color: color-mix(in srgb, var(--danger-color, #b23a3a) 30%, var(--btn-border));
-  }
   .ink-style-menu-btn__chevron {
     font-size: 12px;
     opacity: 0.72;
@@ -337,7 +333,7 @@
   .ink-style-menu-divider {
     height: 1px;
     background: var(--divider-color);
-    margin: 2px 0;
+    margin: 8px 0;
   }
   .ink-style-action-menu {
     position: absolute;
