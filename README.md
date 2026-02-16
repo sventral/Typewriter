@@ -44,4 +44,4 @@ TypeSim/
 ```
 
 ## License
-`UNLICENSED` (see `package.json`).
+This project is licensed under PolyForm Noncommercial 1.0.0. Commercial use is not included. For commercial licensing, contact the creator.
