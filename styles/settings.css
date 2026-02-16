@@ -12,15 +12,33 @@
     font-size: 13px;
     color: var(--ui-text);
   }
-  .side-panel .app-version {
-    position: absolute;
-    right: 16px;
-    bottom: 12px;
+  .side-panel .settings-branding {
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
+    margin: 0 0 12px;
+  }
+  .side-panel .settings-branding__logo {
+    width: 56%;
+    max-width: 244px;
+    height: auto;
+    display: block;
+  }
+  :root[data-theme='dark'] .side-panel .settings-branding__logo {
+    filter: invert(1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) .side-panel .settings-branding__logo {
+      filter: invert(1);
+    }
+  }
+  .side-panel .settings-branding .app-version {
+    margin-bottom: 84px;
     font-size: 12px;
     font-family: system-ui, -apple-system, sans-serif;
     color: var(--ui-text);
     opacity: 0.7;
-    pointer-events: none;
+    white-space: nowrap;
   }
 
   .side-panel.from-left {
