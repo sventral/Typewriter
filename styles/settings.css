@@ -13,14 +13,10 @@
     color: var(--ui-text);
   }
   .side-panel .settings-branding {
-    position: absolute;
-    left: 18px;
-    right: 18px;
-    bottom: 14px;
     display: flex;
     align-items: flex-end;
     gap: 14px;
-    pointer-events: none;
+    margin: 0 0 12px;
   }
   .side-panel .settings-branding__logo {
     width: 56%;
@@ -56,7 +52,7 @@
     transform: translateX(100%);
   }
   .side-panel.is-open { transform: translateX(0); }
-  .panel-content { padding: 20px; padding-bottom: 130px; overflow-y: auto; height: 100%; box-sizing: border-box; }
+  .panel-content { padding: 20px; overflow-y: auto; height: 100%; box-sizing: border-box; }
   .side-panel h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.6; margin: 0 0 8px; }
   .settings-group-new { display: flex; flex-direction: column; gap: 12px; }
   .divider { border: none; height: 1px; background: var(--divider-color); margin: 24px 0; }
