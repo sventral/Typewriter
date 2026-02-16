@@ -1,5 +1,7 @@
 import { clamp } from '../utils/math.js';
 import { sampleLineSlantDeg, clampLineSlantDeg } from '../config/lineSlantConfig.js';
+import { ensurePageRevisionState } from '../state/saveRevision.js';
+import { preparePageCanvasForViewport } from '../rendering/pageCanvasPreparation.js';
 
 export function createPageLifecycleController(context, editingController) {
   const {
@@ -231,8 +233,14 @@ export function createPageLifecycleController(context, editingController) {
     canvas.width = Math.floor(app.PAGE_W * getRenderScale());
     canvas.height = Math.floor(app.PAGE_H * getRenderScale());
     const displayZoom = layoutZoomFactor();
-    canvas.style.width = (app.PAGE_W * displayZoom) + 'px';
-    canvas.style.height = (app.PAGE_H * displayZoom) + 'px';
+    const cssW = app.PAGE_W * displayZoom;
+    const cssH = app.PAGE_H * displayZoom;
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    const pageEl = canvas.parentElement;
+    if (pageEl && pageEl.style) {
+      pageEl.style.height = cssH + 'px';
+    }
   }
 
   function configureCanvasContext(ctx) {
@@ -282,8 +290,11 @@ export function createPageLifecycleController(context, editingController) {
       zoomPreparedFor: (typeof getEffectiveRenderZoom === 'function'
         ? getEffectiveRenderZoom()
         : (state.zoom || 1)),
+      renderScalePreparedFor: getRenderScale(),
+      layoutZoomPreparedFor: layoutZoomFactor(),
       geometry: { baseTop: 0, baseHeight: app.PAGE_H, dirty: true },
     };
+    ensurePageRevisionState(page);
     const slantDeg = state.lineSlantEnabled ? sampleLineSlantDeg(state.lineSlantRangeDeg) : 0;
     page.lineSlantDeg = clampLineSlantDeg(slantDeg, state.lineSlantRangeDeg);
     if (marginBoxEl) {
@@ -400,6 +411,7 @@ export function createPageLifecycleController(context, editingController) {
   let prevScrollFocusIndex = 0;
   let lastScrollDirection = 0;
   let lastPaperOffsetY = 0;
+  let lastVirtualizationZoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
   let cachedActiveWindow = { start: 0, end: -1 };
   let hasCachedActiveWindow = false;
   let frozenVirtualWindow = null;
@@ -437,18 +449,73 @@ export function createPageLifecycleController(context, editingController) {
     return Math.max(0, Math.min(state.pages.length - 1, idx));
   }
 
+  function addCandidateIndex(set, idx) {
+    if (!set) return;
+    if (!Number.isInteger(idx)) return;
+    set.add(clampIndex(idx));
+  }
+
+  function addCandidateWindow(set, start, end, pad = 0) {
+    if (!set) return;
+    if (!Number.isInteger(start) || !Number.isInteger(end)) return;
+    const lo = Math.min(start, end);
+    const hi = Math.max(start, end);
+    for (let i = lo - pad; i <= hi + pad; i += 1) {
+      if (!Number.isInteger(i)) continue;
+      addCandidateIndex(set, i);
+    }
+  }
+
+  function fallbackVisibleCandidateIndices() {
+    if (!state.pages.length) return [];
+    const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+    const localPad = zoom >= 3 ? 1 : (zoom >= 2 ? 2 : 3);
+    const candidateSet = new Set();
+
+    addCandidateIndex(candidateSet, lastScrollFocusIndex);
+    addCandidateIndex(candidateSet, prevScrollFocusIndex);
+    addCandidateIndex(candidateSet, app.activePageIndex);
+    if (Number.isInteger(state.caret?.page)) {
+      addCandidateIndex(candidateSet, state.caret.page);
+    }
+
+    addCandidateWindow(
+      candidateSet,
+      lastScrollFocusIndex - localPad,
+      lastScrollFocusIndex + localPad,
+      0,
+    );
+
+    if (hasCachedActiveWindow && cachedActiveWindow.end >= cachedActiveWindow.start) {
+      addCandidateWindow(candidateSet, cachedActiveWindow.start, cachedActiveWindow.end, localPad);
+    }
+
+    return Array.from(candidateSet).sort((a, b) => a - b);
+  }
+
   function ensurePagePreparedForCurrentZoom(page) {
     if (!page) return;
     const currentZoom = typeof getEffectiveRenderZoom === 'function'
       ? getEffectiveRenderZoom()
       : (state.zoom || 1);
-    if (page.zoomPreparedFor === currentZoom) return;
-    if (page.canvas) prepareCanvas(page.canvas);
-    if (page.backCanvas) prepareCanvas(page.backCanvas);
-    if (page.ctx) configureCanvasContext(page.ctx);
-    if (page.backCtx) configureCanvasContext(page.backCtx);
+    const renderScale = getRenderScale();
+    const layoutZoom = layoutZoomFactor();
+    const prep = preparePageCanvasForViewport({
+      page,
+      app,
+      renderScale,
+      layoutZoom,
+      configureCanvasContext,
+      preserveMainBitmap: page.active === true,
+    });
     page.zoomPreparedFor = currentZoom;
-    page.dirtyAll = true;
+    const deferImmediateFullRepaint = page.active === true && prep.renderScaleDecreased;
+    if (prep.needsRedraw && !deferImmediateFullRepaint) {
+      if (page.active) {
+        page.preserveFrontBufferForFullPaint = true;
+      }
+      page.dirtyAll = true;
+    }
   }
 
   function applyActiveWindow(i0, i1) {
@@ -468,10 +535,12 @@ export function createPageLifecycleController(context, editingController) {
       if (page.canvas?.style) {
         page.canvas.style.visibility = 'visible';
       }
+
       // Force re-preparation if the canvas was previously discarded
       if (page.canvas && page.canvas.width <= 1) {
         page.zoomPreparedFor = -1;
       }
+
       ensurePagePreparedForCurrentZoom(page);
       const hasPendingRows = page._dirtyRowMinMu !== undefined || page._dirtyRowMaxMu !== undefined;
       if (page.dirtyAll || hasPendingRows) {
@@ -487,23 +556,13 @@ export function createPageLifecycleController(context, editingController) {
         } catch {}
         page.raf = 0;
       }
-      // Aggressively free memory for off-screen pages to prevent canvas corruption
-      // on large documents, especially when high zoom (high RenderScale) is active.
-      if (page.canvas) {
-        page.canvas.width = 1;
-        page.canvas.height = 1;
-      }
-      if (page.backCanvas) {
-        page.backCanvas.width = 1;
-        page.backCanvas.height = 1;
-      }
-      page.zoomPreparedFor = -1;
-      page.dirtyAll = true;
     }
   }
 
   function visibleWindowIndices() {
     if (!state.pages.length) return [0, 0];
+    const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+    const isZoomDownshift = zoom < (lastVirtualizationZoom - 1e-3);
     const sp = app.stage.getBoundingClientRect();
     const viewportCtx = computeViewportContext();
     const viewTop = sp.top;
@@ -533,21 +592,27 @@ export function createPageLifecycleController(context, editingController) {
     let bestDist = Infinity;
     const visibleCandidates = [];
     const overlapByIndex = new Map();
+    const evaluatedIndices = new Set();
 
     const evaluatePageIndex = (i) => {
-      const page = state.pages[i];
+      if (!Number.isInteger(i)) return;
+      const clampedIndex = clampIndex(i);
+      if (evaluatedIndices.has(clampedIndex)) return;
+      evaluatedIndices.add(clampedIndex);
+
+      const page = state.pages[clampedIndex];
       if (!page?.wrapEl) return;
       const r = getPageViewportRect(page, viewportCtx);
       const mid = (r.top + r.bottom) / 2;
       const d = Math.abs(mid - scrollCenterY);
       if (d < bestDist) {
         bestDist = d;
-        bestIdx = i;
+        bestIdx = clampedIndex;
       }
       const overlap = Math.max(0, Math.min(r.bottom, paddedBottom) - Math.max(r.top, paddedTop));
       if (overlap > 0) {
-        visibleCandidates.push({ index: i, overlap });
-        overlapByIndex.set(i, overlap);
+        visibleCandidates.push({ index: clampedIndex, overlap });
+        overlapByIndex.set(clampedIndex, overlap);
       }
     };
 
@@ -557,12 +622,18 @@ export function createPageLifecycleController(context, editingController) {
         evaluatePageIndex(idx);
       }
     } else {
-      for (let i = 0; i < state.pages.length; i++) {
-        evaluatePageIndex(i);
+      const fallbackIndices = fallbackVisibleCandidateIndices();
+      for (const idx of fallbackIndices) {
+        evaluatePageIndex(idx);
+      }
+      const shouldAllowFullScanFallback = !isZoomDownshift || evaluatedIndices.size === 0;
+      if (!visibleCandidates.length && shouldAllowFullScanFallback) {
+        for (let i = 0; i < state.pages.length; i += 1) {
+          evaluatePageIndex(i);
+        }
       }
     }
 
-    const zoom = state.zoom || 1;
     const lastIndex = state.pages.length - 1;
 
     if (zoom >= 2 && visibleCandidates.length) {
@@ -632,6 +703,7 @@ export function createPageLifecycleController(context, editingController) {
       } else if (lastScrollDirection < 0 && start > 0) {
         start = Math.max(0, start - 1);
       }
+      lastVirtualizationZoom = zoom;
       return [start, end];
     }
 
@@ -655,6 +727,7 @@ export function createPageLifecycleController(context, editingController) {
     } else if (lastScrollDirection < 0 && i0 > 0) {
       i0 = Math.max(0, i0 - 1);
     }
+    lastVirtualizationZoom = zoom;
     return [i0, i1];
   }
 

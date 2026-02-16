@@ -21,7 +21,7 @@ export function computeBaseMetrics(app) {
   const GRID_H = LINE_H_RAW / GRID_DIV;
   const ACTIVE_FONT_NAME = 'TT2020StyleE';
   const COLORS = { ...INK_COLORS };
-  const STORAGE_KEY = 'typewriter.minimal.v17';
+  const STORAGE_KEY = 'typesim.minimal.v17';
   const RENDER_SCALE = DPR;
   const FONT_FAMILY = ACTIVE_FONT_NAME;
   const FONT_SIZE = 0;

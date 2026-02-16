@@ -43,7 +43,16 @@ export function setupUIBindings(context, controllers) {
   } = context;
 
   const { editing, layout, input, theme, lifecycle } = controllers;
-  const { setInk, createNewDocument, serializeState, deserializeState } = editing;
+  const {
+    setInk,
+    createNewDocument,
+    serializeState,
+    serializeStateBase,
+    serializePageState,
+    getDirtyPageIndices,
+    syncSavedPageRevisions,
+    deserializeState,
+  } = editing;
 
   const {
     handleWheelPan,
@@ -79,6 +88,10 @@ export function setupUIBindings(context, controllers) {
     isZooming,
     createNewDocument,
     serializeState,
+    serializeStateBase,
+    serializePageState,
+    getDirtyPageIndices,
+    syncSavedPageRevisions,
     deserializeState,
     getSaveTimer,
     setSaveTimer,

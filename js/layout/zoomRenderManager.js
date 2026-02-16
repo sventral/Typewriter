@@ -1,10 +1,13 @@
+import { preparePageCanvasForViewport } from '../rendering/pageCanvasPreparation.js';
+
 export function createZoomRenderManager(options) {
   const {
     state,
     app,
-    prepareCanvas,
     configureCanvasContext,
     getEffectiveRenderZoom,
+    getRenderScale,
+    getLayoutZoomFactor,
     schedulePaint,
     rebuildAllAtlases,
     setFreezeVirtual,
@@ -22,9 +25,11 @@ export function createZoomRenderManager(options) {
 
   let pendingZoomRedrawRAF = 0;
   let pendingZoomRedrawIsTimeout = false;
-  let lastAtlasRenderZoom = null;
+  let lastAtlasRebuildScale = null;
+  let lastRedrawRenderScale = null;
   const MAX_FALLBACK_ACTIVE_PRIORITY = 6;
   const SECONDARY_WINDOW_PAD = 1;
+  const ATLAS_REBUILD_SCALE_DELTA_RATIO = 0.15;
 
   function clearPendingZoomRedrawFrame() {
     if (!pendingZoomRedrawRAF) return;
@@ -56,12 +61,20 @@ export function createZoomRenderManager(options) {
   }
 
   function runBatchedZoomRedraw() {
-    if (typeof trackZoomLag === 'function') {
-      trackZoomLag({ zoom: state.zoom, delta: 0, reason: 'zoom-redraw' });
-    }
     const seen = new Set();
     const priority = [];
     const secondary = [];
+    const effectiveZoom = typeof getEffectiveRenderZoom === 'function'
+      ? getEffectiveRenderZoom()
+      : (state.zoom || 1);
+    const renderScale = typeof getRenderScale === 'function'
+      ? getRenderScale()
+      : effectiveZoom;
+    const layoutZoom = typeof getLayoutZoomFactor === 'function'
+      ? getLayoutZoomFactor()
+      : 1;
+    const isScaleDownshift = Number.isFinite(lastRedrawRenderScale)
+      && renderScale < (lastRedrawRenderScale - 1e-3);
 
     const resolveVisibleWindowRange = () => {
       if (!Array.isArray(state.pages) || state.pages.length === 0) return null;
@@ -103,7 +116,7 @@ export function createZoomRenderManager(options) {
     const caretIndex = Number.isInteger(state.caret?.page) ? state.caret.page : null;
     if (caretIndex != null) enqueue(state.pages[caretIndex], priority);
 
-    if (windowInfo?.set?.size) {
+    if (!isScaleDownshift && windowInfo?.set?.size) {
       windowInfo.set.forEach((idx) => {
         const page = state.pages[idx];
         enqueue(page, priority);
@@ -139,38 +152,54 @@ export function createZoomRenderManager(options) {
         ? () => performance.now()
         : () => Date.now();
 
+    let anyRedrawRequested = false;
     const prepPage = (page) => {
       if (!page) return;
-      if (page.canvas) prepareCanvas(page.canvas);
-      if (page.backCanvas) prepareCanvas(page.backCanvas);
-      if (page.ctx) configureCanvasContext(page.ctx);
-      if (page.backCtx) configureCanvasContext(page.backCtx);
-      const effectiveZoom = typeof getEffectiveRenderZoom === 'function'
-        ? getEffectiveRenderZoom()
-        : (state.zoom || 1);
+      const prep = preparePageCanvasForViewport({
+        page,
+        app,
+        renderScale,
+        layoutZoom,
+        configureCanvasContext,
+        preserveMainBitmap: page.active === true,
+      });
       page.zoomPreparedFor = effectiveZoom;
-      page.dirtyAll = true;
-      if (page.active) schedulePaint(page);
+      const deferImmediateFullRepaint = page.active === true && prep.renderScaleDecreased;
+      if (prep.needsRedraw && !deferImmediateFullRepaint) {
+        page.preserveFrontBufferForFullPaint = true;
+        page.dirtyAll = true;
+        anyRedrawRequested = true;
+      }
+      if (page.active) {
+        const hasPendingRows = page._dirtyRowMinMu !== undefined || page._dirtyRowMaxMu !== undefined;
+        if (page.dirtyAll || hasPendingRows) {
+          schedulePaint(page);
+        }
+      }
     };
 
     for (const page of priority) prepPage(page);
-    const deferredQueue = secondary.slice();
-
-    const effectiveZoom = typeof getEffectiveRenderZoom === 'function'
-      ? getEffectiveRenderZoom()
-      : (state.zoom || 1);
-    
-    // Optimization: Only rebuild atlases if we are zooming IN significantly (requiring more detail).
-    // If zooming out, we reuse the existing high-res atlas to avoid processing lag.
-    const zoomDeltaBigEnough =
-      !Number.isFinite(lastAtlasRenderZoom)
-      || (effectiveZoom > lastAtlasRenderZoom && (effectiveZoom - lastAtlasRenderZoom) / lastAtlasRenderZoom >= 0.02);
-
-    const hasVisiblePages = !!(windowInfo?.set?.size);
-    if (zoomDeltaBigEnough && hasVisiblePages) {
-      rebuildAllAtlases();
-      lastAtlasRenderZoom = effectiveZoom;
+    const deferredQueue = isScaleDownshift ? [] : secondary.slice();
+    const shouldTrackLagForRedraw =
+      !isScaleDownshift
+      || anyRedrawRequested
+      || deferredQueue.length > 0;
+    if (typeof trackZoomLag === 'function' && shouldTrackLagForRedraw) {
+      trackZoomLag({ zoom: state.zoom, delta: 0, reason: 'zoom-redraw' });
     }
+    const scaleDeltaForAtlasRebuild =
+      !Number.isFinite(lastAtlasRebuildScale)
+      || Math.abs(renderScale - lastAtlasRebuildScale)
+        / Math.max(lastAtlasRebuildScale, 0.1) >= ATLAS_REBUILD_SCALE_DELTA_RATIO;
+    const shouldRebuildAtlases =
+      anyRedrawRequested
+      && state.lowResZoomEnabled === false
+      && scaleDeltaForAtlasRebuild;
+    if (shouldRebuildAtlases) {
+      rebuildAllAtlases();
+      lastAtlasRebuildScale = renderScale;
+    }
+    lastRedrawRenderScale = renderScale;
 
     let finalized = false;
     const finalize = () => {

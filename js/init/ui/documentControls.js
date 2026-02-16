@@ -9,10 +9,19 @@ import {
   loadDocumentDataById,
   estimateDocumentDataBytes,
 } from '../../document/documentStore.js';
-import { markDocumentDirty, hasPendingDocumentChanges, syncSavedRevision } from '../../state/saveRevision.js';
-import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/inkSettingsPanel.js';
+import { getPaperSize, normalizePaperSizeId, DEFAULT_PAPER_SIZE } from '../../config/paperSizes.js';
+import {
+  markDocumentDirty,
+  hasPendingDocumentChanges,
+  syncSavedRevision,
+  getDirtyPageIndices as getTrackedDirtyPageIndices,
+  syncSavedPageRevisions as syncTrackedPageRevisions,
+} from '../../state/saveRevision.js';
+import { refreshSavedInkStylesUI, hydrateInkSettingsFromState } from '../../config/ink/inkSettingsView.js';
 import { createExportDialog } from './exportDialog.js';
 import { exportDocumentAsPdf } from '../../export/pdfExporter.js';
+import { detectCanvasDimensionLimit, DEFAULT_CANVAS_DIMENSION_CAP } from '../../init/environment.js';
+import { createDropboxSyncController } from '../../storage/dropboxSync.js';
 
 export function createDocumentControls({
   app,
@@ -32,6 +41,10 @@ export function createDocumentControls({
   isZooming,
   createNewDocument,
   serializeState,
+  serializeStateBase,
+  serializePageState,
+  getDirtyPageIndices,
+  syncSavedPageRevisions,
   deserializeState,
   getSaveTimer,
   setSaveTimer,
@@ -48,6 +61,7 @@ export function createDocumentControls({
   let pdfExportRestoreState = null;
   let pdfVisualMaskRestore = null;
   let pdfOverlayStartTs = 0;
+  let suppressDropboxAutoSync = false;
 
   const waitForOverlayPaint = () => new Promise((resolve) => {
     const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
@@ -135,7 +149,7 @@ export function createDocumentControls({
       .toLowerCase()
       .replace(/[^a-z0-9]+/gi, '-')
       .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '') || 'typewriter';
+      .replace(/^-|-$/g, '') || 'typesim';
     const stamp = new Date().toISOString().replace(/[:]/g, '-').replace('T', '_').split('.')[0];
     const parts = [slug, suffix, stamp].filter(Boolean);
     return `${parts.join('-')}.${ext}`;
@@ -307,7 +321,7 @@ export function createDocumentControls({
     } catch (err) {
       showStorageNotice('Could not save documents. Changes may not persist.', { level: 'error', durationMs: 7000 });
       if (typeof console !== 'undefined' && typeof console.error === 'function') {
-        console.error('Typewriter: persistDocuments failed', err);
+        console.error('TypeSim: persistDocuments failed', err);
       }
     }
   }
@@ -423,6 +437,77 @@ export function createDocumentControls({
       doc.data = hydrated;
     }
     return doc.data || null;
+  }
+
+  async function hydrateAllDocumentData() {
+    if (!Array.isArray(docState.documents) || !docState.documents.length) return;
+    await Promise.all(docState.documents.map((doc) => ensureDocumentData(doc)));
+  }
+
+  function cloneSyncDocument(doc) {
+    if (!doc || !doc.data || typeof doc.data !== 'object') return null;
+    return {
+      id: doc.id,
+      title: normalizeDocumentTitle(doc.title),
+      createdAt: Number.isFinite(doc.createdAt) ? Number(doc.createdAt) : Date.now(),
+      updatedAt: Number.isFinite(doc.updatedAt) ? Number(doc.updatedAt) : Date.now(),
+      dataSize: Number.isFinite(doc.dataSize) ? Number(doc.dataSize) : 0,
+      data: JSON.parse(JSON.stringify(doc.data)),
+    };
+  }
+
+  async function getDropboxLocalSnapshot() {
+    await hydrateAllDocumentData();
+    const documents = docState.documents
+      .map((doc) => cloneSyncDocument(doc))
+      .filter(Boolean);
+    const idSet = new Set(documents.map((doc) => doc.id));
+    const activeId = (typeof docState.activeId === 'string' && idSet.has(docState.activeId))
+      ? docState.activeId
+      : (documents[0]?.id || null);
+    return { activeId, documents };
+  }
+
+  async function applyDropboxMergedSnapshot(snapshot = {}) {
+    const incoming = Array.isArray(snapshot.documents) ? snapshot.documents : [];
+    const seen = new Set();
+    const nextDocuments = incoming
+      .map((entry) => {
+        const item = entry && typeof entry === 'object' ? entry : {};
+        if (!item.data || typeof item.data !== 'object') return null;
+        return createDocumentRecord({
+          id: item.id,
+          title: item.title,
+          createdAt: Number(item.createdAt),
+          updatedAt: Number(item.updatedAt),
+          data: item.data,
+        }, seen);
+      })
+      .filter(Boolean);
+
+    if (!nextDocuments.length) return;
+
+    const validIds = new Set(nextDocuments.map((doc) => doc.id));
+    const nextActiveId = (typeof snapshot.activeId === 'string' && validIds.has(snapshot.activeId))
+      ? snapshot.activeId
+      : (nextDocuments[0]?.id || null);
+
+    suppressDropboxAutoSync = true;
+    try {
+      docState.documents = nextDocuments;
+      docState.activeId = nextActiveId;
+      await persistDocumentIndex();
+
+      const active = getActiveDocument() || docState.documents[0] || null;
+      if (active) {
+        await ensureDocumentData(active);
+        applyDocumentRecord(active);
+      } else {
+        syncDocumentUi();
+      }
+    } finally {
+      suppressDropboxAutoSync = false;
+    }
   }
 
   function refreshDocumentEnvironment() {
@@ -639,17 +724,33 @@ export function createDocumentControls({
     downloadBlob(blob, buildExportFileName({ suffix: 'raw', ext: 'json' }));
   }
 
+  function computeExportZoomPct() {
+    const paper = getPaperSize(normalizePaperSizeId(state?.paperSize || DEFAULT_PAPER_SIZE));
+    const cssPpi = paper?.widthIn && app?.PAGE_W ? app.PAGE_W / paper.widthIn : 110;
+    const targetDpi = 300; // aim for print-friendly resolution without blowing memory
+    const dpr = Math.max(1, Math.min(4, window.devicePixelRatio || 1));
+    const baseScale = targetDpi / Math.max(1, cssPpi);
+    const { width: capW = DEFAULT_CANVAS_DIMENSION_CAP, height: capH = DEFAULT_CANVAS_DIMENSION_CAP } = detectCanvasDimensionLimit() || {};
+    const capScale = Math.min(
+      capW && app?.PAGE_W ? capW / app.PAGE_W : baseScale,
+      capH && app?.PAGE_H ? capH / app.PAGE_H : baseScale,
+    );
+    const exportScale = Math.max(1, Math.min(baseScale, capScale, 3.5));
+    const pct = Math.round((exportScale / dpr) * 100);
+    return Math.min(400, Math.max(150, pct || 200));
+  }
+
   async function exportPdfFile() {
     const previewUrl = makeStagePreview();
     beginPdfExportUi('Preparing PDF…', previewUrl);
     await waitForOverlayPaint();
     const prevZoomPct = Math.round(Math.max(1, (state.zoom || 1) * 100));
+    const exportZoomPct = computeExportZoomPct();
     const prevLowRes = state.lowResZoomEnabled;
     state.lowResZoomEnabled = false;
     setRenderScaleForZoom?.();
-    setZoomPercent(400);
+    setZoomPercent(exportZoomPct);
     setRenderScaleForZoom?.();
-    setAllPagesActive(true);
     refreshPageBuffersForCurrentZoom();
     try {
       await exportDocumentAsPdf({
@@ -663,7 +764,7 @@ export function createDocumentControls({
       });
     } catch (err) {
       if (typeof console !== 'undefined' && typeof console.error === 'function') {
-        console.error('Typewriter: PDF export failed', err);
+        console.error('TypeSim: PDF export failed', err);
       }
       if (typeof window !== 'undefined' && typeof window.alert === 'function') {
         window.alert('Could not create PDF. Check your connection and try again.');
@@ -684,23 +785,88 @@ export function createDocumentControls({
     saveStateDebounced();
   }
 
+  function normalizeChangedPageIndices(pageCount, tracked = []) {
+    const deduped = new Set();
+    if (Array.isArray(tracked)) {
+      tracked.forEach((index) => {
+        if (!Number.isInteger(index)) return;
+        if (index < 0 || index >= pageCount) return;
+        deduped.add(index);
+      });
+    }
+    return Array.from(deduped).sort((a, b) => a - b);
+  }
+
+  function buildIncrementalSerializedState(previousSerialized = null) {
+    const fullSnapshot = () => ({
+      serialized: serializeState(),
+      changedPages: null,
+      usedIncremental: false,
+    });
+
+    if (typeof serializeStateBase !== 'function' || typeof serializePageState !== 'function') {
+      return fullSnapshot();
+    }
+
+    const base = serializeStateBase();
+    if (!base || typeof base !== 'object') {
+      return fullSnapshot();
+    }
+
+    const pageCount = Array.isArray(state.pages) ? state.pages.length : 0;
+    const previousPages = Array.isArray(previousSerialized?.pages) ? previousSerialized.pages : null;
+    const mergedPages = previousPages ? previousPages.slice(0, pageCount) : new Array(pageCount);
+    const rawDirtyPages = typeof getDirtyPageIndices === 'function'
+      ? getDirtyPageIndices()
+      : getTrackedDirtyPageIndices(state);
+    const changedPageSet = new Set(normalizeChangedPageIndices(pageCount, rawDirtyPages));
+
+    if (!previousPages) {
+      for (let i = 0; i < pageCount; i += 1) changedPageSet.add(i);
+    } else if (previousPages.length < pageCount) {
+      for (let i = previousPages.length; i < pageCount; i += 1) changedPageSet.add(i);
+    }
+
+    for (let i = 0; i < pageCount; i += 1) {
+      if (mergedPages[i] !== undefined) continue;
+      changedPageSet.add(i);
+    }
+
+    const changedPages = Array.from(changedPageSet).sort((a, b) => a - b);
+    changedPages.forEach((index) => {
+      mergedPages[index] = serializePageState(index);
+    });
+
+    return {
+      serialized: {
+        ...base,
+        pages: mergedPages,
+      },
+      changedPages,
+      usedIncremental: true,
+    };
+  }
+
   async function saveStateNow(options = {}) {
-    const force = typeof options === 'object' && options !== null ? !!options.force : false;
+    const opts = (typeof options === 'object' && options !== null) ? options : {};
+    const force = !!opts.force;
+    const skipDropboxNotify = !!opts.skipDropboxNotify;
     if (!force && !hasPendingDocumentChanges(state)) {
       return;
     }
     try {
-      const serialized = serializeState();
+      const activeId = typeof state.documentId === 'string' && state.documentId.trim()
+        ? state.documentId.trim()
+        : (docState.activeId || generateDocumentId(new Set(docState.documents.map((doc) => doc.id))));
+      let doc = docState.documents.find((d) => d.id === activeId);
+      const serializedBuild = buildIncrementalSerializedState(doc?.data);
+      const serialized = serializedBuild.serialized;
       const encodedBytes = estimateDocumentDataBytes(serialized);
       if (encodedBytes >= LARGE_DOC_SIZE_WARNING) {
         showStorageNotice('This document is large; saving may take a moment.', { durationMs: 5000 });
       }
-      const activeId = typeof state.documentId === 'string' && state.documentId.trim()
-        ? state.documentId.trim()
-        : (docState.activeId || generateDocumentId(new Set(docState.documents.map((doc) => doc.id))));
       const title = normalizeDocumentTitle(serialized.documentTitle || state.documentTitle);
       const now = Date.now();
-      let doc = docState.documents.find((d) => d.id === activeId);
       const previousBytes = Number(doc?.dataSize) || 0;
       if (!doc) {
         doc = {
@@ -710,6 +876,7 @@ export function createDocumentControls({
           updatedAt: now,
           data: serialized,
           dataSize: encodedBytes,
+          lastSavedRevision: state.saveRevision,
         };
         docState.documents.push(doc);
       } else {
@@ -717,6 +884,7 @@ export function createDocumentControls({
         doc.updatedAt = now;
         doc.data = serialized;
         doc.dataSize = encodedBytes;
+        doc.lastSavedRevision = state.saveRevision;
         if (!Number.isFinite(doc.createdAt)) {
           doc.createdAt = now;
         }
@@ -728,11 +896,20 @@ export function createDocumentControls({
       await persistDocumentIndex();
       syncDocumentUi();
       syncSavedRevision(state);
+      if (serializedBuild.usedIncremental) {
+        const syncPages = typeof syncSavedPageRevisions === 'function'
+          ? syncSavedPageRevisions
+          : (pageIndices) => syncTrackedPageRevisions(state, pageIndices);
+        syncPages(serializedBuild.changedPages);
+      }
       lastSaveNowTs = Date.now();
+      if (!skipDropboxNotify && !suppressDropboxAutoSync) {
+        dropboxSyncController.notifyLocalMutation();
+      }
     } catch (err) {
       showStorageNotice('Save failed. Export your document to avoid losing changes.', { level: 'error', durationMs: 8000 });
       if (typeof console !== 'undefined' && typeof console.error === 'function') {
-        console.error('Typewriter: saveStateNow failed', err);
+        console.error('TypeSim: saveStateNow failed', err);
       }
     }
   }
@@ -789,6 +966,19 @@ export function createDocumentControls({
 
     scheduleIdle();
   }
+
+  const dropboxSyncController = createDropboxSyncController({
+    storageKey,
+    getLocalSnapshot: getDropboxLocalSnapshot,
+    applyMergedSnapshot: applyDropboxMergedSnapshot,
+    beforeSync: async () => {
+      await saveStateNow({ skipDropboxNotify: true });
+    },
+    onNotice: (message, meta = {}) => {
+      if (meta.level !== 'error') return;
+      showStorageNotice(message, { level: 'error', durationMs: 9000 });
+    },
+  });
 
   function bindDocumentControls() {
     const bindDocMenuSet = (source) => {
@@ -871,6 +1061,17 @@ export function createDocumentControls({
       });
     }
     exportDialog.bind();
+    dropboxSyncController.bindUi({
+      connectBtn: app.dropboxConnectBtn,
+      disconnectBtn: app.dropboxDisconnectBtn,
+      syncNowBtn: app.dropboxSyncNowBtn,
+      autoSyncToggle: app.dropboxAutoSyncToggle,
+      statusEl: app.dropboxStatus,
+      folderPathEl: app.dropboxFolderPath,
+      lastSyncEl: app.dropboxLastSync,
+      errorEl: app.dropboxError,
+    });
+    dropboxSyncController.init();
     document.addEventListener('pointerdown', (e) => {
       if (!docMenuState.open) return;
       const inMain = app.docMenuPopup?.contains(e.target) || app.docMenuBtn?.contains(e.target);

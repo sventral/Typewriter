@@ -1,5 +1,6 @@
 import { clamp } from '../utils/math.js';
 import { sanitizeIntegerField } from '../utils/forms.js';
+import { isSafari } from '../utils/platform.js';
 
 export const STAGE_WIDTH_MIN = 1.0;
 export const STAGE_WIDTH_MAX = 1.5;
@@ -24,11 +25,14 @@ export function createStageLayoutController(options) {
   let cachedToolbarHeight = null;
 
   function layoutZoomFactor() {
-    return 1;
+    const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
+    const safariLayoutZoom = isSafari() && state.lowResZoomEnabled === false;
+    return safariLayoutZoom ? zoom : 1;
   }
 
   function cssScaleFactor() {
-    return state.zoom;
+    const safariLayoutZoom = isSafari() && state.lowResZoomEnabled === false;
+    return safariLayoutZoom ? 1 : state.zoom;
   }
 
   function sanitizedStageWidthFactor() {

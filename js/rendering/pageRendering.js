@@ -1,5 +1,7 @@
 import { computeGlyphJitterOffset } from './glyphJitter.js';
 import { sanitizePageNumberingSettings } from '../config/pageNumbering.js';
+import { isSafari } from '../utils/platform.js';
+import { computeFullPaintCadence } from './fullPaintCadence.js';
 
 export function createPageRenderer(options) {
   const {
@@ -40,12 +42,16 @@ export function createPageRenderer(options) {
   const { touchPage, visibleWindowIndices } = lifecycle || {};
   const getInkSectionOrderFn = typeof getInkSectionOrder === 'function'
     ? getInkSectionOrder
-    : (() => ['expTone', 'expEdge', 'expGrain', 'expDefects']);
+    : (() => ['filters']);
   const getLineStepMu = () => {
     const step = Number.isFinite(state?.lineStepMu) ? state.lineStepMu : gridDiv;
     return Number.isFinite(step) && step > 0 ? step : 1;
   };
-  const FULL_PAINT_TIME_BUDGET_MS = 7;
+
+  // Keep paint slices shorter on Safari to avoid long tasks that stall text input.
+  // Other browsers keep the higher budget for throughput.
+  const FULL_PAINT_TIME_BUDGET_MS = isSafari() ? 10 : 14;
+  
   const now = (() => {
     if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
       return () => performance.now();
@@ -261,8 +267,6 @@ export function createPageRenderer(options) {
       delete page.preserveFrontBufferForFullPaint;
     }
     
-    // When preserving the front buffer (style changes), we enter "Atomic Paint" mode.
-    // This prevents incremental flushing to the screen until the back buffer is fully ready.
     page.isAtomicPaint = preserveFrontBuffer;
 
     backCtx.save();
@@ -272,8 +276,6 @@ export function createPageRenderer(options) {
     backCtx.fillRect(0, 0, app.PAGE_W, app.PAGE_H);
     backCtx.restore();
 
-    // If NOT atomic (e.g. first load), clear the front buffer immediately so the user sees progress.
-    // If atomic (e.g. style change), leave the front buffer alone so the user sees the old text.
     if (!preserveFrontBuffer) {
       page.ctx.save();
       page.ctx.globalCompositeOperation = 'source-over';
@@ -288,7 +290,6 @@ export function createPageRenderer(options) {
     if (page._dirtyRows) page._dirtyRows.clear();
 
     if (queue.length === 0) {
-      // If queue is empty but we are in atomic mode, we still need to flush the (blank) back buffer to front.
       if (page.isAtomicPaint) {
         flushFullPaintRange(page, 0, app.PAGE_H);
       }
@@ -331,11 +332,18 @@ export function createPageRenderer(options) {
 
     const sliceStart = now();
     const rawBands = [];
+    const cadence = computeFullPaintCadence({
+      pages: state?.pages,
+      renderScale: getRenderScaleFn(),
+      safari: isSafari(),
+      baseBudgetMs: FULL_PAINT_TIME_BUDGET_MS,
+    });
+    const sliceBudgetMs = cadence.sliceBudgetMs;
+    const yieldCheckInterval = cadence.yieldCheckInterval;
 
-    // Process until queue is empty or we yield
+    let processedCount = 0;
     while (page.fullPaintCursor < queue.length || page.fullPaintCurrentRowCols) {
       
-      // 1. Ensure we have a row loaded into state
       if (!page.fullPaintCurrentRowCols) {
         const rowMu = queue[page.fullPaintCursor];
         let rowMap = page.grid.get(rowMu);
@@ -344,18 +352,15 @@ export function createPageRenderer(options) {
         }
         
         if (rowMap && rowMap.size > 0) {
-          // Convert to array for indexed iteration
           page.fullPaintCurrentRowCols = Array.from(rowMap.entries());
           page.fullPaintColIndex = 0;
           page.fullPaintCurrentRowMu = rowMu;
         } else {
-          // Empty row, skip
           page.fullPaintCursor++;
           continue;
         }
       }
 
-      // 2. Process columns in the current row
       const cols = page.fullPaintCurrentRowCols;
       const rowMu = page.fullPaintCurrentRowMu;
       const baseline = rowMu * gridHeight;
@@ -368,39 +373,35 @@ export function createPageRenderer(options) {
         drawGlyphStack(backCtx, stack, x, baseline, page, rowMu, col);
         
         page.fullPaintColIndex++;
+        processedCount++;
 
-        // Granular budget check: yield per character stack
-        if ((now() - sliceStart) >= FULL_PAINT_TIME_BUDGET_MS) {
-          yielded = true;
-          break;
+        if (processedCount >= yieldCheckInterval) {
+          processedCount = 0;
+          if ((now() - sliceStart) >= sliceBudgetMs) {
+            yielded = true;
+            break;
+          }
         }
       }
 
-      // 3. If we yielded, flush partial work (optional) or just exit to schedule next frame
-      // To keep visual updates smooth, we calculate the band and flush it even if partial.
       const rowTopCss = baseline - BLEED_TOP_CSS;
       const rowBotCss = baseline + BLEED_BOTTOM_CSS;
       rawBands.push([rowTopCss, rowBotCss]);
 
       if (yielded) {
-        // Break main loop, schedule next frame
         break;
       } else {
-        // Row finished
         page.fullPaintCurrentRowCols = null;
         page.fullPaintColIndex = 0;
         page.fullPaintCursor++;
       }
     }
 
-    // Only flush intermediate results to screen if we are NOT in atomic mode.
-    // In atomic mode (style updates), we want to hide the work until finished.
     if (rawBands.length && !page.isAtomicPaint) {
       mergeAndFlushBands(page, rawBands);
     }
 
     if (page.fullPaintCursor >= queue.length && !page.fullPaintCurrentRowCols) {
-      // Work is complete. If we were holding back updates (atomic mode), flush everything now.
       if (page.isAtomicPaint) {
         flushFullPaintRange(page, 0, app.PAGE_H);
       }
@@ -411,9 +412,8 @@ export function createPageRenderer(options) {
     scheduleNextFullPaintChunk(page);
   }
 
-function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
+  function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
     if (!Array.isArray(stack) || stack.length === 0) return;
-
     const renderScale = getRenderScaleFn();
     const snapToRenderScale = (value) => {
       const scale = Number.isFinite(renderScale) && renderScale > 0 ? renderScale : 1;
@@ -425,7 +425,6 @@ function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
       ? (page.lineSlantDeg * Math.PI) / 180
       : 0;
 
-    // Pivot point for rotation: Center of the page
     const cx = app.PAGE_W / 2;
     const cy = app.PAGE_H / 2;
     const cosA = Math.cos(angleRad);
@@ -444,16 +443,13 @@ function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
         glyph?.jitterSalt,
       );
 
-      // Original, un-rotated position
       const ox = x;
       const oy = baseline + (Number.isFinite(jitterOffset) ? jitterOffset : 0);
 
       if (angleRad !== 0) {
-        // Rotate the coordinate (ox, oy) around center (cx, cy)
         const dx = ox - cx;
         const dy = oy - cy;
 
-        // Apply 2D rotation matrix
         const rx = dx * cosA - dy * sinA + cx;
         const ry = dx * sinA + dy * cosA + cy;
 
@@ -463,16 +459,13 @@ function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
         ctx.save();
         ctx.translate(snapX, snapY);
         ctx.rotate(angleRad);
-        // Draw at (0,0) relative to the translated context
         drawGlyph(ctx, glyph.char, glyph.ink || 'b', 0, 0, k, stack.length, page?.index, rowMu, col, undefined);
         ctx.restore();
       } else {
-        // Fast path for 0 degrees
         drawGlyph(ctx, glyph.char, glyph.ink || 'b', ox, oy, k, stack.length, page?.index, rowMu, col, undefined);
       }
     }
   }
-
 
   function refreshGlyphEffects(options = {}) {
     const shouldRebuild = options.rebuild !== false;
@@ -614,30 +607,37 @@ function drawGlyphStack(ctx, stack, x, baseline, page, rowMu, col) {
     };
 
     const dirtyRowSet = page?._dirtyRows instanceof Set ? page._dirtyRows : null;
-    if (dirtyRowSet?.size) {
-      for (const rowMu of dirtyRowSet) {
-        addRow(rowMu);
-      }
-    }
     const pageNumberRow = computePageNumberRow(page);
     if (pageNumberRow) {
       addRow(pageNumberRow.rowMu, pageNumberRow.rowMap);
     }
 
-    // Iterate rows in insertion order (monotonic for typical editing) and
-    // bail early once we pass the visible band to avoid scanning every row
-    // on large documents. If we detect out-of-order keys, we fall back to
-    // full scan without early break.
-    let lastMu = -Infinity;
-    let orderTrusted = true;
-    for (const [rowMu, rowMap] of page.grid) {
-      if (orderTrusted && rowMu < lastMu) {
-        orderTrusted = false; // grid order not monotonic; disable early exit
+    if (dirtyRowSet?.size) {
+      // When we know exactly which rows are dirty, avoid scanning the entire
+      // page grid. Instead, render the dirty rows plus a small neighbor pad
+      // to capture bleed/ink overlap without an O(totalRows) walk.
+      const neighborPad = Math.max(0, Math.ceil(maxNeighborGapMu));
+      for (const rowMu of dirtyRowSet) {
+        addRow(rowMu);
+        if (neighborPad === 0) continue;
+        for (let k = 1; k <= neighborPad; k++) {
+          addRow(rowMu - k);
+          addRow(rowMu + k);
+        }
       }
-      lastMu = rowMu;
-      if (rowMu < minMu) continue;
-      if (orderTrusted && rowMu > maxMu) break;
-      addRow(rowMu, rowMap);
+    } else {
+      // Fallback: we don't have an explicit dirty set, so scan the grid.
+      let lastMu = -Infinity;
+      let orderTrusted = true;
+      for (const [rowMu, rowMap] of page.grid) {
+        if (orderTrusted && rowMu < lastMu) {
+          orderTrusted = false; 
+        }
+        lastMu = rowMu;
+        if (rowMu < minMu) continue;
+        if (orderTrusted && rowMu > maxMu) break;
+        addRow(rowMu, rowMap);
+      }
     }
 
     if (rowsToRender.length) {

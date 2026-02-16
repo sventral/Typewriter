@@ -1,4 +1,4 @@
-import { markDocumentDirty } from '../state/saveRevision.js';
+import { markDocumentDirty, markPageContentDirty } from '../state/saveRevision.js';
 
 const DARK_PAGE_HEX = '#1f2024';
 const LIGHT_PAGE_HEX = '#f7f5ee';
@@ -133,6 +133,7 @@ export function createThemeController({
         }
       }
       page.dirtyAll = true;
+      markPageContentDirty(page);
       touchPage(page);
       schedulePaint(page);
     }

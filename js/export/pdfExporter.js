@@ -97,17 +97,31 @@ export async function exportDocumentAsPdf({
       if (!canvas) continue;
       const blob = await canvasToBlob(canvas);
       const imgBytes = await blob.arrayBuffer();
-    const pngImage = await pdfDoc.embedPng(imgBytes);
-    const pageWidth = widthPts;
-    const pageHeight = heightPts;
-    const scale = Math.min(pageWidth / pngImage.width, pageHeight / pngImage.height);
-    const drawWidth = pngImage.width * scale;
-    const drawHeight = pngImage.height * scale;
-    const x = (pageWidth - drawWidth) / 2;
-    const y = (pageHeight - drawHeight) / 2;
-    const pdfPage = pdfDoc.addPage([pageWidth, pageHeight]);
-    pdfPage.drawImage(pngImage, { x, y, width: drawWidth, height: drawHeight });
-  }
+      const pngImage = await pdfDoc.embedPng(imgBytes);
+      const pageWidth = widthPts;
+      const pageHeight = heightPts;
+      const scale = Math.min(pageWidth / pngImage.width, pageHeight / pngImage.height);
+      const drawWidth = pngImage.width * scale;
+      const drawHeight = pngImage.height * scale;
+      const x = (pageWidth - drawWidth) / 2;
+      const y = (pageHeight - drawHeight) / 2;
+      const pdfPage = pdfDoc.addPage([pageWidth, pageHeight]);
+      pdfPage.drawImage(pngImage, { x, y, width: drawWidth, height: drawHeight });
+
+      // release large page buffers so long exports don't exhaust memory
+      if (page?.canvas) {
+        page.canvas.width = 1;
+        page.canvas.height = 1;
+      }
+      if (page?.backCanvas) {
+        page.backCanvas.width = 1;
+        page.backCanvas.height = 1;
+      }
+      if (page) {
+        page.zoomPreparedFor = -1;
+        page.dirtyAll = true;
+      }
+    }
 
     const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
     const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });

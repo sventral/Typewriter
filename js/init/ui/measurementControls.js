@@ -7,7 +7,7 @@ import {
   ZOOM_SLIDER_MIN_PCT,
 } from '../../config/lowResZoom.js';
 import { createDefaultPageNumberingSettings, sanitizePageNumberingSettings } from '../../config/pageNumbering.js';
-import { TYPEWRITER_DEFAULTS, normalizeTypewriterSettings } from '../../config/typewriterMode.js';
+import { TYPEWRITER_DEFAULTS, normalizeTypewriterSettings } from '../../config/typewriterSettings.js';
 
 export function createMeasurementControls({
   app,
@@ -280,39 +280,72 @@ export function createMeasurementControls({
     if (save) queueDirtySave();
   }
 
+  function refreshTypewriterEnabledState() {
+    state.realTypewriterEnabled = state.realTypewriterBellEnabled === true || state.realTypewriterStopEnabled === true;
+    if (!state.realTypewriterEnabled) {
+      state.typewriterMarginRelease = false;
+    }
+    updateWordWrapAvailability();
+  }
+
+  function syncTypewriterControlAvailability() {
+    const bellEnabled = state.realTypewriterBellEnabled === true;
+    if (app.typewriterBellSelect) app.typewriterBellSelect.disabled = !bellEnabled;
+    if (app.typewriterBellPreview) app.typewriterBellPreview.disabled = !bellEnabled;
+    if (app.typewriterBellVolume) app.typewriterBellVolume.disabled = !bellEnabled;
+    if (app.typewriterBellLead) app.typewriterBellLead.disabled = !bellEnabled;
+    if (app.typewriterBellSoundRow) app.typewriterBellSoundRow.classList.toggle('is-disabled', !bellEnabled);
+    if (app.typewriterBellVolumeRow) app.typewriterBellVolumeRow.classList.toggle('is-disabled', !bellEnabled);
+    if (app.typewriterBellLeadRow) app.typewriterBellLeadRow.classList.toggle('is-disabled', !bellEnabled);
+
+    const stopEnabled = state.realTypewriterStopEnabled === true;
+    if (app.typewriterStopSelect) app.typewriterStopSelect.disabled = !stopEnabled;
+    if (app.typewriterStopPreview) app.typewriterStopPreview.disabled = !stopEnabled;
+    if (app.typewriterStopVolume) app.typewriterStopVolume.disabled = !stopEnabled;
+    if (app.typewriterStopSoundRow) app.typewriterStopSoundRow.classList.toggle('is-disabled', !stopEnabled);
+    if (app.typewriterStopVolumeRow) app.typewriterStopVolumeRow.classList.toggle('is-disabled', !stopEnabled);
+  }
+
   function syncTypewriterUI() {
     const normalized = normalizeTypewriterSettings(
       {
         enabled: state.realTypewriterEnabled,
+        bellEnabled: state.realTypewriterBellEnabled,
         bellSound: state.realTypewriterBellSound,
         bellVolume: state.realTypewriterBellVolume,
         bellLead: state.realTypewriterBellLead,
         stopSound: state.realTypewriterStopSound,
         stopEnabled: state.realTypewriterStopEnabled,
+        stopVolume: state.realTypewriterStopVolume,
         backspaceEnabled: state.realTypewriterBackspaceEnabled,
         caretLockEnabled: state.realTypewriterCaretLockEnabled,
       },
       TYPEWRITER_DEFAULTS,
     );
     state.realTypewriterEnabled = normalized.enabled;
+    state.realTypewriterBellEnabled = normalized.bellEnabled;
     state.realTypewriterBellSound = normalized.bellSound;
     state.realTypewriterBellVolume = normalized.bellVolume;
     state.realTypewriterBellLead = normalized.bellLead;
     state.realTypewriterStopSound = normalized.stopSound;
     state.realTypewriterStopEnabled = normalized.stopEnabled;
+    state.realTypewriterStopVolume = normalized.stopVolume;
     state.realTypewriterBackspaceEnabled = normalized.backspaceEnabled;
     setCaretLockEnabled(normalized.caretLockEnabled, { save: false, requestNudge: false });
 
-    if (app.typewriterToggle) app.typewriterToggle.checked = normalized.enabled;
+    if (app.typewriterBellToggle) app.typewriterBellToggle.checked = normalized.bellEnabled;
     if (app.typewriterBellSelect) app.typewriterBellSelect.value = normalized.bellSound;
     if (app.typewriterBellVolume) app.typewriterBellVolume.value = String(normalized.bellVolume);
     if (app.typewriterBellVolumeValue) app.typewriterBellVolumeValue.textContent = `${normalized.bellVolume}%`;
     if (app.typewriterBellLead) app.typewriterBellLead.value = String(normalized.bellLead);
     if (app.typewriterStopSelect) app.typewriterStopSelect.value = normalized.stopSound;
     if (app.typewriterStopToggle) app.typewriterStopToggle.checked = normalized.stopEnabled;
+    if (app.typewriterStopVolume) app.typewriterStopVolume.value = String(normalized.stopVolume);
+    if (app.typewriterStopVolumeValue) app.typewriterStopVolumeValue.textContent = `${normalized.stopVolume}%`;
     if (app.typewriterBackspaceToggle) app.typewriterBackspaceToggle.checked = normalized.backspaceEnabled;
     if (app.typewriterCaretLockToggle) app.typewriterCaretLockToggle.checked = normalized.caretLockEnabled;
-    updateWordWrapAvailability();
+    refreshTypewriterEnabledState();
+    syncTypewriterControlAvailability();
   }
 
   function applyLowResZoomEffects() {
@@ -334,7 +367,6 @@ export function createMeasurementControls({
   }
 
   function markPageNumbersDirty() {
-    if (!state?.pageNumbering?.enabled) return;
     const pages = Array.isArray(state.pages) ? state.pages : [];
     pages.forEach((page) => {
       if (!page) return;
@@ -356,6 +388,9 @@ export function createMeasurementControls({
       app.pageNumberOffset.value = String(settings.offsetLines);
       app.pageNumberOffset.disabled = !enabled;
     }
+    if (app.pageNumberOffsetRow) {
+      app.pageNumberOffsetRow.classList.toggle('is-disabled', !enabled);
+    }
     const alignInputs = [
       app.pageNumberAlignLeft,
       app.pageNumberAlignCenter,
@@ -365,6 +400,9 @@ export function createMeasurementControls({
       inp.disabled = !enabled;
       inp.checked = inp.value === settings.alignment;
     });
+    if (app.pageNumberAlignRow) {
+      app.pageNumberAlignRow.classList.toggle('is-disabled', !enabled);
+    }
   }
 
   function bindPageNumberingControls() {
@@ -403,13 +441,11 @@ export function createMeasurementControls({
   }
 
   function bindTypewriterControls() {
-    if (app.typewriterToggle) {
-      app.typewriterToggle.addEventListener('change', () => {
-        state.realTypewriterEnabled = !!app.typewriterToggle.checked;
-        if (!state.realTypewriterEnabled) {
-          state.typewriterMarginRelease = false;
-        }
-        updateWordWrapAvailability();
+    if (app.typewriterBellToggle) {
+      app.typewriterBellToggle.addEventListener('change', () => {
+        state.realTypewriterBellEnabled = !!app.typewriterBellToggle.checked;
+        refreshTypewriterEnabledState();
+        syncTypewriterControlAvailability();
         queueDirtySave();
         focusStage();
       });
@@ -462,7 +498,10 @@ export function createMeasurementControls({
     if (app.typewriterStopToggle) {
       app.typewriterStopToggle.addEventListener('change', () => {
         state.realTypewriterStopEnabled = !!app.typewriterStopToggle.checked;
+        refreshTypewriterEnabledState();
+        syncTypewriterControlAvailability();
         queueDirtySave();
+        focusStage();
       });
     }
 
@@ -488,8 +527,18 @@ export function createMeasurementControls({
     }
     if (app.typewriterStopPreview) {
       app.typewriterStopPreview.addEventListener('click', () => {
-        playSample(state.realTypewriterStopSound || TYPEWRITER_DEFAULTS.stopSound, state.realTypewriterBellVolume);
+        playSample(state.realTypewriterStopSound || TYPEWRITER_DEFAULTS.stopSound, state.realTypewriterStopVolume);
       });
+    }
+    if (app.typewriterStopVolume) {
+      const applyStopVolume = () => {
+        const value = clamp(Math.round(Number(app.typewriterStopVolume.value) || 0), 0, 100);
+        state.realTypewriterStopVolume = value;
+        if (app.typewriterStopVolumeValue) app.typewriterStopVolumeValue.textContent = `${value}%`;
+        queueDirtySave();
+      };
+      app.typewriterStopVolume.addEventListener('input', applyStopVolume);
+      app.typewriterStopVolume.addEventListener('change', applyStopVolume);
     }
   }
 
@@ -626,11 +675,13 @@ export function createMeasurementControls({
       createDefaultPageNumberingSettings(),
     );
     state.realTypewriterEnabled = TYPEWRITER_DEFAULTS.enabled;
+    state.realTypewriterBellEnabled = TYPEWRITER_DEFAULTS.bellEnabled;
     state.realTypewriterBellSound = TYPEWRITER_DEFAULTS.bellSound;
     state.realTypewriterBellVolume = TYPEWRITER_DEFAULTS.bellVolume;
     state.realTypewriterBellLead = TYPEWRITER_DEFAULTS.bellLead;
     state.realTypewriterStopSound = TYPEWRITER_DEFAULTS.stopSound;
     state.realTypewriterStopEnabled = TYPEWRITER_DEFAULTS.stopEnabled;
+    state.realTypewriterStopVolume = TYPEWRITER_DEFAULTS.stopVolume;
     state.realTypewriterBackspaceEnabled = TYPEWRITER_DEFAULTS.backspaceEnabled;
     setCaretLockEnabled(TYPEWRITER_DEFAULTS.caretLockEnabled, { save: false, requestNudge: false });
     state.typewriterMarginRelease = false;

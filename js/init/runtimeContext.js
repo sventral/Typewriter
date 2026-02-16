@@ -13,6 +13,7 @@ import {
   ZOOM_SLIDER_MIN_PCT,
 } from '../config/lowResZoom.js';
 import { DEFAULT_CANVAS_DIMENSION_CAP } from './environment.js';
+import { isSafari } from '../utils/platform.js';
 
 const ZOOM_SLIDER_MIN_FACTOR = ZOOM_SLIDER_MIN_PCT / 100;
 const ZOOM_SLIDER_MAX_FACTOR = ZOOM_SLIDER_MAX_PCT / 100;
@@ -55,7 +56,13 @@ export function createRuntimeContext({ app, metrics, canvasDimensionLimit }) {
       : DEFAULT_CANVAS_DIMENSION_CAP;
     const limitW = app.PAGE_W ? capW / app.PAGE_W : 1;
     const limitH = app.PAGE_H ? capH / app.PAGE_H : 1;
-    return Math.max(1, Math.min(limitW, limitH));
+    let maxScale = Math.max(1, Math.min(limitW, limitH));
+    if (isSafari() && state.lowResZoomEnabled === false) {
+      const SAFARI_CANVAS_LIMIT_PX = 4096;
+      const safariLimit = app.PAGE_W ? SAFARI_CANVAS_LIMIT_PX / app.PAGE_W : maxScale;
+      maxScale = Math.min(maxScale, safariLimit);
+    }
+    return maxScale;
   }
 
   function ensureLowResZoomState() {
@@ -82,7 +89,7 @@ export function createRuntimeContext({ app, metrics, canvasDimensionLimit }) {
   function getEffectiveRenderZoomPct() {
     const normalized = ensureLowResZoomState();
     const requestedPct = getRequestedZoomPct();
-    const rawPct = resolveEffectiveZoomPct(
+    return resolveEffectiveZoomPct(
       requestedPct,
       {
         enabled: state.lowResZoomEnabled !== false,
@@ -94,14 +101,6 @@ export function createRuntimeContext({ app, metrics, canvasDimensionLimit }) {
         minZoomPct: ZOOM_SLIDER_MIN_PCT,
       },
     );
-    // Optimization: Quantize render resolution to reduce atlas thrashing.
-    // We snap the internal render resolution to the next highest 25% increment.
-    // This allows the expensive glyph atlas and canvas buffers to be reused
-    // while the user is scrubbing the zoom slider, eliminating the freeze.
-    // Since we round up (ceil), the visual quality remains crisp (supersampled)
-    // unless Low Res Zoom is actively capping it.
-    const step = 25;
-    return Math.ceil(rawPct / step) * step;
   }
 
   function getEffectiveRenderZoom() {
@@ -115,23 +114,19 @@ export function createRuntimeContext({ app, metrics, canvasDimensionLimit }) {
     const zoomSupersampleTarget = zoom <= 1.5
       ? 1
       : Math.min(2.5, 1 + (zoom - 1.5) * 0.6);
+    const safariBoost = isSafari() && state.lowResZoomEnabled === false
+      ? 0.35
+      : 0;
+    const boostedSupersample = zoomSupersampleTarget + safariBoost;
     const maxScale = computeMaxRenderScale();
     const headroom = maxScale / Math.max(baseScale, 1);
     const canOversample = headroom > 1.01;
     const appliedSupersample = canOversample
-      ? Math.max(1, Math.min(zoomSupersampleTarget, headroom))
+      ? Math.max(1, Math.min(boostedSupersample, headroom))
       : 1;
     const renderScale = headroom >= 1
       ? Math.min(maxScale, baseScale * appliedSupersample)
       : maxScale;
-
-    // Optimization: If the new scale is lower than what we already have,
-    // keep the higher resolution buffers to avoid reallocation lag and
-    // to maintain supersampled quality when zoomed out.
-    if (metricsStore.RENDER_SCALE && renderScale < metricsStore.RENDER_SCALE) {
-      return;
-    }
-
     metricsStore.RENDER_SCALE = renderScale;
     metricsStore.RENDER_SUPERSAMPLE = appliedSupersample;
   }

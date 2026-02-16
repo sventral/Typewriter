@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /dropbox-auth.html
+
+Sitemap: https://sventral.github.io/TypeSim/sitemap.xml

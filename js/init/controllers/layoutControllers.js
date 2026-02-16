@@ -147,7 +147,7 @@ export function registerLayoutControllers(params) {
       saveStateDebounced,
       setRenderScaleForZoom,
       getEffectiveRenderZoom,
-      prepareCanvas: (...args) => lifecycleController?.prepareCanvas?.(...args),
+      getRenderScale: () => metricsStore.RENDER_SCALE,
       configureCanvasContext: (...args) => lifecycleController?.configureCanvasContext?.(...args),
       schedulePaint: rendering.schedulePaint,
       rebuildAllAtlases: rendering.rebuildAllAtlases,

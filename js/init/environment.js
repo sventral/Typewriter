@@ -67,6 +67,7 @@ const writeCachedCanvasLimit = (limit) => {
 
 export function detectCanvasDimensionLimit() {
   if (cachedCanvasDimensionLimit) return cachedCanvasDimensionLimit;
+
   const cached = readCachedCanvasLimit();
   if (cached) {
     cachedCanvasDimensionLimit = cached;
@@ -86,12 +87,9 @@ export function detectCanvasDimensionLimit() {
       return cachedCanvasDimensionLimit;
     }
 
-    const probeDimension = (dimension, { stopAfterFirstFailure } = { stopAfterFirstFailure: false }) => {
+    const probeDimension = (dimension) => {
       const other = dimension === 'width' ? 'height' : 'width';
-      let lastSuccess = null;
-      let nextIndex = CANVAS_DIMENSION_CANDIDATES.length;
-      for (let i = 0; i < CANVAS_DIMENSION_CANDIDATES.length; i += 1) {
-        const size = CANVAS_DIMENSION_CANDIDATES[i];
+      for (const size of CANVAS_DIMENSION_CANDIDATES) {
         try {
           probeCanvas.width = dimension === 'width' ? size : 1;
           probeCanvas.height = dimension === 'height' ? size : 1;
@@ -102,80 +100,25 @@ export function detectCanvasDimensionLimit() {
           ctx.fillRect(0, 0, 1, 1);
           ctx.getImageData(0, 0, 1, 1);
           if (probeCanvas[dimension] === size && probeCanvas[other] >= 1) {
-            lastSuccess = size;
-            continue;
+            return size;
           }
         } catch (err) {
-          if (stopAfterFirstFailure) {
-            nextIndex = i + 1;
-            break;
-          }
           continue;
         }
-        if (stopAfterFirstFailure) {
-          nextIndex = i + 1;
-          break;
-        }
       }
-      return { limit: lastSuccess, nextIndex };
+      return fallback[dimension];
     };
 
-    const { limit: widthFirstPass, nextIndex: widthNextIndex } = probeDimension('width', { stopAfterFirstFailure: true });
-    const { limit: heightFirstPass, nextIndex: heightNextIndex } = probeDimension('height', { stopAfterFirstFailure: true });
+    // Run synchronously to ensure we have a valid limit immediately
+    const widthLimit = probeDimension('width');
+    const heightLimit = probeDimension('height');
 
-    const provisionalLimit = {
-      width: Math.max(MIN_CANVAS_DIMENSION_CAP, widthFirstPass || MIN_CANVAS_DIMENSION_CAP),
-      height: Math.max(MIN_CANVAS_DIMENSION_CAP, heightFirstPass || MIN_CANVAS_DIMENSION_CAP),
+    cachedCanvasDimensionLimit = {
+      width: Math.max(MIN_CANVAS_DIMENSION_CAP, widthLimit),
+      height: Math.max(MIN_CANVAS_DIMENSION_CAP, heightLimit),
     };
-    cachedCanvasDimensionLimit = provisionalLimit;
+    writeCachedCanvasLimit(cachedCanvasDimensionLimit);
 
-    const finalizeProbe = () => {
-      try {
-        const finishDimension = (dimension, startIndex, lastSuccess) => {
-          const other = dimension === 'width' ? 'height' : 'width';
-          let latestSuccess = lastSuccess;
-          for (let i = startIndex; i < CANVAS_DIMENSION_CANDIDATES.length; i += 1) {
-            const size = CANVAS_DIMENSION_CANDIDATES[i];
-            try {
-              probeCanvas.width = dimension === 'width' ? size : 1;
-              probeCanvas.height = dimension === 'height' ? size : 1;
-              const ctx = probeCanvas.getContext('2d', { willReadFrequently: true }) || probeCanvas.getContext('2d');
-              if (!ctx) continue;
-              ctx.fillStyle = '#000';
-              ctx.fillRect(0, 0, 1, 1);
-              ctx.getImageData(0, 0, 1, 1);
-              if (probeCanvas[dimension] === size && probeCanvas[other] >= 1) {
-                latestSuccess = size;
-              }
-            } catch (err) {
-              continue;
-            }
-          }
-          return Math.max(MIN_CANVAS_DIMENSION_CAP, latestSuccess || MIN_CANVAS_DIMENSION_CAP);
-        };
-
-        const widthLimit = finishDimension('width', widthNextIndex, widthFirstPass);
-        const heightLimit = finishDimension('height', heightNextIndex, heightFirstPass);
-
-        cachedCanvasDimensionLimit = {
-          width: widthLimit,
-          height: heightLimit,
-        };
-        writeCachedCanvasLimit(cachedCanvasDimensionLimit);
-      } catch (err) {
-        // ignore async probe failures
-      }
-    };
-
-    if (widthNextIndex < CANVAS_DIMENSION_CANDIDATES.length || heightNextIndex < CANVAS_DIMENSION_CANDIDATES.length) {
-      scheduleIdle(finalizeProbe);
-    } else {
-      cachedCanvasDimensionLimit = {
-        width: Math.max(MIN_CANVAS_DIMENSION_CAP, widthFirstPass || fallback.width),
-        height: Math.max(MIN_CANVAS_DIMENSION_CAP, heightFirstPass || fallback.height),
-      };
-      writeCachedCanvasLimit(cachedCanvasDimensionLimit);
-    }
   } catch (err) {
     cachedCanvasDimensionLimit = fallback;
   }

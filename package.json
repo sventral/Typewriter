@@ -1,13 +1,13 @@
 {
-  "name": "typewriter",
+  "name": "typesim",
   "version": "1.9.0",
-  "description": "Single-page typewriter simulator that runs entirely in the browser.",
+  "description": "Single-page TypeSim writing simulator that runs entirely in the browser.",
   "main": "js/main.js",
   "type": "module",
   "scripts": {
     "start": "node scripts/serve.js",
     "build": "echo \"Static site – nothing to build.\"",
-    "test": "node js/rendering/experimental/detailNoiseCache.test.js && node js/rendering/experimental/stagePipeline.test.js"
+    "test": "node js/rendering/advanced/detailNoiseCache.test.js && node js/rendering/advanced/stagePipeline.test.js"
   },
   "dependencies": {},
   "devDependencies": {},

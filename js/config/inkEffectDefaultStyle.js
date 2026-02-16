@@ -1,4 +1,17 @@
-const SECTION_ORDER = ['expTone', 'expEdge', 'expGrain', 'expDefects'];
+const SECTION_ORDER = ['filters'];
+const SUBSECTION_ORDER = Object.freeze([
+  'filters.variations',
+  'filters.ribbon',
+  'filters.rim',
+  'filters.fuzz',
+  'filters.counterFill',
+  'filters.grain',
+  'filters.weight',
+  'filters.speckle',
+  'filters.dropouts',
+  'filters.smudge',
+  'filters.punch',
+]);
 
 function deepClone(value) {
   if (Array.isArray(value)) {
@@ -35,7 +48,6 @@ const BASE_SECTION_CONFIG = deepFreeze({
     ribbonBands: false,
     rim: false,
     centerEdge: false,
-    fuzzExp: false,
     grainSpeck: true,
     dropouts: true,
     edgeFuzz: true,
@@ -120,19 +132,52 @@ counterFill: {
   enabled: false,
 });
 
-function createSection(strength, quality) {
+const DEFAULT_SUBSECTION_QUALITIES = Object.freeze({
+  'filters.variations': 55,
+  'filters.ribbon': 55,
+  'filters.rim': 55,
+  'filters.fuzz': 100,
+  'filters.counterFill': 100,
+  'filters.grain': 100,
+  'filters.weight': 100,
+  'filters.speckle': 100,
+  'filters.dropouts': 100,
+  'filters.smudge': 100,
+  'filters.punch': 100,
+});
+
+const DEFAULT_SUBSECTION_SCALES = Object.freeze(
+  SUBSECTION_ORDER.reduce((acc, id) => {
+    acc[id] = 100;
+    return acc;
+  }, {})
+);
+
+function pickSubsectionDefaults(sectionId, source) {
+  const entries = Object.entries(source || {});
+  const filtered = entries.filter(([key]) => key.startsWith(`${sectionId}.`));
+  return filtered.reduce((acc, [key, value]) => {
+    const subId = key.split('.')[1];
+    acc[subId] = value;
+    return acc;
+  }, {});
+}
+
+function createSection(strength, qualities, scales) {
   return {
     strength,
     config: deepClone(BASE_SECTION_CONFIG),
-    quality,
+    qualities,
+    scales,
   };
 }
 
 const DEFAULT_SECTIONS = {
-  expTone: createSection(100, 55),
-  expEdge: createSection(0, 100),
-  expGrain: createSection(0, 100),
-  expDefects: createSection(0, 100),
+  filters: createSection(
+    100,
+    pickSubsectionDefaults('filters', DEFAULT_SUBSECTION_QUALITIES),
+    pickSubsectionDefaults('filters', DEFAULT_SUBSECTION_SCALES),
+  ),
 };
 
 const DEFAULT_STYLE = {
@@ -151,18 +196,11 @@ export const DEFAULT_INK_EFFECT_STYLE = deepFreeze(DEFAULT_STYLE);
 export const DEFAULT_INK_SECTION_ORDER = Object.freeze(SECTION_ORDER.slice());
 
 const SECTION_STRENGTH_DEFAULTS = Object.freeze({
-  expTone: DEFAULT_SECTIONS.expTone.strength,
-  expEdge: DEFAULT_SECTIONS.expEdge.strength,
-  expGrain: DEFAULT_SECTIONS.expGrain.strength,
-  expDefects: DEFAULT_SECTIONS.expDefects.strength,
+  filters: DEFAULT_SECTIONS.filters.strength,
 });
 
-const SECTION_QUALITY_DEFAULTS = Object.freeze({
-  expTone: DEFAULT_SECTIONS.expTone.quality,
-  expEdge: DEFAULT_SECTIONS.expEdge.quality,
-  expGrain: DEFAULT_SECTIONS.expGrain.quality,
-  expDefects: DEFAULT_SECTIONS.expDefects.quality,
-});
+const SUBSECTION_QUALITY_DEFAULTS = Object.freeze({ ...DEFAULT_SUBSECTION_QUALITIES });
+const SUBSECTION_SCALE_DEFAULTS = Object.freeze({ ...DEFAULT_SUBSECTION_SCALES });
 
 export function cloneDefaultInkEffectStyle() {
   return deepClone(DEFAULT_INK_EFFECT_STYLE);
@@ -179,7 +217,24 @@ export function getDefaultInkSectionStrength(sectionId) {
 }
 
 export function getDefaultInkSectionQuality(sectionId) {
-  return Number.isFinite(SECTION_QUALITY_DEFAULTS[sectionId])
-    ? SECTION_QUALITY_DEFAULTS[sectionId]
+  // Backwards-compatibility: return the first subsection quality if available.
+  const match = SUBSECTION_ORDER.find(id => id.startsWith(`${sectionId}.`));
+  if (match && Number.isFinite(SUBSECTION_QUALITY_DEFAULTS[match])) {
+    return SUBSECTION_QUALITY_DEFAULTS[match];
+  }
+  return 100;
+}
+
+export function getDefaultInkSubsectionQuality(subsectionId) {
+  return Number.isFinite(SUBSECTION_QUALITY_DEFAULTS[subsectionId])
+    ? SUBSECTION_QUALITY_DEFAULTS[subsectionId]
     : 100;
 }
+
+export function getDefaultInkSubsectionScale(subsectionId) {
+  return Number.isFinite(SUBSECTION_SCALE_DEFAULTS[subsectionId])
+    ? SUBSECTION_SCALE_DEFAULTS[subsectionId]
+    : 100;
+}
+
+export const DEFAULT_INK_SUBSECTION_ORDER = SUBSECTION_ORDER.slice();
