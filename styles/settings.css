@@ -71,6 +71,20 @@
     color: var(--ui-text);
     font-size: 13px;
   }
+  .side-panel .glyph-char-list-input {
+    box-sizing: border-box;
+    width: 170px;
+    height: 28px;
+    border: 1px solid var(--control-border);
+    border-radius: 6px;
+    padding: 0 8px;
+    background: var(--control-bg);
+    color: var(--ui-text);
+    font-size: 13px;
+  }
+  .side-panel .glyph-char-list-input:disabled {
+    opacity: 0.6;
+  }
   .side-panel input[type="checkbox"] { margin-left: auto; display: block; }
   .behavior-group { gap: 0; }
   .behavior-subsection { display: flex; flex-direction: column; gap: 12px; padding: 12px 0; }
@@ -589,11 +603,14 @@
 .input-with-suffix input { width: 100%; padding-right: 0; flex: 1; }
 .input-with-suffix span { position: static; transform: none; pointer-events: none; opacity: 0.65; line-height: 1; }
   .tight-spacer { height: 10px; }
-  #typographySettings .range-input-pair { display: flex; align-items: center; gap: 8px; }
-  #typographySettings .range-input-pair .input-with-suffix { width: 88px; }
-  #typographySettings .range-input-pair .range-separator { font-weight: 600; opacity: 0.6; }
+  #typographySettings .range-input-pair,
+  #inkStylesSettings .range-input-pair,
   .ink-settings-content .range-input-pair { display: flex; align-items: center; gap: 8px; }
+  #typographySettings .range-input-pair .input-with-suffix,
+  #inkStylesSettings .range-input-pair .input-with-suffix,
   .ink-settings-content .range-input-pair .input-with-suffix { width: 88px; }
+  #typographySettings .range-input-pair .range-separator,
+  #inkStylesSettings .range-input-pair .range-separator,
   .ink-settings-content .range-input-pair .range-separator { font-weight: 600; opacity: 0.6; }
   .behavior-emulation-group .control-row { display: flex; align-items: center; gap: 10px; }
   .behavior-emulation-group .control-row label { flex: 1; }

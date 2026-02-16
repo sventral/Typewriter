@@ -7,7 +7,7 @@ TypeSim is a browser-only, single-page writing app that emulates mechanical type
 - Settings panels for `Page`, `Fonts`, `Effects`, `Behavior` (`Emulation`, `Appearance`, `Zoom`), `Sync`, and `About` (credits/notices).
 - About section branding with a logo + version lockup at the top, and a custom site favicon.
 - Branding assets (`logo` + favicon) auto-invert for dark mode while staying black in light mode.
-- Ink/effect controls including line slant, glyph jitter, filters, effect randomization, and a Manage styles menu (load/save/delete plus file import/export).
+- Ink/effect controls including line slant, glyph jitter, baseline character offsets (above/below), filters, effect randomization, and a Manage styles menu (load/save/delete plus file import/export).
 - Document menu with local persistence, plus export options for raw data, plain text, and PDF.
 - Optional Dropbox sync (`settings.json` + `documents/*.json`) with Connect/Disconnect, manual sync, and auto-sync.
 

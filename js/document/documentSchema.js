@@ -2,9 +2,12 @@ import { clamp } from '../utils/math.js';
 import { DEFAULT_PAPER_SIZE, normalizePaperSizeId } from '../config/paperSizes.js';
 import {
   GLYPH_JITTER_DEFAULTS,
+  GLYPH_BASELINE_OFFSET_DEFAULTS,
   normalizeGlyphJitterAmount,
   normalizeGlyphJitterFrequency,
   normalizeGlyphJitterSeed,
+  normalizeGlyphBaselineOffsetChars,
+  normalizeGlyphBaselineOffsetRange,
   cloneGlyphJitterRange,
 } from '../config/glyphJitterConfig.js';
 import {
@@ -257,6 +260,10 @@ function sanitizeSavedInkStyle(style, index = 0) {
       glyphJitterAmountPct: null,
       glyphJitterFrequencyPct: null,
       glyphJitterSeed: null,
+      glyphBaselineOffsetAboveChars: null,
+      glyphBaselineOffsetAboveRangePct: null,
+      glyphBaselineOffsetBelowChars: null,
+      glyphBaselineOffsetBelowRangePct: null,
     };
   }
   const id = typeof style.id === 'string' && style.id.trim()
@@ -303,6 +310,18 @@ function sanitizeSavedInkStyle(style, index = 0) {
       ? cloneInkStyleValue(style.glyphJitterFrequencyPct)
       : null,
     glyphJitterSeed: Number.isFinite(style.glyphJitterSeed) ? style.glyphJitterSeed >>> 0 : null,
+    glyphBaselineOffsetAboveChars: typeof style.glyphBaselineOffsetAboveChars === 'string'
+      ? style.glyphBaselineOffsetAboveChars
+      : null,
+    glyphBaselineOffsetAboveRangePct: style.glyphBaselineOffsetAboveRangePct && typeof style.glyphBaselineOffsetAboveRangePct === 'object'
+      ? cloneInkStyleValue(style.glyphBaselineOffsetAboveRangePct)
+      : null,
+    glyphBaselineOffsetBelowChars: typeof style.glyphBaselineOffsetBelowChars === 'string'
+      ? style.glyphBaselineOffsetBelowChars
+      : null,
+    glyphBaselineOffsetBelowRangePct: style.glyphBaselineOffsetBelowRangePct && typeof style.glyphBaselineOffsetBelowRangePct === 'object'
+      ? cloneInkStyleValue(style.glyphBaselineOffsetBelowRangePct)
+      : null,
   };
 }
 
@@ -368,6 +387,22 @@ export function serializeDocumentStateBase(state, { getActiveFontName } = {}) {
   const glyphJitterAmount = normalizeGlyphJitterAmount(state.glyphJitterAmountPct, GLYPH_JITTER_DEFAULTS.amountPct);
   const glyphJitterFrequency = normalizeGlyphJitterFrequency(state.glyphJitterFrequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
   const glyphJitterSeed = normalizeGlyphJitterSeed(state.glyphJitterSeed, GLYPH_JITTER_DEFAULTS.seed);
+  const glyphBaselineOffsetAboveChars = normalizeGlyphBaselineOffsetChars(
+    state.glyphBaselineOffsetAboveChars,
+    GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
+  );
+  const glyphBaselineOffsetAboveRange = normalizeGlyphBaselineOffsetRange(
+    state.glyphBaselineOffsetAboveRangePct,
+    GLYPH_BASELINE_OFFSET_DEFAULTS.aboveRangePct,
+  );
+  const glyphBaselineOffsetBelowChars = normalizeGlyphBaselineOffsetChars(
+    state.glyphBaselineOffsetBelowChars,
+    GLYPH_BASELINE_OFFSET_DEFAULTS.belowChars,
+  );
+  const glyphBaselineOffsetBelowRange = normalizeGlyphBaselineOffsetRange(
+    state.glyphBaselineOffsetBelowRangePct,
+    GLYPH_BASELINE_OFFSET_DEFAULTS.belowRangePct,
+  );
   const lowResZoom = normalizeLowResZoomSettings(
     {
       softCapPct: state.lowResZoomSoftCapPct,
@@ -468,6 +503,12 @@ export function serializeDocumentStateBase(state, { getActiveFontName } = {}) {
       amountPct: cloneGlyphJitterRange(glyphJitterAmount),
       frequencyPct: cloneGlyphJitterRange(glyphJitterFrequency),
       seed: glyphJitterSeed,
+      baselineOffset: {
+        aboveChars: glyphBaselineOffsetAboveChars,
+        aboveRangePct: cloneGlyphJitterRange(glyphBaselineOffsetAboveRange),
+        belowChars: glyphBaselineOffsetBelowChars,
+        belowRangePct: cloneGlyphJitterRange(glyphBaselineOffsetBelowRange),
+      },
     },
     lowResZoom: {
       enabled: lowResZoomEnabled,
@@ -645,6 +686,25 @@ export function deserializeDocumentState(data, context) {
   const sanitizedJitterAmount = normalizeGlyphJitterAmount(jitterBlock?.amountPct, fallbackAmount);
   const sanitizedJitterFrequency = normalizeGlyphJitterFrequency(jitterBlock?.frequencyPct, fallbackFrequency);
   const sanitizedJitterSeed = normalizeGlyphJitterSeed(jitterBlock?.seed, state.glyphJitterSeed ?? GLYPH_JITTER_DEFAULTS.seed);
+  const baselineOffsetBlock = jitterBlock?.baselineOffset && typeof jitterBlock.baselineOffset === 'object'
+    ? jitterBlock.baselineOffset
+    : null;
+  const sanitizedBaselineOffsetAboveChars = normalizeGlyphBaselineOffsetChars(
+    baselineOffsetBlock?.aboveChars,
+    state.glyphBaselineOffsetAboveChars ?? GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
+  );
+  const sanitizedBaselineOffsetAboveRange = normalizeGlyphBaselineOffsetRange(
+    baselineOffsetBlock?.aboveRangePct,
+    state.glyphBaselineOffsetAboveRangePct ?? GLYPH_BASELINE_OFFSET_DEFAULTS.aboveRangePct,
+  );
+  const sanitizedBaselineOffsetBelowChars = normalizeGlyphBaselineOffsetChars(
+    baselineOffsetBlock?.belowChars,
+    state.glyphBaselineOffsetBelowChars ?? GLYPH_BASELINE_OFFSET_DEFAULTS.belowChars,
+  );
+  const sanitizedBaselineOffsetBelowRange = normalizeGlyphBaselineOffsetRange(
+    baselineOffsetBlock?.belowRangePct,
+    state.glyphBaselineOffsetBelowRangePct ?? GLYPH_BASELINE_OFFSET_DEFAULTS.belowRangePct,
+  );
   const lowResZoomBlock = (data.lowResZoom && typeof data.lowResZoom === 'object') ? data.lowResZoom : {};
   const normalizedLowResZoom = normalizeLowResZoomSettings(
     {
@@ -955,6 +1015,10 @@ export function deserializeDocumentState(data, context) {
     glyphJitterAmountPct: sanitizedJitterAmount,
     glyphJitterFrequencyPct: sanitizedJitterFrequency,
     glyphJitterSeed: sanitizedJitterSeed,
+    glyphBaselineOffsetAboveChars: sanitizedBaselineOffsetAboveChars,
+    glyphBaselineOffsetAboveRangePct: sanitizedBaselineOffsetAboveRange,
+    glyphBaselineOffsetBelowChars: sanitizedBaselineOffsetBelowChars,
+    glyphBaselineOffsetBelowRangePct: sanitizedBaselineOffsetBelowRange,
     pageNumbering: sanitizePageNumberingSettings(
       data.pageNumbering,
       state.pageNumbering || createDefaultPageNumberingSettings(),

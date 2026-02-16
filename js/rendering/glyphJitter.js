@@ -1,7 +1,9 @@
 import {
+  GLYPH_BASELINE_OFFSET_DEFAULTS,
   normalizeGlyphJitterAmount,
   normalizeGlyphJitterFrequency,
   normalizeGlyphJitterSeed,
+  normalizeGlyphBaselineOffsetRange,
 } from '../config/glyphJitterConfig.js';
 
 function hash2(ix, iy, seed) {
@@ -15,6 +17,13 @@ function hash2(ix, iy, seed) {
 function normalizeGlyphSalt(value) {
   if (!Number.isFinite(value)) return 0;
   return (value >>> 0);
+}
+
+function resolveBaselineDirection(glyphChar, aboveChars, belowChars) {
+  if (typeof glyphChar !== 'string' || !glyphChar) return 0;
+  if (aboveChars && aboveChars.includes(glyphChar)) return -1;
+  if (belowChars && belowChars.includes(glyphChar)) return 1;
+  return 0;
 }
 
 export function computeGlyphJitterOffset(state, pageIndex, rowMu, col, gridHeight, glyphSalt = 0) {
@@ -64,4 +73,68 @@ export function computeGlyphJitterOffset(state, pageIndex, rowMu, col, gridHeigh
   if (rawOffset <= 0) return 0;
   const sign = directionSample < 0.5 ? -1 : 1;
   return rawOffset * sign;
+}
+
+export function computeGlyphBaselineCharacterOffset(
+  state,
+  pageIndex,
+  rowMu,
+  col,
+  glyphChar,
+  gridHeight,
+  glyphSalt = 0,
+) {
+  const lineHeight = Number(gridHeight);
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) return 0;
+
+  const aboveChars = typeof state?.glyphBaselineOffsetAboveChars === 'string'
+    ? state.glyphBaselineOffsetAboveChars
+    : GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars;
+  const belowChars = typeof state?.glyphBaselineOffsetBelowChars === 'string'
+    ? state.glyphBaselineOffsetBelowChars
+    : GLYPH_BASELINE_OFFSET_DEFAULTS.belowChars;
+  if (!aboveChars && !belowChars) return 0;
+
+  const direction = resolveBaselineDirection(glyphChar, aboveChars, belowChars);
+  if (!direction) return 0;
+
+  const range = direction < 0
+    ? normalizeGlyphBaselineOffsetRange(
+      state?.glyphBaselineOffsetAboveRangePct,
+      GLYPH_BASELINE_OFFSET_DEFAULTS.aboveRangePct,
+    )
+    : normalizeGlyphBaselineOffsetRange(
+      state?.glyphBaselineOffsetBelowRangePct,
+      GLYPH_BASELINE_OFFSET_DEFAULTS.belowRangePct,
+    );
+  const amountMin = Math.max(0, Math.min(range.min, range.max));
+  const amountSpread = Math.max(0, range.max - amountMin);
+  if (amountMin <= 0 && amountSpread <= 0) return 0;
+
+  const seed = normalizeGlyphJitterSeed(state?.glyphJitterSeed);
+  const saltNorm = normalizeGlyphSalt(glyphSalt);
+  const saltMixX = saltNorm | 1;
+  const saltMixY = ((saltNorm >>> 1) | 1);
+  const glyphCode = typeof glyphChar === 'string' && glyphChar
+    ? ((glyphChar.codePointAt(0) || 0) >>> 0)
+    : 0;
+
+  const cellXBase = ((pageIndex + 1) * 1619 + rowMu) | 0;
+  const cellYBase = ((col + 1) * 3571) | 0;
+  const mixedXBase = (cellXBase ^ Math.imul((glyphCode | 1), 0x45D9F3B)) | 0;
+  const mixedYBase = (cellYBase ^ Math.imul((glyphCode | 1), 0x119DE1F3)) | 0;
+  const cellX = saltNorm ? (mixedXBase ^ Math.imul(saltMixX, 0x27D4EB2F)) | 0 : mixedXBase;
+  const cellY = saltNorm ? (mixedYBase ^ Math.imul(saltMixY, 0x165667B1)) | 0 : mixedYBase;
+
+  const amountSample = hash2(
+    cellX ^ 0xB5297A4D,
+    cellY ^ 0x68E31DA4,
+    (seed ^ 0x1B873593) ^ (saltNorm << 2) ^ glyphCode,
+  );
+  const amountPct = Math.max(0, amountMin + amountSpread * amountSample);
+  if (amountPct <= 0) return 0;
+
+  const rawOffset = (amountPct / 100) * lineHeight;
+  if (rawOffset <= 0) return 0;
+  return rawOffset * direction;
 }

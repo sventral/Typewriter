@@ -186,6 +186,18 @@ export function normalizeStyleRecord(style, index = 0) {
         ? deepCloneValue(style.glyphJitterFrequencyPct)
         : null,
       glyphJitterSeed: Number.isFinite(style?.glyphJitterSeed) ? style.glyphJitterSeed >>> 0 : null,
+      glyphBaselineOffsetAboveChars: typeof style?.glyphBaselineOffsetAboveChars === 'string'
+        ? style.glyphBaselineOffsetAboveChars
+        : null,
+      glyphBaselineOffsetAboveRangePct: style?.glyphBaselineOffsetAboveRangePct && typeof style.glyphBaselineOffsetAboveRangePct === 'object'
+        ? deepCloneValue(style.glyphBaselineOffsetAboveRangePct)
+        : null,
+      glyphBaselineOffsetBelowChars: typeof style?.glyphBaselineOffsetBelowChars === 'string'
+        ? style.glyphBaselineOffsetBelowChars
+        : null,
+      glyphBaselineOffsetBelowRangePct: style?.glyphBaselineOffsetBelowRangePct && typeof style.glyphBaselineOffsetBelowRangePct === 'object'
+        ? deepCloneValue(style.glyphBaselineOffsetBelowRangePct)
+        : null,
     };
 
     const legacySectionStrengths = ['expTone', 'expEdge', 'expGrain', 'expDefects']
@@ -312,6 +324,10 @@ export function createDefaultStyleRecord(index = 0) {
     glyphJitterAmountPct: null,
     glyphJitterFrequencyPct: null,
     glyphJitterSeed: null,
+    glyphBaselineOffsetAboveChars: null,
+    glyphBaselineOffsetAboveRangePct: null,
+    glyphBaselineOffsetBelowChars: null,
+    glyphBaselineOffsetBelowRangePct: null,
   };
 
   SECTION_DEFS.forEach(def => {

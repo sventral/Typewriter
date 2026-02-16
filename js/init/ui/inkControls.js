@@ -5,8 +5,11 @@ import {
 } from '../../config/ink/inkSettingsView.js';
 import {
   GLYPH_JITTER_DEFAULTS,
+  GLYPH_BASELINE_OFFSET_DEFAULTS,
   normalizeGlyphJitterAmount,
   normalizeGlyphJitterFrequency,
+  normalizeGlyphBaselineOffsetChars,
+  normalizeGlyphBaselineOffsetRange,
 } from '../../config/glyphJitterConfig.js';
 import {
   LINE_SLANT_DEFAULTS,
@@ -584,6 +587,29 @@ export function createInkControls({
       return sanitized;
     };
 
+    const sanitizeBaselineCharsInput = (input, stateKey, fallback = '') => {
+      if (!input) return '';
+      const currentValue = typeof state?.[stateKey] === 'string' ? state[stateKey] : fallback;
+      const sanitized = normalizeGlyphBaselineOffsetChars(input.value, currentValue);
+      state[stateKey] = sanitized;
+      input.value = sanitized;
+      return sanitized;
+    };
+
+    const sanitizeBaselineRangeInputs = (minInput, maxInput, stateKey, fallbackRange) => {
+      if (!minInput || !maxInput) return null;
+      const raw = {
+        min: Number.parseFloat(minInput.value),
+        max: Number.parseFloat(maxInput.value),
+      };
+      const fallback = state[stateKey] || fallbackRange;
+      const sanitized = normalizeGlyphBaselineOffsetRange(raw, fallback);
+      state[stateKey] = sanitized;
+      minInput.value = formatNumberForInput(sanitized.min, 2);
+      maxInput.value = formatNumberForInput(sanitized.max, 2);
+      return sanitized;
+    };
+
     if (app.glyphJitterToggle) {
       app.glyphJitterToggle.checked = !!state.glyphJitterEnabled;
       app.glyphJitterToggle.addEventListener('change', () => {
@@ -615,6 +641,64 @@ export function createInkControls({
         focusStage();
       });
       input.addEventListener('blur', () => { sanitizeFrequencyInputs(); });
+    });
+
+    [
+      {
+        input: app.glyphBaselineOffsetAboveChars,
+        stateKey: 'glyphBaselineOffsetAboveChars',
+        fallback: GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
+      },
+      {
+        input: app.glyphBaselineOffsetBelowChars,
+        stateKey: 'glyphBaselineOffsetBelowChars',
+        fallback: GLYPH_BASELINE_OFFSET_DEFAULTS.belowChars,
+      },
+    ].forEach(({ input, stateKey, fallback }) => {
+      if (!input) return;
+      input.addEventListener('change', () => {
+        sanitizeBaselineCharsInput(input, stateKey, fallback);
+        queueDirtySave();
+        markGlyphJitterDirty();
+        focusStage();
+      });
+      input.addEventListener('blur', () => {
+        sanitizeBaselineCharsInput(input, stateKey, fallback);
+      });
+    });
+
+    [
+      {
+        minInput: app.glyphBaselineOffsetAboveMin,
+        maxInput: app.glyphBaselineOffsetAboveMax,
+        stateKey: 'glyphBaselineOffsetAboveRangePct',
+        fallback: GLYPH_BASELINE_OFFSET_DEFAULTS.aboveRangePct,
+      },
+      {
+        minInput: app.glyphBaselineOffsetBelowMin,
+        maxInput: app.glyphBaselineOffsetBelowMax,
+        stateKey: 'glyphBaselineOffsetBelowRangePct',
+        fallback: GLYPH_BASELINE_OFFSET_DEFAULTS.belowRangePct,
+      },
+    ].forEach((entry) => {
+      const {
+        minInput,
+        maxInput,
+        stateKey,
+        fallback,
+      } = entry;
+      [minInput, maxInput].forEach((input) => {
+        if (!input) return;
+        input.addEventListener('change', () => {
+          sanitizeBaselineRangeInputs(minInput, maxInput, stateKey, fallback);
+          queueDirtySave();
+          markGlyphJitterDirty();
+          focusStage();
+        });
+        input.addEventListener('blur', () => {
+          sanitizeBaselineRangeInputs(minInput, maxInput, stateKey, fallback);
+        });
+      });
     });
 
     if (app.shuffleGlyphJitterSeedBtn) {
@@ -833,6 +917,22 @@ export function createInkControls({
     state.glyphJitterEnabled = GLYPH_JITTER_DEFAULTS.enabled;
     state.glyphJitterAmountPct = normalizeGlyphJitterAmount(GLYPH_JITTER_DEFAULTS.amountPct, GLYPH_JITTER_DEFAULTS.amountPct);
     state.glyphJitterFrequencyPct = normalizeGlyphJitterFrequency(GLYPH_JITTER_DEFAULTS.frequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
+    state.glyphBaselineOffsetAboveChars = normalizeGlyphBaselineOffsetChars(
+      GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
+      GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
+    );
+    state.glyphBaselineOffsetAboveRangePct = normalizeGlyphBaselineOffsetRange(
+      GLYPH_BASELINE_OFFSET_DEFAULTS.aboveRangePct,
+      GLYPH_BASELINE_OFFSET_DEFAULTS.aboveRangePct,
+    );
+    state.glyphBaselineOffsetBelowChars = normalizeGlyphBaselineOffsetChars(
+      GLYPH_BASELINE_OFFSET_DEFAULTS.belowChars,
+      GLYPH_BASELINE_OFFSET_DEFAULTS.belowChars,
+    );
+    state.glyphBaselineOffsetBelowRangePct = normalizeGlyphBaselineOffsetRange(
+      GLYPH_BASELINE_OFFSET_DEFAULTS.belowRangePct,
+      GLYPH_BASELINE_OFFSET_DEFAULTS.belowRangePct,
+    );
     state.glyphJitterSeed = ((Math.random() * 0xFFFFFFFF) >>> 0);
     state.lineSlantEnabled = LINE_SLANT_DEFAULTS.enabled;
     state.lineSlantRangeDeg = normalizeLineSlantRange(LINE_SLANT_DEFAULTS.range);
@@ -857,13 +957,39 @@ export function createInkControls({
 
     const jitterAmount = normalizeGlyphJitterAmount(state.glyphJitterAmountPct, GLYPH_JITTER_DEFAULTS.amountPct);
     const jitterFrequency = normalizeGlyphJitterFrequency(state.glyphJitterFrequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
+    const baselineAboveChars = normalizeGlyphBaselineOffsetChars(
+      state.glyphBaselineOffsetAboveChars,
+      GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
+    );
+    const baselineAboveRange = normalizeGlyphBaselineOffsetRange(
+      state.glyphBaselineOffsetAboveRangePct,
+      GLYPH_BASELINE_OFFSET_DEFAULTS.aboveRangePct,
+    );
+    const baselineBelowChars = normalizeGlyphBaselineOffsetChars(
+      state.glyphBaselineOffsetBelowChars,
+      GLYPH_BASELINE_OFFSET_DEFAULTS.belowChars,
+    );
+    const baselineBelowRange = normalizeGlyphBaselineOffsetRange(
+      state.glyphBaselineOffsetBelowRangePct,
+      GLYPH_BASELINE_OFFSET_DEFAULTS.belowRangePct,
+    );
     state.glyphJitterAmountPct = jitterAmount;
     state.glyphJitterFrequencyPct = jitterFrequency;
+    state.glyphBaselineOffsetAboveChars = baselineAboveChars;
+    state.glyphBaselineOffsetAboveRangePct = baselineAboveRange;
+    state.glyphBaselineOffsetBelowChars = baselineBelowChars;
+    state.glyphBaselineOffsetBelowRangePct = baselineBelowRange;
     if (app.glyphJitterToggle) app.glyphJitterToggle.checked = !!state.glyphJitterEnabled;
     if (app.glyphJitterAmountMin) app.glyphJitterAmountMin.value = formatNumberForInput(jitterAmount.min, 2);
     if (app.glyphJitterAmountMax) app.glyphJitterAmountMax.value = formatNumberForInput(jitterAmount.max, 2);
     if (app.glyphJitterFrequencyMin) app.glyphJitterFrequencyMin.value = formatNumberForInput(jitterFrequency.min, 1);
     if (app.glyphJitterFrequencyMax) app.glyphJitterFrequencyMax.value = formatNumberForInput(jitterFrequency.max, 1);
+    if (app.glyphBaselineOffsetAboveChars) app.glyphBaselineOffsetAboveChars.value = baselineAboveChars;
+    if (app.glyphBaselineOffsetAboveMin) app.glyphBaselineOffsetAboveMin.value = formatNumberForInput(baselineAboveRange.min, 2);
+    if (app.glyphBaselineOffsetAboveMax) app.glyphBaselineOffsetAboveMax.value = formatNumberForInput(baselineAboveRange.max, 2);
+    if (app.glyphBaselineOffsetBelowChars) app.glyphBaselineOffsetBelowChars.value = baselineBelowChars;
+    if (app.glyphBaselineOffsetBelowMin) app.glyphBaselineOffsetBelowMin.value = formatNumberForInput(baselineBelowRange.min, 2);
+    if (app.glyphBaselineOffsetBelowMax) app.glyphBaselineOffsetBelowMax.value = formatNumberForInput(baselineBelowRange.max, 2);
     setGlyphJitterInputsDisabled(app, !state.glyphJitterEnabled);
 
     state.lineSlantEnabled = state.lineSlantEnabled !== false;

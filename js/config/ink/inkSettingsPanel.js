@@ -461,6 +461,18 @@ function applyJitterFromStyle(style) {
   if (Number.isFinite(style?.glyphJitterSeed)) {
     state.glyphJitterSeed = style.glyphJitterSeed >>> 0;
   }
+  if (typeof style?.glyphBaselineOffsetAboveChars === 'string') {
+    state.glyphBaselineOffsetAboveChars = style.glyphBaselineOffsetAboveChars;
+  }
+  if (style?.glyphBaselineOffsetAboveRangePct) {
+    state.glyphBaselineOffsetAboveRangePct = deepCloneValue(style.glyphBaselineOffsetAboveRangePct);
+  }
+  if (typeof style?.glyphBaselineOffsetBelowChars === 'string') {
+    state.glyphBaselineOffsetBelowChars = style.glyphBaselineOffsetBelowChars;
+  }
+  if (style?.glyphBaselineOffsetBelowRangePct) {
+    state.glyphBaselineOffsetBelowRangePct = deepCloneValue(style.glyphBaselineOffsetBelowRangePct);
+  }
   const toggle = document.getElementById('glyphJitterToggle');
   if (toggle) toggle.checked = !!state.glyphJitterEnabled;
   const amountMin = document.getElementById('glyphJitterAmountMin');
@@ -478,6 +490,30 @@ function applyJitterFromStyle(style) {
   }
   if (freqMax && state.glyphJitterFrequencyPct?.max != null) {
     freqMax.value = String(state.glyphJitterFrequencyPct.max);
+  }
+  const aboveCharsInput = document.getElementById('glyphBaselineOffsetAboveChars');
+  if (aboveCharsInput && typeof state.glyphBaselineOffsetAboveChars === 'string') {
+    aboveCharsInput.value = state.glyphBaselineOffsetAboveChars;
+  }
+  const aboveMin = document.getElementById('glyphBaselineOffsetAboveMin');
+  const aboveMax = document.getElementById('glyphBaselineOffsetAboveMax');
+  if (aboveMin && state.glyphBaselineOffsetAboveRangePct?.min != null) {
+    aboveMin.value = String(state.glyphBaselineOffsetAboveRangePct.min);
+  }
+  if (aboveMax && state.glyphBaselineOffsetAboveRangePct?.max != null) {
+    aboveMax.value = String(state.glyphBaselineOffsetAboveRangePct.max);
+  }
+  const belowCharsInput = document.getElementById('glyphBaselineOffsetBelowChars');
+  if (belowCharsInput && typeof state.glyphBaselineOffsetBelowChars === 'string') {
+    belowCharsInput.value = state.glyphBaselineOffsetBelowChars;
+  }
+  const belowMin = document.getElementById('glyphBaselineOffsetBelowMin');
+  const belowMax = document.getElementById('glyphBaselineOffsetBelowMax');
+  if (belowMin && state.glyphBaselineOffsetBelowRangePct?.min != null) {
+    belowMin.value = String(state.glyphBaselineOffsetBelowRangePct.min);
+  }
+  if (belowMax && state.glyphBaselineOffsetBelowRangePct?.max != null) {
+    belowMax.value = String(state.glyphBaselineOffsetBelowRangePct.max);
   }
 }
 
@@ -497,6 +533,14 @@ function createStyleSnapshot(name, existingId = null) {
   const jitterEnabled = includes.jitter && typeof appState?.glyphJitterEnabled === 'boolean'
     ? appState.glyphJitterEnabled
     : null;
+  const baselineAboveChars = includes.jitter && typeof appState?.glyphBaselineOffsetAboveChars === 'string'
+    ? appState.glyphBaselineOffsetAboveChars
+    : null;
+  const baselineAboveRange = includes.jitter ? deepCloneValue(appState?.glyphBaselineOffsetAboveRangePct) : null;
+  const baselineBelowChars = includes.jitter && typeof appState?.glyphBaselineOffsetBelowChars === 'string'
+    ? appState.glyphBaselineOffsetBelowChars
+    : null;
+  const baselineBelowRange = includes.jitter ? deepCloneValue(appState?.glyphBaselineOffsetBelowRangePct) : null;
   const slantEnabled = includes.slant && typeof appState?.lineSlantEnabled === 'boolean'
     ? appState.lineSlantEnabled
     : null;
@@ -522,6 +566,10 @@ function createStyleSnapshot(name, existingId = null) {
     glyphJitterAmountPct: jitterAmount,
     glyphJitterFrequencyPct: jitterFreq,
     glyphJitterSeed: jitterSeed,
+    glyphBaselineOffsetAboveChars: baselineAboveChars,
+    glyphBaselineOffsetAboveRangePct: baselineAboveRange,
+    glyphBaselineOffsetBelowChars: baselineBelowChars,
+    glyphBaselineOffsetBelowRangePct: baselineBelowRange,
   };
   SECTION_DEFS.forEach(def => {
     const meta = findMetaById(def.id);

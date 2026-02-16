@@ -1,4 +1,7 @@
-import { computeGlyphJitterOffset } from './glyphJitter.js';
+import {
+  computeGlyphJitterOffset,
+  computeGlyphBaselineCharacterOffset,
+} from './glyphJitter.js';
 import { sanitizePageNumberingSettings } from '../config/pageNumbering.js';
 import { isSafari } from '../utils/platform.js';
 import { computeFullPaintCadence } from './fullPaintCadence.js';
@@ -442,9 +445,20 @@ export function createPageRenderer(options) {
         gridHeight,
         glyph?.jitterSalt,
       );
+      const baselineCharacterOffset = computeGlyphBaselineCharacterOffset(
+        state,
+        page?.index,
+        rowMu,
+        col,
+        glyph?.char,
+        gridHeight,
+        glyph?.jitterSalt,
+      );
 
       const ox = x;
-      const oy = baseline + (Number.isFinite(jitterOffset) ? jitterOffset : 0);
+      const oy = baseline
+        + (Number.isFinite(jitterOffset) ? jitterOffset : 0)
+        + (Number.isFinite(baselineCharacterOffset) ? baselineCharacterOffset : 0);
 
       if (angleRad !== 0) {
         const dx = ox - cx;
