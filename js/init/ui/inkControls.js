@@ -38,7 +38,13 @@ function clampOpacityValue(value) {
   return Math.min(100, Math.max(0, Math.round(num)));
 }
 
+function setDynamicsSubsectionOptionsDisabled(optionsEl, disabled) {
+  if (!optionsEl) return;
+  optionsEl.classList.toggle('is-disabled', !!disabled);
+}
+
 function setGlyphJitterInputsDisabled(app, disabled) {
+  setDynamicsSubsectionOptionsDisabled(app.glyphJitterOptions, disabled);
   [
     app.glyphJitterAmountMin,
     app.glyphJitterAmountMax,
@@ -50,6 +56,31 @@ function setGlyphJitterInputsDisabled(app, disabled) {
   if (app.shuffleGlyphJitterSeedBtn) {
     app.shuffleGlyphJitterSeedBtn.disabled = disabled;
   }
+}
+
+function setGlyphBaselineOffsetInputsDisabled(app, disabled) {
+  setDynamicsSubsectionOptionsDisabled(app.glyphBaselineOffsetOptions, disabled);
+  [
+    app.glyphBaselineOffsetAboveChars,
+    app.glyphBaselineOffsetAboveMin,
+    app.glyphBaselineOffsetAboveMax,
+    app.glyphBaselineOffsetBelowChars,
+    app.glyphBaselineOffsetBelowMin,
+    app.glyphBaselineOffsetBelowMax,
+  ].forEach((el) => {
+    if (el) el.disabled = disabled;
+  });
+}
+
+function setLineSlantInputsDisabled(app, disabled) {
+  setDynamicsSubsectionOptionsDisabled(app.lineSlantOptions, disabled);
+  [
+    app.lineSlantMin,
+    app.lineSlantMax,
+    app.shuffleLineSlantBtn,
+  ].forEach((el) => {
+    if (el) el.disabled = disabled;
+  });
 }
 
 function sanitizeFontLabel(value, fallback = 'Custom Font') {
@@ -621,6 +652,17 @@ export function createInkControls({
       });
     }
 
+    if (app.glyphBaselineOffsetToggle) {
+      app.glyphBaselineOffsetToggle.checked = state.glyphBaselineOffsetEnabled === true;
+      app.glyphBaselineOffsetToggle.addEventListener('change', () => {
+        state.glyphBaselineOffsetEnabled = app.glyphBaselineOffsetToggle.checked === true;
+        setGlyphBaselineOffsetInputsDisabled(app, !state.glyphBaselineOffsetEnabled);
+        queueDirtySave();
+        markGlyphJitterDirty();
+        focusStage();
+      });
+    }
+
     [app.glyphJitterAmountMin, app.glyphJitterAmountMax].forEach((input) => {
       if (!input) return;
       input.addEventListener('change', () => {
@@ -710,6 +752,9 @@ export function createInkControls({
         focusStage();
       });
     }
+
+    setGlyphJitterInputsDisabled(app, !state.glyphJitterEnabled);
+    setGlyphBaselineOffsetInputsDisabled(app, !(state.glyphBaselineOffsetEnabled === true));
   }
 
   function bindLineSlantControls() {
@@ -740,6 +785,7 @@ export function createInkControls({
       app.lineSlantToggle.checked = state.lineSlantEnabled !== false;
       app.lineSlantToggle.addEventListener('change', () => {
         state.lineSlantEnabled = !!app.lineSlantToggle.checked;
+        setLineSlantInputsDisabled(app, !state.lineSlantEnabled);
         reseedPages();
         queueDirtySave();
         focusStage();
@@ -779,6 +825,7 @@ export function createInkControls({
     }
 
     applyRangeInputs({ reseed: false });
+    setLineSlantInputsDisabled(app, !(state.lineSlantEnabled !== false));
   }
 
   function bindAppearanceControls() {
@@ -917,6 +964,7 @@ export function createInkControls({
     state.glyphJitterEnabled = GLYPH_JITTER_DEFAULTS.enabled;
     state.glyphJitterAmountPct = normalizeGlyphJitterAmount(GLYPH_JITTER_DEFAULTS.amountPct, GLYPH_JITTER_DEFAULTS.amountPct);
     state.glyphJitterFrequencyPct = normalizeGlyphJitterFrequency(GLYPH_JITTER_DEFAULTS.frequencyPct, GLYPH_JITTER_DEFAULTS.frequencyPct);
+    state.glyphBaselineOffsetEnabled = GLYPH_BASELINE_OFFSET_DEFAULTS.enabled === true;
     state.glyphBaselineOffsetAboveChars = normalizeGlyphBaselineOffsetChars(
       GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
       GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
@@ -980,6 +1028,10 @@ export function createInkControls({
     state.glyphBaselineOffsetBelowChars = baselineBelowChars;
     state.glyphBaselineOffsetBelowRangePct = baselineBelowRange;
     if (app.glyphJitterToggle) app.glyphJitterToggle.checked = !!state.glyphJitterEnabled;
+    state.glyphBaselineOffsetEnabled = state.glyphBaselineOffsetEnabled === true;
+    if (app.glyphBaselineOffsetToggle) {
+      app.glyphBaselineOffsetToggle.checked = state.glyphBaselineOffsetEnabled;
+    }
     if (app.glyphJitterAmountMin) app.glyphJitterAmountMin.value = formatNumberForInput(jitterAmount.min, 2);
     if (app.glyphJitterAmountMax) app.glyphJitterAmountMax.value = formatNumberForInput(jitterAmount.max, 2);
     if (app.glyphJitterFrequencyMin) app.glyphJitterFrequencyMin.value = formatNumberForInput(jitterFrequency.min, 1);
@@ -991,6 +1043,7 @@ export function createInkControls({
     if (app.glyphBaselineOffsetBelowMin) app.glyphBaselineOffsetBelowMin.value = formatNumberForInput(baselineBelowRange.min, 2);
     if (app.glyphBaselineOffsetBelowMax) app.glyphBaselineOffsetBelowMax.value = formatNumberForInput(baselineBelowRange.max, 2);
     setGlyphJitterInputsDisabled(app, !state.glyphJitterEnabled);
+    setGlyphBaselineOffsetInputsDisabled(app, !state.glyphBaselineOffsetEnabled);
 
     state.lineSlantEnabled = state.lineSlantEnabled !== false;
     state.lineSlantRangeDeg = normalizeLineSlantRange(state.lineSlantRangeDeg, LINE_SLANT_DEFAULTS.range);
@@ -1001,6 +1054,7 @@ export function createInkControls({
       const { min, max } = state.lineSlantRangeDeg;
       app.lineSlantValue.textContent = `${min}° – ${max}°`;
     }
+    setLineSlantInputsDisabled(app, !state.lineSlantEnabled);
 
     if (app.appearanceAuto) app.appearanceAuto.checked = !['light', 'dark'].includes(state.themeMode);
     if (app.appearanceLight) app.appearanceLight.checked = state.themeMode === 'light';

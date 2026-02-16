@@ -186,6 +186,9 @@ export function normalizeStyleRecord(style, index = 0) {
         ? deepCloneValue(style.glyphJitterFrequencyPct)
         : null,
       glyphJitterSeed: Number.isFinite(style?.glyphJitterSeed) ? style.glyphJitterSeed >>> 0 : null,
+      glyphBaselineOffsetEnabled: typeof style?.glyphBaselineOffsetEnabled === 'boolean'
+        ? style.glyphBaselineOffsetEnabled
+        : null,
       glyphBaselineOffsetAboveChars: typeof style?.glyphBaselineOffsetAboveChars === 'string'
         ? style.glyphBaselineOffsetAboveChars
         : null,
@@ -324,6 +327,7 @@ export function createDefaultStyleRecord(index = 0) {
     glyphJitterAmountPct: null,
     glyphJitterFrequencyPct: null,
     glyphJitterSeed: null,
+    glyphBaselineOffsetEnabled: null,
     glyphBaselineOffsetAboveChars: null,
     glyphBaselineOffsetAboveRangePct: null,
     glyphBaselineOffsetBelowChars: null,

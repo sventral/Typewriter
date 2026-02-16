@@ -86,6 +86,7 @@ export function computeGlyphBaselineCharacterOffset(
 ) {
   const lineHeight = Number(gridHeight);
   if (!Number.isFinite(lineHeight) || lineHeight <= 0) return 0;
+  if (state?.glyphBaselineOffsetEnabled !== true) return 0;
 
   const aboveChars = typeof state?.glyphBaselineOffsetAboveChars === 'string'
     ? state.glyphBaselineOffsetAboveChars

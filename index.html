@@ -537,117 +537,134 @@
         <div class="settings-section-content">
           <div class="settings-group-new">
             <h4>Dynamics</h4>
-            <div class="control-row">
-              <label for="lineSlantToggle">Line slant</label>
-              <input id="lineSlantToggle" type="checkbox" checked />
-            </div>
-            <div class="control-row">
-              <label for="lineSlantMin">Slant range</label>
-              <div class="range-input-pair">
-                <div class="input-with-suffix">
-                  <input id="lineSlantMin" type="number" min="0" max="20" step="0.1" aria-label="Minimum line slant degrees" />
-                  <span aria-hidden="true">°</span>
+            <div class="dynamics-subsection">
+              <div class="control-row">
+                <label for="lineSlantToggle">Line slant</label>
+                <input id="lineSlantToggle" type="checkbox" checked />
+              </div>
+              <div class="dynamics-subsection-options" id="lineSlantOptions">
+                <div class="control-row">
+                  <label for="lineSlantMin">Slant range</label>
+                  <div class="range-input-pair">
+                    <div class="input-with-suffix">
+                      <input id="lineSlantMin" type="number" min="0" max="20" step="0.1" aria-label="Minimum line slant degrees" />
+                      <span aria-hidden="true">°</span>
+                    </div>
+                    <span class="range-separator">–</span>
+                    <div class="input-with-suffix">
+                      <input id="lineSlantMax" type="number" min="0" max="20" step="0.1" aria-label="Maximum line slant degrees" />
+                      <span aria-hidden="true">°</span>
+                    </div>
+                  </div>
                 </div>
-                <span class="range-separator">–</span>
-                <div class="input-with-suffix">
-                  <input id="lineSlantMax" type="number" min="0" max="20" step="0.1" aria-label="Maximum line slant degrees" />
-                  <span aria-hidden="true">°</span>
+                <div class="control-row">
+                  <div></div>
+                  <button class="btn apply-btn" id="shuffleLineSlantBtn" type="button" title="Reshuffle page slants">Reshuffle</button>
                 </div>
               </div>
             </div>
-            <div class="control-row">
-              <div></div>
-              <button class="btn apply-btn" id="shuffleLineSlantBtn" type="button" title="Reshuffle page slants">Reshuffle</button>
-            </div>
-            <div class="tight-spacer" aria-hidden="true"></div>
 
-            <div class="control-row">
-              <label for="glyphJitterToggle">Glyph jitter</label>
-              <input id="glyphJitterToggle" type="checkbox" />
-            </div>
-            <div class="control-row">
-              <label for="glyphJitterAmountMin">Offset range</label>
-              <div class="range-input-pair">
-                <div class="input-with-suffix">
-                  <input id="glyphJitterAmountMin" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter minimum offset percent" />
-                  <span aria-hidden="true">%</span>
+            <div class="dynamics-subsection">
+              <div class="control-row">
+                <label for="glyphJitterToggle">Glyph jitter</label>
+                <input id="glyphJitterToggle" type="checkbox" />
+              </div>
+              <div class="dynamics-subsection-options" id="glyphJitterOptions">
+                <div class="control-row">
+                  <label for="glyphJitterAmountMin">Offset range</label>
+                  <div class="range-input-pair">
+                    <div class="input-with-suffix">
+                      <input id="glyphJitterAmountMin" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter minimum offset percent" />
+                      <span aria-hidden="true">%</span>
+                    </div>
+                    <span class="range-separator">–</span>
+                    <div class="input-with-suffix">
+                      <input id="glyphJitterAmountMax" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter maximum offset percent" />
+                      <span aria-hidden="true">%</span>
+                    </div>
+                  </div>
                 </div>
-                <span class="range-separator">–</span>
-                <div class="input-with-suffix">
-                  <input id="glyphJitterAmountMax" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter maximum offset percent" />
-                  <span aria-hidden="true">%</span>
+                <div class="control-row">
+                  <label for="glyphJitterFrequencyMin">Frequency</label>
+                  <div class="range-input-pair">
+                    <div class="input-with-suffix">
+                      <input id="glyphJitterFrequencyMin" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter minimum frequency percent" />
+                      <span aria-hidden="true">%</span>
+                    </div>
+                    <span class="range-separator">–</span>
+                    <div class="input-with-suffix">
+                      <input id="glyphJitterFrequencyMax" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter maximum frequency percent" />
+                      <span aria-hidden="true">%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="control-row">
+                  <div></div>
+                  <button class="btn apply-btn" id="shuffleGlyphJitterSeedBtn" type="button" title="Reshuffle glyph jitter pattern">Reshuffle</button>
                 </div>
               </div>
             </div>
-            <div class="control-row">
-              <label for="glyphJitterFrequencyMin">Frequency</label>
-              <div class="range-input-pair">
-                <div class="input-with-suffix">
-                  <input id="glyphJitterFrequencyMin" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter minimum frequency percent" />
-                  <span aria-hidden="true">%</span>
+
+            <div class="dynamics-subsection dynamics-subsection--spaced">
+              <h5 class="dynamics-subsection-title">Character offset</h5>
+              <div class="control-row">
+                <label for="glyphBaselineOffsetToggle">Enable</label>
+                <input id="glyphBaselineOffsetToggle" type="checkbox" />
+              </div>
+              <div class="dynamics-subsection-options" id="glyphBaselineOffsetOptions">
+                <div class="control-row">
+                  <label for="glyphBaselineOffsetAboveChars">Above baseline chars</label>
+                  <input
+                    id="glyphBaselineOffsetAboveChars"
+                    class="glyph-char-list-input"
+                    type="text"
+                    maxlength="128"
+                    autocomplete="off"
+                    spellcheck="false"
+                    aria-label="Characters to place above baseline"
+                  />
                 </div>
-                <span class="range-separator">–</span>
-                <div class="input-with-suffix">
-                  <input id="glyphJitterFrequencyMax" type="number" min="0" max="100" step="0.1" aria-label="Glyph jitter maximum frequency percent" />
-                  <span aria-hidden="true">%</span>
+                <div class="control-row">
+                  <label for="glyphBaselineOffsetAboveMin">Above offset range</label>
+                  <div class="range-input-pair">
+                    <div class="input-with-suffix">
+                      <input id="glyphBaselineOffsetAboveMin" type="number" min="0" max="100" step="0.1" aria-label="Above baseline minimum offset percent" />
+                      <span aria-hidden="true">%</span>
+                    </div>
+                    <span class="range-separator">–</span>
+                    <div class="input-with-suffix">
+                      <input id="glyphBaselineOffsetAboveMax" type="number" min="0" max="100" step="0.1" aria-label="Above baseline maximum offset percent" />
+                      <span aria-hidden="true">%</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="control-row">
+                  <label for="glyphBaselineOffsetBelowChars">Below baseline chars</label>
+                  <input
+                    id="glyphBaselineOffsetBelowChars"
+                    class="glyph-char-list-input"
+                    type="text"
+                    maxlength="128"
+                    autocomplete="off"
+                    spellcheck="false"
+                    aria-label="Characters to place below baseline"
+                  />
+                </div>
+                <div class="control-row">
+                  <label for="glyphBaselineOffsetBelowMin">Below offset range</label>
+                  <div class="range-input-pair">
+                    <div class="input-with-suffix">
+                      <input id="glyphBaselineOffsetBelowMin" type="number" min="0" max="100" step="0.1" aria-label="Below baseline minimum offset percent" />
+                      <span aria-hidden="true">%</span>
+                    </div>
+                    <span class="range-separator">–</span>
+                    <div class="input-with-suffix">
+                      <input id="glyphBaselineOffsetBelowMax" type="number" min="0" max="100" step="0.1" aria-label="Below baseline maximum offset percent" />
+                      <span aria-hidden="true">%</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="control-row">
-              <label for="glyphBaselineOffsetAboveChars">Above baseline chars</label>
-              <input
-                id="glyphBaselineOffsetAboveChars"
-                class="glyph-char-list-input"
-                type="text"
-                maxlength="128"
-                autocomplete="off"
-                spellcheck="false"
-                aria-label="Characters to place above baseline"
-              />
-            </div>
-            <div class="control-row">
-              <label for="glyphBaselineOffsetAboveMin">Above offset range</label>
-              <div class="range-input-pair">
-                <div class="input-with-suffix">
-                  <input id="glyphBaselineOffsetAboveMin" type="number" min="0" max="100" step="0.1" aria-label="Above baseline minimum offset percent" />
-                  <span aria-hidden="true">%</span>
-                </div>
-                <span class="range-separator">–</span>
-                <div class="input-with-suffix">
-                  <input id="glyphBaselineOffsetAboveMax" type="number" min="0" max="100" step="0.1" aria-label="Above baseline maximum offset percent" />
-                  <span aria-hidden="true">%</span>
-                </div>
-              </div>
-            </div>
-            <div class="control-row">
-              <label for="glyphBaselineOffsetBelowChars">Below baseline chars</label>
-              <input
-                id="glyphBaselineOffsetBelowChars"
-                class="glyph-char-list-input"
-                type="text"
-                maxlength="128"
-                autocomplete="off"
-                spellcheck="false"
-                aria-label="Characters to place below baseline"
-              />
-            </div>
-            <div class="control-row">
-              <label for="glyphBaselineOffsetBelowMin">Below offset range</label>
-              <div class="range-input-pair">
-                <div class="input-with-suffix">
-                  <input id="glyphBaselineOffsetBelowMin" type="number" min="0" max="100" step="0.1" aria-label="Below baseline minimum offset percent" />
-                  <span aria-hidden="true">%</span>
-                </div>
-                <span class="range-separator">–</span>
-                <div class="input-with-suffix">
-                  <input id="glyphBaselineOffsetBelowMax" type="number" min="0" max="100" step="0.1" aria-label="Below baseline maximum offset percent" />
-                  <span aria-hidden="true">%</span>
-                </div>
-              </div>
-            </div>
-            <div class="control-row">
-              <div></div>
-              <button class="btn apply-btn" id="shuffleGlyphJitterSeedBtn" type="button" title="Reshuffle glyph jitter pattern">Reshuffle</button>
             </div>
           </div>
           <div id="inkSettingsSections"></div>
@@ -897,7 +914,7 @@
         <div class="settings-section-content">
           <div class="settings-branding">
             <img class="settings-branding__logo" src="image/logo.png" alt="TypeSim logo" width="244" height="118" style="width:min(56%, 244px);height:auto;display:block;" />
-            <div class="app-version">v.50.7b</div>
+            <div class="app-version">v.50.8b</div>
           </div>
           <div class="settings-group-new about-group">
             <h4>Copyright and usage</h4>

@@ -260,6 +260,7 @@ function sanitizeSavedInkStyle(style, index = 0) {
       glyphJitterAmountPct: null,
       glyphJitterFrequencyPct: null,
       glyphJitterSeed: null,
+      glyphBaselineOffsetEnabled: null,
       glyphBaselineOffsetAboveChars: null,
       glyphBaselineOffsetAboveRangePct: null,
       glyphBaselineOffsetBelowChars: null,
@@ -310,6 +311,9 @@ function sanitizeSavedInkStyle(style, index = 0) {
       ? cloneInkStyleValue(style.glyphJitterFrequencyPct)
       : null,
     glyphJitterSeed: Number.isFinite(style.glyphJitterSeed) ? style.glyphJitterSeed >>> 0 : null,
+    glyphBaselineOffsetEnabled: typeof style.glyphBaselineOffsetEnabled === 'boolean'
+      ? style.glyphBaselineOffsetEnabled
+      : null,
     glyphBaselineOffsetAboveChars: typeof style.glyphBaselineOffsetAboveChars === 'string'
       ? style.glyphBaselineOffsetAboveChars
       : null,
@@ -504,6 +508,7 @@ export function serializeDocumentStateBase(state, { getActiveFontName } = {}) {
       frequencyPct: cloneGlyphJitterRange(glyphJitterFrequency),
       seed: glyphJitterSeed,
       baselineOffset: {
+        enabled: state.glyphBaselineOffsetEnabled === true,
         aboveChars: glyphBaselineOffsetAboveChars,
         aboveRangePct: cloneGlyphJitterRange(glyphBaselineOffsetAboveRange),
         belowChars: glyphBaselineOffsetBelowChars,
@@ -689,6 +694,13 @@ export function deserializeDocumentState(data, context) {
   const baselineOffsetBlock = jitterBlock?.baselineOffset && typeof jitterBlock.baselineOffset === 'object'
     ? jitterBlock.baselineOffset
     : null;
+  const sanitizedBaselineOffsetEnabled = baselineOffsetBlock?.enabled === true
+    ? true
+    : baselineOffsetBlock?.enabled === false
+      ? false
+      : state.glyphBaselineOffsetEnabled === true
+        ? true
+        : GLYPH_BASELINE_OFFSET_DEFAULTS.enabled === true;
   const sanitizedBaselineOffsetAboveChars = normalizeGlyphBaselineOffsetChars(
     baselineOffsetBlock?.aboveChars,
     state.glyphBaselineOffsetAboveChars ?? GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
@@ -1015,6 +1027,7 @@ export function deserializeDocumentState(data, context) {
     glyphJitterAmountPct: sanitizedJitterAmount,
     glyphJitterFrequencyPct: sanitizedJitterFrequency,
     glyphJitterSeed: sanitizedJitterSeed,
+    glyphBaselineOffsetEnabled: sanitizedBaselineOffsetEnabled,
     glyphBaselineOffsetAboveChars: sanitizedBaselineOffsetAboveChars,
     glyphBaselineOffsetAboveRangePct: sanitizedBaselineOffsetAboveRange,
     glyphBaselineOffsetBelowChars: sanitizedBaselineOffsetBelowChars,

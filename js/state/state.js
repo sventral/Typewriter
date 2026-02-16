@@ -109,6 +109,7 @@ export function createMainState(app, gridDiv = 8) {
     glyphJitterAmountPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.amountPct),
     glyphJitterFrequencyPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.frequencyPct),
     glyphJitterSeed: GLYPH_JITTER_DEFAULTS.seed >>> 0,
+    glyphBaselineOffsetEnabled: GLYPH_BASELINE_OFFSET_DEFAULTS.enabled === true,
     glyphBaselineOffsetAboveChars: GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
     glyphBaselineOffsetAboveRangePct: cloneGlyphJitterRange(GLYPH_BASELINE_OFFSET_DEFAULTS.aboveRangePct),
     glyphBaselineOffsetBelowChars: GLYPH_BASELINE_OFFSET_DEFAULTS.belowChars,

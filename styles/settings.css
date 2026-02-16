@@ -85,6 +85,41 @@
   .side-panel .glyph-char-list-input:disabled {
     opacity: 0.6;
   }
+  .dynamics-subsection {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .dynamics-subsection + .dynamics-subsection {
+    padding-top: 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  html[data-theme='dark'] .dynamics-subsection + .dynamics-subsection {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  .dynamics-subsection--spaced {
+    margin-top: 8px;
+  }
+  .dynamics-subsection-title {
+    margin: 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.45px;
+    opacity: 0.72;
+    font-weight: 600;
+  }
+  .dynamics-subsection-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .dynamics-subsection-options.is-disabled {
+    opacity: 0.55;
+  }
+  .dynamics-subsection-options.is-disabled label,
+  .dynamics-subsection-options.is-disabled span {
+    color: var(--fg-muted, #8a8a8a);
+  }
   .side-panel input[type="checkbox"] { margin-left: auto; display: block; }
   .behavior-group { gap: 0; }
   .behavior-subsection { display: flex; flex-direction: column; gap: 12px; padding: 12px 0; }

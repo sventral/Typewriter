@@ -8,10 +8,11 @@ export const GLYPH_JITTER_DEFAULTS = Object.freeze({
 });
 
 export const GLYPH_BASELINE_OFFSET_DEFAULTS = Object.freeze({
+  enabled: false,
   aboveChars: '',
-  aboveRangePct: Object.freeze({ min: 0, max: 18 }),
+  aboveRangePct: Object.freeze({ min: 70, max: 80 }),
   belowChars: '',
-  belowRangePct: Object.freeze({ min: 0, max: 18 }),
+  belowRangePct: Object.freeze({ min: 70, max: 80 }),
 });
 
 export const GLYPH_JITTER_AMOUNT_LIMITS = Object.freeze({ min: 0, max: 100 });
@@ -88,6 +89,11 @@ export function normalizeGlyphBaselineOffsetSettings(
 ) {
   const safeFallback = fallback || GLYPH_BASELINE_OFFSET_DEFAULTS;
   return {
+    enabled: settings?.enabled === true
+      ? true
+      : settings?.enabled === false
+        ? false
+        : safeFallback.enabled === true,
     aboveChars: normalizeGlyphBaselineOffsetChars(
       settings?.aboveChars,
       safeFallback.aboveChars,
@@ -109,6 +115,7 @@ export function normalizeGlyphBaselineOffsetSettings(
 
 export function cloneGlyphBaselineOffsetSettings(settings) {
   return {
+    enabled: settings?.enabled === true,
     aboveChars: typeof settings?.aboveChars === 'string' ? settings.aboveChars : '',
     aboveRangePct: cloneGlyphJitterRange(settings?.aboveRangePct),
     belowChars: typeof settings?.belowChars === 'string' ? settings.belowChars : '',

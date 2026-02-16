@@ -442,6 +442,13 @@ function applySlantFromStyle(style) {
   const range = state.lineSlantRangeDeg;
   if (minInput && range?.min != null) minInput.value = String(range.min);
   if (maxInput && range?.max != null) maxInput.value = String(range.max);
+  const slantOptions = document.getElementById('lineSlantOptions');
+  if (slantOptions) {
+    slantOptions.classList.toggle('is-disabled', !state.lineSlantEnabled);
+    slantOptions.querySelectorAll('input, select, textarea, button').forEach((el) => {
+      el.disabled = !state.lineSlantEnabled;
+    });
+  }
 }
 
 function applyJitterFromStyle(style) {
@@ -460,6 +467,9 @@ function applyJitterFromStyle(style) {
   }
   if (Number.isFinite(style?.glyphJitterSeed)) {
     state.glyphJitterSeed = style.glyphJitterSeed >>> 0;
+  }
+  if (typeof style?.glyphBaselineOffsetEnabled === 'boolean') {
+    state.glyphBaselineOffsetEnabled = style.glyphBaselineOffsetEnabled;
   }
   if (typeof style?.glyphBaselineOffsetAboveChars === 'string') {
     state.glyphBaselineOffsetAboveChars = style.glyphBaselineOffsetAboveChars;
@@ -491,6 +501,15 @@ function applyJitterFromStyle(style) {
   if (freqMax && state.glyphJitterFrequencyPct?.max != null) {
     freqMax.value = String(state.glyphJitterFrequencyPct.max);
   }
+  const jitterOptions = document.getElementById('glyphJitterOptions');
+  if (jitterOptions) {
+    jitterOptions.classList.toggle('is-disabled', !state.glyphJitterEnabled);
+    jitterOptions.querySelectorAll('input, select, textarea, button').forEach((el) => {
+      el.disabled = !state.glyphJitterEnabled;
+    });
+  }
+  const baselineToggle = document.getElementById('glyphBaselineOffsetToggle');
+  if (baselineToggle) baselineToggle.checked = !!state.glyphBaselineOffsetEnabled;
   const aboveCharsInput = document.getElementById('glyphBaselineOffsetAboveChars');
   if (aboveCharsInput && typeof state.glyphBaselineOffsetAboveChars === 'string') {
     aboveCharsInput.value = state.glyphBaselineOffsetAboveChars;
@@ -515,6 +534,13 @@ function applyJitterFromStyle(style) {
   if (belowMax && state.glyphBaselineOffsetBelowRangePct?.max != null) {
     belowMax.value = String(state.glyphBaselineOffsetBelowRangePct.max);
   }
+  const baselineOptions = document.getElementById('glyphBaselineOffsetOptions');
+  if (baselineOptions) {
+    baselineOptions.classList.toggle('is-disabled', !state.glyphBaselineOffsetEnabled);
+    baselineOptions.querySelectorAll('input, select, textarea, button').forEach((el) => {
+      el.disabled = !state.glyphBaselineOffsetEnabled;
+    });
+  }
 }
 
 function createStyleSnapshot(name, existingId = null) {
@@ -532,6 +558,9 @@ function createStyleSnapshot(name, existingId = null) {
     : null;
   const jitterEnabled = includes.jitter && typeof appState?.glyphJitterEnabled === 'boolean'
     ? appState.glyphJitterEnabled
+    : null;
+  const baselineEnabled = includes.jitter && typeof appState?.glyphBaselineOffsetEnabled === 'boolean'
+    ? appState.glyphBaselineOffsetEnabled
     : null;
   const baselineAboveChars = includes.jitter && typeof appState?.glyphBaselineOffsetAboveChars === 'string'
     ? appState.glyphBaselineOffsetAboveChars
@@ -566,6 +595,7 @@ function createStyleSnapshot(name, existingId = null) {
     glyphJitterAmountPct: jitterAmount,
     glyphJitterFrequencyPct: jitterFreq,
     glyphJitterSeed: jitterSeed,
+    glyphBaselineOffsetEnabled: baselineEnabled,
     glyphBaselineOffsetAboveChars: baselineAboveChars,
     glyphBaselineOffsetAboveRangePct: baselineAboveRange,
     glyphBaselineOffsetBelowChars: baselineBelowChars,
