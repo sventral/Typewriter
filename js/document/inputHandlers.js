@@ -19,6 +19,7 @@ const TYPED_RUN_TIMEOUT = 500;
 const EXPAND_PASTE_WINDOW = 350;
 const BS_WINDOW = 250;
 const STRAY_V_WINDOW = 30;
+const LARGE_PASTE_PROGRESSIVE_THRESHOLD = 24000;
 
 function isToolbarInput(el) {
   if (!el) return false;
@@ -84,6 +85,12 @@ export function createInputController({
     throw new Error('createInputController: missing required dependencies');
   }
 
+  let progressivePasteInFlight = false;
+
+  function isInputTemporarilyBlocked() {
+    return state.lagInputBlocked || progressivePasteInFlight;
+  }
+
   function resetTypedRun() {
     typedRun.active = false;
   }
@@ -133,7 +140,7 @@ export function createInputController({
   function handleKeyDown(e) {
     if (isEditableTarget(e.target)) return;
 
-    if (state.lagInputBlocked) {
+    if (isInputTemporarilyBlocked()) {
       e.preventDefault();
       if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
       return;
@@ -276,7 +283,7 @@ export function createInputController({
   function handlePaste(e) {
     if (isEditableTarget(e.target)) return;
 
-    if (state.lagInputBlocked) {
+    if (isInputTemporarilyBlocked()) {
       e.preventDefault();
       if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
       return;
@@ -289,9 +296,9 @@ export function createInputController({
     const now = performance.now();
     counters.setLastPasteTs(now);
 
-    beginBatch();
+    const applyPastePrelude = () => {
+      if (consumeBackspaceBurstIfAny()) return;
 
-    if (!consumeBackspaceBurstIfAny()) {
       const fresh =
         typedRun.active &&
         typedRun.page === state.caret.page &&
@@ -300,19 +307,46 @@ export function createInputController({
         typedRun.length > 0 &&
         typedRun.length <= TYPED_RUN_MAXLEN;
 
-      if (fresh) {
-        state.caret.col = typedRun.startCol;
-        updateCaretPosition();
-        const page = state.pages[state.caret.page] || addPage();
-        eraseCharacters(page, state.caret.rowMu, state.caret.col, typedRun.length);
-        resetTypedRun();
+      if (!fresh) return;
+
+      state.caret.col = typedRun.startCol;
+      updateCaretPosition();
+      const page = state.pages[state.caret.page] || addPage();
+      eraseCharacters(page, state.caret.rowMu, state.caret.col, typedRun.length);
+      resetTypedRun();
+    };
+
+    const strictTypewriter = state.realTypewriterEnabled && !state.realTypewriterBackspaceEnabled;
+    const useProgressivePaste = text.length >= LARGE_PASTE_PROGRESSIVE_THRESHOLD && !strictTypewriter;
+
+    if (useProgressivePaste) {
+      beginBatch();
+      try {
+        applyPastePrelude();
+      } finally {
+        endBatch();
       }
+
+      resetTypedRun();
+      progressivePasteInFlight = true;
+      insertTextFast(text, {
+        progressive: true,
+        onComplete: () => {
+          progressivePasteInFlight = false;
+          resetTypedRun();
+        },
+      });
+      return;
     }
 
-    insertTextFast(text);
-
-    resetTypedRun();
-    endBatch();
+    beginBatch();
+    try {
+      applyPastePrelude();
+      insertTextFast(text);
+      resetTypedRun();
+    } finally {
+      endBatch();
+    }
   }
 
   return {

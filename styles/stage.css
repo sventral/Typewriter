@@ -81,6 +81,7 @@
   .ruler{ position:fixed; left:0; bottom:var(--toolbar-h); height:var(--ruler-thickness); z-index:50; display:block; overflow:hidden; pointer-events:none; width:var(--stage-width-px); }
   #rulerH_stops_container { position:absolute; inset:0; pointer-events:auto; }
   .ruler-ticks{ position:absolute; inset:0; background:var(--ruler-bg); border-top:1px solid var(--ruler-tick); box-sizing:border-box; }
+  .ruler-ticks-canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; pointer-events:none; }
   .tick{ position:absolute; bottom:0; width:1px; background:var(--ruler-tick); transform:translateZ(0) }
   .tick.major{ height:100% } .tick.medium{ height:60% } .tick.minor{ height:30% }
   .tick-num{ position:absolute; top:0; font-size:9px; line-height:9px; color:var(--ruler-tick); font-family:sans-serif; opacity:0.8 }
@@ -127,7 +128,15 @@
     background:rgba(160,34,34,0.94);
   }
 
-  .page canvas{ display:block; width:100%; height:auto; }
+  .page canvas{
+    display:block;
+    width:100%;
+    height:auto;
+    image-rendering:optimizeQuality;
+    image-rendering:-webkit-optimize-contrast;
+    backface-visibility:hidden;
+    transform:translateZ(0);
+  }
   .caret{ position:absolute; width:2px; background:var(--caret-color); pointer-events:none; animation:blink 1s steps(1) infinite; }
   @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
 
@@ -156,6 +165,30 @@
     margin-top: 8px;
     opacity: 0.8;
   }
+
+  .custom-fonts-block {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .custom-font-title { margin: 0 0 4px 0; text-transform: uppercase; letter-spacing: 0.4px; font-size: 12px; opacity: 0.8; }
+  .custom-font-action {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .custom-font-action input[type="text"],
+  .custom-font-action input[type="url"] {
+    flex: 1;
+    min-width: 0;
+  }
+  .custom-font-action .btn { min-width: 76px; }
+  .custom-font-hint {
+    font-size: 12px;
+    opacity: 0.75;
+    white-space: nowrap;
+  }
+  .font-sample.is-error { color: var(--danger, #b33); }
+  .custom-font-sample.is-error { color: var(--danger, #b33); }
 
   .zoom-controls{
     position:fixed;

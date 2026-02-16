@@ -1,6 +1,6 @@
 import { exactFontString } from '../../config/metrics.js';
 import { createPaperMetrics, DEFAULT_PAPER_SIZE, getPaperSize, normalizePaperSizeId } from '../../config/paperSizes.js';
-import { markDocumentDirty } from '../../state/saveRevision.js';
+import { markDocumentDirty, markPageContentDirty } from '../../state/saveRevision.js';
 import { clamp } from '../../utils/math.js';
 import { sanitizeIntegerField } from '../../utils/forms.js';
 import { createDocumentEditingController } from '../../document/documentEditing.js';
@@ -186,7 +186,11 @@ export function registerEditingControllers(options) {
     shiftRow,
     rewrapDocumentToCurrentBounds,
     serializeState,
+    serializeStateBase,
+    serializePageState,
     deserializeState,
+    getDirtyPageIndices,
+    syncSavedPageRevisions,
     setInk,
     createNewDocument,
   } = editingController;
@@ -738,6 +742,7 @@ export function registerEditingControllers(options) {
         }
         page._dirtyRows = shifted;
       }
+      markPageContentDirty(page);
     }
     state.caret.rowMu += deltaMu;
     if (typedRun?.active) typedRun.rowMu += deltaMu;
@@ -806,6 +811,10 @@ export function registerEditingControllers(options) {
     setInk,
     createNewDocument,
     serializeState,
+    serializeStateBase,
+    serializePageState,
+    getDirtyPageIndices,
+    syncSavedPageRevisions,
     deserializeState,
     applyDefaultMargins,
     computeColsFromCpi,

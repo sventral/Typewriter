@@ -1,5 +1,5 @@
 import { markDocumentDirty } from '../state/saveRevision.js';
-import { setupInkSettingsPanel } from '../config/inkSettingsPanel.js';
+import { setupInkSettingsPanel } from '../config/ink/inkSettingsView.js';
 import { syncRulerToggleButton } from './ui/rulerToggle.js';
 
 export async function bootstrapUI({
@@ -30,9 +30,18 @@ export async function bootstrapUI({
     saveStateDebounced();
   };
 
+  // Expose font helpers to the ink settings panel
+  if (!app.getActiveFontName) {
+    app.getActiveFontName = () => metricsStore.ACTIVE_FONT_NAME;
+  }
+  if (!app.setActiveFontName && typeof loadFontAndApply === 'function') {
+    app.setActiveFontName = (name) => loadFontAndApply(name);
+  }
+
   setupInkSettingsPanel({
     state,
     app,
+    metricsStore,
     refreshGlyphs: refreshGlyphEffects,
     saveState: persistInkSettings,
   });
