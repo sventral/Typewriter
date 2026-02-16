@@ -710,7 +710,7 @@ export function createDocumentEditingController(context) {
     };
 
     const fail = (err) => {
-      console.error('Typewriter: progressive paste failed.', err);
+      console.error('TypeSim: progressive paste failed.', err);
       finalize();
     };
 

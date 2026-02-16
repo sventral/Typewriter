@@ -1,6 +1,6 @@
-# Typewriter
+# TypeSim
 
-Typewriter is a browser-only, single-page writing app that emulates mechanical typewriter behavior while keeping modern editing and export controls.
+TypeSim is a browser-only, single-page writing app that emulates mechanical typewriter behavior while keeping modern editing and export controls.
 
 ## What it includes
 - Canvas-based page rendering with rulers, margins, page controls, and zoom.
@@ -26,13 +26,13 @@ Any static file server also works.
 ## Dropbox setup (GitHub Pages)
 - In `js/storage/dropboxSync.js`, set `DROPBOX_APP_KEY` to your Dropbox app key.
 - Register this exact redirect URI in your Dropbox app:
-  - `https://sventral.github.io/Typewriter/dropbox-auth.html`
+  - `https://sventral.github.io/TypeSim/dropbox-auth.html`
 - Keep Dropbox access type as **App Folder**.
 
 
 ## Project layout
 ```text
-Typewriter/
+TypeSim/
 ├── index.html         # App shell and UI markup
 ├── styles.css         # CSS entrypoint
 ├── styles/            # Modular stylesheets

@@ -2,7 +2,7 @@ const DROPBOX_AUTHORIZE_URL = 'https://www.dropbox.com/oauth2/authorize';
 const DROPBOX_TOKEN_URL = 'https://api.dropboxapi.com/oauth2/token';
 const DROPBOX_SETTINGS_PATH = '/settings.json';
 const DROPBOX_DOCUMENTS_DIR = '/documents';
-const DROPBOX_APP_FOLDER_PATH = '/Apps/Typewriter';
+const DROPBOX_APP_FOLDER_PATH = '/Apps/TypeSim';
 const CALLBACK_PAGE_NAME = 'dropbox-auth.html';
 
 const OAUTH_EXPIRY_SKEW_MS = 60 * 1000;
@@ -205,7 +205,7 @@ function resolveConfiguredAppKey(explicitAppKey = '') {
   const direct = normalizeAppKey(explicitAppKey);
   if (direct) return direct;
   if (canUseDom()) {
-    const windowValue = normalizeAppKey(window.TYPEWRITER_DROPBOX_APP_KEY);
+    const windowValue = normalizeAppKey(window.TYPESIM_DROPBOX_APP_KEY || window.TYPEWRITER_DROPBOX_APP_KEY);
     if (windowValue) return windowValue;
   }
   return normalizeAppKey(DROPBOX_APP_KEY);
@@ -216,7 +216,7 @@ function resolveConfig(options = {}) {
 
   const keyPrefix = typeof options.storageKey === 'string' && options.storageKey.trim()
     ? options.storageKey.trim()
-    : 'typewriter';
+    : 'typesim';
 
   const redirectUri = (typeof options.redirectUri === 'string' && options.redirectUri.trim())
     ? options.redirectUri.trim()
@@ -238,7 +238,7 @@ function resolveConfig(options = {}) {
 function buildStorageKeys(keyPrefix) {
   const prefix = (typeof keyPrefix === 'string' && keyPrefix.trim())
     ? keyPrefix.trim()
-    : 'typewriter';
+    : 'typesim';
   return {
     tokenKey: `${prefix}${TOKEN_SUFFIX}`,
     pkceStateKey: `${prefix}${PKCE_STATE_SUFFIX}`,
@@ -1351,7 +1351,7 @@ export async function completeDropboxAuthRedirectOnCallbackPage(options = {}) {
   const sessionStorageRef = safeGetStorage('session');
   const localStorageRef = safeGetStorage('local');
   const prefix = findPkcePrefixByState(sessionStorageRef, returnedState);
-  const keyPrefix = prefix || (typeof options.storageKey === 'string' ? options.storageKey : 'typewriter');
+  const keyPrefix = prefix || (typeof options.storageKey === 'string' ? options.storageKey : 'typesim');
   const keys = buildStorageKeys(keyPrefix);
   const appKey = resolveConfiguredAppKey(options.appKey);
 

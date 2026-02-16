@@ -149,7 +149,7 @@ export function createDocumentControls({
       .toLowerCase()
       .replace(/[^a-z0-9]+/gi, '-')
       .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '') || 'typewriter';
+      .replace(/^-|-$/g, '') || 'typesim';
     const stamp = new Date().toISOString().replace(/[:]/g, '-').replace('T', '_').split('.')[0];
     const parts = [slug, suffix, stamp].filter(Boolean);
     return `${parts.join('-')}.${ext}`;
@@ -321,7 +321,7 @@ export function createDocumentControls({
     } catch (err) {
       showStorageNotice('Could not save documents. Changes may not persist.', { level: 'error', durationMs: 7000 });
       if (typeof console !== 'undefined' && typeof console.error === 'function') {
-        console.error('Typewriter: persistDocuments failed', err);
+        console.error('TypeSim: persistDocuments failed', err);
       }
     }
   }
@@ -764,7 +764,7 @@ export function createDocumentControls({
       });
     } catch (err) {
       if (typeof console !== 'undefined' && typeof console.error === 'function') {
-        console.error('Typewriter: PDF export failed', err);
+        console.error('TypeSim: PDF export failed', err);
       }
       if (typeof window !== 'undefined' && typeof window.alert === 'function') {
         window.alert('Could not create PDF. Check your connection and try again.');
@@ -909,7 +909,7 @@ export function createDocumentControls({
     } catch (err) {
       showStorageNotice('Save failed. Export your document to avoid losing changes.', { level: 'error', durationMs: 8000 });
       if (typeof console !== 'undefined' && typeof console.error === 'function') {
-        console.error('Typewriter: saveStateNow failed', err);
+        console.error('TypeSim: saveStateNow failed', err);
       }
     }
   }

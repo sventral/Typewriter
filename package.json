@@ -1,7 +1,7 @@
 {
-  "name": "typewriter",
+  "name": "typesim",
   "version": "1.9.0",
-  "description": "Single-page typewriter simulator that runs entirely in the browser.",
+  "description": "Single-page TypeSim writing simulator that runs entirely in the browser.",
   "main": "js/main.js",
   "type": "module",
   "scripts": {
