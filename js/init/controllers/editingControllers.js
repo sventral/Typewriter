@@ -343,7 +343,7 @@ export function registerEditingControllers(options) {
     'IBM Selectric Light Regular',
     'IBM Selectric Light Italic',
     'Letter Gothic',
-    'Pica',
+    'Pica 10 Pitch',
     'Prestige Elite Std',
     'Prestige Elite Std Bold',
     'SCM Galaxie XII',
@@ -357,6 +357,14 @@ export function registerEditingControllers(options) {
     'Liberation Mono',
     'monospace',
   ];
+  const WEB_ONLY_FONT_NAMES = new Set([
+    'Letter Gothic',
+    'Pica 10 Pitch',
+    'Prestige Elite Std',
+    'Prestige Elite Std Bold',
+  ]);
+  const WEB_FONT_ERROR_PREFIX = 'Web font unavailable:';
+  let webFontNoticeTimer = 0;
 
   const FONT_CANDIDATES = [
     () => metricsStore.ACTIVE_FONT_NAME,
@@ -370,6 +378,38 @@ export function registerEditingControllers(options) {
     } catch {
       return false;
     }
+  }
+
+  function clearWebFontNotice() {
+    if (!app?.storageNotice) return;
+    const text = app.storageNotice.textContent || '';
+    if (!text.startsWith(WEB_FONT_ERROR_PREFIX)) return;
+    app.storageNotice.classList.remove('is-visible', 'is-error');
+    app.storageNotice.textContent = '';
+    if (webFontNoticeTimer) {
+      clearTimeout(webFontNoticeTimer);
+      webFontNoticeTimer = 0;
+    }
+  }
+
+  function showWebFontError(face) {
+    const message = `${WEB_FONT_ERROR_PREFIX} "${face}" could not be loaded. Check your connection and try again.`;
+    if (!app?.storageNotice) {
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(message);
+      }
+      return;
+    }
+    if (webFontNoticeTimer) clearTimeout(webFontNoticeTimer);
+    app.storageNotice.textContent = message;
+    app.storageNotice.classList.add('is-visible', 'is-error');
+    webFontNoticeTimer = setTimeout(() => {
+      const current = app?.storageNotice?.textContent || '';
+      if (!current.startsWith(WEB_FONT_ERROR_PREFIX)) return;
+      app.storageNotice?.classList.remove('is-visible', 'is-error');
+      if (app?.storageNotice) app.storageNotice.textContent = '';
+      webFontNoticeTimer = 0;
+    }, 8000);
   }
 
   async function resolveAvailableFace(preferredFace) {
@@ -402,23 +442,44 @@ export function registerEditingControllers(options) {
   async function loadFontAndApply(requestedFace) {
     const seq = ++fontLoadSeq;
     ephemeral.fontLoadSeq = fontLoadSeq;
-    const tryFace = requestedFace || metricsStore.ACTIVE_FONT_NAME;
+    const previousFace = metricsStore.ACTIVE_FONT_NAME || 'monospace';
+    const tryFace = requestedFace || previousFace;
+    const webOnlyFaceRequested = WEB_ONLY_FONT_NAMES.has(tryFace);
     const ghost = prewarmFontFace(tryFace);
     try {
       const px = Math.max(12, Math.ceil(getTargetPitchPx()));
+      const timeoutMs = webOnlyFaceRequested ? 3000 : 1200;
       await Promise.race([
         (async () => {
           await document.fonts.load(exactFontString(px, tryFace), 'MWmw123');
           await document.fonts.load(`400 1em "${tryFace}"`, 'MWmw123');
         })(),
-        new Promise((res) => setTimeout(res, 1200)),
+        new Promise((res) => setTimeout(res, timeoutMs)),
       ]);
     } catch {}
     ghost.remove();
+    if (seq !== fontLoadSeq) return;
+
+    if (webOnlyFaceRequested) {
+      if (!faceAvailable(tryFace)) {
+        showWebFontError(tryFace);
+        metricsStore.ACTIVE_FONT_NAME = previousFace;
+        metricsStore.FONT_FAMILY = `${previousFace}`;
+        syncFontRadiosWithActiveFont();
+        return;
+      }
+      clearWebFontNotice();
+      metricsStore.ACTIVE_FONT_NAME = tryFace;
+      metricsStore.FONT_FAMILY = `${tryFace}`;
+      syncFontRadiosWithActiveFont();
+      applyMetricsNow(true);
+      return;
+    }
 
     const resolvedFace = await resolveAvailableFace(tryFace);
     if (seq !== fontLoadSeq) return;
 
+    clearWebFontNotice();
     metricsStore.ACTIVE_FONT_NAME = resolvedFace;
     metricsStore.FONT_FAMILY = `${resolvedFace}`;
     syncFontRadiosWithActiveFont();

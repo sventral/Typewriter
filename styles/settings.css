@@ -71,6 +71,55 @@
     color: var(--ui-text);
     font-size: 13px;
   }
+  .side-panel .glyph-char-list-input {
+    box-sizing: border-box;
+    width: 170px;
+    height: 28px;
+    border: 1px solid var(--control-border);
+    border-radius: 6px;
+    padding: 0 8px;
+    background: var(--control-bg);
+    color: var(--ui-text);
+    font-size: 13px;
+  }
+  .side-panel .glyph-char-list-input:disabled {
+    opacity: 0.6;
+  }
+  .dynamics-subsection {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .dynamics-subsection + .dynamics-subsection {
+    padding-top: 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  html[data-theme='dark'] .dynamics-subsection + .dynamics-subsection {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  .dynamics-subsection--spaced {
+    margin-top: 8px;
+  }
+  .dynamics-subsection-title {
+    margin: 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.45px;
+    opacity: 0.72;
+    font-weight: 600;
+  }
+  .dynamics-subsection-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .dynamics-subsection-options.is-disabled {
+    opacity: 0.55;
+  }
+  .dynamics-subsection-options.is-disabled label,
+  .dynamics-subsection-options.is-disabled span {
+    color: var(--fg-muted, #8a8a8a);
+  }
   .side-panel input[type="checkbox"] { margin-left: auto; display: block; }
   .behavior-group { gap: 0; }
   .behavior-subsection { display: flex; flex-direction: column; gap: 12px; padding: 12px 0; }
@@ -95,7 +144,13 @@
   .appearance-toggle input[type="checkbox"] { margin: 0; }
   .zoom-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: 0.8; }
   .zoom-toggle input[type="checkbox"] { margin: 0; }
-  .dropbox-sync-group { gap: 10px; }
+  .dropbox-sync-group { gap: 13px; }
+  .dropbox-sync-note {
+    margin: 0 0 2px;
+    font-size: 12px;
+    line-height: 1.4;
+    opacity: 0.82;
+  }
   .dropbox-sync-actions {
     display: flex;
     flex-wrap: wrap;
@@ -168,6 +223,8 @@
   .low-res-zoom-fields { display: flex; flex-wrap: wrap; gap: 12px; padding-left: 0; }
   .low-res-zoom-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; flex: 1 1 140px; }
   .low-res-zoom-fields input { width: 100%; }
+  .low-res-zoom-summary { margin: -2px 0 0; font-size: 11px; line-height: 1.35; opacity: 0.72; }
+  .low-res-zoom-summary.disabled { opacity: 0.55; }
   .low-res-zoom-controls.disabled { opacity: 0.6; }
   .ink-settings-content h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.75; }
   .ink-settings-content { --ink-heading-width: 110px; }
@@ -589,11 +646,14 @@
 .input-with-suffix input { width: 100%; padding-right: 0; flex: 1; }
 .input-with-suffix span { position: static; transform: none; pointer-events: none; opacity: 0.65; line-height: 1; }
   .tight-spacer { height: 10px; }
-  #typographySettings .range-input-pair { display: flex; align-items: center; gap: 8px; }
-  #typographySettings .range-input-pair .input-with-suffix { width: 88px; }
-  #typographySettings .range-input-pair .range-separator { font-weight: 600; opacity: 0.6; }
+  #typographySettings .range-input-pair,
+  #inkStylesSettings .range-input-pair,
   .ink-settings-content .range-input-pair { display: flex; align-items: center; gap: 8px; }
+  #typographySettings .range-input-pair .input-with-suffix,
+  #inkStylesSettings .range-input-pair .input-with-suffix,
   .ink-settings-content .range-input-pair .input-with-suffix { width: 88px; }
+  #typographySettings .range-input-pair .range-separator,
+  #inkStylesSettings .range-input-pair .range-separator,
   .ink-settings-content .range-input-pair .range-separator { font-weight: 600; opacity: 0.6; }
   .behavior-emulation-group .control-row { display: flex; align-items: center; gap: 10px; }
   .behavior-emulation-group .control-row label { flex: 1; }

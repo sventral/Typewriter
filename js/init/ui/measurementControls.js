@@ -3,6 +3,7 @@ import { sanitizeIntegerField } from '../../utils/forms.js';
 import {
   LOW_RES_ZOOM_DEFAULTS,
   normalizeLowResZoomSettings,
+  resolveEffectiveZoomPct,
   ZOOM_SLIDER_MAX_PCT,
   ZOOM_SLIDER_MIN_PCT,
 } from '../../config/lowResZoom.js';
@@ -256,6 +257,25 @@ export function createMeasurementControls({
     }
     if (app.lowResZoomControls) {
       app.lowResZoomControls.classList.toggle('disabled', !enabled);
+    }
+    if (app.lowResZoomSummary) {
+      const effectiveAtMaxPct = resolveEffectiveZoomPct(
+        ZOOM_SLIDER_MAX_PCT,
+        {
+          enabled,
+          softCapPct: normalized.softCapPct,
+          marginPct: normalized.marginPct,
+        },
+        {
+          maxZoomPct: ZOOM_SLIDER_MAX_PCT,
+          minZoomPct: ZOOM_SLIDER_MIN_PCT,
+        },
+      );
+      const summaryPct = Number.isFinite(effectiveAtMaxPct)
+        ? Math.round(effectiveAtMaxPct)
+        : ZOOM_SLIDER_MAX_PCT;
+      app.lowResZoomSummary.textContent = `At 400% view, rendering will use ${summaryPct}%.`;
+      app.lowResZoomSummary.classList.toggle('disabled', !enabled);
     }
     return normalized;
   }

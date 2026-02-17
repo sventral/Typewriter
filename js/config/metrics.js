@@ -19,7 +19,7 @@ export function computeBaseMetrics(app) {
   const LINE_H_RAW = PPI / LPI;
   const GRID_DIV = 8;
   const GRID_H = LINE_H_RAW / GRID_DIV;
-  const ACTIVE_FONT_NAME = 'TT2020StyleE';
+  const ACTIVE_FONT_NAME = 'TT2020Base';
   const COLORS = { ...INK_COLORS };
   const STORAGE_KEY = 'typesim.minimal.v17';
   const RENDER_SCALE = DPR;

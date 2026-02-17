@@ -1,4 +1,8 @@
-import { GLYPH_JITTER_DEFAULTS, cloneGlyphJitterRange } from '../config/glyphJitterConfig.js';
+import {
+  GLYPH_JITTER_DEFAULTS,
+  GLYPH_BASELINE_OFFSET_DEFAULTS,
+  cloneGlyphJitterRange,
+} from '../config/glyphJitterConfig.js';
 import { LOW_RES_ZOOM_DEFAULTS } from '../config/lowResZoom.js';
 import { DEFAULT_PAPER_SIZE } from '../config/paperSizes.js';
 import { LINE_SLANT_DEFAULTS, normalizeLineSlantRange } from '../config/lineSlantConfig.js';
@@ -105,6 +109,11 @@ export function createMainState(app, gridDiv = 8) {
     glyphJitterAmountPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.amountPct),
     glyphJitterFrequencyPct: cloneGlyphJitterRange(GLYPH_JITTER_DEFAULTS.frequencyPct),
     glyphJitterSeed: GLYPH_JITTER_DEFAULTS.seed >>> 0,
+    glyphBaselineOffsetEnabled: GLYPH_BASELINE_OFFSET_DEFAULTS.enabled === true,
+    glyphBaselineOffsetAboveChars: GLYPH_BASELINE_OFFSET_DEFAULTS.aboveChars,
+    glyphBaselineOffsetAboveRangePct: cloneGlyphJitterRange(GLYPH_BASELINE_OFFSET_DEFAULTS.aboveRangePct),
+    glyphBaselineOffsetBelowChars: GLYPH_BASELINE_OFFSET_DEFAULTS.belowChars,
+    glyphBaselineOffsetBelowRangePct: cloneGlyphJitterRange(GLYPH_BASELINE_OFFSET_DEFAULTS.belowRangePct),
     lineSlantEnabled: LINE_SLANT_DEFAULTS.enabled,
     lineSlantRangeDeg: normalizeLineSlantRange(LINE_SLANT_DEFAULTS.range),
     wordWrap: true,
