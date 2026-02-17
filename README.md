@@ -5,6 +5,8 @@ TypeSim is a browser-only, single-page writing app that emulates mechanical type
 ## What it includes
 - Canvas-based page rendering with rulers, margins, page controls, and zoom.
 - Settings panels for `Page`, `Fonts`, `Effects`, `Behavior` (`Emulation`, `Appearance`, `Zoom`), `Sync`, and `About` (credits/notices).
+- Font presets are `woff2`-first and include web-hosted families from Fontsource CDN and OnlineWebFonts with bundled `woff2` fallbacks.
+- The Fonts panel uses the `Pica 10 Pitch` preset label.
 - Behavior `Zoom` controls include `High-zoom performance mode`, `Render soft cap (%)`, `Max extra render zoom (%)`, and a live `At 400% view...` helper line.
 - About section branding with a logo + version lockup at the top, and a custom site favicon.
 - Branding assets (`logo` + favicon) auto-invert for dark mode while staying black in light mode.

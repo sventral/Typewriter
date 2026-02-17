@@ -343,7 +343,7 @@ export function registerEditingControllers(options) {
     'IBM Selectric Light Regular',
     'IBM Selectric Light Italic',
     'Letter Gothic',
-    'Pica',
+    'Pica 10 Pitch',
     'Prestige Elite Std',
     'Prestige Elite Std Bold',
     'SCM Galaxie XII',
