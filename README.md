@@ -5,6 +5,7 @@ TypeSim is a browser-only, single-page writing app that emulates mechanical type
 ## What it includes
 - Canvas-based page rendering with rulers, margins, page controls, and zoom.
 - Settings panels for `Page`, `Fonts`, `Effects`, `Behavior` (`Emulation`, `Appearance`, `Zoom`), `Sync`, and `About` (credits/notices).
+- Startup default font is `TT2020 Base`.
 - Font presets are `woff2`-first and include web-hosted families from Fontsource CDN and OnlineWebFonts with bundled `woff2` fallbacks.
 - The Fonts panel uses the `Pica 10 Pitch` preset label.
 - `Letter Gothic`, `Pica 10 Pitch`, `Prestige Elite Std`, and `Prestige Elite Std Bold` are web-only; the app shows a visible error if one is unavailable.
