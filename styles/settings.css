@@ -217,6 +217,8 @@
   .low-res-zoom-fields { display: flex; flex-wrap: wrap; gap: 12px; padding-left: 0; }
   .low-res-zoom-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; flex: 1 1 140px; }
   .low-res-zoom-fields input { width: 100%; }
+  .low-res-zoom-summary { margin: -2px 0 0; font-size: 11px; line-height: 1.35; opacity: 0.72; }
+  .low-res-zoom-summary.disabled { opacity: 0.55; }
   .low-res-zoom-controls.disabled { opacity: 0.6; }
   .ink-settings-content h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.75; }
   .ink-settings-content { --ink-heading-width: 110px; }
