@@ -3,6 +3,7 @@
 Typomatique is a browser-only, single-page writing app that emulates mechanical typewriter behavior while keeping modern editing and export controls.
 
 ## What it includes
+- One-screen landing page with Typomatique wordmark, Swiss-style typography/colors, a random zoomed detail preview from `page.png` (click to open full zoom + pan), feature strip, quick links, and an `open emulator` CTA.
 - Canvas-based page rendering with rulers, margins, page controls, and zoom.
 - Settings panels for `Page`, `Fonts`, `Effects`, `Behavior` (`Emulation`, `Appearance`, `Zoom`), `Sync`, and `About` (credits/notices).
 - Startup default font is `TT2020 Base`.
@@ -27,9 +28,10 @@ Any static file server also works.
 
 ## Basic use
 1. Start the server and open the app in a modern browser.
-2. Click the page and type.
-3. Open settings from the gear button to tune layout, fonts, effects, and behavior options.
-4. Use the file toolbar for document switching and export.
+2. Click `open emulator` on the landing page.
+3. Click the page and type.
+4. Open settings from the gear button to tune layout, fonts, effects, and behavior options.
+5. Use the file toolbar for document switching and export.
 
 ## Dropbox setup (GitHub Pages)
 - In `js/storage/dropboxSync.js`, set `DROPBOX_APP_KEY` to your Dropbox app key.

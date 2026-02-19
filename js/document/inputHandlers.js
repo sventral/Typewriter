@@ -57,6 +57,10 @@ function isDigitKey(key) {
   return key.length === 1 && /[0-9]/.test(key);
 }
 
+function isLandingVisible() {
+  return Boolean(document.body && document.body.classList.contains('landing-open'));
+}
+
 export function createInputController({
   state,
   typedRun,
@@ -138,6 +142,15 @@ export function createInputController({
   }
 
   function handleKeyDown(e) {
+    if (isLandingVisible()) {
+      const landingTarget = e.target && e.target.closest && e.target.closest('#landingPage');
+      if (!landingTarget) {
+        e.preventDefault();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      }
+      return;
+    }
+
     if (isEditableTarget(e.target)) return;
 
     if (isInputTemporarilyBlocked()) {
@@ -281,6 +294,12 @@ export function createInputController({
   }
 
   function handlePaste(e) {
+    if (isLandingVisible()) {
+      e.preventDefault();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+      return;
+    }
+
     if (isEditableTarget(e.target)) return;
 
     if (isInputTemporarilyBlocked()) {
