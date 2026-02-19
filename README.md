@@ -1,6 +1,6 @@
-# TypeSim
+# Typomatique
 
-TypeSim is a browser-only, single-page writing app that emulates mechanical typewriter behavior while keeping modern editing and export controls.
+Typomatique is a browser-only, single-page writing app that emulates mechanical typewriter behavior while keeping modern editing and export controls.
 
 ## What it includes
 - Canvas-based page rendering with rulers, margins, page controls, and zoom.
@@ -15,7 +15,7 @@ TypeSim is a browser-only, single-page writing app that emulates mechanical type
 - Ink/effect controls including line slant, glyph jitter, baseline character offsets (above/below), filters, effect randomization, and a Manage styles menu (load/save/delete plus file import/export).
 - Document menu with local persistence, plus export options for raw data, plain text, and PDF.
 - Optional Dropbox sync (`settings.json` + `documents/*.json`) with Connect/Disconnect, manual sync, and auto-sync.
-- Sync settings include an in-panel note explaining that Dropbox sync stores settings and documents in `/Apps/TypeSim` for cross-device availability.
+- Sync settings include an in-panel note explaining that Dropbox sync stores settings and documents in `/Apps/Typomatique` for cross-device availability.
 
 ## Run locally
 ```bash
@@ -34,13 +34,13 @@ Any static file server also works.
 ## Dropbox setup (GitHub Pages)
 - In `js/storage/dropboxSync.js`, set `DROPBOX_APP_KEY` to your Dropbox app key.
 - Register this exact redirect URI in your Dropbox app:
-  - `https://sventral.github.io/TypeSim/dropbox-auth.html`
+  - `https://sventral.github.io/Typomatique/dropbox-auth.html`
 - Keep Dropbox access type as **App Folder**.
 
 
 ## Project layout
 ```text
-TypeSim/
+Typomatique/
 ├── index.html         # App shell and UI markup
 ├── styles.css         # CSS entrypoint
 ├── styles/            # Modular stylesheets
