@@ -1,4 +1,4 @@
-const DB_NAME = 'typesim-docs';
+const DB_NAME = 'typomatique-docs';
 const DB_VERSION = 1;
 const STORE_NAME = 'documents';
 

@@ -37,7 +37,7 @@ async function hydrateDocumentsFromBlobStore(documents, idsToHydrate) {
       doc.data = decodeDocumentDataFromStorage(payload);
     } catch (err) {
       if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-        console.warn('TypeSim: Failed to read stored document payload', err);
+        console.warn('Typomatique: Failed to read stored document payload', err);
       }
     }
   }));
@@ -181,7 +181,7 @@ export async function persistDocuments(storageKey, docState, options = {}) {
       storage.removeItem(storageKey);
     } catch (err) {
       if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-        console.warn('TypeSim: Failed to persist document metadata – storage quota may be exhausted.', err);
+        console.warn('Typomatique: Failed to persist document metadata – storage quota may be exhausted.', err);
       }
       if (options.onSaveError) {
         options.onSaveError(err);
@@ -192,7 +192,7 @@ export async function persistDocuments(storageKey, docState, options = {}) {
     await Promise.all(blobWrites);
   } catch (err) {
     if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-      console.warn('TypeSim: Failed to persist document payloads', err);
+      console.warn('Typomatique: Failed to persist document payloads', err);
     }
     if (options.onSaveError) {
       options.onSaveError(err);
@@ -203,7 +203,7 @@ export async function persistDocuments(storageKey, docState, options = {}) {
       await pruneDocumentPayloads(keepIds);
     } catch (err) {
       if (typeof console !== 'undefined' && typeof console.warn === 'function') {
-        console.warn('TypeSim: Failed to prune stale document payloads', err);
+        console.warn('Typomatique: Failed to prune stale document payloads', err);
       }
     }
   }

@@ -17,7 +17,7 @@ async function run() {
       return;
     }
     if (result.redirected) {
-      setStatus(result.ok ? 'Connected. Returning to TypeSim...' : 'Authorization failed. Returning to TypeSim...', !result.ok);
+      setStatus(result.ok ? 'Connected. Returning to Typomatique...' : 'Authorization failed. Returning to Typomatique...', !result.ok);
       return;
     }
     if (result.ok) {
