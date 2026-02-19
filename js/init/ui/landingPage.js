@@ -9,6 +9,7 @@ const LIGHTBOX_MAX_SCALE = 7;
 const LIGHTBOX_EXTRA_SCALE = 0.55;
 const DRAG_CLICK_THRESHOLD_PX = 4;
 const WHEEL_CLICK_SUPPRESS_MS = 220;
+const LANDING_FOOTER_COLLISION_GAP_PX = 12;
 
 function isLandingOpen() {
   return Boolean(document.body && document.body.classList.contains('landing-open'));
@@ -16,6 +17,11 @@ function isLandingOpen() {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function parsePixelValue(rawValue, fallback = 0) {
+  const parsed = Number.parseFloat(rawValue);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function readViewerMetrics(viewer, scale = viewer.scale) {
@@ -145,6 +151,9 @@ function zoomFromWheel(viewer, event) {
 
 export function setupLandingPage({ app } = {}) {
   const landingPage = document.getElementById('landingPage');
+  const landingShell = landingPage?.querySelector('.landing-page__shell');
+  const landingHero = landingPage?.querySelector('.landing-hero');
+  const landingFooter = landingPage?.querySelector('.landing-footer');
   const openBtn = document.getElementById('landingOpenBtn');
   const guideBtn = document.getElementById('landingGuideBtn');
   const previewBtn = document.getElementById('landingPreviewBtn');
@@ -155,7 +164,18 @@ export function setupLandingPage({ app } = {}) {
   const lightboxViewport = document.getElementById('landingLightboxViewport');
   const lightboxImage = document.getElementById('landingLightboxImage');
 
-  if (!landingPage || !openBtn || !previewBtn || !previewImage || !lightbox || !lightboxViewport || !lightboxImage) {
+  if (
+    !landingPage
+    || !landingShell
+    || !landingHero
+    || !landingFooter
+    || !openBtn
+    || !previewBtn
+    || !previewImage
+    || !lightbox
+    || !lightboxViewport
+    || !lightboxImage
+  ) {
     return;
   }
 
@@ -220,15 +240,51 @@ export function setupLandingPage({ app } = {}) {
     }, LIGHTBOX_FADE_MS);
   };
 
+  const updateLandingFooterPlacement = () => {
+    if (landingPage.hidden || landingPage.scrollTop > 0) {
+      landingShell.classList.remove('is-footer-docked');
+      landingShell.style.removeProperty('--landing-footer-height');
+      return;
+    }
+
+    landingShell.classList.remove('is-footer-docked');
+    landingShell.style.removeProperty('--landing-footer-height');
+
+    const footerRect = landingFooter.getBoundingClientRect();
+    const heroRect = landingHero.getBoundingClientRect();
+    const shellRect = landingShell.getBoundingClientRect();
+    if (footerRect.height <= 0 || shellRect.height <= 0) return;
+
+    const shellStyles = window.getComputedStyle(landingShell);
+    const pageStyles = window.getComputedStyle(landingPage);
+    const footerBottomGap = parsePixelValue(shellStyles.getPropertyValue('--landing-footer-bottom-gap'), 12);
+    const pagePaddingBottom = parsePixelValue(pageStyles.paddingBottom, 0);
+    const viewportBottom = window.innerHeight || document.documentElement.clientHeight || shellRect.bottom;
+
+    const desiredFooterTop = viewportBottom - pagePaddingBottom - footerBottomGap - footerRect.height;
+    const maxFooterTop = shellRect.bottom - footerBottomGap - footerRect.height;
+    const dockedFooterTop = Math.min(desiredFooterTop, maxFooterTop);
+    const minAllowedFooterTop = heroRect.bottom + LANDING_FOOTER_COLLISION_GAP_PX;
+    const canDockFooter = dockedFooterTop >= minAllowedFooterTop;
+
+    if (!canDockFooter) return;
+    landingShell.style.setProperty('--landing-footer-height', `${footerRect.height.toFixed(2)}px`);
+    landingShell.classList.add('is-footer-docked');
+  };
+
   const ensurePreviewView = () => {
     const metrics = readViewerMetrics(previewViewer);
-    if (metrics.viewportWidth <= 0 || metrics.viewportHeight <= 0) return;
+    if (metrics.viewportWidth <= 0 || metrics.viewportHeight <= 0) {
+      updateLandingFooterPlacement();
+      return;
+    }
     if (!previewReady) {
       randomizePreviewView(previewViewer);
       previewReady = true;
-      return;
+    } else {
+      applyViewerTransform(previewViewer);
     }
-    applyViewerTransform(previewViewer);
+    updateLandingFooterPlacement();
   };
 
   openBtn.addEventListener('click', closeLanding);
@@ -307,6 +363,8 @@ export function setupLandingPage({ app } = {}) {
     ensurePreviewView();
     if (isLightboxOpen()) applyViewerTransform(lightboxViewer);
   }, { passive: true });
+  landingPage.addEventListener('scroll', updateLandingFooterPlacement, { passive: true });
+  window.addEventListener('load', updateLandingFooterPlacement, { once: true });
 
   window.requestAnimationFrame(() => {
     ensurePreviewView();
