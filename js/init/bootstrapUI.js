@@ -2,6 +2,7 @@ import { markDocumentDirty } from '../state/saveRevision.js';
 import { setupInkSettingsPanel } from '../config/ink/inkSettingsView.js';
 import { syncRulerToggleButton } from './ui/rulerToggle.js';
 import { setupFaviconThemeSync } from './ui/faviconTheme.js';
+import { setupLandingBackground } from './ui/landingBackground.js';
 import { setupLandingPage } from './ui/landingPage.js';
 
 export async function bootstrapUI({
@@ -70,5 +71,6 @@ export async function bootstrapUI({
   if (state.showRulers) positionRulers();
   if (!inkAdjustedByTheme) setInk(state.ink || 'b');
   requestVirtualization();
+  setupLandingBackground();
   setupLandingPage({ app });
 }

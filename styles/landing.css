@@ -12,6 +12,16 @@
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
+.landing-background-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .landing-page[hidden] {
   display: none !important;
 }
@@ -29,6 +39,7 @@
   --landing-copy-inset: clamp(12px, 1.4vw, 24px);
   --landing-footer-bottom-gap: clamp(8px, 1.5vh, 16px);
   position: relative;
+  z-index: 1;
   box-sizing: border-box;
   width: min(1260px, 100%);
   min-height: calc(100svh - 20px);
