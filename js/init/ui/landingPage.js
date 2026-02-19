@@ -2,14 +2,14 @@ const LANDING_CLOSE_MS = 220;
 const LIGHTBOX_FADE_MS = 180;
 const PREVIEW_MIN_SCALE = 1.25;
 const PREVIEW_MAX_SCALE = 6.2;
-const PREVIEW_RANDOM_MIN_SCALE = 2.4;
-const PREVIEW_RANDOM_MAX_SCALE = 3.7;
+const PREVIEW_RANDOM_MIN_SCALE = 4.3;
+const PREVIEW_RANDOM_MAX_SCALE = 5.9;
 const LIGHTBOX_MIN_SCALE = 1;
 const LIGHTBOX_MAX_SCALE = 7;
 const LIGHTBOX_EXTRA_SCALE = 0.55;
 const DRAG_CLICK_THRESHOLD_PX = 4;
 const WHEEL_CLICK_SUPPRESS_MS = 220;
-const LANDING_FOOTER_COLLISION_GAP_PX = 12;
+const LANDING_FOOTER_COLLISION_GAP_PX = 16;
 
 function isLandingOpen() {
   return Boolean(document.body && document.body.classList.contains('landing-open'));

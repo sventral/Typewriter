@@ -3,7 +3,7 @@
 Typomatique is a browser-only, single-page writing app that emulates mechanical typewriter behavior while keeping modern editing and export controls.
 
 ## What it includes
-- One-screen landing page with Typomatique wordmark, Swiss-style typography/colors, an interactive `page.png` preview (zoom + pan in-place and in expanded view), feature list, quick links, and an `open emulator` CTA; the footer links dock near the viewport bottom when space allows.
+- One-screen landing page with Typomatique wordmark, Swiss-style typography/colors, an interactive `page.png` preview (zoom + pan in-place and in expanded view) with a larger high-zoom default framing, feature list, quick links, and an `open emulator` CTA; the footer links dock near the viewport bottom when space allows.
 - Canvas-based page rendering with rulers, margins, page controls, and zoom.
 - Settings panels for `Page`, `Fonts`, `Effects`, `Behavior` (`Emulation`, `Appearance`, `Zoom`), `Sync`, and `About` (credits/notices).
 - Startup default font is `TT2020 Base`.

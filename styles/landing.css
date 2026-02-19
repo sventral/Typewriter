@@ -26,6 +26,7 @@
 .landing-page__shell {
   --landing-shell-pad-y: clamp(12px, 1.8vw, 24px);
   --landing-shell-pad-x: clamp(12px, 2.2vw, 30px);
+  --landing-copy-inset: clamp(12px, 1.4vw, 24px);
   --landing-footer-bottom-gap: clamp(8px, 1.5vh, 16px);
   position: relative;
   box-sizing: border-box;
@@ -112,8 +113,8 @@
 
 .landing-hero {
   display: grid;
-  grid-template-columns: minmax(360px, 1.12fr) minmax(250px, 0.88fr);
-  gap: clamp(12px, 2.1vw, 28px);
+  grid-template-columns: minmax(320px, 0.96fr) minmax(320px, 1.04fr);
+  gap: clamp(18px, 2.6vw, 34px);
   align-items: start;
   min-height: 0;
 }
@@ -123,7 +124,7 @@
   align-content: start;
   gap: clamp(14px, 1.9vh, 24px);
   padding-top: clamp(18px, 2.9vh, 44px);
-  padding-left: clamp(12px, 1.4vw, 24px);
+  padding-left: var(--landing-copy-inset);
   min-height: 0;
 }
 
@@ -153,41 +154,42 @@
 
 .landing-main-description {
   margin: 0;
-  max-width: 69ch;
-  font-size: clamp(0.93rem, 0.98vw, 1.03rem);
-  line-height: 1.46;
+  max-width: 56ch;
+  font-size: clamp(0.9rem, 0.94vw, 0.98rem);
+  line-height: 1.5;
   color: #1d1d1d;
 }
 
 .landing-feature-strip {
   list-style: disc;
-  margin: 2px 0 0;
-  padding-left: 1.2rem;
+  margin: 6px 0 0;
+  padding-left: 1.34rem;
   display: grid;
-  gap: 5px;
+  gap: 8px;
   color: #131313;
-  font-size: clamp(0.82rem, 0.88vw, 0.92rem);
-  line-height: 1.3;
+  font-size: clamp(0.89rem, 0.97vw, 1rem);
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .landing-figure {
   margin: 0;
-  width: min(100%, 420px);
+  width: min(100%, 525px);
   justify-self: end;
   display: grid;
-  gap: 7px;
+  gap: 8px;
   align-content: start;
-  padding-top: clamp(14px, 2.2vh, 30px);
+  padding-top: clamp(10px, 1.6vh, 22px);
   min-height: 0;
 }
 
 .landing-preview {
-  --landing-scale: 2.8;
+  --landing-scale: 4.8;
   --landing-pan-x: 0px;
   --landing-pan-y: 0px;
   position: relative;
   width: 100%;
-  height: clamp(170px, 28svh, 270px);
+  height: clamp(306px, 50svh, 486px);
   border: 1px solid #151515;
   background: #e3e4df;
   overflow: hidden;
@@ -245,7 +247,7 @@
   align-items: center;
   justify-content: flex-start;
   margin-top: auto;
-  padding-left: clamp(12px, 1.4vw, 24px);
+  padding-left: var(--landing-copy-inset);
   padding-top: 0;
   min-height: 0;
 }
@@ -256,8 +258,8 @@
 
 .landing-page__shell.is-footer-docked .landing-footer {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: var(--landing-shell-pad-x);
+  right: var(--landing-shell-pad-x);
   bottom: var(--landing-footer-bottom-gap);
   margin-top: 0;
 }
@@ -391,6 +393,7 @@ body.landing-open > :not(.landing-page):not(script) {
     min-height: calc(100svh - 20px);
     --landing-shell-pad-y: 12px;
     --landing-shell-pad-x: 12px;
+    --landing-copy-inset: 0px;
     padding: var(--landing-shell-pad-y) var(--landing-shell-pad-x);
     gap: 12px;
   }
@@ -416,27 +419,40 @@ body.landing-open > :not(.landing-page):not(script) {
 
   .landing-copy {
     padding-top: 0;
-    padding-left: 0;
+    padding-left: var(--landing-copy-inset);
     gap: 12px;
   }
 
   .landing-footer {
     margin-top: clamp(10px, 1.5vh, 18px);
-    padding-left: 0;
+    padding-left: var(--landing-copy-inset);
   }
 
   .landing-figure {
     justify-self: stretch;
-    width: min(100%, 520px);
+    width: min(100%, 560px);
     padding-top: 0;
   }
 
   .landing-preview {
-    height: clamp(190px, 43svh, 340px);
+    height: clamp(240px, 52svh, 420px);
   }
 }
 
 @media (max-width: 620px) {
+  .landing-main-description {
+    max-width: 52ch;
+  }
+
+  .landing-feature-strip {
+    gap: 7px;
+    font-size: clamp(0.88rem, 4vw, 0.98rem);
+  }
+
+  .landing-preview {
+    height: clamp(220px, 46svh, 380px);
+  }
+
   .landing-btn {
     width: 100%;
   }
@@ -481,16 +497,16 @@ body.landing-open > :not(.landing-page):not(script) {
   }
 
   .landing-main-description {
-    font-size: clamp(0.86rem, 0.9vw, 0.95rem);
-    line-height: 1.36;
+    font-size: clamp(0.84rem, 0.88vw, 0.92rem);
+    line-height: 1.42;
   }
 
   .landing-feature-strip {
-    font-size: 0.83rem;
-    gap: 2px;
+    font-size: clamp(0.84rem, 0.88vw, 0.94rem);
+    gap: 4px;
   }
 
   .landing-preview {
-    height: clamp(164px, 24svh, 245px);
+    height: clamp(220px, 34svh, 340px);
   }
 }
