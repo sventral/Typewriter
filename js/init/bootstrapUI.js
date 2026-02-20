@@ -3,6 +3,7 @@ import { setupInkSettingsPanel } from '../config/ink/inkSettingsView.js';
 import { syncRulerToggleButton } from './ui/rulerToggle.js';
 import { setupFaviconThemeSync } from './ui/faviconTheme.js';
 import { setupLandingBackground } from './ui/landingBackground.js';
+import { setupGuideOverlay } from './ui/guideOverlay.js';
 import { setupLandingPage } from './ui/landingPage.js';
 
 export async function bootstrapUI({
@@ -72,5 +73,6 @@ export async function bootstrapUI({
   if (!inkAdjustedByTheme) setInk(state.ink || 'b');
   requestVirtualization();
   setupLandingBackground();
+  setupGuideOverlay();
   setupLandingPage({ app });
 }

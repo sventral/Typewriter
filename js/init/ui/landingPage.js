@@ -155,7 +155,7 @@ export function setupLandingPage({ app } = {}) {
   const landingHero = landingPage?.querySelector('.landing-hero');
   const landingFooter = landingPage?.querySelector('.landing-footer');
   const openBtn = document.getElementById('landingOpenBtn');
-  const guideBtn = document.getElementById('landingGuideBtn');
+  const aboutLink = document.getElementById('landingAboutLink');
   const previewBtn = document.getElementById('landingPreviewBtn');
   const previewImage = document.getElementById('landingPreviewImage');
   const lightbox = document.getElementById('landingLightbox');
@@ -289,11 +289,24 @@ export function setupLandingPage({ app } = {}) {
 
   openBtn.addEventListener('click', closeLanding);
 
-  if (guideBtn) {
-    guideBtn.addEventListener('click', (event) => {
-      event.preventDefault();
-    });
-  }
+  aboutLink?.addEventListener('click', (event) => {
+    event.preventDefault();
+    closeLanding();
+    window.setTimeout(() => {
+      if (app?.inkSettingsPanel && !app.inkSettingsPanel.classList.contains('is-open')) {
+        if (typeof app.inkSettingsBtn?.click === 'function') {
+          app.inkSettingsBtn.click();
+        } else {
+          app.inkSettingsPanel.classList.add('is-open');
+        }
+      }
+      const aboutSection = document.getElementById('aboutSettings');
+      if (aboutSection instanceof HTMLDetailsElement) {
+        aboutSection.open = true;
+        aboutSection.scrollIntoView({ block: 'nearest' });
+      }
+    }, LANDING_CLOSE_MS + 20);
+  });
 
   previewBtn.addEventListener('click', (event) => {
     if (performance.now() < suppressPreviewClickUntil) {

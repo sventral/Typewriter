@@ -41,7 +41,7 @@
         </a>
         <div class="landing-header-actions">
           <button class="landing-btn landing-btn--primary" id="landingOpenBtn" type="button">open emulator</button>
-          <button class="landing-btn landing-btn--secondary" id="landingGuideBtn" type="button" disabled aria-disabled="true">Guide</button>
+          <button class="landing-btn landing-btn--secondary" id="landingGuideBtn" type="button" data-open-guide>Guide</button>
         </div>
       </header>
 
@@ -72,9 +72,9 @@
 
       <footer class="landing-footer">
         <div class="landing-link-row" aria-label="Site links">
-          <a class="is-placeholder" href="#" role="link" aria-disabled="true" tabindex="-1">Guide</a>
+          <a href="guide.html" data-open-guide>Guide</a>
           <span aria-hidden="true">&middot;</span>
-          <a class="is-placeholder" href="#" role="link" aria-disabled="true" tabindex="-1">About</a>
+          <a href="#aboutSettings" id="landingAboutLink">About</a>
           <span aria-hidden="true">&middot;</span>
           <a href="LICENSE" target="_blank" rel="noopener noreferrer">Licenses</a>
           <span aria-hidden="true">&middot;</span>
@@ -279,7 +279,8 @@
 
   <aside id="inkSettingsPanel" class="side-panel from-right">
     <div class="panel-content ink-settings-content">
-      <details class="settings-section" id="typographySettings">
+      <div class="ink-settings-sections">
+        <details class="settings-section" id="typographySettings">
         <summary>
           <span class="settings-toggle-icon" aria-hidden="true"></span>
           <span class="settings-summary-label">Page</span>
@@ -979,11 +980,14 @@
         <div class="settings-section-content">
           <div class="settings-branding">
             <img class="settings-branding__logo" src="image/logo.png" alt="Typomatique logo" width="244" height="118" style="width:min(56%, 244px);height:auto;display:block;" />
-            <div class="app-version">v.53.6b</div>
+            <div class="app-version">v.54.2b</div>
           </div>
           <div class="settings-group-new about-group">
             <p class="about-note"><strong>Typomatique – A Mechanical Typewriter Emulator</strong></p>
             <p class="about-note">A browser-based typewriter emulator that produces realistic mechanical typewriting.</p>
+            <p class="about-note about-guide-note">
+              <a class="guide-link-cta" href="guide.html" data-open-guide>Read the User Guide</a>
+            </p>
           </div>
           <div class="settings-group-new about-group">
             <h4>Copyright and usage</h4>
@@ -1060,7 +1064,11 @@
             </p>
           </div>
         </div>
-      </details>
+        </details>
+      </div>
+      <div class="settings-panel-links" aria-label="Support links">
+        <a class="guide-link-cta" href="guide.html" data-open-guide>Read the User Guide</a>
+      </div>
     </div>
   </aside>
 
@@ -1091,6 +1099,15 @@
         <button class="btn export-dialog__cancel" type="button" id="exportDialogCloseBtn">Cancel</button>
       </div>
     </div>
+  </div>
+
+  <div class="guide-modal-host" id="guideModalHost" hidden aria-hidden="true">
+    <iframe
+      class="guide-modal-frame"
+      id="guideModalFrame"
+      title="Typomatique guide"
+      loading="lazy"
+      src="about:blank"></iframe>
   </div>
 
   <script src="https://unpkg.com/dropbox/dist/Dropbox-sdk.min.js"></script>
