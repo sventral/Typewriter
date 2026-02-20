@@ -3,42 +3,17 @@
 Typomatique is a browser-only, single-page writing app that emulates mechanical typewriter behavior while keeping modern editing and export controls.
 
 ## What it includes
-- One-screen landing page with Typomatique wordmark, Swiss-style typography/colors, a procedurally generated coffee-stain background (new on each reload, then static), an interactive `page.png` preview (zoom + pan in-place and in expanded view) with a larger high-zoom default framing, feature list, quick links, and an `open emulator` CTA; `Guide` opens as an in-page modal over the current view (landing/settings/about links all open the same guide), and `About` opens the in-app About settings section; the footer links dock near the viewport bottom when space allows.
-- Guide pages include section-specific illustrations from `image/` and place them beside or below the text depending on available space.
-- Canvas-based page rendering with rulers, margins, page controls, and zoom.
-- Settings panels for `Page`, `Fonts`, `Effects`, `Behavior` (`Emulation`, `Appearance`, `Zoom`), `Sync`, and `About` (credits/notices).
-- Startup default font is `TT2020 Base`.
-- Font presets are `woff2`-first and include web-hosted families from Fontsource CDN and OnlineWebFonts with bundled `woff2` fallbacks.
-- The Fonts panel uses the `Pica 10 Pitch` preset label.
-- `Letter Gothic`, `Pica 10 Pitch`, `Prestige Elite Std`, and `Prestige Elite Std Bold` are web-only; the app shows a visible error if one is unavailable.
-- Behavior `Zoom` controls include `High-zoom performance mode`, `Render soft cap (%)`, `Max extra render zoom (%)`, `Magnetic vertical pan groove` (default on), `Distraction-free mode` (hide chrome while typing; restore on mouse activity), optional `Hide background too`, `Automatically use a dark page`, `Dark page in distraction-free mode`, and a live `At 400% view...` helper line.
-- About section starts with an emulator blurb, then a logo + version lockup, and includes a custom site favicon.
-- Branding assets (`logo` + favicon) auto-invert for dark mode while staying black in light mode.
-- Ink/effect controls including line slant, glyph jitter, baseline character offsets (above/below), filters, effect randomization, and a Manage styles menu (load/save/delete plus file import/export).
-- Document menu with local persistence, plus export options for raw data, plain text, and PDF.
-- Optional Dropbox sync (`settings.json` + `documents/*.json`) with Connect/Disconnect, manual sync, and auto-sync.
-- Sync settings include an in-panel note explaining that Dropbox sync stores settings and documents in `/Apps/Typomatique` for cross-device availability.
 
-## Run locally
-```bash
-npm start
-# Serves on http://localhost:8080
-```
-
-Any static file server also works.
-
-## Basic use
-1. Start the server and open the app in a modern browser.
-2. Click `open emulator` on the landing page.
-3. Click the page and type.
-4. Open settings from the gear button to tune layout, fonts, effects, and behavior options.
-5. Use the file toolbar for document switching and export.
-
-## Dropbox setup (GitHub Pages)
-- In `js/storage/dropboxSync.js`, set `DROPBOX_APP_KEY` to your Dropbox app key.
-- Register this exact redirect URI in your Dropbox app:
-  - `https://sventral.github.io/Typomatique/dropbox-auth.html`
-- Keep Dropbox access type as **App Folder**.
+* A browser-based mechanical typewriter emulator and writing app (online typewriter simulator) that combines authentic typewriter behavior with modern editing and export tools.
+* Use cases: write in a distraction-free, old-school way; draft fiction or letters; generate typewritten-looking material for graphic design and layout; create believable “typed” props for film, theatre, games, or tabletop; or just mess around for fun.
+* A simple landing page with a live, interactive page preview and an “Open emulator” button, plus quick access to the guide and About/credits.
+* A built-in guide that opens inside the app and includes section illustrations that reflow to fit your screen.
+* Canvas page rendering with rulers, margins, page layout controls, and smooth zoom (including high-zoom performance options).
+* Typeface presets geared toward classic typewriter fonts; default is TT2020 Base. WOFF2-first loading with bundled fallbacks, plus clear error messaging when certain web-only fonts can’t load.
+* “Ink” and print-wear effects (e.g., slant, jitter, baseline offsets, filters), including effect randomization and a styles manager (save/load/delete, import/export).
+* Document management with local persistence and exports for raw project data, plain text, and PDF.
+* Optional Dropbox sync for settings and documents (stored in “/Apps/Typomatique”) for cross-device access, with manual sync and auto-sync options.
+* Light/dark mode support, including branding assets that auto-invert for dark mode while staying black in light mode.
 
 
 ## Project layout
