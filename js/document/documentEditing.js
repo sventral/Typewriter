@@ -16,6 +16,7 @@ import { createDefaultPageNumberingSettings } from '../config/pageNumbering.js';
 import { INK_PALETTE, normalizeInkId } from '../config/inkPalette.js';
 import { createTypewriterMode } from './typewriterMode.js';
 import { createBellPlayer } from '../utils/bellPlayer.js';
+import { projectPointWithLineSlant } from '../utils/lineSlantProjection.js';
 
 export function createDocumentEditingController(context) {
   const {
@@ -335,8 +336,15 @@ export function createDocumentEditingController(context) {
     const p = state.pages[state.caret.page];
     if (!p) return;
     const layoutScale = layoutZoomFactor();
-    const caretLeft = state.caret.col * getCharWidth() * layoutScale;
-    const caretTop = (state.caret.rowMu * getGridHeight() - getBaselineOffsetCell()) * layoutScale;
+    const projectedCaret = projectPointWithLineSlant({
+      x: state.caret.col * getCharWidth(),
+      y: state.caret.rowMu * getGridHeight(),
+      angleDeg: p.lineSlantDeg,
+      centerX: app.PAGE_W / 2,
+      centerY: app.PAGE_H / 2,
+    });
+    const caretLeft = projectedCaret.x * layoutScale;
+    const caretTop = (projectedCaret.y - getBaselineOffsetCell()) * layoutScale;
     const caretHeight = baseCaretHeightPx() * layoutScale;
     const caretWidth = Math.max(1, Math.round(2 * layoutScale));
     viewUpdateCaret({
