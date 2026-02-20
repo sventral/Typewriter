@@ -148,6 +148,7 @@ export function registerControllers({
         setMarginBoxesVisible: layoutDomain.bridge.setMarginBoxesVisible,
         scheduleZoomCrispRedraw: layoutDomain.bridge.scheduleZoomCrispRedraw,
         refreshLagAssistState: layoutDomain.bridge.refreshLagAssistState,
+        syncMagneticPanGrooveState: layoutDomain.bridge.syncMagneticPanGrooveState,
       },
       input: editingDomain.document.inputController,
       theme: themeDomain.controller,

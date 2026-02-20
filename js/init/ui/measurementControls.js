@@ -49,6 +49,7 @@ export function createMeasurementControls({
   handleScrollLaneScroll = () => {},
   requestHammerNudge,
   isZooming,
+  syncMagneticPanGrooveState = () => {},
   applyDefaultMargins,
   computeColsFromCpi,
   gridDiv,
@@ -278,6 +279,17 @@ export function createMeasurementControls({
       app.lowResZoomSummary.classList.toggle('disabled', !enabled);
     }
     return normalized;
+  }
+
+  function syncMagneticPanGrooveUI() {
+    const enabled = state.magneticPanGrooveEnabled !== false;
+    state.magneticPanGrooveEnabled = enabled;
+    if (app.magneticPanGrooveToggle) {
+      app.magneticPanGrooveToggle.checked = enabled;
+    }
+    if (typeof syncMagneticPanGrooveState === 'function') {
+      syncMagneticPanGrooveState();
+    }
   }
 
   function hideMarginReleaseBtn() {
@@ -584,6 +596,13 @@ export function createMeasurementControls({
         syncLowResZoomUI();
       });
     });
+    if (app.magneticPanGrooveToggle) {
+      app.magneticPanGrooveToggle.addEventListener('change', () => {
+        state.magneticPanGrooveEnabled = !!app.magneticPanGrooveToggle.checked;
+        syncMagneticPanGrooveUI();
+        queueDirtySave();
+      });
+    }
   }
 
   function bindRulerInteractions() {
@@ -682,7 +701,10 @@ export function createMeasurementControls({
   }
 
   function applyMeasurementDefaults(loaded) {
-    if (loaded) return;
+    if (loaded) {
+      state.magneticPanGrooveEnabled = state.magneticPanGrooveEnabled !== false;
+      return;
+    }
     state.cpi = 10;
     state.colsAcross = computeColsFromCpi(10).cols2;
     state.inkWidthPct = 95;
@@ -704,6 +726,7 @@ export function createMeasurementControls({
     state.realTypewriterStopVolume = TYPEWRITER_DEFAULTS.stopVolume;
     state.realTypewriterBackspaceEnabled = TYPEWRITER_DEFAULTS.backspaceEnabled;
     setCaretLockEnabled(TYPEWRITER_DEFAULTS.caretLockEnabled, { save: false, requestNudge: false });
+    state.magneticPanGrooveEnabled = true;
     state.typewriterMarginRelease = false;
     applyDefaultMargins();
   }
@@ -730,6 +753,7 @@ export function createMeasurementControls({
     syncPageNumberingUI();
     syncLowResZoomUI();
     syncTypewriterUI();
+    syncMagneticPanGrooveUI();
   }
 
   return {

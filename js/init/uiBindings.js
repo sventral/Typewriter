@@ -66,6 +66,7 @@ export function setupUIBindings(context, controllers) {
     setMarginBoxesVisible,
     scheduleZoomCrispRedraw,
     refreshLagAssistState = () => {},
+    syncMagneticPanGrooveState = () => {},
   } = layout;
 
   const { handleKeyDown, handlePaste } = input;
@@ -154,6 +155,7 @@ export function setupUIBindings(context, controllers) {
     handleScrollLaneScroll,
     requestHammerNudge,
     isZooming,
+    syncMagneticPanGrooveState,
     applyDefaultMargins,
     computeColsFromCpi,
     gridDiv,

@@ -144,6 +144,14 @@
   .appearance-toggle input[type="checkbox"] { margin: 0; }
   .zoom-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: 0.8; }
   .zoom-toggle input[type="checkbox"] { margin: 0; }
+  .behavior-subsection-subtitle {
+    margin-top: 2px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  html[data-theme='dark'] .behavior-subsection-subtitle {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
   .dropbox-sync-group { gap: 13px; }
   .dropbox-sync-note {
     margin: 0 0 2px;
