@@ -192,6 +192,7 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
   const paperPanGroove = createPaperPanGrooveController({
     isEnabled: () => state.magneticPanGrooveEnabled !== false,
     getPaperOffsetX: () => state.paperOffset?.x ?? 0,
+    getZoom: () => (Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1),
     getHorizontalLimits: () => {
       const limits = computePaperOffsetLimits();
       return { minX: limits.minX, maxX: limits.maxX };

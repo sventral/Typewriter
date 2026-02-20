@@ -10,7 +10,7 @@ const DEFAULTS = Object.freeze({
   verticalEngageStreak: 2,
   verticalEngageHoldMs: 900,
   verticalReturnDelayMs: 110,
-  returnLerp: 0.24,
+  returnLerp: 0.2,
   returnThresholdPx: 0.2,
   centerDeadZonePx: 0.22,
   baseHorizontalScale: 0.8,
@@ -25,8 +25,14 @@ const DEFAULTS = Object.freeze({
   verticalCrossDeadZone: 1.2,
   verticalCrossAxisScale: 0.18,
   verticalCrossAxisRatio: 0.12,
-  verticalCenterSnapPx: 1.7,
-  verticalPullScale: 0.74,
+  grooveSpacingVisualPx: 150,
+  grooveSpacingMinPx: 26,
+  grooveSpacingMaxPx: 180,
+  grooveCenterCaptureVisualPx: 70,
+  grooveSnapVisualPx: 8,
+  centerGroovePullScale: 0.82,
+  sideGroovePullScale: 0.93,
+  pullScaleZoomRelax: 0.09,
   explicitVerticalReleaseMs: 140,
 });
 
@@ -34,6 +40,7 @@ export function createPaperPanGrooveController(options = {}) {
   const {
     isEnabled = () => true,
     getPaperOffsetX = () => 0,
+    getZoom = () => 1,
     getHorizontalLimits = () => ({ minX: -1, maxX: 1 }),
     setPaperOffsetX = () => {},
     requestFrame = (cb) => (
@@ -60,6 +67,7 @@ export function createPaperPanGrooveController(options = {}) {
   let verticalEngagedUntil = 0;
   let verticalIntentStreak = 0;
   let lastVerticalIntentTs = 0;
+  let activeGrooveX = 0;
 
   function clearPendingReturnTimer() {
     if (!returnTimerHandle) return;
@@ -90,14 +98,67 @@ export function createPaperPanGrooveController(options = {}) {
     return ts < verticalEngagedUntil;
   }
 
+  function currentZoom() {
+    const zoom = Number(getZoom());
+    return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  }
+
+  function visualToPaperPx(visualPx, zoom = currentZoom()) {
+    const safeZoom = Math.max(0.4, zoom);
+    return visualPx / safeZoom;
+  }
+
+  function horizontalLimits() {
+    const limits = getHorizontalLimits() || {};
+    const minX = Number.isFinite(limits.minX) ? limits.minX : -1;
+    const maxX = Number.isFinite(limits.maxX) ? limits.maxX : 1;
+    if (minX <= maxX) {
+      return { minX, maxX };
+    }
+    return { minX: maxX, maxX: minX };
+  }
+
+  function clampToLimits(x) {
+    const { minX, maxX } = horizontalLimits();
+    return clamp(Number.isFinite(x) ? x : 0, minX, maxX);
+  }
+
+  function grooveSpacingPx(zoom = currentZoom()) {
+    const spacing = visualToPaperPx(cfg.grooveSpacingVisualPx, zoom);
+    return clamp(spacing, cfg.grooveSpacingMinPx, cfg.grooveSpacingMaxPx);
+  }
+
+  function grooveCenterCapturePx(zoom = currentZoom(), spacingPx = grooveSpacingPx(zoom)) {
+    const cap = visualToPaperPx(cfg.grooveCenterCaptureVisualPx, zoom);
+    return clamp(cap, Math.min(spacingPx * 0.24, spacingPx), spacingPx * 0.8);
+  }
+
+  function grooveSnapPx(zoom = currentZoom()) {
+    return Math.max(cfg.returnThresholdPx, visualToPaperPx(cfg.grooveSnapVisualPx, zoom));
+  }
+
+  function resolveNearestGrooveTarget(currentX, zoom = currentZoom()) {
+    const clampedX = clampToLimits(currentX);
+    const spacing = grooveSpacingPx(zoom);
+    const centerCapture = grooveCenterCapturePx(zoom, spacing);
+    if (Math.abs(clampedX) <= centerCapture) {
+      return 0;
+    }
+    const index = Math.round(clampedX / spacing);
+    const target = index * spacing;
+    return clampToLimits(target);
+  }
+
+  function activeReturnTarget(ts = now()) {
+    if (!grooveEngaged(ts)) return 0;
+    activeGrooveX = clampToLimits(activeGrooveX);
+    return activeGrooveX;
+  }
+
   function suppressAutoReturn(durationMs = 650) {
     const duration = Math.max(0, Number(durationMs) || 0);
     inhibitReturnUntil = now() + duration;
     clearReturnMotion();
-  }
-
-  function nearCenter(x) {
-    return Math.abs(x) <= cfg.returnThresholdPx;
   }
 
   function startReturnAnimation() {
@@ -109,14 +170,17 @@ export function createPaperPanGrooveController(options = {}) {
       returnFrameHandle = 0;
       if (!isEnabled()) return;
       if (!autoReturnAllowed()) return;
+      const ts = now();
       const currentX = Number(getPaperOffsetX()) || 0;
-      if (nearCenter(currentX)) {
-        if (currentX !== 0) setPaperOffsetX(0);
+      const targetX = activeReturnTarget(ts);
+      const delta = currentX - targetX;
+      if (Math.abs(delta) <= cfg.returnThresholdPx) {
+        if (currentX !== targetX) setPaperOffsetX(targetX);
         return;
       }
-      const nextX = currentX * (1 - cfg.returnLerp);
+      const nextX = targetX + delta * (1 - cfg.returnLerp);
       if (!Number.isFinite(nextX) || Math.abs(nextX - currentX) < 1e-4) {
-        setPaperOffsetX(0);
+        setPaperOffsetX(targetX);
         return;
       }
       setPaperOffsetX(nextX);
@@ -176,9 +240,11 @@ export function createPaperPanGrooveController(options = {}) {
     horizontalRelaxUntil = ts + cfg.horizontalRelaxMs;
     verticalIntentStreak = 0;
     verticalEngagedUntil = 0;
+    activeGrooveX = clampToLimits(Number(getPaperOffsetX()) || 0);
   }
 
   function markVerticalIntent(ts, { explicit = false } = {}) {
+    const wasEngaged = grooveEngaged(ts);
     if (explicit) {
       horizontalRelaxUntil = Math.min(horizontalRelaxUntil, ts + cfg.explicitVerticalReleaseMs);
       verticalIntentStreak = Math.max(verticalIntentStreak, cfg.verticalEngageStreak);
@@ -192,6 +258,9 @@ export function createPaperPanGrooveController(options = {}) {
     }
     if (verticalIntentStreak < cfg.verticalEngageStreak) return false;
     verticalEngagedUntil = ts + cfg.verticalEngageHoldMs;
+    if (explicit || !wasEngaged) {
+      activeGrooveX = resolveNearestGrooveTarget(Number(getPaperOffsetX()) || 0);
+    }
     return true;
   }
 
@@ -201,15 +270,21 @@ export function createPaperPanGrooveController(options = {}) {
     if (!autoReturnAllowed(ts)) return;
     if (horizontalRelaxed(ts)) return;
     if (!grooveEngaged(ts)) return;
+    const zoom = currentZoom();
+    const targetX = activeReturnTarget(ts);
     const currentX = Number(getPaperOffsetX()) || 0;
-    const absX = Math.abs(currentX);
-    if (absX <= cfg.verticalCenterSnapPx) {
-      if (absX > cfg.returnThresholdPx) {
-        setPaperOffsetX(0);
+    const delta = currentX - targetX;
+    const snapPx = grooveSnapPx(zoom);
+    if (Math.abs(delta) <= snapPx) {
+      if (currentX !== targetX) {
+        setPaperOffsetX(targetX);
       }
       return;
     }
-    setPaperOffsetX(currentX * cfg.verticalPullScale);
+    const zoomBlend = clamp((zoom - 1) / 3, 0, 1);
+    const baseScale = Math.abs(targetX) <= snapPx ? cfg.centerGroovePullScale : cfg.sideGroovePullScale;
+    const scaledPull = clamp(baseScale + cfg.pullScaleZoomRelax * zoomBlend, 0, 0.985);
+    setPaperOffsetX(targetX + delta * scaledPull);
   }
 
   function filterWheelDeltas(rawDx, rawDy) {
