@@ -50,6 +50,19 @@ export function createThemeController({
     }
   }
 
+  function resolveDarkPageActive(effectiveTheme) {
+    const distractionFreeEnabled = state.distractionFreeModeEnabled === true;
+    const distractionFreeActive = distractionFreeEnabled
+      && !!(document?.body?.classList.contains('distraction-free-mode-hidden'));
+    if (state.distractionFreeAlwaysDarkPageEnabled === true && distractionFreeActive) {
+      return true;
+    }
+    if (distractionFreeEnabled && state.distractionFreeAutoDarkPageEnabled === true) {
+      return effectiveTheme === 'dark';
+    }
+    return effectiveTheme === 'dark' && !!state.darkPageInDarkMode;
+  }
+
   function readPageFillColor() {
     let fill = LIGHT_PAGE_HEX;
     try {
@@ -144,7 +157,7 @@ export function createThemeController({
     updateRootThemeAttribute();
     if (app.darkPageToggle) app.darkPageToggle.disabled = state.themeMode === 'light';
     const effectiveTheme = computeEffectiveTheme();
-    const darkPageActive = effectiveTheme === 'dark' && !!state.darkPageInDarkMode;
+    const darkPageActive = resolveDarkPageActive(effectiveTheme);
     setBodyPageTone(darkPageActive);
     refreshPageFillColor();
     const preferWhite = !!darkPageActive;

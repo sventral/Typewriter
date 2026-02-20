@@ -1,7 +1,10 @@
 const CHROME_HIDE_DELAY_MS = 680;
 const MOUSE_MOVE_THRESHOLD_PX = 2;
 
-export function createDistractionFreeModeController({ state }) {
+export function createDistractionFreeModeController({
+  state,
+  applyAppearance = () => {},
+}) {
   let hideTimer = 0;
   let chromeHidden = false;
   let listenersBound = false;
@@ -39,6 +42,9 @@ export function createDistractionFreeModeController({ state }) {
     if (chromeHidden === hidden) return;
     chromeHidden = hidden;
     applyClassState();
+    if (typeof applyAppearance === 'function') {
+      applyAppearance();
+    }
   }
 
   function revealChrome() {

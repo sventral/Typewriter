@@ -189,6 +189,10 @@ const DOM_ID_GROUPS = {
     distractionFreeToggle: 'distractionFreeToggle',
     distractionFreeBackgroundToggle: 'distractionFreeBackgroundToggle',
     distractionFreeBackgroundRow: 'distractionFreeBackgroundRow',
+    distractionFreeAutoDarkPageToggle: 'distractionFreeAutoDarkPageToggle',
+    distractionFreeAutoDarkPageRow: 'distractionFreeAutoDarkPageRow',
+    distractionFreeAlwaysDarkPageToggle: 'distractionFreeAlwaysDarkPageToggle',
+    distractionFreeAlwaysDarkPageRow: 'distractionFreeAlwaysDarkPageRow',
   },
   dropboxSync: {
     dropboxConnectBtn: 'dropboxConnectBtn',

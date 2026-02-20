@@ -51,6 +51,7 @@ export function createMeasurementControls({
   isZooming,
   syncMagneticPanGrooveState = () => {},
   syncDistractionFreeModeState = () => {},
+  applyAppearance = () => {},
   applyDefaultMargins,
   computeColsFromCpi,
   gridDiv,
@@ -296,8 +297,12 @@ export function createMeasurementControls({
   function syncDistractionFreeModeUI() {
     const enabled = state.distractionFreeModeEnabled === true;
     const hideBackground = state.distractionFreeHideBackgroundEnabled === true;
+    const autoDarkPage = state.distractionFreeAutoDarkPageEnabled === true;
+    const alwaysDarkPage = state.distractionFreeAlwaysDarkPageEnabled === true;
     state.distractionFreeModeEnabled = enabled;
     state.distractionFreeHideBackgroundEnabled = hideBackground;
+    state.distractionFreeAutoDarkPageEnabled = autoDarkPage && !alwaysDarkPage;
+    state.distractionFreeAlwaysDarkPageEnabled = alwaysDarkPage;
     if (app.distractionFreeToggle) {
       app.distractionFreeToggle.checked = enabled;
     }
@@ -308,8 +313,25 @@ export function createMeasurementControls({
     if (app.distractionFreeBackgroundRow) {
       app.distractionFreeBackgroundRow.classList.toggle('is-disabled', !enabled);
     }
+    if (app.distractionFreeAutoDarkPageToggle) {
+      app.distractionFreeAutoDarkPageToggle.checked = state.distractionFreeAutoDarkPageEnabled;
+      app.distractionFreeAutoDarkPageToggle.disabled = !enabled;
+    }
+    if (app.distractionFreeAutoDarkPageRow) {
+      app.distractionFreeAutoDarkPageRow.classList.toggle('is-disabled', !enabled);
+    }
+    if (app.distractionFreeAlwaysDarkPageToggle) {
+      app.distractionFreeAlwaysDarkPageToggle.checked = state.distractionFreeAlwaysDarkPageEnabled;
+      app.distractionFreeAlwaysDarkPageToggle.disabled = !enabled;
+    }
+    if (app.distractionFreeAlwaysDarkPageRow) {
+      app.distractionFreeAlwaysDarkPageRow.classList.toggle('is-disabled', !enabled);
+    }
     if (typeof syncDistractionFreeModeState === 'function') {
       syncDistractionFreeModeState();
+    }
+    if (typeof applyAppearance === 'function') {
+      applyAppearance();
     }
   }
 
@@ -640,6 +662,28 @@ export function createMeasurementControls({
         focusStage();
       });
     }
+    if (app.distractionFreeAutoDarkPageToggle) {
+      app.distractionFreeAutoDarkPageToggle.addEventListener('change', () => {
+        state.distractionFreeAutoDarkPageEnabled = !!app.distractionFreeAutoDarkPageToggle.checked;
+        if (state.distractionFreeAutoDarkPageEnabled) {
+          state.distractionFreeAlwaysDarkPageEnabled = false;
+        }
+        syncDistractionFreeModeUI();
+        queueDirtySave();
+        focusStage();
+      });
+    }
+    if (app.distractionFreeAlwaysDarkPageToggle) {
+      app.distractionFreeAlwaysDarkPageToggle.addEventListener('change', () => {
+        state.distractionFreeAlwaysDarkPageEnabled = !!app.distractionFreeAlwaysDarkPageToggle.checked;
+        if (state.distractionFreeAlwaysDarkPageEnabled) {
+          state.distractionFreeAutoDarkPageEnabled = false;
+        }
+        syncDistractionFreeModeUI();
+        queueDirtySave();
+        focusStage();
+      });
+    }
   }
 
   function bindRulerInteractions() {
@@ -742,6 +786,8 @@ export function createMeasurementControls({
       state.magneticPanGrooveEnabled = state.magneticPanGrooveEnabled !== false;
       state.distractionFreeModeEnabled = state.distractionFreeModeEnabled === true;
       state.distractionFreeHideBackgroundEnabled = state.distractionFreeHideBackgroundEnabled === true;
+      state.distractionFreeAutoDarkPageEnabled = state.distractionFreeAutoDarkPageEnabled === true;
+      state.distractionFreeAlwaysDarkPageEnabled = state.distractionFreeAlwaysDarkPageEnabled === true;
       return;
     }
     state.cpi = 10;
@@ -768,6 +814,8 @@ export function createMeasurementControls({
     state.magneticPanGrooveEnabled = true;
     state.distractionFreeModeEnabled = false;
     state.distractionFreeHideBackgroundEnabled = false;
+    state.distractionFreeAutoDarkPageEnabled = false;
+    state.distractionFreeAlwaysDarkPageEnabled = false;
     state.typewriterMarginRelease = false;
     applyDefaultMargins();
   }

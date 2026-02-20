@@ -129,6 +129,8 @@ export function createMainState(app, gridDiv = 8) {
     magneticPanGrooveEnabled: true,
     distractionFreeModeEnabled: false,
     distractionFreeHideBackgroundEnabled: false,
+    distractionFreeAutoDarkPageEnabled: false,
+    distractionFreeAlwaysDarkPageEnabled: false,
     lagInputBlocked: false,
     lagAssistEnabled: true,
     pageNumbering: createDefaultPageNumberingSettings(),

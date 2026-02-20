@@ -71,7 +71,10 @@ export function setupUIBindings(context, controllers) {
   } = layout;
 
   const { handleKeyDown, handlePaste } = input;
-  const distractionFreeModeController = createDistractionFreeModeController({ state });
+  const distractionFreeModeController = createDistractionFreeModeController({
+    state,
+    applyAppearance: theme?.applyAppearance,
+  });
   if (typeof input.setTypingActivityHandler === 'function') {
     input.setTypingActivityHandler(distractionFreeModeController.notifyTypingActivity);
   }
@@ -162,6 +165,7 @@ export function setupUIBindings(context, controllers) {
     isZooming,
     syncMagneticPanGrooveState,
     syncDistractionFreeModeState: distractionFreeModeController.syncDistractionFreeModeState,
+    applyAppearance: theme?.applyAppearance,
     applyDefaultMargins,
     computeColsFromCpi,
     gridDiv,
