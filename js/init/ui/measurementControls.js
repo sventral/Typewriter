@@ -50,6 +50,7 @@ export function createMeasurementControls({
   requestHammerNudge,
   isZooming,
   syncMagneticPanGrooveState = () => {},
+  syncDistractionFreeModeState = () => {},
   applyDefaultMargins,
   computeColsFromCpi,
   gridDiv,
@@ -289,6 +290,26 @@ export function createMeasurementControls({
     }
     if (typeof syncMagneticPanGrooveState === 'function') {
       syncMagneticPanGrooveState();
+    }
+  }
+
+  function syncDistractionFreeModeUI() {
+    const enabled = state.distractionFreeModeEnabled === true;
+    const hideBackground = state.distractionFreeHideBackgroundEnabled === true;
+    state.distractionFreeModeEnabled = enabled;
+    state.distractionFreeHideBackgroundEnabled = hideBackground;
+    if (app.distractionFreeToggle) {
+      app.distractionFreeToggle.checked = enabled;
+    }
+    if (app.distractionFreeBackgroundToggle) {
+      app.distractionFreeBackgroundToggle.checked = hideBackground;
+      app.distractionFreeBackgroundToggle.disabled = !enabled;
+    }
+    if (app.distractionFreeBackgroundRow) {
+      app.distractionFreeBackgroundRow.classList.toggle('is-disabled', !enabled);
+    }
+    if (typeof syncDistractionFreeModeState === 'function') {
+      syncDistractionFreeModeState();
     }
   }
 
@@ -603,6 +624,22 @@ export function createMeasurementControls({
         queueDirtySave();
       });
     }
+    if (app.distractionFreeToggle) {
+      app.distractionFreeToggle.addEventListener('change', () => {
+        state.distractionFreeModeEnabled = !!app.distractionFreeToggle.checked;
+        syncDistractionFreeModeUI();
+        queueDirtySave();
+        focusStage();
+      });
+    }
+    if (app.distractionFreeBackgroundToggle) {
+      app.distractionFreeBackgroundToggle.addEventListener('change', () => {
+        state.distractionFreeHideBackgroundEnabled = !!app.distractionFreeBackgroundToggle.checked;
+        syncDistractionFreeModeUI();
+        queueDirtySave();
+        focusStage();
+      });
+    }
   }
 
   function bindRulerInteractions() {
@@ -703,6 +740,8 @@ export function createMeasurementControls({
   function applyMeasurementDefaults(loaded) {
     if (loaded) {
       state.magneticPanGrooveEnabled = state.magneticPanGrooveEnabled !== false;
+      state.distractionFreeModeEnabled = state.distractionFreeModeEnabled === true;
+      state.distractionFreeHideBackgroundEnabled = state.distractionFreeHideBackgroundEnabled === true;
       return;
     }
     state.cpi = 10;
@@ -727,6 +766,8 @@ export function createMeasurementControls({
     state.realTypewriterBackspaceEnabled = TYPEWRITER_DEFAULTS.backspaceEnabled;
     setCaretLockEnabled(TYPEWRITER_DEFAULTS.caretLockEnabled, { save: false, requestNudge: false });
     state.magneticPanGrooveEnabled = true;
+    state.distractionFreeModeEnabled = false;
+    state.distractionFreeHideBackgroundEnabled = false;
     state.typewriterMarginRelease = false;
     applyDefaultMargins();
   }
@@ -754,6 +795,7 @@ export function createMeasurementControls({
     syncLowResZoomUI();
     syncTypewriterUI();
     syncMagneticPanGrooveUI();
+    syncDistractionFreeModeUI();
   }
 
   return {

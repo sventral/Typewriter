@@ -11,7 +11,7 @@ Typomatique is a browser-only, single-page writing app that emulates mechanical 
 - Font presets are `woff2`-first and include web-hosted families from Fontsource CDN and OnlineWebFonts with bundled `woff2` fallbacks.
 - The Fonts panel uses the `Pica 10 Pitch` preset label.
 - `Letter Gothic`, `Pica 10 Pitch`, `Prestige Elite Std`, and `Prestige Elite Std Bold` are web-only; the app shows a visible error if one is unavailable.
-- Behavior `Zoom` controls include `High-zoom performance mode`, `Render soft cap (%)`, `Max extra render zoom (%)`, `Magnetic vertical pan groove` (default on), and a live `At 400% view...` helper line.
+- Behavior `Zoom` controls include `High-zoom performance mode`, `Render soft cap (%)`, `Max extra render zoom (%)`, `Magnetic vertical pan groove` (default on), `Distraction-free mode` (hide chrome while typing; restore on mouse activity), optional `Hide background too`, and a live `At 400% view...` helper line.
 - About section starts with an emulator blurb, then a logo + version lockup, and includes a custom site favicon.
 - Branding assets (`logo` + favicon) auto-invert for dark mode while staying black in light mode.
 - Ink/effect controls including line slant, glyph jitter, baseline character offsets (above/below), filters, effect randomization, and a Manage styles menu (load/save/delete plus file import/export).

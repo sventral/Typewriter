@@ -36,12 +36,14 @@ export function createPaperPanGrooveController(options = {}) {
     ),
     scheduleTimer = (cb, delayMs) => setTimeout(cb, delayMs),
     clearTimer = (id) => clearTimeout(id),
+    now = () => Date.now(),
     config = {},
   } = options;
 
   const cfg = { ...DEFAULTS, ...(config || {}) };
   let returnFrameHandle = 0;
   let returnTimerHandle = 0;
+  let inhibitReturnUntil = 0;
 
   function clearPendingReturnTimer() {
     if (!returnTimerHandle) return;
@@ -60,17 +62,29 @@ export function createPaperPanGrooveController(options = {}) {
     stopReturnAnimation();
   }
 
+  function autoReturnAllowed() {
+    return now() >= inhibitReturnUntil;
+  }
+
+  function suppressAutoReturn(durationMs = 650) {
+    const duration = Math.max(0, Number(durationMs) || 0);
+    inhibitReturnUntil = now() + duration;
+    clearReturnMotion();
+  }
+
   function nearCenter(x) {
     return Math.abs(x) <= cfg.returnThresholdPx;
   }
 
   function startReturnAnimation() {
     if (!isEnabled()) return;
+    if (!autoReturnAllowed()) return;
     stopReturnAnimation();
 
     const step = () => {
       returnFrameHandle = 0;
       if (!isEnabled()) return;
+      if (!autoReturnAllowed()) return;
       const currentX = Number(getPaperOffsetX()) || 0;
       if (nearCenter(currentX)) {
         if (currentX !== 0) setPaperOffsetX(0);
@@ -90,6 +104,7 @@ export function createPaperPanGrooveController(options = {}) {
 
   function scheduleReturn(delayMs) {
     if (!isEnabled()) return;
+    if (!autoReturnAllowed()) return;
     const delay = Math.max(0, Number(delayMs) || 0);
     clearPendingReturnTimer();
     if (delay <= 0) {
@@ -128,6 +143,7 @@ export function createPaperPanGrooveController(options = {}) {
 
   function applyVerticalGroovePull() {
     if (!isEnabled()) return;
+    if (!autoReturnAllowed()) return;
     const currentX = Number(getPaperOffsetX()) || 0;
     const absX = Math.abs(currentX);
     if (absX <= cfg.verticalCenterSnapPx) {
@@ -189,10 +205,7 @@ export function createPaperPanGrooveController(options = {}) {
   }
 
   function syncEnabledState() {
-    if (isEnabled()) {
-      scheduleReturn(cfg.graceMs);
-      return;
-    }
+    if (isEnabled()) return;
     clearReturnMotion();
   }
 
@@ -200,6 +213,7 @@ export function createPaperPanGrooveController(options = {}) {
     filterWheelDeltas,
     notifyVerticalIntent,
     applyVerticalGroovePull,
+    suppressAutoReturn,
     syncEnabledState,
     dispose: clearReturnMotion,
   };

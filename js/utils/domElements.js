@@ -186,6 +186,9 @@ const DOM_ID_GROUPS = {
     lowResZoomMargin: 'lowResZoomMargin',
     lowResZoomSummary: 'lowResZoomSummary',
     magneticPanGrooveToggle: 'magneticPanGrooveToggle',
+    distractionFreeToggle: 'distractionFreeToggle',
+    distractionFreeBackgroundToggle: 'distractionFreeBackgroundToggle',
+    distractionFreeBackgroundRow: 'distractionFreeBackgroundRow',
   },
   dropboxSync: {
     dropboxConnectBtn: 'dropboxConnectBtn',

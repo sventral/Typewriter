@@ -485,6 +485,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const movedX = Math.abs(state.paperOffset.x - prevX) > 1e-6;
     const movedY = Math.abs(state.paperOffset.y - prevY) > 1e-6;
     if (!movedX && !movedY) return;
+    if (movedX) {
+      paperPanGroove.suppressAutoReturn(750);
+    }
     const after = caretViewportPos();
     if (!after) return;
     const errX = ax - after.x;
@@ -505,7 +508,11 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
     const scale = cssScaleFactor() || 1;
     if (!Number.isFinite(scale) || scale <= 0) return;
+    const prevX = state.paperOffset.x;
     setPaperOffset(state.paperOffset.x + dx / scale, state.paperOffset.y + dy / scale);
+    if (Math.abs(state.paperOffset.x - prevX) > 1e-6) {
+      paperPanGroove.suppressAutoReturn(900);
+    }
   }
 
   function requestHammerNudge() {

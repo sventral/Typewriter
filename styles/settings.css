@@ -144,6 +144,8 @@
   .appearance-toggle input[type="checkbox"] { margin: 0; }
   .zoom-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: 0.8; }
   .zoom-toggle input[type="checkbox"] { margin: 0; }
+  .zoom-toggle-suboption { margin-left: 20px; font-size: 11px; opacity: 0.72; }
+  .zoom-toggle-suboption.is-disabled { opacity: 0.5; }
   .behavior-subsection-subtitle {
     margin-top: 2px;
     padding-top: 12px;

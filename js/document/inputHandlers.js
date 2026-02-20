@@ -84,12 +84,22 @@ export function createInputController({
   applyLineHeight,
   clamp,
   counters,
+  onTypingActivity = () => {},
 }) {
   if (!state || !typedRun || typeof getCurrentBounds !== 'function') {
     throw new Error('createInputController: missing required dependencies');
   }
 
   let progressivePasteInFlight = false;
+  let typingActivityHandler = typeof onTypingActivity === 'function'
+    ? onTypingActivity
+    : () => {};
+
+  function notifyTypingActivity() {
+    try {
+      typingActivityHandler();
+    } catch {}
+  }
 
   function isInputTemporarilyBlocked() {
     return state.lagInputBlocked || progressivePasteInFlight;
@@ -196,6 +206,7 @@ export function createInputController({
 
     if (key === 'Enter') {
       e.preventDefault();
+      notifyTypingActivity();
       resetTypedRun();
       handleNewline();
       markDocumentDirty(state);
@@ -205,6 +216,7 @@ export function createInputController({
 
     if (key === 'Backspace') {
       e.preventDefault();
+      notifyTypingActivity();
       const now = performance.now();
       const burstTs = counters.getBsBurstTs();
       const burstCount = counters.getBsBurstCount();
@@ -259,6 +271,7 @@ export function createInputController({
 
     if (key === 'Tab') {
       e.preventDefault();
+      notifyTypingActivity();
       resetTypedRun();
       for (let i = 0; i < 5; i += 1) advanceCaret();
       markDocumentDirty(state);
@@ -268,6 +281,7 @@ export function createInputController({
 
     if (key.length === 1) {
       e.preventDefault();
+      notifyTypingActivity();
       const lastPasteTs = counters.getLastPasteTs();
       if (key === 'v' && performance.now() - lastPasteTs < STRAY_V_WINDOW) return;
 
@@ -312,6 +326,7 @@ export function createInputController({
     if (!text) return;
 
     e.preventDefault();
+    notifyTypingActivity();
     const now = performance.now();
     counters.setLastPasteTs(now);
 
@@ -372,5 +387,8 @@ export function createInputController({
     handleKeyDown,
     handlePaste,
     resetTypedRun,
+    setTypingActivityHandler: (handler) => {
+      typingActivityHandler = typeof handler === 'function' ? handler : () => {};
+    },
   };
 }

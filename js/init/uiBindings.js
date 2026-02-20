@@ -2,6 +2,7 @@ import { markDocumentDirty } from '../state/saveRevision.js';
 import { createDocumentControls } from './ui/documentControls.js';
 import { createInkControls } from './ui/inkControls.js';
 import { createMeasurementControls } from './ui/measurementControls.js';
+import { createDistractionFreeModeController } from './ui/distractionFreeMode.js';
 
 export function setupUIBindings(context, controllers) {
   const {
@@ -70,6 +71,10 @@ export function setupUIBindings(context, controllers) {
   } = layout;
 
   const { handleKeyDown, handlePaste } = input;
+  const distractionFreeModeController = createDistractionFreeModeController({ state });
+  if (typeof input.setTypingActivityHandler === 'function') {
+    input.setTypingActivityHandler(distractionFreeModeController.notifyTypingActivity);
+  }
 
   const documentControls = createDocumentControls({
     app,
@@ -156,6 +161,7 @@ export function setupUIBindings(context, controllers) {
     requestHammerNudge,
     isZooming,
     syncMagneticPanGrooveState,
+    syncDistractionFreeModeState: distractionFreeModeController.syncDistractionFreeModeState,
     applyDefaultMargins,
     computeColsFromCpi,
     gridDiv,
@@ -174,6 +180,7 @@ export function setupUIBindings(context, controllers) {
     documentControls.bindDocumentControls();
     measurementControls.bindMeasurementControls();
     inkControls.bindInkControls();
+    distractionFreeModeController.bindDistractionFreeListeners();
     bindGlobalListeners();
   }
 

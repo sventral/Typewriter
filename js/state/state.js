@@ -127,6 +127,8 @@ export function createMainState(app, gridDiv = 8) {
     lowResZoomSoftCapPct: LOW_RES_ZOOM_DEFAULTS.softCapPct,
     lowResZoomMarginPct: LOW_RES_ZOOM_DEFAULTS.marginPct,
     magneticPanGrooveEnabled: true,
+    distractionFreeModeEnabled: false,
+    distractionFreeHideBackgroundEnabled: false,
     lagInputBlocked: false,
     lagAssistEnabled: true,
     pageNumbering: createDefaultPageNumberingSettings(),
