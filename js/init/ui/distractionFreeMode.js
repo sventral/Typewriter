@@ -6,14 +6,23 @@ const ERRATIC_MIN_DISTANCE_PX = 180;
 const ERRATIC_MIN_DIRECTION_CHANGES = 3;
 const ERRATIC_MIN_QUADRANT_COUNT = 2;
 const ERRATIC_DIRECTION_CHANGE_DEG = 56;
+const ERRATIC_EDGE_ZONE_PX = 92;
+const ERRATIC_EDGE_MIN_SWITCHES = 2;
+const ERRATIC_EDGE_MIN_DISTANCE_PX = 260;
+const ERRATIC_CIRCLE_MIN_SAMPLES = 8;
+const ERRATIC_CIRCLE_MIN_SPAN_PX = 110;
+const ERRATIC_CIRCLE_MIN_TURN_RAD = Math.PI * 1.72;
+const ERRATIC_CIRCLE_MIN_DISTANCE_PX = 240;
+const ERRATIC_CIRCLE_LOOP_RATIO = 0.66;
 const TARGET_ZONE_EDGE_X_PX = 160;
 const TARGET_ZONE_EDGE_Y_TOP_PX = 150;
 const TARGET_ZONE_EDGE_Y_BOTTOM_PX = 185;
 const TARGET_INTENT_MIN_DISTANCE_PX = 9;
 const TARGET_INTENT_MAX_DISTANCE_PX = 210;
-const TARGET_SWITCH_WINDOW_MS = 950;
+const TARGET_SWITCH_WINDOW_MS = 1300;
 const TARGET_SWITCH_RESTORE_SWITCHES = 2;
 const TARGET_SWITCH_RESTORE_HITS = 3;
+const CURSOR_REVEAL_THRESHOLD_PX = 5;
 const RESTORE_PHASE_MS = 340;
 
 const TARGET_IDS = Object.freeze({
@@ -64,6 +73,10 @@ export function createDistractionFreeModeController({
   let listenersBound = false;
   let lastMouseX = null;
   let lastMouseY = null;
+  let latestMouseX = null;
+  let latestMouseY = null;
+  let cursorAnchorX = null;
+  let cursorAnchorY = null;
   let activeTarget = '';
   const pointerTrail = [];
   const targetTrail = [];
@@ -115,6 +128,12 @@ export function createDistractionFreeModeController({
     resetTargetHistory();
   }
 
+  function setLatestPointerPosition(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    latestMouseX = x;
+    latestMouseY = y;
+  }
+
   function getViewportSize() {
     const doc = document.documentElement;
     const width = Math.max(1, window.innerWidth || doc?.clientWidth || 1);
@@ -156,6 +175,7 @@ export function createDistractionFreeModeController({
 
   function pushPointerSample(x, y) {
     const ts = nowMs();
+    setLatestPointerPosition(x, y);
     if (!Number.isFinite(lastMouseX) || !Number.isFinite(lastMouseY)) {
       lastMouseX = x;
       lastMouseY = y;
@@ -213,6 +233,84 @@ export function createDistractionFreeModeController({
     return bestScore >= 0.66 ? bestTarget : '';
   }
 
+  function computePointerTrailDistance() {
+    let totalDistance = 0;
+    for (let i = 0; i < pointerTrail.length; i += 1) {
+      totalDistance += pointerTrail[i].mag;
+    }
+    return totalDistance;
+  }
+
+  function hasViewportEdgeSweep(totalDistance) {
+    if (pointerTrail.length < 5 || totalDistance < ERRATIC_EDGE_MIN_DISTANCE_PX) return false;
+    const { width, height } = getViewportSize();
+    const sides = [];
+    let leftHit = false;
+    let rightHit = false;
+    let topHit = false;
+    let bottomHit = false;
+    for (let i = 0; i < pointerTrail.length; i += 1) {
+      const sample = pointerTrail[i];
+      let side = '';
+      if (sample.x <= ERRATIC_EDGE_ZONE_PX) {
+        side = 'L';
+        leftHit = true;
+      } else if (sample.x >= (width - ERRATIC_EDGE_ZONE_PX)) {
+        side = 'R';
+        rightHit = true;
+      } else if (sample.y <= ERRATIC_EDGE_ZONE_PX) {
+        side = 'T';
+        topHit = true;
+      } else if (sample.y >= (height - ERRATIC_EDGE_ZONE_PX)) {
+        side = 'B';
+        bottomHit = true;
+      }
+      if (!side) continue;
+      if (!sides.length || sides[sides.length - 1] !== side) {
+        sides.push(side);
+      }
+    }
+    const oppositeSidesHit = (leftHit && rightHit) || (topHit && bottomHit);
+    if (!oppositeSidesHit) return false;
+    let switches = 0;
+    for (let i = 1; i < sides.length; i += 1) {
+      if (sides[i] !== sides[i - 1]) switches += 1;
+    }
+    return switches >= ERRATIC_EDGE_MIN_SWITCHES;
+  }
+
+  function hasCircularSweep(totalDistance) {
+    if (pointerTrail.length < ERRATIC_CIRCLE_MIN_SAMPLES || totalDistance < ERRATIC_CIRCLE_MIN_DISTANCE_PX) {
+      return false;
+    }
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = 0; i < pointerTrail.length; i += 1) {
+      const sample = pointerTrail[i];
+      if (sample.x < minX) minX = sample.x;
+      if (sample.x > maxX) maxX = sample.x;
+      if (sample.y < minY) minY = sample.y;
+      if (sample.y > maxY) maxY = sample.y;
+    }
+    const spanX = maxX - minX;
+    const spanY = maxY - minY;
+    if (spanX < ERRATIC_CIRCLE_MIN_SPAN_PX || spanY < ERRATIC_CIRCLE_MIN_SPAN_PX) {
+      return false;
+    }
+    let totalTurn = 0;
+    for (let i = 1; i < pointerTrail.length; i += 1) {
+      totalTurn += angleBetweenVectors(pointerTrail[i - 1], pointerTrail[i]);
+    }
+    if (totalTurn < ERRATIC_CIRCLE_MIN_TURN_RAD) return false;
+    const first = pointerTrail[0];
+    const last = pointerTrail[pointerTrail.length - 1];
+    const loopDistance = Math.hypot(last.x - first.x, last.y - first.y);
+    const loopLimit = Math.max(spanX, spanY) * ERRATIC_CIRCLE_LOOP_RATIO;
+    return loopDistance <= loopLimit;
+  }
+
   function countVisitedQuadrants() {
     const { width, height } = getViewportSize();
     const midX = width / 2;
@@ -229,10 +327,9 @@ export function createDistractionFreeModeController({
 
   function pointerMovementIsErratic() {
     if (pointerTrail.length < 5) return false;
-    let totalDistance = 0;
-    for (let i = 0; i < pointerTrail.length; i += 1) {
-      totalDistance += pointerTrail[i].mag;
-    }
+    const totalDistance = computePointerTrailDistance();
+    if (hasCircularSweep(totalDistance)) return true;
+    if (hasViewportEdgeSweep(totalDistance)) return true;
     if (totalDistance < ERRATIC_MIN_DISTANCE_PX) return false;
 
     const minDirectionChangeRad = (ERRATIC_DIRECTION_CHANGE_DEG * Math.PI) / 180;
@@ -341,7 +438,23 @@ export function createDistractionFreeModeController({
   function revealCursor() {
     if (!cursorHidden) return;
     cursorHidden = false;
+    cursorAnchorX = null;
+    cursorAnchorY = null;
     applyClassState();
+  }
+
+  function maybeRevealCursorByMovement(x, y) {
+    if (!cursorHidden) return;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (!Number.isFinite(cursorAnchorX) || !Number.isFinite(cursorAnchorY)) {
+      cursorAnchorX = x;
+      cursorAnchorY = y;
+      return;
+    }
+    const distance = Math.hypot(x - cursorAnchorX, y - cursorAnchorY);
+    if (distance >= CURSOR_REVEAL_THRESHOLD_PX) {
+      revealCursor();
+    }
   }
 
   function setTargetReveal(targetId) {
@@ -364,6 +477,13 @@ export function createDistractionFreeModeController({
     if (chromeHidden === hidden) return;
     chromeHidden = hidden;
     cursorHidden = hidden;
+    if (hidden && Number.isFinite(latestMouseX) && Number.isFinite(latestMouseY)) {
+      cursorAnchorX = latestMouseX;
+      cursorAnchorY = latestMouseY;
+    } else {
+      cursorAnchorX = null;
+      cursorAnchorY = null;
+    }
     clearHideTimer();
     clearTargetRevealTimer();
     activeTarget = '';
@@ -407,7 +527,8 @@ export function createDistractionFreeModeController({
     const x = Number(event?.clientX);
     const y = Number(event?.clientY);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    revealCursor();
+    setLatestPointerPosition(x, y);
+    maybeRevealCursorByMovement(x, y);
     const sample = pushPointerSample(x, y);
     if (!chromeHidden) return;
     if (!sample) {
@@ -446,10 +567,11 @@ export function createDistractionFreeModeController({
   function handleMouseAction(event) {
     if (!isModeEnabled()) return;
     if (!isMousePointerEvent(event)) return;
-    revealCursor();
-    if (!chromeHidden) return;
     const x = Number(event?.clientX);
     const y = Number(event?.clientY);
+    setLatestPointerPosition(x, y);
+    revealCursor();
+    if (!chromeHidden) return;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     const { width, height } = getViewportSize();
     const targetId = inferTargetByPosition(x, y, width, height);
