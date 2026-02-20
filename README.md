@@ -19,12 +19,22 @@ Typomatique is a browser-only, single-page writing app that emulates mechanical 
 ## Project layout
 ```text
 Typomatique/
-├── index.html         # App shell and UI markup
-├── styles.css         # CSS entrypoint
-├── styles/            # Modular stylesheets
-├── js/                # App logic (init, document, layout, rendering, state, config, utils)
-├── fonts/             # Bundled fonts
-└── scripts/serve.js   # Local static server
+├── index.html            # Main app shell and UI markup
+├── guide.html            # In-app guide page
+├── dropbox-auth.html     # OAuth callback page for Dropbox sync
+├── styles.css            # CSS entrypoint
+├── styles/               # Modular stylesheets
+├── js/                   # App logic (init, document, layout, rendering, state, config, utils)
+├── fonts/                # Bundled typewriter/font assets
+├── audio/                # Typewriter bell/stop sounds
+├── image/                # UI, branding, and guide images
+├── scripts/
+│   └── serve.js          # Local static server
+├── package.json          # npm scripts and project metadata
+├── robots.txt            # Search crawler directives
+├── sitemap.xml           # Sitemap for published pages
+├── LICENSE               # PolyForm Noncommercial 1.0.0 license text
+└── AGENTS.md             # Repository-specific agent instructions
 ```
 
 ## License
