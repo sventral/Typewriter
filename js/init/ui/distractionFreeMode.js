@@ -28,7 +28,8 @@ const TARGET_SWITCH_WINDOW_MS = 1300;
 const TARGET_SWITCH_RESTORE_SWITCHES = 2;
 const TARGET_SWITCH_RESTORE_HITS = 3;
 const CURSOR_REVEAL_THRESHOLD_PX = 5;
-const RESTORE_PHASE_MS = 340;
+const RESTORE_PHASE_MS = 2000;
+const MODE_TOGGLE_TRANSITION_MS = 2000;
 
 const TARGET_IDS = Object.freeze({
   docs: 'docs',
@@ -73,9 +74,11 @@ export function createDistractionFreeModeController({
   let hideTimer = 0;
   let targetRevealTimer = 0;
   let restorePhaseTimer = 0;
+  let modeTransitionTimer = 0;
   let chromeHidden = false;
   let cursorHidden = false;
   let listenersBound = false;
+  let previousModeEnabled = state?.distractionFreeModeEnabled === true;
   let lastMouseX = null;
   let lastMouseY = null;
   let latestMouseX = null;
@@ -121,6 +124,27 @@ export function createDistractionFreeModeController({
     if (!removeClass) return;
     const body = document.body;
     body?.classList.remove('distraction-free-mode-restoring');
+  }
+
+  function clearModeTransition({ removeClass = true } = {}) {
+    if (modeTransitionTimer) {
+      clearTimeout(modeTransitionTimer);
+      modeTransitionTimer = 0;
+    }
+    if (!removeClass) return;
+    const body = document.body;
+    body?.classList.remove('distraction-free-mode-transitioning');
+  }
+
+  function beginModeTransition() {
+    const body = document.body;
+    if (!body) return;
+    clearModeTransition({ removeClass: false });
+    body.classList.add('distraction-free-mode-transitioning');
+    modeTransitionTimer = setTimeout(() => {
+      modeTransitionTimer = 0;
+      document.body?.classList.remove('distraction-free-mode-transitioning');
+    }, MODE_TOGGLE_TRANSITION_MS);
   }
 
   function resetPointerHistory() {
@@ -473,6 +497,9 @@ export function createDistractionFreeModeController({
     const body = document.body;
     if (!body) return;
     const enabled = isModeEnabled();
+    if (enabled !== previousModeEnabled) {
+      beginModeTransition();
+    }
     const hideChrome = enabled && chromeHidden;
     body.classList.toggle('distraction-free-mode-enabled', enabled);
     body.classList.toggle('distraction-free-mode-hidden', hideChrome);
@@ -486,6 +513,7 @@ export function createDistractionFreeModeController({
     if (!enabled) {
       clearRestorePhase();
     }
+    previousModeEnabled = enabled;
   }
 
   function revealCursor() {

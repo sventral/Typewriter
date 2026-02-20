@@ -1,84 +1,119 @@
 /* Hide interface chrome after typing, then reveal only the intended controls. */
 body.distraction-free-mode-enabled {
-  --df-chrome-fade-ms: 1200ms;
-  --df-surface-fade-ms: 1800ms;
-  --df-target-show-fade-ms: 600ms;
-  --df-target-hide-fade-ms: 1300ms;
-  --df-target-fade-ms: var(--df-chrome-fade-ms);
-  --df-transform-fade-ms: 1200ms;
+  --df-fade-ms: 2000ms;
+  --df-fade-ease: ease-in-out;
+}
+
+body.distraction-free-mode-transitioning {
+  --df-fade-ms: 2000ms;
   --df-fade-ease: cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-body.distraction-free-mode-enabled.distraction-free-mode-restoring {
-  --df-chrome-fade-ms: 1300ms;
-  --df-surface-fade-ms: 1900ms;
-  --df-transform-fade-ms: 1300ms;
+body.distraction-free-mode-enabled.distraction-free-mode-restoring,
+body.distraction-free-mode-transitioning.distraction-free-mode-restoring {
+  --df-fade-ms: 2000ms;
 }
 
+body.distraction-free-mode-transitioning,
 body.distraction-free-mode-enabled,
+body.distraction-free-mode-transitioning .stage,
 body.distraction-free-mode-enabled .stage,
+body.distraction-free-mode-transitioning .page,
 body.distraction-free-mode-enabled .page {
   transition:
-    background var(--df-surface-fade-ms) var(--df-fade-ease),
-    background-color var(--df-surface-fade-ms) var(--df-fade-ease),
-    box-shadow var(--df-surface-fade-ms) var(--df-fade-ease),
-    border-color var(--df-surface-fade-ms) var(--df-fade-ease),
-    color var(--df-surface-fade-ms) var(--df-fade-ease);
+    background var(--df-fade-ms) var(--df-fade-ease),
+    background-color var(--df-fade-ms) var(--df-fade-ease),
+    box-shadow var(--df-fade-ms) var(--df-fade-ease),
+    border-color var(--df-fade-ms) var(--df-fade-ease),
+    color var(--df-fade-ms) var(--df-fade-ease);
 }
 
+body.distraction-free-mode-transitioning .ink-file-launcher,
+body.distraction-free-mode-transitioning .corner-ruler-toggle,
+body.distraction-free-mode-transitioning .corner-mr-toggle,
+body.distraction-free-mode-transitioning .ink-dock,
+body.distraction-free-mode-transitioning .ink-gear-toolbar,
+body.distraction-free-mode-transitioning .zoom-controls,
+body.distraction-free-mode-transitioning .ruler,
+body.distraction-free-mode-transitioning .ruler-v,
+body.distraction-free-mode-transitioning .side-panel,
+body.distraction-free-mode-transitioning .stage-scroll-lane,
+body.distraction-free-mode-enabled .ink-file-launcher,
+body.distraction-free-mode-enabled .corner-ruler-toggle,
+body.distraction-free-mode-enabled .corner-mr-toggle,
+body.distraction-free-mode-enabled .ink-dock,
+body.distraction-free-mode-enabled .ink-gear-toolbar,
+body.distraction-free-mode-enabled .zoom-controls,
+body.distraction-free-mode-enabled .ruler,
+body.distraction-free-mode-enabled .ruler-v,
+body.distraction-free-mode-enabled .side-panel,
+body.distraction-free-mode-enabled .stage-scroll-lane {
+  opacity: 1;
+}
+
+body.distraction-free-mode-transitioning .ink-file-launcher,
 body.distraction-free-mode-enabled .ink-file-launcher {
   transition:
-    opacity var(--df-target-fade-ms) var(--df-fade-ease),
-    transform var(--df-transform-fade-ms) var(--df-fade-ease);
+    opacity var(--df-fade-ms) var(--df-fade-ease),
+    transform var(--df-fade-ms) var(--df-fade-ease);
 }
 
+body.distraction-free-mode-transitioning .corner-ruler-toggle,
+body.distraction-free-mode-transitioning .corner-mr-toggle,
 body.distraction-free-mode-enabled .corner-ruler-toggle,
 body.distraction-free-mode-enabled .corner-mr-toggle {
   transition:
-    transform var(--df-transform-fade-ms) var(--df-fade-ease),
-    border-color var(--df-transform-fade-ms) var(--df-fade-ease),
-    background var(--df-transform-fade-ms) var(--df-fade-ease),
-    color var(--df-transform-fade-ms) var(--df-fade-ease),
-    opacity var(--df-target-fade-ms) var(--df-fade-ease);
+    transform var(--df-fade-ms) var(--df-fade-ease),
+    border-color var(--df-fade-ms) var(--df-fade-ease),
+    background var(--df-fade-ms) var(--df-fade-ease),
+    color var(--df-fade-ms) var(--df-fade-ease),
+    opacity var(--df-fade-ms) var(--df-fade-ease);
 }
 
+body.distraction-free-mode-transitioning .ink-dock,
+body.distraction-free-mode-transitioning .ink-gear-toolbar,
 body.distraction-free-mode-enabled .ink-dock,
 body.distraction-free-mode-enabled .ink-gear-toolbar {
   transition:
-    transform var(--df-transform-fade-ms) var(--df-fade-ease),
-    background var(--df-transform-fade-ms) var(--df-fade-ease),
-    border-color var(--df-transform-fade-ms) var(--df-fade-ease),
-    color var(--df-transform-fade-ms) var(--df-fade-ease),
-    box-shadow var(--df-transform-fade-ms) var(--df-fade-ease),
-    opacity var(--df-target-fade-ms) var(--df-fade-ease);
+    transform var(--df-fade-ms) var(--df-fade-ease),
+    background var(--df-fade-ms) var(--df-fade-ease),
+    border-color var(--df-fade-ms) var(--df-fade-ease),
+    color var(--df-fade-ms) var(--df-fade-ease),
+    box-shadow var(--df-fade-ms) var(--df-fade-ease),
+    opacity var(--df-fade-ms) var(--df-fade-ease);
 }
 
+body.distraction-free-mode-transitioning .zoom-controls,
 body.distraction-free-mode-enabled .zoom-controls {
   transition:
-    transform var(--df-transform-fade-ms) var(--df-fade-ease),
-    opacity var(--df-target-fade-ms) var(--df-fade-ease);
+    transform var(--df-fade-ms) var(--df-fade-ease),
+    opacity var(--df-fade-ms) var(--df-fade-ease);
 }
 
+body.distraction-free-mode-transitioning .ruler,
+body.distraction-free-mode-transitioning .ruler-v,
 body.distraction-free-mode-enabled .ruler,
 body.distraction-free-mode-enabled .ruler-v {
   transition:
-    opacity var(--df-target-fade-ms) var(--df-fade-ease),
-    background var(--df-transform-fade-ms) var(--df-fade-ease),
-    border-color var(--df-transform-fade-ms) var(--df-fade-ease);
+    opacity var(--df-fade-ms) var(--df-fade-ease),
+    background var(--df-fade-ms) var(--df-fade-ease),
+    border-color var(--df-fade-ms) var(--df-fade-ease);
 }
 
+body.distraction-free-mode-transitioning .side-panel,
 body.distraction-free-mode-enabled .side-panel {
   transition:
-    transform var(--df-transform-fade-ms) var(--df-fade-ease),
-    opacity var(--df-target-fade-ms) var(--df-fade-ease),
-    background var(--df-transform-fade-ms) var(--df-fade-ease),
-    border-color var(--df-transform-fade-ms) var(--df-fade-ease),
-    color var(--df-transform-fade-ms) var(--df-fade-ease),
-    box-shadow var(--df-transform-fade-ms) var(--df-fade-ease);
+    transform var(--df-fade-ms) var(--df-fade-ease),
+    opacity var(--df-fade-ms) var(--df-fade-ease),
+    background var(--df-fade-ms) var(--df-fade-ease),
+    border-color var(--df-fade-ms) var(--df-fade-ease),
+    color var(--df-fade-ms) var(--df-fade-ease),
+    box-shadow var(--df-fade-ms) var(--df-fade-ease);
 }
 
+body.distraction-free-mode-transitioning .stage-scroll-lane,
 body.distraction-free-mode-enabled .stage-scroll-lane {
-  transition: opacity var(--df-target-fade-ms) var(--df-fade-ease);
+  transition: opacity var(--df-fade-ms) var(--df-fade-ease);
 }
 
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .ink-file-launcher,
@@ -91,7 +126,6 @@ body.distraction-free-mode-enabled.distraction-free-mode-hidden .ruler,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .ruler-v,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .side-panel,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .stage-scroll-lane {
-  --df-target-fade-ms: var(--df-target-hide-fade-ms);
   opacity: 0;
   pointer-events: none;
 }
@@ -103,7 +137,6 @@ body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free
 body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free-mode-target-ink .ink-dock,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free-mode-target-ink .ink-gear-toolbar,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free-mode-target-ink .side-panel {
-  --df-target-fade-ms: var(--df-target-show-fade-ms);
   opacity: 1;
   pointer-events: auto;
 }

@@ -6,7 +6,7 @@ Typomatique is a browser-only, single-page writing app that emulates mechanical 
 
 * A browser-based mechanical typewriter emulator and writing app (online typewriter simulator) that combines authentic typewriter behavior with modern editing and export tools.
 * Use cases: write in a distraction-free, old-school way; draft fiction or letters; generate typewritten-looking material for graphic design and layout; create believable “typed” props for film, theatre, games, or tabletop; or just mess around for fun.
-* Distraction-free mode with intent-based chrome reveal: moving toward a control corner reveals only that control cluster, scrolling does not break the mode, and `Cmd+Esc` exits quickly.
+* Distraction-free mode with intent-based chrome reveal: moving toward a control corner reveals only that control cluster, scrolling does not break the mode, `Cmd+Esc` exits quickly, and entering/exiting the mode uses a short fade (about 2 seconds) for chrome and page-tone changes.
 * A simple landing page with a live, interactive page preview and an “Open emulator” button, plus quick access to the guide and About/credits.
 * A built-in guide that opens inside the app and includes section illustrations that reflow to fit your screen.
 * Canvas page rendering with rulers, margins, page layout controls, and smooth zoom (including high-zoom performance options).
