@@ -1,4 +1,4 @@
-const CHROME_HIDE_DELAY_MS = 680;
+const CHROME_HIDE_DELAY_MS = 240;
 const MOUSE_MOVE_THRESHOLD_PX = 3;
 const TARGET_REVEAL_IDLE_MS = 2200;
 const POINTER_HISTORY_WINDOW_MS = 1600;
@@ -14,6 +14,11 @@ const ERRATIC_CIRCLE_MIN_SPAN_PX = 110;
 const ERRATIC_CIRCLE_MIN_TURN_RAD = Math.PI * 1.72;
 const ERRATIC_CIRCLE_MIN_DISTANCE_PX = 240;
 const ERRATIC_CIRCLE_LOOP_RATIO = 0.66;
+const EDGE_EXIT_ZONE_PX = 110;
+const EDGE_EXIT_GRACE_MS = 760;
+const EDGE_EXIT_RESET_MS = 380;
+const EDGE_EXIT_MIN_TRANSITIONS = 1;
+const EDGE_EXIT_MIN_SIDES = 2;
 const TARGET_ZONE_EDGE_X_PX = 160;
 const TARGET_ZONE_EDGE_Y_TOP_PX = 150;
 const TARGET_ZONE_EDGE_Y_BOTTOM_PX = 185;
@@ -80,6 +85,11 @@ export function createDistractionFreeModeController({
   let activeTarget = '';
   const pointerTrail = [];
   const targetTrail = [];
+  let edgeExitStartTs = 0;
+  let edgeExitLastSeenTs = 0;
+  let edgeExitTransitions = 0;
+  let edgeExitLastSide = '';
+  const edgeExitSides = new Set();
 
   function isModeEnabled() {
     return state?.distractionFreeModeEnabled === true;
@@ -126,12 +136,21 @@ export function createDistractionFreeModeController({
   function resetInteractionHistory() {
     resetPointerHistory();
     resetTargetHistory();
+    resetEdgeExitTracking();
   }
 
   function setLatestPointerPosition(x, y) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     latestMouseX = x;
     latestMouseY = y;
+  }
+
+  function resetEdgeExitTracking() {
+    edgeExitStartTs = 0;
+    edgeExitLastSeenTs = 0;
+    edgeExitTransitions = 0;
+    edgeExitLastSide = '';
+    edgeExitSides.clear();
   }
 
   function getViewportSize() {
@@ -311,6 +330,40 @@ export function createDistractionFreeModeController({
     return loopDistance <= loopLimit;
   }
 
+  function inferEdgeSide(x, y, width, height) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return '';
+    if (x <= EDGE_EXIT_ZONE_PX) return 'L';
+    if (x >= (width - EDGE_EXIT_ZONE_PX)) return 'R';
+    if (y <= EDGE_EXIT_ZONE_PX) return 'T';
+    if (y >= (height - EDGE_EXIT_ZONE_PX)) return 'B';
+    return '';
+  }
+
+  function shouldExitFromEdgeGesture(x, y) {
+    const ts = nowMs();
+    const { width, height } = getViewportSize();
+    const side = inferEdgeSide(x, y, width, height);
+    if (!side) {
+      if (edgeExitStartTs && (ts - edgeExitLastSeenTs) > EDGE_EXIT_RESET_MS) {
+        resetEdgeExitTracking();
+      }
+      return false;
+    }
+    const stale = !edgeExitStartTs || ((ts - edgeExitLastSeenTs) > EDGE_EXIT_RESET_MS);
+    if (stale) {
+      resetEdgeExitTracking();
+      edgeExitStartTs = ts;
+    }
+    if (edgeExitLastSide && edgeExitLastSide !== side) {
+      edgeExitTransitions += 1;
+    }
+    edgeExitLastSide = side;
+    edgeExitLastSeenTs = ts;
+    edgeExitSides.add(side);
+    if ((ts - edgeExitStartTs) < EDGE_EXIT_GRACE_MS) return false;
+    return edgeExitTransitions >= EDGE_EXIT_MIN_TRANSITIONS || edgeExitSides.size >= EDGE_EXIT_MIN_SIDES;
+  }
+
   function countVisitedQuadrants() {
     const { width, height } = getViewportSize();
     const midX = width / 2;
@@ -443,6 +496,19 @@ export function createDistractionFreeModeController({
     applyClassState();
   }
 
+  function hideCursor() {
+    if (cursorHidden) return;
+    cursorHidden = true;
+    if (Number.isFinite(latestMouseX) && Number.isFinite(latestMouseY)) {
+      cursorAnchorX = latestMouseX;
+      cursorAnchorY = latestMouseY;
+    } else {
+      cursorAnchorX = null;
+      cursorAnchorY = null;
+    }
+    applyClassState();
+  }
+
   function maybeRevealCursorByMovement(x, y) {
     if (!cursorHidden) return;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -506,11 +572,17 @@ export function createDistractionFreeModeController({
 
   function scheduleChromeHide() {
     if (!isModeEnabled()) return;
-    if (hideTimer) return;
+    clearHideTimer();
     hideTimer = setTimeout(() => {
       hideTimer = 0;
       if (!isModeEnabled()) return;
       setTargetReveal('');
+      if (chromeHidden) {
+        hideCursor();
+        resetTargetHistory();
+        resetEdgeExitTracking();
+        return;
+      }
       setChromeHidden(true);
     }, CHROME_HIDE_DELAY_MS);
   }
@@ -529,8 +601,12 @@ export function createDistractionFreeModeController({
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     setLatestPointerPosition(x, y);
     maybeRevealCursorByMovement(x, y);
-    const sample = pushPointerSample(x, y);
     if (!chromeHidden) return;
+    if (shouldExitFromEdgeGesture(x, y)) {
+      restoreChrome({ restored: true });
+      return;
+    }
+    const sample = pushPointerSample(x, y);
     if (!sample) {
       const { width, height } = getViewportSize();
       const zoneTarget = inferTargetByPosition(x, y, width, height);
@@ -573,6 +649,10 @@ export function createDistractionFreeModeController({
     revealCursor();
     if (!chromeHidden) return;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (shouldExitFromEdgeGesture(x, y)) {
+      restoreChrome({ restored: true });
+      return;
+    }
     const { width, height } = getViewportSize();
     const targetId = inferTargetByPosition(x, y, width, height);
     if (targetId) {
