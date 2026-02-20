@@ -2,6 +2,9 @@
 body.distraction-free-mode-enabled {
   --df-chrome-fade-ms: 240ms;
   --df-surface-fade-ms: 300ms;
+  --df-target-show-fade-ms: 320ms;
+  --df-target-hide-fade-ms: 520ms;
+  --df-target-fade-ms: var(--df-chrome-fade-ms);
 }
 
 body.distraction-free-mode-enabled.distraction-free-mode-restoring {
@@ -18,7 +21,7 @@ body.distraction-free-mode-enabled .page {
 }
 
 body.distraction-free-mode-enabled .ink-file-launcher {
-  transition: opacity var(--df-chrome-fade-ms) ease, transform 220ms ease;
+  transition: opacity var(--df-target-fade-ms) ease, transform 220ms ease;
 }
 
 body.distraction-free-mode-enabled .corner-ruler-toggle,
@@ -27,7 +30,7 @@ body.distraction-free-mode-enabled .corner-mr-toggle {
     transform 0.2s ease,
     border-color 0.2s ease,
     background 0.2s ease,
-    opacity var(--df-chrome-fade-ms) ease;
+    opacity var(--df-target-fade-ms) ease;
 }
 
 body.distraction-free-mode-enabled .ink-dock,
@@ -36,24 +39,24 @@ body.distraction-free-mode-enabled .ink-gear-toolbar {
     transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
     background 0.2s ease,
     border-color 0.2s ease,
-    opacity var(--df-chrome-fade-ms) ease;
+    opacity var(--df-target-fade-ms) ease;
 }
 
 body.distraction-free-mode-enabled .zoom-controls {
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity var(--df-chrome-fade-ms) ease;
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity var(--df-target-fade-ms) ease;
 }
 
 body.distraction-free-mode-enabled .ruler,
 body.distraction-free-mode-enabled .ruler-v {
-  transition: opacity var(--df-chrome-fade-ms) ease;
+  transition: opacity var(--df-target-fade-ms) ease;
 }
 
 body.distraction-free-mode-enabled .side-panel {
-  transition: transform 0.25s ease-out, opacity var(--df-chrome-fade-ms) ease;
+  transition: transform 0.25s ease-out, opacity var(--df-target-fade-ms) ease;
 }
 
 body.distraction-free-mode-enabled .stage-scroll-lane {
-  transition: opacity var(--df-chrome-fade-ms) ease;
+  transition: opacity var(--df-target-fade-ms) ease;
 }
 
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .ink-file-launcher,
@@ -66,6 +69,7 @@ body.distraction-free-mode-enabled.distraction-free-mode-hidden .ruler,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .ruler-v,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .side-panel,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .stage-scroll-lane {
+  --df-target-fade-ms: var(--df-target-hide-fade-ms);
   opacity: 0;
   pointer-events: none;
 }
@@ -77,8 +81,14 @@ body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free
 body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free-mode-target-ink .ink-dock,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free-mode-target-ink .ink-gear-toolbar,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free-mode-target-ink .side-panel {
+  --df-target-fade-ms: var(--df-target-show-fade-ms);
   opacity: 1;
   pointer-events: auto;
+}
+
+body.distraction-free-mode-enabled.distraction-free-mode-cursor-hidden,
+body.distraction-free-mode-enabled.distraction-free-mode-cursor-hidden * {
+  cursor: none !important;
 }
 
 body.distraction-free-mode-background-hidden,

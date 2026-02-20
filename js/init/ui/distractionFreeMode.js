@@ -1,15 +1,19 @@
 const CHROME_HIDE_DELAY_MS = 680;
 const MOUSE_MOVE_THRESHOLD_PX = 3;
-const TARGET_REVEAL_IDLE_MS = 1800;
+const TARGET_REVEAL_IDLE_MS = 2200;
 const POINTER_HISTORY_WINDOW_MS = 1600;
-const ERRATIC_MIN_DISTANCE_PX = 260;
-const ERRATIC_MIN_DIRECTION_CHANGES = 4;
-const ERRATIC_MIN_QUADRANT_COUNT = 3;
-const ERRATIC_DIRECTION_CHANGE_DEG = 68;
-const TARGET_ZONE_EDGE_X_PX = 230;
-const TARGET_ZONE_EDGE_Y_TOP_PX = 200;
-const TARGET_ZONE_EDGE_Y_BOTTOM_PX = 240;
-const TARGET_INTENT_MIN_DISTANCE_PX = 7;
+const ERRATIC_MIN_DISTANCE_PX = 180;
+const ERRATIC_MIN_DIRECTION_CHANGES = 3;
+const ERRATIC_MIN_QUADRANT_COUNT = 2;
+const ERRATIC_DIRECTION_CHANGE_DEG = 56;
+const TARGET_ZONE_EDGE_X_PX = 160;
+const TARGET_ZONE_EDGE_Y_TOP_PX = 150;
+const TARGET_ZONE_EDGE_Y_BOTTOM_PX = 185;
+const TARGET_INTENT_MIN_DISTANCE_PX = 9;
+const TARGET_INTENT_MAX_DISTANCE_PX = 210;
+const TARGET_SWITCH_WINDOW_MS = 950;
+const TARGET_SWITCH_RESTORE_SWITCHES = 2;
+const TARGET_SWITCH_RESTORE_HITS = 3;
 const RESTORE_PHASE_MS = 340;
 
 const TARGET_IDS = Object.freeze({
@@ -56,11 +60,13 @@ export function createDistractionFreeModeController({
   let targetRevealTimer = 0;
   let restorePhaseTimer = 0;
   let chromeHidden = false;
+  let cursorHidden = false;
   let listenersBound = false;
   let lastMouseX = null;
   let lastMouseY = null;
   let activeTarget = '';
   const pointerTrail = [];
+  const targetTrail = [];
 
   function isModeEnabled() {
     return state?.distractionFreeModeEnabled === true;
@@ -98,6 +104,15 @@ export function createDistractionFreeModeController({
     pointerTrail.length = 0;
     lastMouseX = null;
     lastMouseY = null;
+  }
+
+  function resetTargetHistory() {
+    targetTrail.length = 0;
+  }
+
+  function resetInteractionHistory() {
+    resetPointerHistory();
+    resetTargetHistory();
   }
 
   function getViewportSize() {
@@ -183,17 +198,19 @@ export function createDistractionFreeModeController({
       if (!Number.isFinite(beforeDistance) || beforeDistance <= 0.5) {
         return targetId;
       }
+      if (beforeDistance > (TARGET_INTENT_MAX_DISTANCE_PX * 1.8)) continue;
       const afterDistance = Math.hypot(anchor.x - sample.x, anchor.y - sample.y);
+      if (afterDistance > TARGET_INTENT_MAX_DISTANCE_PX) continue;
       const directionScore = (sample.dx * toAnchorX + sample.dy * toAnchorY) / (sample.mag * beforeDistance);
       const approachScore = (beforeDistance - afterDistance) / sample.mag;
-      if (directionScore < 0.42 || approachScore < 0.14) continue;
+      if (directionScore < 0.58 || approachScore < 0.22) continue;
       const score = (directionScore * 0.65) + (approachScore * 0.35);
       if (score > bestScore) {
         bestScore = score;
         bestTarget = targetId;
       }
     }
-    return bestScore >= 0.48 ? bestTarget : '';
+    return bestScore >= 0.66 ? bestTarget : '';
   }
 
   function countVisitedQuadrants() {
@@ -211,7 +228,7 @@ export function createDistractionFreeModeController({
   }
 
   function pointerMovementIsErratic() {
-    if (pointerTrail.length < 6) return false;
+    if (pointerTrail.length < 5) return false;
     let totalDistance = 0;
     for (let i = 0; i < pointerTrail.length; i += 1) {
       totalDistance += pointerTrail[i].mag;
@@ -228,6 +245,41 @@ export function createDistractionFreeModeController({
     }
     if (directionChanges < ERRATIC_MIN_DIRECTION_CHANGES) return false;
     return countVisitedQuadrants() >= ERRATIC_MIN_QUADRANT_COUNT;
+  }
+
+  function pruneTargetTrail(ts) {
+    while (targetTrail.length && (ts - targetTrail[0].ts) > TARGET_SWITCH_WINDOW_MS) {
+      targetTrail.shift();
+    }
+  }
+
+  function recordTargetHit(targetId) {
+    if (!targetId) return;
+    const ts = nowMs();
+    pruneTargetTrail(ts);
+    const last = targetTrail[targetTrail.length - 1];
+    if (last && last.id === targetId) {
+      last.ts = ts;
+      return;
+    }
+    targetTrail.push({ id: targetId, ts });
+    pruneTargetTrail(ts);
+  }
+
+  function hasErraticTargetSwitches() {
+    const ts = nowMs();
+    pruneTargetTrail(ts);
+    if (targetTrail.length < TARGET_SWITCH_RESTORE_HITS) return false;
+    let switches = 0;
+    const uniqueTargets = new Set();
+    for (let i = 0; i < targetTrail.length; i += 1) {
+      const hit = targetTrail[i];
+      uniqueTargets.add(hit.id);
+      if (i > 0 && hit.id !== targetTrail[i - 1].id) {
+        switches += 1;
+      }
+    }
+    return switches >= TARGET_SWITCH_RESTORE_SWITCHES && uniqueTargets.size >= 2;
   }
 
   function shouldKeepTargetVisible(targetId) {
@@ -280,9 +332,16 @@ export function createDistractionFreeModeController({
       const id = targetValues[i];
       body.classList.toggle(TARGET_CLASS_BY_ID[id], hideChrome && activeTarget === id);
     }
+    body.classList.toggle('distraction-free-mode-cursor-hidden', enabled && chromeHidden && cursorHidden);
     if (!enabled) {
       clearRestorePhase();
     }
+  }
+
+  function revealCursor() {
+    if (!cursorHidden) return;
+    cursorHidden = false;
+    applyClassState();
   }
 
   function setTargetReveal(targetId) {
@@ -304,10 +363,11 @@ export function createDistractionFreeModeController({
     const hidden = !!value;
     if (chromeHidden === hidden) return;
     chromeHidden = hidden;
+    cursorHidden = hidden;
     clearHideTimer();
     clearTargetRevealTimer();
     activeTarget = '';
-    resetPointerHistory();
+    resetInteractionHistory();
     if (restored) {
       beginRestorePhase();
     } else if (!hidden) {
@@ -347,15 +407,38 @@ export function createDistractionFreeModeController({
     const x = Number(event?.clientX);
     const y = Number(event?.clientY);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    revealCursor();
     const sample = pushPointerSample(x, y);
-    if (!sample || !chromeHidden) return;
+    if (!chromeHidden) return;
+    if (!sample) {
+      const { width, height } = getViewportSize();
+      const zoneTarget = inferTargetByPosition(x, y, width, height);
+      if (!zoneTarget) return;
+      recordTargetHit(zoneTarget);
+      if (hasErraticTargetSwitches()) {
+        restoreChrome({ restored: true });
+        return;
+      }
+      setTargetReveal(zoneTarget);
+      return;
+    }
+
+    if (pointerMovementIsErratic()) {
+      restoreChrome({ restored: true });
+      return;
+    }
 
     const targetId = inferTargetFromMovement(sample);
     if (targetId) {
+      recordTargetHit(targetId);
+      if (hasErraticTargetSwitches()) {
+        restoreChrome({ restored: true });
+        return;
+      }
       setTargetReveal(targetId);
       return;
     }
-    if (pointerMovementIsErratic()) {
+    if (hasErraticTargetSwitches()) {
       restoreChrome({ restored: true });
     }
   }
@@ -363,6 +446,7 @@ export function createDistractionFreeModeController({
   function handleMouseAction(event) {
     if (!isModeEnabled()) return;
     if (!isMousePointerEvent(event)) return;
+    revealCursor();
     if (!chromeHidden) return;
     const x = Number(event?.clientX);
     const y = Number(event?.clientY);
@@ -370,6 +454,11 @@ export function createDistractionFreeModeController({
     const { width, height } = getViewportSize();
     const targetId = inferTargetByPosition(x, y, width, height);
     if (targetId) {
+      recordTargetHit(targetId);
+      if (hasErraticTargetSwitches()) {
+        restoreChrome({ restored: true });
+        return;
+      }
       setTargetReveal(targetId);
     }
   }
@@ -399,10 +488,11 @@ export function createDistractionFreeModeController({
 
   function syncDistractionFreeModeState() {
     if (!isModeEnabled()) {
+      cursorHidden = false;
       clearHideTimer();
       clearTargetRevealTimer();
       setChromeHidden(false);
-      resetPointerHistory();
+      resetInteractionHistory();
       clearRestorePhase();
     }
     applyClassState();
