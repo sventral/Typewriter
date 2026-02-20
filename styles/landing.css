@@ -390,12 +390,12 @@ body.landing-open {
   overflow: hidden;
 }
 
-body.landing-open > :not(.landing-page) {
+body.landing-open > :not(.landing-page):not(.guide-modal-host) {
   pointer-events: none;
   user-select: none;
 }
 
-body.landing-open > :not(.landing-page):not(script) {
+body.landing-open > :not(.landing-page):not(.guide-modal-host):not(script) {
   filter: grayscale(0.3) brightness(0.74);
 }
 
