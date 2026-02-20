@@ -2,6 +2,7 @@ import { markDocumentDirty, markPageContentDirty } from '../state/saveRevision.j
 
 const DARK_PAGE_HEX = '#1f2024';
 const LIGHT_PAGE_HEX = '#f7f5ee';
+const PAGE_FILL_TRANSITION_MS = 2000;
 
 export function createThemeController({
   app,
@@ -19,6 +20,127 @@ export function createThemeController({
   saveStateDebounced = () => {},
 }) {
   let lastDarkPageActive = null;
+  let pageFillTransitionRaf = 0;
+  let pageFillTransitionTarget = '';
+
+  function clamp01(value) {
+    if (!Number.isFinite(value)) return 0;
+    if (value <= 0) return 0;
+    if (value >= 1) return 1;
+    return value;
+  }
+
+  function easeInOut(value) {
+    const t = clamp01(value);
+    if (t < 0.5) return 2 * t * t;
+    return 1 - (Math.pow(-2 * t + 2, 2) / 2);
+  }
+
+  function parseCssColor(value) {
+    if (typeof value !== 'string') return null;
+    const input = value.trim();
+    if (!input) return null;
+    const shortHex = /^#([0-9a-fA-F]{3})$/;
+    const fullHex = /^#([0-9a-fA-F]{6})$/;
+    const shortMatch = input.match(shortHex);
+    if (shortMatch) {
+      const hex = shortMatch[1];
+      const r = parseInt(hex[0] + hex[0], 16);
+      const g = parseInt(hex[1] + hex[1], 16);
+      const b = parseInt(hex[2] + hex[2], 16);
+      return { r, g, b };
+    }
+    const fullMatch = input.match(fullHex);
+    if (fullMatch) {
+      const hex = fullMatch[1];
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return { r, g, b };
+    }
+    if (input.startsWith('rgb')) {
+      const parts = input.match(/[\d.]+/g);
+      if (!parts || parts.length < 3) return null;
+      const r = Math.max(0, Math.min(255, Math.round(Number(parts[0]) || 0)));
+      const g = Math.max(0, Math.min(255, Math.round(Number(parts[1]) || 0)));
+      const b = Math.max(0, Math.min(255, Math.round(Number(parts[2]) || 0)));
+      return { r, g, b };
+    }
+    return null;
+  }
+
+  function rgbToCssString({ r, g, b }) {
+    const cr = Math.max(0, Math.min(255, Math.round(r)));
+    const cg = Math.max(0, Math.min(255, Math.round(g)));
+    const cb = Math.max(0, Math.min(255, Math.round(b)));
+    return `rgb(${cr}, ${cg}, ${cb})`;
+  }
+
+  function applyPageFillColor(color) {
+    if (typeof color !== 'string' || !color.trim()) return;
+    if (state.pageFillColor === color) return;
+    state.pageFillColor = color;
+    for (const page of state.pages) {
+      if (!page) continue;
+      page.dirtyAll = true;
+      touchPage(page);
+      schedulePaint(page);
+    }
+  }
+
+  function stopPageFillTransition() {
+    if (pageFillTransitionRaf) {
+      cancelAnimationFrame(pageFillTransitionRaf);
+      pageFillTransitionRaf = 0;
+    }
+    pageFillTransitionTarget = '';
+  }
+
+  function shouldAnimatePageFill() {
+    const body = document.body;
+    if (!body) return false;
+    return body.classList.contains('distraction-free-mode-enabled')
+      || body.classList.contains('distraction-free-mode-transitioning')
+      || body.classList.contains('distraction-free-mode-restoring');
+  }
+
+  function animatePageFillColor(nextFill) {
+    const from = parseCssColor(state.pageFillColor || LIGHT_PAGE_HEX);
+    const to = parseCssColor(nextFill);
+    if (!from || !to) {
+      stopPageFillTransition();
+      applyPageFillColor(nextFill);
+      return;
+    }
+    if (pageFillTransitionRaf && pageFillTransitionTarget === nextFill) {
+      return;
+    }
+    stopPageFillTransition();
+    pageFillTransitionTarget = nextFill;
+    const start = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+      ? performance.now()
+      : Date.now();
+    const tick = () => {
+      const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+      const elapsed = now - start;
+      const eased = easeInOut(elapsed / PAGE_FILL_TRANSITION_MS);
+      const current = {
+        r: from.r + ((to.r - from.r) * eased),
+        g: from.g + ((to.g - from.g) * eased),
+        b: from.b + ((to.b - from.b) * eased),
+      };
+      applyPageFillColor(rgbToCssString(current));
+      if (elapsed >= PAGE_FILL_TRANSITION_MS) {
+        stopPageFillTransition();
+        applyPageFillColor(nextFill);
+        return;
+      }
+      pageFillTransitionRaf = requestAnimationFrame(tick);
+    };
+    pageFillTransitionRaf = requestAnimationFrame(tick);
+  }
 
   function systemPrefersDark() {
     return !!(prefersDarkMedia && prefersDarkMedia.matches);
@@ -87,15 +209,15 @@ export function createThemeController({
 
   function refreshPageFillColor() {
     const nextFill = readPageFillColor();
-    if (nextFill && nextFill !== state.pageFillColor) {
-      state.pageFillColor = nextFill;
-      for (const page of state.pages) {
-        if (!page) continue;
-        page.dirtyAll = true;
-        touchPage(page);
-        schedulePaint(page);
-      }
+    if (!nextFill || nextFill === state.pageFillColor) {
+      return;
     }
+    if (shouldAnimatePageFill()) {
+      animatePageFillColor(nextFill);
+      return;
+    }
+    stopPageFillTransition();
+    applyPageFillColor(nextFill);
   }
 
   function applyInkPaletteForTheme(darkPageActive) {

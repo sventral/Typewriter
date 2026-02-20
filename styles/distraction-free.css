@@ -74,20 +74,24 @@ body.distraction-free-mode-transitioning .ink-dock,
 body.distraction-free-mode-transitioning .ink-gear-toolbar,
 body.distraction-free-mode-enabled .ink-dock,
 body.distraction-free-mode-enabled .ink-gear-toolbar {
-  transition:
-    transform var(--df-fade-ms) var(--df-fade-ease),
-    background var(--df-fade-ms) var(--df-fade-ease),
-    border-color var(--df-fade-ms) var(--df-fade-ease),
-    color var(--df-fade-ms) var(--df-fade-ease),
-    box-shadow var(--df-fade-ms) var(--df-fade-ease),
-    opacity var(--df-fade-ms) var(--df-fade-ease);
+  transition-property: transform, background, border-color, color, box-shadow, opacity;
+  transition-duration: 350ms, var(--df-fade-ms), var(--df-fade-ms), var(--df-fade-ms), var(--df-fade-ms), var(--df-fade-ms);
+  transition-timing-function:
+    cubic-bezier(0.4, 0, 0.2, 1),
+    var(--df-fade-ease),
+    var(--df-fade-ease),
+    var(--df-fade-ease),
+    var(--df-fade-ease),
+    var(--df-fade-ease);
 }
 
 body.distraction-free-mode-transitioning .zoom-controls,
 body.distraction-free-mode-enabled .zoom-controls {
-  transition:
-    transform var(--df-fade-ms) var(--df-fade-ease),
-    opacity var(--df-fade-ms) var(--df-fade-ease);
+  transition-property: transform, opacity;
+  transition-duration: 350ms, var(--df-fade-ms);
+  transition-timing-function:
+    cubic-bezier(0.4, 0, 0.2, 1),
+    var(--df-fade-ease);
 }
 
 body.distraction-free-mode-transitioning .ruler,
@@ -102,13 +106,15 @@ body.distraction-free-mode-enabled .ruler-v {
 
 body.distraction-free-mode-transitioning .side-panel,
 body.distraction-free-mode-enabled .side-panel {
-  transition:
-    transform var(--df-fade-ms) var(--df-fade-ease),
-    opacity var(--df-fade-ms) var(--df-fade-ease),
-    background var(--df-fade-ms) var(--df-fade-ease),
-    border-color var(--df-fade-ms) var(--df-fade-ease),
-    color var(--df-fade-ms) var(--df-fade-ease),
-    box-shadow var(--df-fade-ms) var(--df-fade-ease);
+  transition-property: transform, opacity, background, border-color, color, box-shadow;
+  transition-duration: 350ms, var(--df-fade-ms), var(--df-fade-ms), var(--df-fade-ms), var(--df-fade-ms), var(--df-fade-ms);
+  transition-timing-function:
+    cubic-bezier(0.4, 0, 0.2, 1),
+    var(--df-fade-ease),
+    var(--df-fade-ease),
+    var(--df-fade-ease),
+    var(--df-fade-ease),
+    var(--df-fade-ease);
 }
 
 body.distraction-free-mode-transitioning .stage-scroll-lane,
@@ -126,6 +132,7 @@ body.distraction-free-mode-enabled.distraction-free-mode-hidden .ruler,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .ruler-v,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .side-panel,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden .stage-scroll-lane {
+  transition-duration: 900ms;
   opacity: 0;
   pointer-events: none;
 }
@@ -137,6 +144,7 @@ body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free
 body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free-mode-target-ink .ink-dock,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free-mode-target-ink .ink-gear-toolbar,
 body.distraction-free-mode-enabled.distraction-free-mode-hidden.distraction-free-mode-target-ink .side-panel {
+  transition-duration: 650ms;
   opacity: 1;
   pointer-events: auto;
 }

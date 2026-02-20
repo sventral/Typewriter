@@ -569,6 +569,7 @@ export function createDistractionFreeModeController({
   function setChromeHidden(value, { restored = false } = {}) {
     const hidden = !!value;
     if (chromeHidden === hidden) return;
+    const wasHidden = chromeHidden;
     chromeHidden = hidden;
     cursorHidden = hidden;
     if (hidden && Number.isFinite(latestMouseX) && Number.isFinite(latestMouseY)) {
@@ -582,7 +583,7 @@ export function createDistractionFreeModeController({
     clearTargetRevealTimer();
     activeTarget = '';
     resetInteractionHistory();
-    if (restored) {
+    if (!hidden && (wasHidden || restored)) {
       beginRestorePhase();
     } else if (!hidden) {
       clearRestorePhase();
