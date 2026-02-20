@@ -850,5 +850,6 @@ export function createMeasurementControls({
     bindMeasurementControls,
     populateMeasurementUI,
     syncLowResZoomUI,
+    syncDistractionFreeModeUI,
   };
 }

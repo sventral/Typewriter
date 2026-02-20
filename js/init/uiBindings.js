@@ -71,9 +71,17 @@ export function setupUIBindings(context, controllers) {
   } = layout;
 
   const { handleKeyDown, handlePaste } = input;
+  let measurementControls = null;
   const distractionFreeModeController = createDistractionFreeModeController({
     state,
     applyAppearance: theme?.applyAppearance,
+    onModeDisabled: () => {
+      if (measurementControls && typeof measurementControls.syncDistractionFreeModeUI === 'function') {
+        measurementControls.syncDistractionFreeModeUI();
+      }
+      queueDirtySave();
+      focusStage();
+    },
   });
   if (typeof input.setTypingActivityHandler === 'function') {
     input.setTypingActivityHandler(distractionFreeModeController.notifyTypingActivity);
@@ -126,7 +134,7 @@ export function setupUIBindings(context, controllers) {
     refreshLagAssistState,
   });
 
-  const measurementControls = createMeasurementControls({
+  measurementControls = createMeasurementControls({
     app,
     state,
     pxX,
