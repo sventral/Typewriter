@@ -22,6 +22,7 @@ function createNoopLayoutAndZoomApi() {
     scheduleZoomCrispRedraw: () => {},
     handleScrollLaneScroll: () => {},
     refreshLagAssistState: () => {},
+    syncMagneticPanGrooveState: () => {},
   };
 }
 
@@ -56,6 +57,7 @@ export function createLayoutBridge(context) {
     },
     getLayoutAndZoomApi: () => layoutAndZoomApi,
     refreshLagAssistState: (...args) => layoutAndZoomApi.refreshLagAssistState?.(...args),
+    syncMagneticPanGrooveState: (...args) => layoutAndZoomApi.syncMagneticPanGrooveState?.(...args),
   };
 
   context.registerLayoutApi({

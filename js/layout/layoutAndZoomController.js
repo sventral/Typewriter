@@ -5,6 +5,7 @@ import { createZoomRenderManager } from './zoomRenderManager.js';
 import { createZoomUiController } from './zoomUiController.js';
 import { createZoomLagMonitor } from '../diagnostics/zoomLagMonitor.js';
 import { createWheelAxisStabilizer } from './wheelAxisStabilizer.js';
+import { createPaperPanGrooveController } from './paperPanGroove.js';
 import { BASE_PADDING_X_PX, BASE_PADDING_Y_PX } from './stageLayout.js';
 import { createZoomSliderContrastManager } from './zoomSliderContrast.js';
 import { isSafari } from '../utils/platform.js';
@@ -187,6 +188,18 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     snapResponsiveness: 0.65,
     releaseDecay: 0.1,
     idleDecay: 0.05,
+  });
+  const paperPanGroove = createPaperPanGrooveController({
+    isEnabled: () => state.magneticPanGrooveEnabled !== false,
+    getPaperOffsetX: () => state.paperOffset?.x ?? 0,
+    getZoom: () => (Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1),
+    getHorizontalLimits: () => {
+      const limits = computePaperOffsetLimits();
+      return { minX: limits.minX, maxX: limits.maxX };
+    },
+    setPaperOffsetX: (x) => {
+      setPaperOffset(x, state.paperOffset?.y ?? 0);
+    },
   });
   const zoomSliderContrast = createZoomSliderContrastManager({ app });
   const scheduleZoomSliderContrastUpdate = () => {
@@ -473,6 +486,9 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const movedX = Math.abs(state.paperOffset.x - prevX) > 1e-6;
     const movedY = Math.abs(state.paperOffset.y - prevY) > 1e-6;
     if (!movedX && !movedY) return;
+    if (movedX) {
+      paperPanGroove.suppressAutoReturn(750);
+    }
     const after = caretViewportPos();
     if (!after) return;
     const errX = ax - after.x;
@@ -493,7 +509,11 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     if (Math.abs(dx) < pxThreshold && Math.abs(dy) < pxThreshold) return;
     const scale = cssScaleFactor() || 1;
     if (!Number.isFinite(scale) || scale <= 0) return;
+    const prevX = state.paperOffset.x;
     setPaperOffset(state.paperOffset.x + dx / scale, state.paperOffset.y + dy / scale);
+    if (Math.abs(state.paperOffset.x - prevX) > 1e-6) {
+      paperPanGroove.suppressAutoReturn(900);
+    }
   }
 
   function requestHammerNudge() {
@@ -892,10 +912,18 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
 
   function handleWheelPan(e) {
     e.preventDefault();
-    const { dx, dy } = wheelAxisStabilizer.filter(e.deltaX, e.deltaY);
+    const stabilized = wheelAxisStabilizer.filter(e.deltaX, e.deltaY);
+    const {
+      dx,
+      dy,
+      pullToGroove = false,
+    } = paperPanGroove.filterWheelDeltas(stabilized.dx, stabilized.dy);
     if (dx || dy) {
       const zoom = Number.isFinite(state.zoom) && state.zoom > 0 ? state.zoom : 1;
       setPaperOffset(state.paperOffset.x - dx / zoom, state.paperOffset.y - dy / zoom);
+    }
+    if (pullToGroove) {
+      paperPanGroove.applyVerticalGroovePull();
     }
   }
 
@@ -910,11 +938,18 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     const ratio = clamp(lane.scrollTop / trackRange, 0, 1);
     const motionRange = Math.max(1e-3, limits.maxY - limits.minY);
     const targetY = limits.maxY - ratio * motionRange;
+    paperPanGroove.notifyVerticalIntent();
     setPaperOffset(state.paperOffset.x, targetY, { skipScrollLaneSync: true });
+    paperPanGroove.applyVerticalGroovePull();
+  }
+
+  function syncMagneticPanGrooveState() {
+    paperPanGroove.syncEnabledState();
   }
 
   setupZoomMeasurementTracking();
   scheduleZoomSliderContrastUpdate();
+  syncMagneticPanGrooveState();
 
   return {
     updateStageEnvironment,
@@ -937,5 +972,6 @@ export function createLayoutAndZoomController(context, pageLifecycle, editingCon
     clampPaperOffset,
     handleScrollLaneScroll,
     refreshLagAssistState,
+    syncMagneticPanGrooveState,
   };
 }

@@ -2,6 +2,7 @@ import { markDocumentDirty } from '../state/saveRevision.js';
 import { createDocumentControls } from './ui/documentControls.js';
 import { createInkControls } from './ui/inkControls.js';
 import { createMeasurementControls } from './ui/measurementControls.js';
+import { createDistractionFreeModeController } from './ui/distractionFreeMode.js';
 
 export function setupUIBindings(context, controllers) {
   const {
@@ -66,9 +67,25 @@ export function setupUIBindings(context, controllers) {
     setMarginBoxesVisible,
     scheduleZoomCrispRedraw,
     refreshLagAssistState = () => {},
+    syncMagneticPanGrooveState = () => {},
   } = layout;
 
   const { handleKeyDown, handlePaste } = input;
+  let measurementControls = null;
+  const distractionFreeModeController = createDistractionFreeModeController({
+    state,
+    applyAppearance: theme?.applyAppearance,
+    onModeDisabled: () => {
+      if (measurementControls && typeof measurementControls.syncDistractionFreeModeUI === 'function') {
+        measurementControls.syncDistractionFreeModeUI();
+      }
+      queueDirtySave();
+      focusStage();
+    },
+  });
+  if (typeof input.setTypingActivityHandler === 'function') {
+    input.setTypingActivityHandler(distractionFreeModeController.notifyTypingActivity);
+  }
 
   const documentControls = createDocumentControls({
     app,
@@ -117,7 +134,7 @@ export function setupUIBindings(context, controllers) {
     refreshLagAssistState,
   });
 
-  const measurementControls = createMeasurementControls({
+  measurementControls = createMeasurementControls({
     app,
     state,
     pxX,
@@ -154,6 +171,9 @@ export function setupUIBindings(context, controllers) {
     handleScrollLaneScroll,
     requestHammerNudge,
     isZooming,
+    syncMagneticPanGrooveState,
+    syncDistractionFreeModeState: distractionFreeModeController.syncDistractionFreeModeState,
+    applyAppearance: theme?.applyAppearance,
     applyDefaultMargins,
     computeColsFromCpi,
     gridDiv,
@@ -172,6 +192,7 @@ export function setupUIBindings(context, controllers) {
     documentControls.bindDocumentControls();
     measurementControls.bindMeasurementControls();
     inkControls.bindInkControls();
+    distractionFreeModeController.bindDistractionFreeListeners();
     bindGlobalListeners();
   }
 

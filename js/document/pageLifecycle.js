@@ -2,6 +2,7 @@ import { clamp } from '../utils/math.js';
 import { sampleLineSlantDeg, clampLineSlantDeg } from '../config/lineSlantConfig.js';
 import { ensurePageRevisionState } from '../state/saveRevision.js';
 import { preparePageCanvasForViewport } from '../rendering/pageCanvasPreparation.js';
+import { unprojectPointWithLineSlant } from '../utils/lineSlantProjection.js';
 
 export function createPageLifecycleController(context, editingController) {
   const {
@@ -393,10 +394,34 @@ export function createPageLifecycleController(context, editingController) {
     const gridHeight = getGridHeight();
     const charWidth = getCharWidth();
     const zoom = state.zoom || 1;
-    const rawRowMu = Math.round(((e.clientY - rect.top) / zoom) / gridHeight);
-    const rowMu = snapRowMuToStep(clamp(rawRowMu, bounds.Tmu, bounds.Bmu), bounds);
+    const page = state.pages[pageIndex] || null;
+    const localX = (e.clientX - rect.left) / zoom;
+    const localY = (e.clientY - rect.top) / zoom;
+    const logicalPoint = unprojectPointWithLineSlant({
+      x: localX,
+      y: localY,
+      angleDeg: page?.lineSlantDeg,
+      centerX: app.PAGE_W / 2,
+      centerY: app.PAGE_H / 2,
+    });
+    const rawRowMu = Math.round(logicalPoint.y / gridHeight);
+    const snappedRowMu = snapRowMuToStep(clamp(rawRowMu, bounds.Tmu, bounds.Bmu), bounds);
+    const step = Math.max(1, Math.round(state.lineStepMu || 1));
+    const maxSnapDeltaMu = Math.max(1, Math.floor(step * 0.45));
+    let rowMu = snappedRowMu;
+    if (page?.grid instanceof Map) {
+      let nearestDist = Infinity;
+      for (const rowKey of page.grid.keys()) {
+        const candidate = Number(rowKey);
+        if (!Number.isFinite(candidate) || candidate < bounds.Tmu || candidate > bounds.Bmu) continue;
+        const dist = Math.abs(candidate - snappedRowMu);
+        if (dist > maxSnapDeltaMu || dist >= nearestDist) continue;
+        nearestDist = dist;
+        rowMu = candidate;
+      }
+    }
     const col = clamp(
-      Math.floor(((e.clientX - rect.left) / zoom) / charWidth),
+      Math.floor(logicalPoint.x / charWidth),
       bounds.L,
       bounds.R,
     );

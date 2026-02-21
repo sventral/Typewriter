@@ -144,6 +144,22 @@
   .appearance-toggle input[type="checkbox"] { margin: 0; }
   .zoom-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: 0.8; }
   .zoom-toggle input[type="checkbox"] { margin: 0; }
+  .zoom-toggle-note {
+    margin: -8px 0 -2px 24px;
+    font-size: 11px;
+    line-height: 1.3;
+    opacity: 0.66;
+  }
+  .zoom-toggle-suboption { margin-left: 20px; font-size: 11px; opacity: 0.72; }
+  .zoom-toggle-suboption.is-disabled { opacity: 0.5; }
+  .behavior-subsection-subtitle {
+    margin-top: 2px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  html[data-theme='dark'] .behavior-subsection-subtitle {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
   .dropbox-sync-group { gap: 13px; }
   .dropbox-sync-note {
     margin: 0 0 2px;
@@ -205,6 +221,37 @@
     text-decoration: underline;
     text-underline-offset: 2px;
   }
+  .about-guide-note {
+    padding-top: 2px;
+  }
+  .guide-link-cta {
+    display: inline;
+    color: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-decoration: underline;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 2px;
+  }
+  .guide-link-cta:hover {
+    text-decoration-thickness: 2px;
+  }
+  .guide-link-cta:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+  }
+  .settings-panel-links {
+    margin-top: 12px;
+    padding-top: 12px;
+    padding-bottom: 2px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    display: flex;
+    justify-content: flex-start;
+  }
+  html[data-theme='dark'] .settings-panel-links {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
   .page-numbering-group { gap: 10px; }
 .page-number-align { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .page-number-align-label { font-weight: 500; text-align: left; margin-right: auto; }
@@ -227,7 +274,17 @@
   .low-res-zoom-summary.disabled { opacity: 0.55; }
   .low-res-zoom-controls.disabled { opacity: 0.6; }
   .ink-settings-content h4 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.75; }
-  .ink-settings-content { --ink-heading-width: 110px; }
+  .ink-settings-content {
+    --ink-heading-width: 110px;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
+  .ink-settings-sections {
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 2px;
+  }
   .settings-section {
     border: 1px solid var(--panel-border);
     border-radius: 12px;
